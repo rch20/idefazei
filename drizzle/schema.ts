@@ -1,17 +1,20 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  boolean,
+  date,
+  decimal,
+  int,
+  json,
+  mysqlEnum,
+  mysqlTable,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
+// ─── CORE AUTH ───────────────────────────────────────────────────────────────
+
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -25,4 +28,452 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+// ─── MULTI-TENANT: IGREJAS ────────────────────────────────────────────────────
+
+export const churches = mysqlTable("churches", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 100 }).notNull().unique(), // subdomínio
+  logoUrl: text("logoUrl"),
+  primaryColor: varchar("primaryColor", { length: 7 }).default("#1e3a5f"),
+  secondaryColor: varchar("secondaryColor", { length: 7 }).default("#c9a84c"),
+  address: text("address"),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 2 }),
+  zipCode: varchar("zipCode", { length: 9 }),
+  phone: varchar("phone", { length: 20 }),
+  whatsapp: varchar("whatsapp", { length: 20 }),
+  email: varchar("email", { length: 320 }),
+  website: text("website"),
+  socialMedia: json("socialMedia"), // { instagram, facebook, youtube }
+  vision: text("vision"),
+  mission: text("mission"),
+  values: text("values"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Church = typeof churches.$inferSelect;
+export type InsertChurch = typeof churches.$inferInsert;
+
+// ─── MEMBROS DA IGREJA (PERFIS E HIERARQUIA) ──────────────────────────────────
+
+export const churchRoleEnum = mysqlEnum("churchRole", [
+  "pastor_presidente",
+  "pastor_local",
+  "supervisor",
+  "lider",
+  "consolidador",
+  "diacono",
+  "secretario",
+  "tesoureiro",
+  "membro",
+]);
+
+export const churchMembers = mysqlTable("church_members", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  userId: int("userId"), // null = pessoa sem login
+  personId: int("personId"), // referência à tabela people
+  role: mysqlEnum("role", [
+    "pastor_presidente",
+    "pastor_local",
+    "supervisor",
+    "lider",
+    "consolidador",
+    "diacono",
+    "secretario",
+    "tesoureiro",
+    "membro",
+  ])
+    .default("membro")
+    .notNull(),
+  active: boolean("active").default(true).notNull(),
+  joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ChurchMember = typeof churchMembers.$inferSelect;
+
+// ─── PESSOAS ──────────────────────────────────────────────────────────────────
+
+export const people = mysqlTable("people", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  // Dados pessoais
+  photoUrl: text("photoUrl"),
+  fullName: varchar("fullName", { length: 255 }).notNull(),
+  cpf: varchar("cpf", { length: 14 }),
+  rg: varchar("rg", { length: 20 }),
+  birthDate: date("birthDate"),
+  gender: mysqlEnum("gender", ["masculino", "feminino", "outro"]),
+  maritalStatus: mysqlEnum("maritalStatus", [
+    "solteiro",
+    "casado",
+    "divorciado",
+    "viuvo",
+    "uniao_estavel",
+  ]),
+  profession: varchar("profession", { length: 100 }),
+  education: varchar("education", { length: 100 }),
+  // Contato
+  phone: varchar("phone", { length: 20 }),
+  whatsapp: varchar("whatsapp", { length: 20 }),
+  email: varchar("email", { length: 320 }),
+  // Endereço
+  zipCode: varchar("zipCode", { length: 9 }),
+  street: varchar("street", { length: 255 }),
+  number: varchar("number", { length: 10 }),
+  neighborhood: varchar("neighborhood", { length: 100 }),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 2 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  // Dados espirituais
+  conversionDate: date("conversionDate"),
+  baptismDate: date("baptismDate"),
+  previousChurch: varchar("previousChurch", { length: 255 }),
+  pastoralNotes: text("pastoralNotes"),
+  // Funil de discipulado
+  discipleshipStage: mysqlEnum("discipleshipStage", [
+    "nova_alma",
+    "consolidacao",
+    "fundamentos",
+    "celula",
+    "batismo",
+    "encontro_com_deus",
+    "escola_de_lideres",
+    "lideranca",
+    "multiplicador",
+  ]).default("nova_alma"),
+  // Rastreamento
+  wonById: int("wonById"), // quem ganhou esta pessoa
+  discipledById: int("discipledById"), // quem discipula esta pessoa
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Person = typeof people.$inferSelect;
+export type InsertPerson = typeof people.$inferInsert;
+
+// ─── FAMÍLIAS ─────────────────────────────────────────────────────────────────
+
+export const families = mysqlTable("families", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  familyName: varchar("familyName", { length: 255 }).notNull(),
+  fatherId: int("fatherId"),
+  motherId: int("motherId"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const familyMembers = mysqlTable("family_members", {
+  id: int("id").autoincrement().primaryKey(),
+  familyId: int("familyId").notNull(),
+  personId: int("personId").notNull(),
+  relation: mysqlEnum("relation", ["pai", "mae", "filho", "filha", "outro"]).notNull(),
+});
+
+// ─── GANHAR ALMAS ─────────────────────────────────────────────────────────────
+
+export const souls = mysqlTable("souls", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  personId: int("personId"), // referência à pessoa após cadastro completo
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
+  address: text("address"),
+  decisionDate: date("decisionDate").notNull(),
+  origin: mysqlEnum("origin", [
+    "culto",
+    "evangelismo",
+    "celula",
+    "evento",
+    "redes_sociais",
+    "indicacao",
+  ]).notNull(),
+  acceptedJesus: boolean("acceptedJesus").default(false),
+  reconciliation: boolean("reconciliation").default(false),
+  firstVisit: boolean("firstVisit").default(false),
+  wonById: int("wonById").notNull(), // quem ganhou
+  notes: text("notes"),
+  status: mysqlEnum("status", ["nova_alma", "em_consolidacao", "consolidado"])
+    .default("nova_alma")
+    .notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Soul = typeof souls.$inferSelect;
+
+// ─── CONSOLIDAÇÃO ─────────────────────────────────────────────────────────────
+
+export const consolidations = mysqlTable("consolidations", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  soulId: int("soulId").notNull(),
+  consolidatorId: int("consolidatorId").notNull(), // churchMember
+  // Checklist
+  callMade: boolean("callMade").default(false),
+  callDate: timestamp("callDate"),
+  messageSent: boolean("messageSent").default(false),
+  messageDate: timestamp("messageDate"),
+  visitMade: boolean("visitMade").default(false),
+  visitDate: timestamp("visitDate"),
+  bibleDelivered: boolean("bibleDelivered").default(false),
+  bibleDate: timestamp("bibleDate"),
+  whatsappGroupAdded: boolean("whatsappGroupAdded").default(false),
+  whatsappDate: timestamp("whatsappDate"),
+  prayerMade: boolean("prayerMade").default(false),
+  prayerDate: timestamp("prayerDate"),
+  addedToCell: boolean("addedToCell").default(false),
+  cellDate: timestamp("cellDate"),
+  notes: text("notes"),
+  status: mysqlEnum("status", ["em_consolidacao", "consolidado"])
+    .default("em_consolidacao")
+    .notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+// ─── CÉLULAS ──────────────────────────────────────────────────────────────────
+
+export const cells = mysqlTable("cells", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  leaderId: int("leaderId").notNull(),
+  supervisorId: int("supervisorId"),
+  hostId: int("hostId"),
+  address: text("address"),
+  city: varchar("city", { length: 100 }),
+  neighborhood: varchar("neighborhood", { length: 100 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  meetingDay: mysqlEnum("meetingDay", [
+    "segunda",
+    "terca",
+    "quarta",
+    "quinta",
+    "sexta",
+    "sabado",
+    "domingo",
+  ]),
+  meetingTime: varchar("meetingTime", { length: 5 }), // HH:MM
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Cell = typeof cells.$inferSelect;
+
+export const cellMembers = mysqlTable("cell_members", {
+  id: int("id").autoincrement().primaryKey(),
+  cellId: int("cellId").notNull(),
+  personId: int("personId").notNull(),
+  joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+  active: boolean("active").default(true).notNull(),
+});
+
+export const cellMeetings = mysqlTable("cell_meetings", {
+  id: int("id").autoincrement().primaryKey(),
+  cellId: int("cellId").notNull(),
+  churchId: int("churchId").notNull(),
+  meetingDate: date("meetingDate").notNull(),
+  topic: varchar("topic", { length: 255 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const cellAttendance = mysqlTable("cell_attendance", {
+  id: int("id").autoincrement().primaryKey(),
+  meetingId: int("meetingId").notNull(),
+  personId: int("personId"),
+  visitorName: varchar("visitorName", { length: 255 }),
+  status: mysqlEnum("status", ["presente", "ausente", "visitante"]).notNull(),
+  isNewSoul: boolean("isNewSoul").default(false),
+});
+
+// ─── EVENTOS ──────────────────────────────────────────────────────────────────
+
+export const events = mysqlTable("events", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: mysqlEnum("type", [
+    "congresso",
+    "conferencia",
+    "vigilia",
+    "retiro",
+    "seminario",
+    "culto",
+    "outro",
+  ]).notNull(),
+  description: text("description"),
+  startDate: timestamp("startDate").notNull(),
+  endDate: timestamp("endDate"),
+  location: text("location"),
+  maxCapacity: int("maxCapacity"),
+  qrCode: text("qrCode"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const eventRegistrations = mysqlTable("event_registrations", {
+  id: int("id").autoincrement().primaryKey(),
+  eventId: int("eventId").notNull(),
+  personId: int("personId").notNull(),
+  registeredAt: timestamp("registeredAt").defaultNow().notNull(),
+  checkedIn: boolean("checkedIn").default(false),
+  checkedInAt: timestamp("checkedInAt"),
+  status: mysqlEnum("status", ["inscrito", "participou", "cancelado"]).default("inscrito"),
+});
+
+// ─── MINISTÉRIOS ──────────────────────────────────────────────────────────────
+
+export const ministries = mysqlTable("ministries", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: mysqlEnum("type", [
+    "louvor",
+    "infantil",
+    "recepcao",
+    "midia",
+    "intercessao",
+    "evangelismo",
+    "casais",
+    "jovens",
+    "outro",
+  ]).notNull(),
+  leaderId: int("leaderId"),
+  description: text("description"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const ministryMembers = mysqlTable("ministry_members", {
+  id: int("id").autoincrement().primaryKey(),
+  ministryId: int("ministryId").notNull(),
+  personId: int("personId").notNull(),
+  joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+  active: boolean("active").default(true).notNull(),
+});
+
+// ─── ESCALAS ──────────────────────────────────────────────────────────────────
+
+export const scheduleItems = mysqlTable("schedule_items", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  ministryId: int("ministryId").notNull(),
+  personId: int("personId").notNull(),
+  scheduledDate: date("scheduledDate").notNull(),
+  role: varchar("role", { length: 100 }), // função na escala
+  notified: boolean("notified").default(false),
+  confirmed: boolean("confirmed").default(false),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+// ─── PEDIDOS DE ORAÇÃO ────────────────────────────────────────────────────────
+
+export const prayerRequests = mysqlTable("prayer_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  personId: int("personId"),
+  visitorName: varchar("visitorName", { length: 255 }),
+  visitorPhone: varchar("visitorPhone", { length: 20 }),
+  type: mysqlEnum("type", ["pedido", "testemunho"]).default("pedido").notNull(),
+  content: text("content").notNull(),
+  isPrivate: boolean("isPrivate").default(false),
+  answered: boolean("answered").default(false),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+// ─── MURAL / AVISOS ───────────────────────────────────────────────────────────
+
+export const announcements = mysqlTable("announcements", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  authorId: int("authorId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  type: mysqlEnum("type", ["aviso", "evento", "comunicado", "devocional"]).default("aviso"),
+  imageUrl: text("imageUrl"),
+  pinned: boolean("pinned").default(false),
+  publishedAt: timestamp("publishedAt").defaultNow().notNull(),
+  expiresAt: timestamp("expiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+// ─── BIBLIOTECA DIGITAL ───────────────────────────────────────────────────────
+
+export const libraryItems = mysqlTable("library_items", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  type: mysqlEnum("type", ["pdf", "video", "apostila", "devocional"]).notNull(),
+  fileUrl: text("fileUrl"),
+  thumbnailUrl: text("thumbnailUrl"),
+  description: text("description"),
+  requiredRole: mysqlEnum("requiredRole", [
+    "pastor_presidente",
+    "pastor_local",
+    "supervisor",
+    "lider",
+    "consolidador",
+    "diacono",
+    "secretario",
+    "tesoureiro",
+    "membro",
+  ]).default("membro"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+// ─── ACONSELHAMENTO PASTORAL ──────────────────────────────────────────────────
+
+export const counselingSessions = mysqlTable("counseling_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  personId: int("personId").notNull(),
+  counselorId: int("counselorId").notNull(),
+  scheduledAt: timestamp("scheduledAt").notNull(),
+  notes: text("notes"), // acesso restrito
+  status: mysqlEnum("status", ["agendado", "realizado", "cancelado"]).default("agendado"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+// ─── ESCOLA DE FUNDAMENTOS ────────────────────────────────────────────────────
+
+export const courses = mysqlTable("courses", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  type: mysqlEnum("type", [
+    "salvacao",
+    "oracao",
+    "biblia",
+    "igreja",
+    "espirito_santo",
+    "batismo",
+    "outro",
+  ]).notNull(),
+  description: text("description"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const courseEnrollments = mysqlTable("course_enrollments", {
+  id: int("id").autoincrement().primaryKey(),
+  courseId: int("courseId").notNull(),
+  personId: int("personId").notNull(),
+  enrolledAt: timestamp("enrolledAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+  certificateUrl: text("certificateUrl"),
+  status: mysqlEnum("status", ["matriculado", "em_andamento", "concluido"]).default("matriculado"),
+});
