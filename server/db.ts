@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   announcements,
@@ -550,4 +550,36 @@ export async function getDiscipleshipTree(churchId: number) {
     .where(and(eq(people.churchId, churchId), eq(people.active, true)))
     .orderBy(people.fullName)
     .limit(200);
+}
+
+// ─── FAMILIES ─────────────────────────────────────────────────────────────────
+export async function getFamiliesByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(families)
+    .where(eq(families.churchId, churchId))
+    .limit(200);
+  return rows.map((f) => ({
+    id: f.id,
+    name: f.familyName,
+    fatherName: null as string | null,
+    motherName: null as string | null,
+    childrenCount: 0,
+    memberCount: 0,
+    phone: null as string | null,
+    address: null as string | null,
+    notes: f.notes,
+  }));
+}
+
+export async function createFamily(input: { churchId: number; name: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(families).values({
+    churchId: input.churchId,
+    familyName: input.name,
+  });
+  return { success: true };
 }

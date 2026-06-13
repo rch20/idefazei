@@ -18,14 +18,13 @@ import Eventos from "./pages/Eventos";
 import Oracao from "./pages/Oracao";
 import Mural from "./pages/Mural";
 import Placeholder from "./pages/Placeholder";
+import Familias from "./pages/Familias";
+import Ministerios from "./pages/Ministerios";
+import Escalas from "./pages/Escalas";
+import Configuracoes from "./pages/Configuracoes";
+import Biblioteca from "./pages/Biblioteca";
 import {
-  Home as HomeIcon,
   TreePine,
-  Music,
-  Star,
-  BookOpen,
-  Building2,
-  Map,
 } from "lucide-react";
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
@@ -90,9 +89,7 @@ function Router() {
       </Route>
 
       <Route path="/app/familias">
-        <AppPage title="Famílias">
-          <Placeholder title="Gestão de Famílias" description="Acompanhamento familiar com pai, mãe e filhos" icon={HomeIcon} />
-        </AppPage>
+        <Familias />
       </Route>
 
       <Route path="/app/celulas">
@@ -114,15 +111,11 @@ function Router() {
       </Route>
 
       <Route path="/app/ministerios">
-        <AppPage title="Ministérios">
-          <Placeholder title="Ministérios" description="Gerencie os ministérios da sua igreja" icon={Music} />
-        </AppPage>
+        <Ministerios />
       </Route>
 
       <Route path="/app/escalas">
-        <AppPage title="Escalas">
-          <Placeholder title="Escalas" description="Organize as escalas de ministério com facilidade" icon={Star} />
-        </AppPage>
+        <Escalas />
       </Route>
 
       <Route path="/app/oracao">
@@ -138,15 +131,11 @@ function Router() {
       </Route>
 
       <Route path="/app/biblioteca">
-        <AppPage title="Biblioteca">
-          <Placeholder title="Biblioteca" description="Recursos, estudos e materiais de discipulado" icon={BookOpen} />
-        </AppPage>
+        <Biblioteca />
       </Route>
 
       <Route path="/app/configuracoes">
-        <AppPage title="Configurações">
-          <Placeholder title="Configurações da Igreja" description="Personalize logo, cores e informações da sua igreja" icon={Building2} />
-        </AppPage>
+        <Configuracoes />
       </Route>
 
       {/* Fallback */}

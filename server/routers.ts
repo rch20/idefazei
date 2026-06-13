@@ -372,12 +372,150 @@ const eventsRouter = router({
     }),
 });
 
+const familiesRouter = router({
+  list: protectedProcedure
+    .input(z.object({ churchId: z.number(), search: z.string().optional() }))
+    .query(async ({ ctx, input }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const { getFamiliesByChurch } = await import("./db");
+      const rows = await getFamiliesByChurch(input.churchId);
+      const filtered = input.search
+        ? rows.filter((f: { name: string }) =>
+            f.name.toLowerCase().includes(input.search!.toLowerCase())
+          )
+        : rows;
+      return filtered;
+    }),
+  create: protectedProcedure
+    .input(z.object({ churchId: z.number(), name: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const { createFamily } = await import("./db");
+      return createFamily({ churchId: input.churchId, name: input.name });
+    }),
+});
+
 const ministriesRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
-      return getMinistriesByChurch(input.churchId);
+      const rows = await getMinistriesByChurch(input.churchId);
+      return rows.map((m) => ({
+        ...m,
+        memberCount: 0,
+        leaderName: null as string | null,
+      }));
+    }),
+  create: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      name: z.string().min(1),
+      description: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const db = await import("./db").then((m) => m.getDb());
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { ministries: ministriesTable } = await import("../drizzle/schema");
+      await db.insert(ministriesTable).values({
+        churchId: input.churchId,
+        name: input.name,
+        description: input.description ?? null,
+        type: "outro",
+      });
+      return { success: true };
+    }),
+});
+
+const schedulesRouter = router({
+  list: protectedProcedure
+    .input(z.object({ churchId: z.number(), month: z.number().optional(), year: z.number().optional() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const db = await import("./db").then((m) => m.getDb());
+      if (!db) return [];
+      const { scheduleItems } = await import("../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const rows = await db
+        .select()
+        .from(scheduleItems)
+        .where(eq(scheduleItems.churchId, input.churchId));
+      // Filter by month/year in JS
+      const now = new Date();
+      const m = input.month ?? now.getMonth() + 1;
+      const y = input.year ?? now.getFullYear();
+      const filtered = rows.filter((r) => {
+        const d = new Date(r.scheduledDate);
+        return d.getMonth() + 1 === m && d.getFullYear() === y;
+      });
+      return filtered;
+    }),
+  create: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      ministryId: z.number(),
+      personId: z.number(),
+      scheduledDate: z.string(),
+      role: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const db = await import("./db").then((m) => m.getDb());
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { scheduleItems } = await import("../drizzle/schema");
+      await db.insert(scheduleItems).values({
+        churchId: input.churchId,
+        ministryId: input.ministryId,
+        personId: input.personId,
+        scheduledDate: new Date(input.scheduledDate + "T12:00:00"),
+        role: input.role ?? null,
+      });
+      return { success: true };
+    }),
+});
+
+const libraryRouter = router({
+  list: protectedProcedure
+    .input(z.object({ churchId: z.number(), search: z.string().optional(), type: z.string().optional() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const db = await import("./db").then((m) => m.getDb());
+      if (!db) return [];
+      const { libraryItems } = await import("../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const rows = await db.select().from(libraryItems).where(eq(libraryItems.churchId, input.churchId));
+      let filtered = rows;
+      if (input.search) {
+        const s = input.search.toLowerCase();
+        filtered = filtered.filter((r) => r.title.toLowerCase().includes(s) || (r.description ?? "").toLowerCase().includes(s));
+      }
+      if (input.type && input.type !== "Todos") {
+        filtered = filtered.filter((r) => r.type === input.type);
+      }
+      return filtered;
+    }),
+  create: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      title: z.string().min(1),
+      type: z.enum(["pdf", "video", "apostila", "devocional"]),
+      fileUrl: z.string().optional(),
+      description: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const db = await import("./db").then((m) => m.getDb());
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { libraryItems } = await import("../drizzle/schema");
+      await db.insert(libraryItems).values({
+        churchId: input.churchId,
+        title: input.title,
+        type: input.type,
+        fileUrl: input.fileUrl ?? null,
+        description: input.description ?? null,
+      });
+      return { success: true };
     }),
 });
 
@@ -476,6 +614,9 @@ export const appRouter = router({
   announcements: announcementsRouter,
   prayer: prayerRouter,
   dashboard: dashboardRouter,
+  families: familiesRouter,
+  schedules: schedulesRouter,
+  library: libraryRouter,
 });
 
 export type AppRouter = typeof appRouter;

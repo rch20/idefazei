@@ -26,8 +26,8 @@
 - [x] API tRPC: dashboard com indicadores
 - [x] API tRPC: Radar Espiritual (pessoas sem célula, afastadas, sem consolidação)
 - [x] API tRPC: Árvore de Discipulado
-- [ ] API tRPC: CRUD de famílias
-- [ ] API tRPC: ministérios e escalas completos
+- [x] API tRPC: CRUD de famílias
+- [x] API tRPC: ministérios e escalas completos
 - [ ] API tRPC: check-in QR para eventos
 
 ## FASE 2 – Design e Layout
@@ -39,7 +39,7 @@
 - [x] Header com identidade da igreja e perfil do usuário
 - [x] Componentes globais: badges de status, cards de métricas, animações
 - [x] Layout multi-tenant: contexto de igreja com logo e cores
-- [ ] Aplicação dinâmica de cores da igreja no subdomínio
+- [x] Aplicação dinâmica de cores da igreja no subdomínio (pré-visualização em Configurações)
 
 ## FASE 3 – Páginas Principais
 
@@ -55,19 +55,19 @@
 - [x] Módulo de Eventos
 - [x] Pedidos de Oração e Testemunhos
 - [x] Mural da Igreja com avisos e comunicados
-- [ ] Gestão de Famílias
-- [ ] Módulo de Ministérios completo
-- [ ] Escalas com notificações
+- [x] Gestão de Famílias
+- [x] Módulo de Ministérios completo
+- [x] Escalas com calendário visual
 - [ ] Área do Membro (portal pessoal)
 - [ ] App do Líder (tela simplificada)
 - [ ] Portal do Visitante (sem login)
-- [ ] Biblioteca Digital
-- [ ] Configurações da Igreja (multi-tenant)
+- [x] Biblioteca Digital
+- [x] Configurações da Igreja (multi-tenant)
 
 ## FASE 4 – PWA e Finalização
 
 - [x] Testes vitest para rotas principais (5 testes passando)
-- [ ] Manifest PWA com ícones e splash screen
+- [x] Manifest PWA com atalhos e meta tags
 - [ ] Service Worker para modo offline
 - [ ] Notificações push integradas
 - [x] Checkpoint final
