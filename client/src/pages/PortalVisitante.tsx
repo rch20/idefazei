@@ -10,8 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Loader2, Heart, Home, BookOpen, UserPlus, CheckCircle2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-
-const CHURCH_ID = 1;
+import { useChurchSlug } from "@/hooks/useTenant";
 
 const visitorSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
@@ -33,6 +32,7 @@ const REQUEST_TYPES = [
 export default function PortalVisitante() {
   const [submitted, setSubmitted] = useState(false);
   const [selectedType, setSelectedType] = useState<string>("pedido_oracao");
+  const churchSlug = useChurchSlug();
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<VisitorData>({
     resolver: zodResolver(visitorSchema),
@@ -49,7 +49,7 @@ export default function PortalVisitante() {
   });
 
   const onSubmit = (data: VisitorData) => {
-    createLeadMutation.mutate({ ...data, churchSlug: "minha-igreja", email: data.email || undefined });
+    createLeadMutation.mutate({ ...data, churchSlug: churchSlug ?? "demo", email: data.email || undefined });
   };
 
   if (submitted) {

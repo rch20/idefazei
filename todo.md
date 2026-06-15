@@ -60,7 +60,7 @@
 - [x] Escalas com calendário visual
 - [ ] Área do Membro (portal pessoal)
 - [ ] App do Líder (tela simplificada)
-- [ ] Portal do Visitante (sem login)
+- [x] Portal do Visitante (sem login)
 - [x] Biblioteca Digital
 - [x] Configurações da Igreja (multi-tenant)
 
@@ -75,38 +75,38 @@
 ## FASE 5 – Multi-Tenant Completo (Autenticação Própria + Subdomínios)
 
 ### Backend
-- [ ] Schema: tabela `church_users` com email, senha hash, perfil e churchId
-- [ ] Schema: tabela `super_admins` para proprietários da plataforma
-- [ ] Schema: tabela `plans` (planos de assinatura: Básico, Pro, Enterprise)
-- [ ] Schema: tabela `subscriptions` (assinatura por igreja com status e vencimento)
-- [ ] Schema: tabela `visitor_leads` (registros do portal do visitante)
-- [ ] Migração SQL das novas tabelas
-- [ ] API: autenticação própria (email+senha) com JWT, sem Manus OAuth
-- [ ] API: resolução de tenant por subdomínio (middleware)
-- [ ] API: cadastro de nova igreja (fluxo completo)
-- [ ] API: Super Admin (login separado, aprovação, suspensão, métricas globais)
-- [ ] API: Portal do Visitante (pedido de oração, visita pastoral, interesse em participar)
+- [x] Schema: tabela `church_users` com email, senha hash, perfil e churchId
+- [x] Schema: tabela `super_admins` para proprietários da plataforma
+- [x] Schema: tabela `plans` (planos de assinatura: Básico, Pro, Enterprise)
+- [x] Schema: tabela `subscriptions` (assinatura por igreja com status e vencimento)
+- [x] Schema: tabela `visitor_leads` (registros do portal do visitante)
+- [x] Migração SQL das novas tabelas
+- [x] API: autenticação própria (email+senha) com JWT, sem Manus OAuth
+- [x] API: resolução de tenant por subdomínio (middleware)
+- [x] API: cadastro de nova igreja (fluxo completo)
+- [x] API: Super Admin (login separado, aprovação, suspensão, métricas globais)
+- [x] API: Portal do Visitante (pedido de oração, visita pastoral, interesse em participar)
 - [ ] API: convite de usuários por email dentro da igreja
 
 ### Domínio Principal (/)
-- [ ] Landing Page com seções: Hero, Recursos, Funil, Planos, Depoimentos, CTA
+- [x] Landing Page com seções: Hero, Recursos, Funil, Planos, Depoimentos, CTA
 - [ ] Página /planos com comparativo de planos
 - [ ] Página /recursos com lista de funcionalidades
 - [ ] Página /demo com tour interativo
 - [ ] Página /contato com formulário
-- [ ] Página /cadastro-igreja com formulário multi-step (dados da igreja + subdomínio + conta do pastor)
+- [x] Página /cadastro-igreja com formulário multi-step (dados da igreja + subdomínio + conta do pastor)
 
 ### Painel Super Admin (/admin)
-- [ ] Login exclusivo do Super Admin (/admin/login)
-- [ ] Dashboard com métricas globais (total de igrejas, membros, receita)
-- [ ] Lista de igrejas com status (pendente, ativa, suspensa)
-- [ ] Aprovação/rejeição de novas igrejas
+- [x] Login exclusivo do Super Admin (/admin/login)
+- [x] Dashboard com métricas globais (total de igrejas, membros, receita)
+- [x] Lista de igrejas com status (pendente, ativa, suspensa)
+- [x] Aprovação/rejeição de novas igrejas
 - [ ] Gerenciamento de planos e assinaturas
-- [ ] Bloqueio/suspensão de igrejas
+- [x] Bloqueio/suspensão de igrejas
 - [ ] Painel de suporte
 
 ### Subdomínio da Igreja
-- [ ] Página de login da igreja (/login) com email+senha e seleção de perfil
-- [ ] Redirecionamento automático por perfil após login
-- [ ] Portal do Visitante (/visitante) público sem login
-- [ ] Middleware de resolução de tenant no frontend
+- [x] Página de login da igreja (/login) com email+senha e seleção de perfil
+- [x] Redirecionamento automático por perfil após login (pastor/secretario → dashboard, líder/supervisor → células, consolidador → consolidação)
+- [x] Portal do Visitante (/visitante) público sem login
+- [x] Middleware de resolução de tenant no frontend (hook useTenant) e backend (context.ts)

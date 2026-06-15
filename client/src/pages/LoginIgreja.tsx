@@ -44,7 +44,19 @@ export default function LoginIgreja() {
       localStorage.setItem("church_token", data.token);
       localStorage.setItem("church_user", JSON.stringify(data.user));
       toast.success(`Bem-vindo(a), ${data.user.name ?? ""}!`);
-      navigate("/app/dashboard");
+      // Redirecionamento automático por perfil
+      const role = data.user.role;
+      if (role === "pastor_presidente" || role === "pastor_local" || role === "secretario") {
+        navigate("/app/dashboard");
+      } else if (role === "lider" || role === "supervisor") {
+        navigate("/app/celulas");
+      } else if (role === "consolidador") {
+        navigate("/app/consolidacao");
+      } else if (role === "tesoureiro") {
+        navigate("/app/configuracoes");
+      } else {
+        navigate("/app/dashboard");
+      }
     },
     onError: (err: { message?: string }) => {
       toast.error(err.message || "Email ou senha inválidos.");
