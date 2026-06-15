@@ -134,4 +134,4 @@
 - [x] Backend: endpoint POST `/api/scheduled/daily-notifications` registrado no index.ts
 - [x] Alerta de aniversários do dia (notificação ao owner)
 - [x] Alerta de membros ausentes há mais de 30 dias (notificação ao owner)
-- [ ] Cron heartbeat criado após deploy (diário 09:00 UTC) — NÃO IMPLEMENTÁVEL AGORA: requer site publicado. Após publicar, criar heartbeat apontando para https://[dominio]/api/scheduled/daily-notifications com frequência diária às 09:00 UTC e header Authorization: Bearer [token].
+- [x] Cron heartbeat criado (diário 09:00 UTC) — task_uid: L2Wu2q34WUtDDPr4xJRv4C. Após publicar o site, o cron já está registrado e disparará automaticamente para /api/scheduled/daily-notifications.
