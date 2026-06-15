@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useChurch } from "@/components/ChurchLayout";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,20 +11,19 @@ import {
   Phone, Mail, Home, Church, CheckCircle2, Clock, AlertCircle
 } from "lucide-react";
 
-const CHURCH_ID = 1;
-
 const DISCIPLESHIP_STAGES = [
   "Nova Alma", "Consolidação", "Fundamentos", "Célula",
   "Batismo", "Encontro com Deus", "Escola de Líderes", "Liderança", "Multiplicador"
 ];
 
 export default function AreaMembro() {
+  const { churchId } = useChurch();
   const [activeTab, setActiveTab] = useState("perfil");
 
-  const { data: people, isLoading: loadingPeople } = trpc.people.list.useQuery({ churchId: CHURCH_ID });
-  const { data: events, isLoading: loadingEvents } = trpc.events.list.useQuery({ churchId: CHURCH_ID });
-  const { data: announcements, isLoading: loadingAnnouncements } = trpc.announcements.list.useQuery({ churchId: CHURCH_ID });
-  const { data: prayers, isLoading: loadingPrayers } = trpc.prayer.list.useQuery({ churchId: CHURCH_ID });
+  const { data: people, isLoading: loadingPeople } = trpc.people.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const { data: events, isLoading: loadingEvents } = trpc.events.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const { data: announcements, isLoading: loadingAnnouncements } = trpc.announcements.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const { data: prayers, isLoading: loadingPrayers } = trpc.prayer.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
 
   // Simula o membro logado como o primeiro da lista
   const member = people?.[0];

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import ChurchLayout from "@/components/ChurchLayout";
+import ChurchLayout, { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +16,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   devocional: "Devocionais",
 };
 
-const CHURCH_ID = 1;
-
 const FORMAT_ICONS: Record<string, React.ReactNode> = {
   pdf: <FileText className="w-5 h-5 text-red-500" />,
   video: <Video className="w-5 h-5 text-blue-500" />,
@@ -26,20 +24,20 @@ const FORMAT_ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function Biblioteca() {
+  const { churchId } = useChurch();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
 
-  const { data: items = [], isLoading } = trpc.library.list.useQuery({
-    churchId: CHURCH_ID,
-    search: search || undefined,
-    type: category !== "Todos" ? category : undefined,
-  });
+  const { data: items = [], isLoading } = trpc.library.list.useQuery(
+    { churchId: churchId!, search: search || undefined, type: category !== "Todos" ? category : undefined },
+    { enabled: !!churchId }
+  );
 
   return (
     <ChurchLayout>
       <div className="p-6 max-w-5xl mx-auto animate-fade-in-up">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <div>
             <h1 className="text-2xl font-display font-bold text-navy">Biblioteca Digital</h1>
             <p className="text-sm text-muted-foreground mt-1">Recursos, estudos e materiais da sua igreja</p>

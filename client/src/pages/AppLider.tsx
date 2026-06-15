@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useChurch } from "@/components/ChurchLayout";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -10,8 +11,6 @@ import {
   Users, Heart, Star, CheckCircle2, Clock, AlertCircle,
   Phone, MapPin, TrendingUp, UserPlus, BookOpen
 } from "lucide-react";
-
-const CHURCH_ID = 1;
 
 const STAGE_COLORS: Record<string, string> = {
   "Nova Alma": "bg-orange-100 text-orange-700",
@@ -26,12 +25,13 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 export default function AppLider() {
+  const { churchId } = useChurch();
   const [activeTab, setActiveTab] = useState("celula");
 
-  const { data: cells, isLoading: loadingCells } = trpc.cells.list.useQuery({ churchId: CHURCH_ID });
-  const { data: souls, isLoading: loadingSouls } = trpc.souls.list.useQuery({ churchId: CHURCH_ID });
-  const { data: consolidations, isLoading: loadingConsolidations } = trpc.consolidation.list.useQuery({ churchId: CHURCH_ID });
-  const { data: people, isLoading: loadingPeople } = trpc.people.list.useQuery({ churchId: CHURCH_ID });
+  const { data: cells, isLoading: loadingCells } = trpc.cells.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const { data: souls, isLoading: loadingSouls } = trpc.souls.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const { data: consolidations, isLoading: loadingConsolidations } = trpc.consolidation.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const { data: people, isLoading: loadingPeople } = trpc.people.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
 
   // Estatísticas rápidas do líder
   const myCell = cells?.[0];
@@ -174,7 +174,7 @@ export default function AppLider() {
                         ].map(({ key, label, done }) => (
                           <button
                             key={key}
-                            onClick={() => updateConsolidation.mutate({ id: c.id, churchId: CHURCH_ID, [key === "phoneCalled" ? "callMade" : key === "visited" ? "visitMade" : key === "bibleGiven" ? "bibleDelivered" : "addedToCell"]: !done })}
+                            onClick={() => updateConsolidation.mutate({ id: c.id, churchId: churchId!, [key === "phoneCalled" ? "callMade" : key === "visited" ? "visitMade" : key === "bibleGiven" ? "bibleDelivered" : "addedToCell"]: !done })}
                             className={`p-2 rounded-lg text-center text-xs font-medium transition-all ${
                               done
                                 ? "bg-green-100 text-green-700 border border-green-200"

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import ChurchLayout from "@/components/ChurchLayout";
+import ChurchLayout, { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -10,12 +10,15 @@ import { toast } from "sonner";
 import { Users, Home, Heart, Baby, Plus, Search, Phone, MapPin } from "lucide-react";
 
 export default function Familias() {
+  const { churchId } = useChurch();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "" });
 
-  const CHURCH_ID = 1; // TODO: get from church context
-  const { data: families, isLoading, refetch } = trpc.families.list.useQuery({ churchId: CHURCH_ID, search });
+  const { data: families, isLoading, refetch } = trpc.families.list.useQuery(
+    { churchId: churchId!, search },
+    { enabled: !!churchId }
+  );
 
   const createMutation = trpc.families.create.useMutation({
     onSuccess: () => {
@@ -30,14 +33,14 @@ export default function Familias() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return toast.error("Nome da família é obrigatório");
-    createMutation.mutate({ churchId: CHURCH_ID, name: form.name });
+    createMutation.mutate({ churchId: churchId!, name: form.name });
   };
 
   return (
     <ChurchLayout>
       <div className="p-6 max-w-5xl mx-auto animate-fade-in-up">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <div>
             <h1 className="text-2xl font-display font-bold text-navy">Famílias</h1>
             <p className="text-sm text-muted-foreground mt-1">Gestão de núcleos familiares da igreja</p>
@@ -76,7 +79,7 @@ export default function Familias() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           {[
             { label: "Famílias Cadastradas", value: families?.length ?? 0, icon: Home, color: "text-blue-600" },
             { label: "Membros em Famílias", value: families?.reduce((a: number, f: { memberCount?: number | null }) => a + (f.memberCount ?? 0), 0) ?? 0, icon: Users, color: "text-green-600" },

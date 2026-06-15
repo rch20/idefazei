@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useChurch } from "@/components/ChurchLayout";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,8 +20,6 @@ import {
   Sparkles,
   Download,
 } from "lucide-react";
-
-const CHURCH_ID = 1; // Resolvido pelo tenant em produção
 
 type CSVRow = { fullName: string; email?: string; phone?: string; birthDate?: string };
 
@@ -64,6 +63,7 @@ const STEPS = [
 ];
 
 export default function Onboarding() {
+  const { churchId } = useChurch();
   const [, navigate] = useLocation();
   const [currentStep, setCurrentStep] = useState(0);
   const [csvRows, setCsvRows] = useState<CSVRow[]>([]);
@@ -71,8 +71,10 @@ export default function Onboarding() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-
-  const { data: progress, refetch } = trpc.onboarding.get.useQuery({ churchId: CHURCH_ID });
+  const { data: progress, refetch } = trpc.onboarding.get.useQuery(
+    { churchId: churchId! },
+    { enabled: !!churchId }
+  );
 
   const updateMutation = trpc.onboarding.update.useMutation({
     onSuccess: () => refetch(),
@@ -89,7 +91,7 @@ export default function Onboarding() {
   const createCellMutation = trpc.cells.create.useMutation({
     onSuccess: () => {
       toast.success("Célula criada com sucesso!");
-      updateMutation.mutate({ churchId: CHURCH_ID, stepCreateCell: true });
+      updateMutation.mutate({ churchId: churchId!, stepCreateCell: true });
     },
     onError: () => toast.error("Erro ao criar célula"),
   });
@@ -97,7 +99,7 @@ export default function Onboarding() {
   const inviteMutation = trpc.invites.create.useMutation({
     onSuccess: () => {
       toast.success(`Convite enviado para ${inviteEmail}!`);
-      updateMutation.mutate({ churchId: CHURCH_ID, stepInviteLeaders: true });
+      updateMutation.mutate({ churchId: churchId!, stepInviteLeaders: true });
       setInviteEmail("");
       setInviteName("");
     },
@@ -139,13 +141,13 @@ export default function Onboarding() {
 
   function handleImport() {
     if (!csvRows.length) return toast.error("Nenhum dado para importar");
-    importMutation.mutate({ churchId: CHURCH_ID, csvData: csvRows });
+    importMutation.mutate({ churchId: churchId!, csvData: csvRows });
   }
 
   function handleCreateCell() {
     if (!cellName.trim()) return toast.error("Informe o nome da célula");
     createCellMutation.mutate({
-      churchId: CHURCH_ID,
+      churchId: churchId!,
       name: cellName,
       leaderId: 1, // Resolvido pelo usuário autenticado em produção
     });
@@ -154,7 +156,7 @@ export default function Onboarding() {
   function handleInvite() {
     if (!inviteEmail.trim() || !inviteName.trim()) return toast.error("Preencha nome e email");
     inviteMutation.mutate({
-      churchId: CHURCH_ID,
+      churchId: churchId!,
       email: inviteEmail,
       name: inviteName,
       role: "lider",
@@ -165,7 +167,7 @@ export default function Onboarding() {
     // Mark current step as done
     const step = STEPS[currentStep];
     if (step.key === "stepWelcome") {
-      updateMutation.mutate({ churchId: CHURCH_ID, stepWelcome: true });
+      updateMutation.mutate({ churchId: churchId!, stepWelcome: true });
     }
     if (currentStep < STEPS.length - 1) {
       setCurrentStep((s) => s + 1);

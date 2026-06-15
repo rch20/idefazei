@@ -1,5 +1,5 @@
 import { useState } from "react";
-import ChurchLayout from "@/components/ChurchLayout";
+import ChurchLayout, { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -12,19 +12,17 @@ const MONTHS = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
-const CHURCH_ID = 1;
-
 export default function Escalas() {
+  const { churchId } = useChurch();
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const { data: scales = [], isLoading } = trpc.schedules.list.useQuery({
-    churchId: CHURCH_ID,
-    month: currentMonth,
-    year: currentYear,
-  });
+  const { data: scales = [], isLoading } = trpc.schedules.list.useQuery(
+    { churchId: churchId!, month: currentMonth, year: currentYear },
+    { enabled: !!churchId }
+  );
 
   const firstDay = new Date(currentYear, currentMonth - 1, 1).getDay();
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();

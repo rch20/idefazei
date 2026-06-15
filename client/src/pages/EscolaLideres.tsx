@@ -263,7 +263,7 @@ export default function EscolaLideres() {
                 <Label>Período</Label>
                 <Input value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value })} placeholder="Ex: 1º Semestre 2025" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Início</Label>
                   <Input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />

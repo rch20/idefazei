@@ -80,7 +80,7 @@ export default function GestaoLideranca() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#1e3a5f] flex items-center gap-2">
             <Crown className="h-6 w-6 text-[#c9a84c]" />
@@ -125,7 +125,7 @@ export default function GestaoLideranca() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Data de Início *</Label>
                   <Input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />

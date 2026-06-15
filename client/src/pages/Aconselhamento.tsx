@@ -198,7 +198,7 @@ export default function Aconselhamento() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#1e3a5f] flex items-center gap-2">
             <Shield className="h-6 w-6 text-[#c9a84c]" />
@@ -279,7 +279,7 @@ export default function Aconselhamento() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="border-[#c9a84c]/20">
           <CardContent className="p-4 text-center">
             <div className="text-2xl font-bold text-[#1e3a5f]">{sessions?.length ?? 0}</div>

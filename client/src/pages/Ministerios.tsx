@@ -1,5 +1,5 @@
 import { useState } from "react";
-import ChurchLayout from "@/components/ChurchLayout";
+import ChurchLayout, { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -8,8 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Music, Users, Plus, Search, Star } from "lucide-react";
-
-const CHURCH_ID = 1;
 
 const MINISTRY_ICONS: Record<string, string> = {
   louvor: "🎵",
@@ -23,11 +21,15 @@ const MINISTRY_ICONS: Record<string, string> = {
 };
 
 export default function Ministerios() {
+  const { churchId } = useChurch();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", description: "" });
 
-  const { data: ministries, isLoading, refetch } = trpc.ministries.list.useQuery({ churchId: CHURCH_ID });
+  const { data: ministries, isLoading, refetch } = trpc.ministries.list.useQuery(
+    { churchId: churchId! },
+    { enabled: !!churchId }
+  );
 
   const createMutation = trpc.ministries.create.useMutation({
     onSuccess: () => {
@@ -42,7 +44,7 @@ export default function Ministerios() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return toast.error("Nome do ministério é obrigatório");
-    createMutation.mutate({ churchId: CHURCH_ID, name: form.name, description: form.description });
+    createMutation.mutate({ churchId: churchId!, name: form.name, description: form.description });
   };
 
   const filtered = ministries?.filter((m: { name: string }) =>
@@ -53,7 +55,7 @@ export default function Ministerios() {
     <ChurchLayout>
       <div className="p-6 max-w-5xl mx-auto animate-fade-in-up">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <div>
             <h1 className="text-2xl font-display font-bold text-navy">Ministérios</h1>
             <p className="text-sm text-muted-foreground mt-1">Gerencie os ministérios e equipes da sua igreja</p>
@@ -102,7 +104,7 @@ export default function Ministerios() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           {[
             { label: "Ministérios Ativos", value: ministries?.length ?? 0, icon: Music, color: "text-purple-600" },
             { label: "Total de Membros", value: ministries?.reduce((a: number, m: { memberCount?: number }) => a + (m.memberCount ?? 0), 0) ?? 0, icon: Users, color: "text-blue-600" },

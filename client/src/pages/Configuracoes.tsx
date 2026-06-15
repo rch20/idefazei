@@ -1,5 +1,5 @@
 import { useState } from "react";
-import ChurchLayout from "@/components/ChurchLayout";
+import ChurchLayout, { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,8 +8,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Building2, Palette, Users, Globe, Save, Upload } from "lucide-react";
-
-const CHURCH_ID = 1;
 
 const ROLES = [
   { value: "pastor_presidente", label: "Pastor Presidente" },
@@ -24,7 +22,11 @@ const ROLES = [
 ];
 
 export default function Configuracoes() {
-  const { data: church, isLoading } = trpc.churches.getById.useQuery({ id: CHURCH_ID });
+  const { churchId } = useChurch();
+  const { data: church, isLoading } = trpc.churches.getById.useQuery(
+    { id: churchId! },
+    { enabled: !!churchId }
+  );
 
   const [churchForm, setChurchForm] = useState({
     name: church?.name ?? "",
@@ -48,7 +50,7 @@ export default function Configuracoes() {
   });
 
   const handleSave = () => {
-    updateMutation.mutate({ id: CHURCH_ID, ...churchForm });
+    updateMutation.mutate({ id: churchId!, ...churchForm });
   };
 
   if (isLoading) {
@@ -65,7 +67,7 @@ export default function Configuracoes() {
     <ChurchLayout>
       <div className="p-6 max-w-4xl mx-auto animate-fade-in-up">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <div>
             <h1 className="text-2xl font-display font-bold text-navy">Configurações da Igreja</h1>
             <p className="text-sm text-muted-foreground mt-1">Personalize sua identidade e dados institucionais</p>
@@ -100,7 +102,7 @@ export default function Configuracoes() {
           <TabsContent value="geral">
             <div className="card-sacred p-6 space-y-5">
               <h2 className="font-semibold text-navy text-base border-b border-border pb-2">Dados da Igreja</h2>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="name">Nome da Igreja *</Label>
                   <Input
