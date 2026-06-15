@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
@@ -8,7 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { BookOpen, Users, Award, CheckCircle, Clock, Plus } from "lucide-react";
+import { useState } from "react";
+import { BookOpen, Users, Award, CheckCircle, Clock, Plus, Loader2 } from "lucide-react";
+
 
 const COURSE_TYPES = [
   { value: "salvacao", label: "Salvação", icon: "✝️" },
@@ -32,52 +33,7 @@ const STATUS_LABELS: Record<string, string> = {
   concluido: "Concluído",
 };
 
-function generateCertificate(personName: string, courseName: string, churchName: string) {
-  const date = new Date().toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Cormorant+Garamond:ital,wght@0,400;1,400&display=swap');
-  body { margin: 0; background: #f5f0e8; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'Cormorant Garamond', serif; }
-  .cert { width: 800px; background: #fffdf7; border: 3px solid #c9a84c; padding: 60px; text-align: center; position: relative; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
-  .cert::before { content: ''; position: absolute; inset: 12px; border: 1px solid #c9a84c; pointer-events: none; }
-  .ornament { color: #c9a84c; font-size: 2rem; margin: 0 12px; }
-  .title { font-family: 'Playfair Display', serif; color: #1e3a5f; font-size: 2.8rem; margin: 20px 0 8px; }
-  .subtitle { color: #c9a84c; font-size: 1.1rem; letter-spacing: 4px; text-transform: uppercase; margin-bottom: 40px; }
-  .body-text { color: #4a4a4a; font-size: 1.2rem; line-height: 1.8; margin: 20px 0; }
-  .name { font-family: 'Playfair Display', serif; color: #1e3a5f; font-size: 2rem; margin: 16px 0; border-bottom: 2px solid #c9a84c; display: inline-block; padding-bottom: 4px; }
-  .course { color: #c9a84c; font-size: 1.4rem; font-style: italic; margin: 8px 0; }
-  .date { color: #888; font-size: 1rem; margin-top: 40px; }
-  .seal { width: 80px; height: 80px; border-radius: 50%; background: #1e3a5f; color: #c9a84c; display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 20px auto; }
-</style>
-</head>
-<body>
-<div class="cert">
-  <div><span class="ornament">✦</span><span class="ornament">✦</span><span class="ornament">✦</span></div>
-  <div class="title">Certificado de Conclusão</div>
-  <div class="subtitle">Escola de Fundamentos</div>
-  <div class="seal">✝</div>
-  <div class="body-text">Certificamos que</div>
-  <div class="name">${personName}</div>
-  <div class="body-text">concluiu com êxito o curso de</div>
-  <div class="course">${courseName}</div>
-  <div class="body-text">promovido pela</div>
-  <div class="body-text"><strong>${churchName}</strong></div>
-  <div class="date">${date}</div>
-  <div style="margin-top:40px;"><span class="ornament">✦</span><span class="ornament">✦</span><span class="ornament">✦</span></div>
-</div>
-</body>
-</html>`;
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `certificado-${courseName.toLowerCase().replace(/\s+/g, "-")}-${personName.toLowerCase().replace(/\s+/g, "-")}.html`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+// Certificado PDF gerado via tRPC — ver CourseCard para uso
 
 function CourseCard({ course, churchId, people }: {
   course: { id: number; name: string; type: string; description?: string | null; active: boolean };
@@ -109,6 +65,20 @@ function CourseCard({ course, churchId, people }: {
       utils.escolaFundamentos.getEnrollments.invalidate();
     },
     onError: () => toast.error("Erro ao atualizar"),
+  });
+
+  const [generatingCertFor, setGeneratingCertFor] = useState<number | null>(null);
+  const certMutation = trpc.certificates.generate.useMutation({
+    onSuccess: (data) => {
+      // Abre o PDF em nova aba para download
+      window.open(data.url, "_blank");
+      toast.success("Certificado gerado com sucesso!");
+      setGeneratingCertFor(null);
+    },
+    onError: () => {
+      toast.error("Erro ao gerar certificado");
+      setGeneratingCertFor(null);
+    },
   });
 
   const courseInfo = COURSE_TYPES.find((c) => c.value === course.type);
@@ -180,9 +150,23 @@ function CourseCard({ course, churchId, people }: {
                       size="sm"
                       variant="outline"
                       className="h-6 text-xs border-[#c9a84c] text-[#c9a84c]"
-                      onClick={() => generateCertificate(person.fullName, course.name, "Igreja")}
+                      disabled={generatingCertFor === enrollment.id}
+                      onClick={() => {
+                        setGeneratingCertFor(enrollment.id);
+                        certMutation.mutate({
+                          type: "fundamentos",
+                          memberName: person.fullName,
+                          churchId,
+                          personId: person.id,
+                          enrollmentId: enrollment.id,
+                          courseName: course.name,
+                        });
+                      }}
                     >
-                      <Award className="h-3 w-3 mr-1" /> Certificado
+                      {generatingCertFor === enrollment.id
+                        ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        : <Award className="h-3 w-3 mr-1" />}
+                      Certificado
                     </Button>
                   )}
                 </div>

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
@@ -11,7 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
-import { GraduationCap, Users, Award, Plus, Calendar, User, Star } from "lucide-react";
+import { useState } from "react";
+import { GraduationCap, Users, Award, Plus, Calendar, User, Star, Loader2 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   matriculado: "bg-blue-100 text-blue-800",
@@ -27,52 +27,7 @@ const STATUS_LABELS: Record<string, string> = {
   cancelado: "Cancelado",
 };
 
-function generateLeadershipCertificate(personName: string, className: string, period: string, churchName: string) {
-  const date = new Date().toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Cormorant+Garamond:ital,wght@0,400;1,400&display=swap');
-  body { margin: 0; background: #f0f0ff; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'Cormorant Garamond', serif; }
-  .cert { width: 800px; background: linear-gradient(135deg, #fffdf7 0%, #f0f0ff 100%); border: 3px solid #6366f1; padding: 60px; text-align: center; position: relative; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
-  .cert::before { content: ''; position: absolute; inset: 12px; border: 1px solid #6366f1; pointer-events: none; }
-  .ornament { color: #6366f1; font-size: 2rem; margin: 0 12px; }
-  .title { font-family: 'Playfair Display', serif; color: #1e3a5f; font-size: 2.8rem; margin: 20px 0 8px; }
-  .subtitle { color: #6366f1; font-size: 1.1rem; letter-spacing: 4px; text-transform: uppercase; margin-bottom: 40px; }
-  .body-text { color: #4a4a4a; font-size: 1.2rem; line-height: 1.8; margin: 12px 0; }
-  .name { font-family: 'Playfair Display', serif; color: #1e3a5f; font-size: 2rem; margin: 16px 0; border-bottom: 2px solid #6366f1; display: inline-block; padding-bottom: 4px; }
-  .course { color: #6366f1; font-size: 1.4rem; font-style: italic; margin: 8px 0; }
-  .seal { width: 80px; height: 80px; border-radius: 50%; background: #1e3a5f; color: #6366f1; display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 20px auto; }
-  .verse { color: #888; font-size: 0.95rem; font-style: italic; margin-top: 30px; border-top: 1px solid #6366f1; padding-top: 20px; }
-</style>
-</head>
-<body>
-<div class="cert">
-  <div><span class="ornament">⭐</span><span class="ornament">✦</span><span class="ornament">⭐</span></div>
-  <div class="title">Certificado de Liderança</div>
-  <div class="subtitle">Escola de Líderes</div>
-  <div class="seal">👑</div>
-  <div class="body-text">Certificamos que</div>
-  <div class="name">${personName}</div>
-  <div class="body-text">concluiu com excelência a</div>
-  <div class="course">${className}</div>
-  ${period ? `<div class="body-text" style="color:#888;font-size:1rem;">${period}</div>` : ""}
-  <div class="body-text">na <strong>${churchName}</strong></div>
-  <div class="body-text" style="color:#6366f1;">Certificado em ${date}</div>
-  <div class="verse">"E o que ouviste de mim por muitas testemunhas, isso confia a homens fiéis, que sejam idôneos para também ensinarem os outros." — 2 Timóteo 2:2</div>
-</div>
-</body>
-</html>`;
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `certificado-lideranca-${personName.toLowerCase().replace(/\s+/g, "-")}.html`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+// Certificado PDF gerado via tRPC — ver LeadershipClassCard para uso
 
 function LeadershipClassCard({ cls, churchId, people }: {
   cls: { id: number; name: string; period?: string | null; startDate?: string | Date | null; endDate?: string | Date | null; pastor?: string | null; description?: string | null; active: boolean };
@@ -99,6 +54,19 @@ function LeadershipClassCard({ cls, churchId, people }: {
     onSuccess: () => {
       toast.success("Status atualizado!");
       utils.escolaLideres.getEnrollments.invalidate();
+    },
+  });
+
+  const [generatingCertFor, setGeneratingCertFor] = useState<number | null>(null);
+  const certMutation = trpc.certificates.generate.useMutation({
+    onSuccess: (data) => {
+      window.open(data.url, "_blank");
+      toast.success("Certificado de liderança gerado!");
+      setGeneratingCertFor(null);
+    },
+    onError: () => {
+      toast.error("Erro ao gerar certificado");
+      setGeneratingCertFor(null);
     },
   });
 
@@ -176,14 +144,24 @@ function LeadershipClassCard({ cls, churchId, people }: {
                       size="sm"
                       variant="outline"
                       className="h-6 text-xs border-[#6366f1] text-[#6366f1]"
-                      onClick={() => generateLeadershipCertificate(
-                        person.fullName,
-                        cls.name,
-                        cls.period ?? "",
-                        "Igreja"
-                      )}
+                      disabled={generatingCertFor === enrollment.id}
+                      onClick={() => {
+                        setGeneratingCertFor(enrollment.id);
+                        certMutation.mutate({
+                          type: "lideres",
+                          memberName: person.fullName,
+                          churchId,
+                          personId: person.id,
+                          enrollmentId: enrollment.id,
+                          className: cls.name,
+                          pastorName: cls.pastor ?? undefined,
+                        });
+                      }}
                     >
-                      <Award className="h-3 w-3 mr-1" /> Certificado
+                      {generatingCertFor === enrollment.id
+                        ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        : <Award className="h-3 w-3 mr-1" />}
+                      Certificado
                     </Button>
                   )}
                 </div>

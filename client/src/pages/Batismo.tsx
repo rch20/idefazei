@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
@@ -10,7 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Droplets, Users, Award, Plus, Calendar, MapPin, User } from "lucide-react";
+import { useState } from "react";
+import { Droplets, Users, Award, Plus, Calendar, MapPin, User, Loader2 } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   inscrito: "bg-blue-100 text-blue-800",
@@ -26,52 +26,7 @@ const STATUS_LABELS: Record<string, string> = {
   cancelado: "Cancelado",
 };
 
-function generateBaptismCertificate(personName: string, date: string, location: string, pastor: string, churchName: string) {
-  const formattedDate = new Date(date).toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Cormorant+Garamond:ital,wght@0,400;1,400&display=swap');
-  body { margin: 0; background: #e8f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; font-family: 'Cormorant Garamond', serif; }
-  .cert { width: 800px; background: linear-gradient(135deg, #fffdf7 0%, #e8f4f8 100%); border: 3px solid #06b6d4; padding: 60px; text-align: center; position: relative; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
-  .cert::before { content: ''; position: absolute; inset: 12px; border: 1px solid #06b6d4; pointer-events: none; }
-  .ornament { color: #06b6d4; font-size: 2rem; margin: 0 12px; }
-  .title { font-family: 'Playfair Display', serif; color: #1e3a5f; font-size: 2.8rem; margin: 20px 0 8px; }
-  .subtitle { color: #06b6d4; font-size: 1.1rem; letter-spacing: 4px; text-transform: uppercase; margin-bottom: 40px; }
-  .body-text { color: #4a4a4a; font-size: 1.2rem; line-height: 1.8; margin: 12px 0; }
-  .name { font-family: 'Playfair Display', serif; color: #1e3a5f; font-size: 2rem; margin: 16px 0; border-bottom: 2px solid #06b6d4; display: inline-block; padding-bottom: 4px; }
-  .detail { color: #06b6d4; font-size: 1rem; font-style: italic; margin: 4px 0; }
-  .seal { width: 80px; height: 80px; border-radius: 50%; background: #1e3a5f; color: #06b6d4; display: flex; align-items: center; justify-content: center; font-size: 2.5rem; margin: 20px auto; }
-  .verse { color: #888; font-size: 0.95rem; font-style: italic; margin-top: 30px; border-top: 1px solid #06b6d4; padding-top: 20px; }
-</style>
-</head>
-<body>
-<div class="cert">
-  <div><span class="ornament">💧</span><span class="ornament">✝</span><span class="ornament">💧</span></div>
-  <div class="title">Certificado de Batismo</div>
-  <div class="subtitle">Nas Águas</div>
-  <div class="seal">💧</div>
-  <div class="body-text">Certificamos que</div>
-  <div class="name">${personName}</div>
-  <div class="body-text">foi batizado(a) nas águas em</div>
-  <div class="detail">📅 ${formattedDate}</div>
-  ${location ? `<div class="detail">📍 ${location}</div>` : ""}
-  ${pastor ? `<div class="detail">👤 Pastor(a): ${pastor}</div>` : ""}
-  <div class="body-text" style="margin-top:20px;">na <strong>${churchName}</strong></div>
-  <div class="verse">"Portanto ide, fazei discípulos de todas as nações, batizando-os em nome do Pai, e do Filho, e do Espírito Santo." — Mateus 28:19</div>
-</div>
-</body>
-</html>`;
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `certificado-batismo-${personName.toLowerCase().replace(/\s+/g, "-")}.html`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+// Certificado PDF gerado via tRPC — ver BaptismClassCard para uso
 
 function BaptismClassCard({ cls, churchId, people }: {
   cls: { id: number; name: string; date: string | Date; location?: string | null; pastor?: string | null; notes?: string | null; active: boolean };
@@ -98,6 +53,19 @@ function BaptismClassCard({ cls, churchId, people }: {
     onSuccess: () => {
       toast.success("Status atualizado!");
       utils.batismo.getEnrollments.invalidate();
+    },
+  });
+
+  const [generatingCertFor, setGeneratingCertFor] = useState<number | null>(null);
+  const certMutation = trpc.certificates.generate.useMutation({
+    onSuccess: (data) => {
+      window.open(data.url, "_blank");
+      toast.success("Certificado de batismo gerado!");
+      setGeneratingCertFor(null);
+    },
+    onError: () => {
+      toast.error("Erro ao gerar certificado");
+      setGeneratingCertFor(null);
     },
   });
 
@@ -166,15 +134,24 @@ function BaptismClassCard({ cls, churchId, people }: {
                       size="sm"
                       variant="outline"
                       className="h-6 text-xs border-[#06b6d4] text-[#06b6d4]"
-                      onClick={() => generateBaptismCertificate(
-                        person.fullName,
-                        String(cls.date),
-                        cls.location ?? "",
-                        cls.pastor ?? "",
-                        "Igreja"
-                      )}
+                      disabled={generatingCertFor === enrollment.id}
+                      onClick={() => {
+                        setGeneratingCertFor(enrollment.id);
+                        certMutation.mutate({
+                          type: "batismo",
+                          memberName: person.fullName,
+                          churchId,
+                          personId: person.id,
+                          enrollmentId: enrollment.id,
+                          pastorName: cls.pastor ?? undefined,
+                          date: String(cls.date),
+                        });
+                      }}
                     >
-                      <Award className="h-3 w-3 mr-1" /> Certificado
+                      {generatingCertFor === enrollment.id
+                        ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        : <Award className="h-3 w-3 mr-1" />}
+                      Certificado
                     </Button>
                   )}
                 </div>

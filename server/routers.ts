@@ -1323,6 +1323,70 @@ const comunicacaoRouter = router({
 
 // ─── APP ROUTER ───────────────────────────────────────────────────────────────
 
+// ─── CERTIFICATES ROUTER ─────────────────────────────────────────────────────────────────────────────────────
+
+const certificatesRouter = router({
+  generate: protectedProcedure
+    .input(
+      z.object({
+        type: z.enum(["fundamentos", "batismo", "lideres"]),
+        memberName: z.string().min(1),
+        churchId: z.number(),
+        // IDs opcionais para validar conclusão no backend
+        enrollmentId: z.number().optional(),
+        personId: z.number().optional(),
+        courseName: z.string().optional(),
+        className: z.string().optional(),
+        pastorName: z.string().optional(),
+        date: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+
+      // Validar que a pessoa pertence à igreja (se personId fornecido)
+      if (input.personId) {
+        const { getDb } = await import("./db");
+        const { people } = await import("../drizzle/schema");
+        const { eq, and } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
+        const [person] = await db
+          .select({ id: people.id })
+          .from(people)
+          .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)))
+          .limit(1);
+        if (!person) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Pessoa não encontrada nesta igreja" });
+        }
+      }
+
+      const church = await getChurchById(input.churchId);
+      const churchName = church?.name ?? "Igreja";
+
+      const { generateCertificatePDF } = await import("./certificates");
+      const { storagePut } = await import("./storage");
+
+      const pdfBytes = await generateCertificatePDF({
+        type: input.type,
+        memberName: input.memberName,
+        churchName,
+        pastorName: input.pastorName,
+        courseName: input.courseName,
+        className: input.className,
+        date: input.date,
+      });
+
+      const timestamp = Date.now();
+      const safeName = input.memberName.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
+      const fileKey = `churches/${input.churchId}/certificates/${input.type}-${safeName}-${timestamp}.pdf`;
+
+      const { url } = await storagePut(fileKey, Buffer.from(pdfBytes), "application/pdf");
+
+      return { url, fileName: `certificado-${input.type}-${safeName}.pdf` };
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -1361,6 +1425,7 @@ export const appRouter = router({
   lideranca: liderancaRouter,
   aconselhamento: aconselhamentoRouter,
   comunicacao: comunicacaoRouter,
+  certificates: certificatesRouter,
   contact: router({
     send: publicProcedure
       .input(z.object({

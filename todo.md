@@ -187,3 +187,13 @@
 - [x] Automação: lembrete de aniversário (integrar com heartbeat existente)
 - [x] Automação: lembrete de evento 24h antes (heartbeat)
 - [x] Página /app/comunicacao — central de comunicações e histórico de envios
+
+## FASE 8 – Certificados em PDF
+
+- [x] Instalar pdf-lib e @pdf-lib/fontkit no servidor
+- [x] Criar módulo server/certificates.ts com geração de PDF (layout: fundo pergaminho, bordas douradas, nome em destaque)
+- [x] Criar endpoint tRPC certificates.generate (tipo, memberId, churchId)
+- [x] Certificado salvo no S3 e retorna URL para download
+- [x] Integrar botão "Gerar Certificado" real na página Escola de Fundamentos
+- [x] Integrar botão "Gerar Certificado" real na página Batismo nas Águas
+- [x] Integrar botão "Gerar Certificado" real na página Escola de Líderes
