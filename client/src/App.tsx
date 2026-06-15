@@ -12,6 +12,9 @@ import LoginIgreja from "./pages/LoginIgreja";
 import CadastroIgreja from "./pages/CadastroIgreja";
 import PortalVisitante from "./pages/PortalVisitante";
 import AdminPanel from "./pages/AdminPanel";
+import Planos from "./pages/Planos";
+import Recursos from "./pages/Recursos";
+import Contato from "./pages/Contato";
 
 // Pages — App
 import Dashboard from "./pages/Dashboard";
@@ -49,6 +52,9 @@ function Router() {
       {/* ── Domínio Principal ── */}
       <Route path="/" component={LandingPage} />
       <Route path="/cadastro-igreja" component={CadastroIgreja} />
+      <Route path="/planos" component={Planos} />
+      <Route path="/recursos" component={Recursos} />
+      <Route path="/contato" component={Contato} />
 
       {/* ── Super Admin ── */}
       <Route path="/admin" component={AdminPanel} />

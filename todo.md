@@ -90,10 +90,10 @@
 
 ### Domínio Principal (/)
 - [x] Landing Page com seções: Hero, Recursos, Funil, Planos, Depoimentos, CTA
-- [ ] Página /planos com comparativo de planos
-- [ ] Página /recursos com lista de funcionalidades
+- [x] Página /planos com comparativo de planos
+- [x] Página /recursos com lista de funcionalidades
 - [ ] Página /demo com tour interativo
-- [ ] Página /contato com formulário
+- [x] Página /contato com formulário
 - [x] Página /cadastro-igreja com formulário multi-step (dados da igreja + subdomínio + conta do pastor)
 
 ### Painel Super Admin (/admin)

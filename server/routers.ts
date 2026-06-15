@@ -774,5 +774,22 @@ export const appRouter = router({
   superAdmin: superAdminRouter,
   visitor: visitorRouter,
   register: registerRouter,
+  contact: router({
+    send: publicProcedure
+      .input(z.object({
+        name: z.string().min(2),
+        email: z.string().email(),
+        church: z.string().optional(),
+        message: z.string().min(10),
+      }))
+      .mutation(async ({ input }) => {
+        const { notifyOwner } = await import("./_core/notification");
+        await notifyOwner({
+          title: `Novo contato: ${input.name}`,
+          content: `De: ${input.name} <${input.email}>\nIgreja: ${input.church || 'N/A'}\n\n${input.message}`,
+        });
+        return { success: true };
+      }),
+  }),
 });
 export type AppRouter = typeof appRouter;
