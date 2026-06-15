@@ -1,5 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { useChurch } from "@/components/ChurchLayout";
+import { ReportButton } from "@/components/ReportButton";
 import {
   AlertTriangle,
   BookOpen,
@@ -332,6 +333,7 @@ function ArvoreDiscipulado({ churchId }: { churchId: number }) {
 
 export default function Dashboard() {
   const { churchId } = useChurch();
+  const utils = trpc.useUtils();
   const { data: stats, isLoading } = trpc.dashboard.stats.useQuery({ churchId });
 
   const metrics = [
@@ -389,8 +391,14 @@ export default function Dashboard() {
             Visão geral do crescimento e discipulado
           </p>
         </div>
-        <div className="hidden sm:flex items-center gap-2 text-xs text-gold font-medium bg-gold/10 px-3 py-1.5 rounded-full border border-gold/20">
-          Ganhar → Consolidar → Discipular → Multiplicar
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-gold font-medium bg-gold/10 px-3 py-1.5 rounded-full border border-gold/20">
+            Ganhar → Consolidar → Discipular → Multiplicar
+          </div>
+          <ReportButton
+            label="Exportar Relatório"
+            onFetch={() => utils.reports.dashboard.fetch({ churchId })}
+          />
         </div>
       </div>
 

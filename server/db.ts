@@ -26,6 +26,7 @@ import {
   souls,
   users,
   visitorLeads,
+  onboardingProgress,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -693,4 +694,67 @@ export async function updateChurchRegistration(id: number, status: "approved" | 
     suspensionReason: status === "suspended" ? (reason ?? null) : null,
   }).where(eq(churchRegistrations.id, id));
   return { success: true };
+}
+
+// ─── ONBOARDING ───────────────────────────────────────────────────────────────
+
+export async function getOnboardingProgress(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(onboardingProgress)
+    .where(eq(onboardingProgress.churchId, churchId)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function upsertOnboardingProgress(data: {
+  churchId: number;
+  stepWelcome?: boolean;
+  stepImportMembers?: boolean;
+  stepCreateCell?: boolean;
+  stepInviteLeaders?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await getOnboardingProgress(data.churchId);
+  const update: Record<string, unknown> = {};
+  if (data.stepWelcome !== undefined) update.stepWelcome = data.stepWelcome;
+  if (data.stepImportMembers !== undefined) update.stepImportMembers = data.stepImportMembers;
+  if (data.stepCreateCell !== undefined) update.stepCreateCell = data.stepCreateCell;
+  if (data.stepInviteLeaders !== undefined) update.stepInviteLeaders = data.stepInviteLeaders;
+
+  if (existing) {
+    // Check if all steps completed
+    const merged = { ...existing, ...update };
+    if (merged.stepWelcome && merged.stepImportMembers && merged.stepCreateCell && merged.stepInviteLeaders) {
+      update.completedAt = new Date();
+    }
+    await db.update(onboardingProgress).set(update).where(eq(onboardingProgress.id, existing.id));
+    return { ...existing, ...update };
+  } else {
+    const vals = { churchId: data.churchId, ...update };
+    await db.insert(onboardingProgress).values(vals as typeof onboardingProgress.$inferInsert);
+    return vals;
+  }
+}
+
+export async function importPeopleFromCSV(
+  churchId: number,
+  rows: { fullName: string; email?: string; phone?: string; birthDate?: string }[]
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  let imported = 0;
+  for (const row of rows) {
+    if (!row.fullName?.trim()) continue;
+    await db.insert(people).values({
+      churchId,
+      fullName: row.fullName.trim(),
+      email: row.email?.trim() || null,
+      phone: row.phone?.trim() || null,
+      birthDate: row.birthDate ? new Date(row.birthDate) : null,
+      status: "membro",
+    } as typeof people.$inferInsert);
+    imported++;
+  }
+  return imported;
 }

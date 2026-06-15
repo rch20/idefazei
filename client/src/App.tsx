@@ -36,7 +36,8 @@ import AreaMembro from "./pages/AreaMembro";
 import AppLider from "./pages/AppLider";
 import CheckinEvento from "./pages/CheckinEvento";
 import Demo from "./pages/Demo";
-import { TreePine } from "lucide-react";
+import Onboarding from "./pages/Onboarding";
+import CadastroSucesso from "./pages/CadastroSucesso";
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ function Router() {
       {/* ── Login e Portal da Igreja ── */}
       <Route path="/login" component={LoginIgreja} />
       <Route path="/visitante" component={PortalVisitante} />
+      <Route path="/cadastro-sucesso" component={CadastroSucesso} />
 
       {/* ── App — Dashboard ── */}
       <Route path="/app/dashboard">
@@ -77,13 +79,13 @@ function Router() {
 
       <Route path="/app/radar">
         <AppPage title="Radar Espiritual">
-          <Placeholder title="Radar Espiritual" description="Visão detalhada de pessoas em risco espiritual" icon={TreePine} />
+          <Placeholder title="Radar Espiritual" description="Visão detalhada de pessoas em risco espiritual" />
         </AppPage>
       </Route>
 
       <Route path="/app/arvore">
         <AppPage title="Árvore de Discipulado">
-          <Placeholder title="Árvore de Discipulado" description="Genealogia espiritual visual da sua igreja" icon={TreePine} />
+          <Placeholder title="Árvore de Discipulado" description="Genealogia espiritual visual da sua igreja" />
         </AppPage>
       </Route>
 
@@ -194,6 +196,9 @@ function Router() {
 
       {/* ── Check-in público ── */}
       <Route path="/checkin" component={CheckinEvento} />
+
+      {/* ── Onboarding ── */}
+      <Route path="/onboarding" component={Onboarding} />
 
       {/* Fallback */}
       <Route path="/404" component={NotFound} />

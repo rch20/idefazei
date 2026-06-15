@@ -2,6 +2,7 @@ import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { CheckCircle2, Circle, Heart, Phone, MessageSquare, Home, BookOpen, Users, HandHeart, Church } from "lucide-react";
+import { ReportButton } from "@/components/ReportButton";
 import { toast } from "sonner";
 
 const CHECKLIST_ITEMS = [
@@ -18,6 +19,7 @@ type ChecklistKey = (typeof CHECKLIST_ITEMS)[number]["key"];
 
 export default function Consolidacao() {
   const { churchId } = useChurch();
+  const utils = trpc.useUtils();
   const { data: consolidations, isLoading, refetch } = trpc.consolidation.list.useQuery({ churchId });
   const { data: souls } = trpc.souls.list.useQuery({ churchId });
 
@@ -44,11 +46,17 @@ export default function Consolidacao() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Acompanhe o processo de consolidação das novas almas
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Acompanhe o processo de consolidação das novas almas
+          </p>
+        </div>
+        <ReportButton
+          label="Exportar Relatório"
+          onFetch={() => utils.reports.consolidation.fetch({ churchId })}
+        />
       </div>
 
       {isLoading ? (

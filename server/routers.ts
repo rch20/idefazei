@@ -48,10 +48,14 @@ import {
   createChurchRegistration,
   createVisitorLead,
   getVisitorLeadsByChurch,
+  getOnboardingProgress,
+  upsertOnboardingProgress,
+  importPeopleFromCSV,
 } from "./db";
 import { getDb } from "./db";
 import { events } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { generateReportHTML, htmlToBase64 } from "./reports";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -812,6 +816,169 @@ const inviteRouter = router({
       return { success: true, userId: user.id, tempPassword };
     }),
 });
+// ─── REPORTS ROUTER ──────────────────────────────────────────────────────────
+const reportsRouter = router({
+  dashboard: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const church = await getChurchById(input.churchId);
+      const stats = await getDashboardStats(input.churchId);
+      const funnel = await getDiscipleshipFunnel(input.churchId);
+      const radar = await getRadarEspiritual(input.churchId);
+      const now = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+      const html = generateReportHTML({
+        churchName: church?.name || "Igreja",
+        generatedAt: now,
+        title: "Relatório Executivo",
+        subtitle: "Indicadores de crescimento e discipulado",
+        sections: [
+          {
+            title: "Indicadores Gerais",
+            type: "kpi",
+            kpis: [
+              { label: "Total de Membros", value: stats?.totalMembers ?? 0, color: "#1e3a5f" },
+              { label: "Novas Almas", value: stats?.newSouls ?? 0, color: "#c9a84c" },
+              { label: "Células Ativas", value: stats?.totalCells ?? 0, color: "#16a34a" },
+              { label: "Em Consolidação", value: stats?.consolidated ?? 0, color: "#7c3aed" },
+              { label: "Líderes", value: stats?.totalLeaders ?? 0, color: "#dc2626" },
+              { label: "Batizados", value: stats?.baptized ?? 0, color: "#0891b2" },
+            ],
+          },
+          {
+            title: "Funil de Discipulado",
+            type: "table",
+            headers: ["Etapa", "Quantidade"],
+            rows: (funnel ?? []).map((f: { stage: string; count: number }) => [f.stage, f.count]),
+          },
+          {
+            title: "Radar Espiritual — Alertas",
+            type: "list",
+            items: [
+              `Sem célula: ${radar?.semCelula ?? 0} pessoas`,
+              `Sem discipulador: ${radar?.semDiscipulador ?? 0} pessoas`,
+              `Sem consolidação: ${radar?.semConsolidacao ?? 0} pessoas`,
+            ],
+          },
+        ],
+      });
+      return { base64: htmlToBase64(html), filename: `relatorio-executivo-${Date.now()}.html` };
+    }),
+
+  cells: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const church = await getChurchById(input.churchId);
+      const cells = await getCellsByChurch(input.churchId);
+      const now = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+      const html = generateReportHTML({
+        churchName: church?.name || "Igreja",
+        generatedAt: now,
+        title: "Relatório de Células",
+        subtitle: "Visão geral das células e membros",
+        sections: [
+          {
+            title: "Indicadores de Células",
+            type: "kpi",
+            kpis: [
+              { label: "Total de Células", value: cells?.length ?? 0, color: "#1e3a5f" },
+            ],
+          },
+          {
+            title: "Lista de Células",
+            type: "table",
+            headers: ["Nome", "Bairro", "Dia de Reunião"],
+            rows: (cells ?? []).map((c: { name: string; neighborhood: string | null; meetingDay: string | null }) => [
+              c.name,
+              c.neighborhood || "-",
+              c.meetingDay || "-",
+            ]),
+          },
+        ],
+      });
+      return { base64: htmlToBase64(html), filename: `relatorio-celulas-${Date.now()}.html` };
+    }),
+
+  consolidation: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const church = await getChurchById(input.churchId);
+      const cons = await getConsolidationsByChurch(input.churchId);
+      const now = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+      const done = (cons ?? []).filter((c: { status: string }) => c.status === "concluido").length;
+      const pending = (cons ?? []).filter((c: { status: string }) => c.status === "em_andamento").length;
+      const html = generateReportHTML({
+        churchName: church?.name || "Igreja",
+        generatedAt: now,
+        title: "Relatório de Consolidação",
+        subtitle: "Acompanhamento de novas almas",
+        sections: [
+          {
+            title: "Indicadores",
+            type: "kpi",
+            kpis: [
+              { label: "Total", value: cons?.length ?? 0, color: "#1e3a5f" },
+              { label: "Concluídos", value: done, color: "#16a34a" },
+              { label: "Em Andamento", value: pending, color: "#c9a84c" },
+            ],
+          },
+          {
+            title: "Detalhamento",
+            type: "table",
+            headers: ["Nova Alma", "Consolidador", "Status", "Etapa"],
+            rows: (cons ?? []).slice(0, 50).map((c) => [
+              c.soulId?.toString() || "-",
+              c.consolidatorId?.toString() || "-",
+              c.status || "-",
+              c.callMade ? "Ligou" : "Pendente",
+            ]),
+          },
+        ],
+      });
+      return { base64: htmlToBase64(html), filename: `relatorio-consolidacao-${Date.now()}.html` };
+    }),
+});
+
+// ─── ONBOARDING ROUTER ──────────────────────────────────────────────────────
+const onboardingRouter = router({
+  get: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getOnboardingProgress(input.churchId);
+    }),
+  update: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      stepWelcome: z.boolean().optional(),
+      stepImportMembers: z.boolean().optional(),
+      stepCreateCell: z.boolean().optional(),
+      stepInviteLeaders: z.boolean().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return upsertOnboardingProgress(input);
+    }),
+  importCSV: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      csvData: z.array(z.object({
+        fullName: z.string(),
+        email: z.string().optional(),
+        phone: z.string().optional(),
+        birthDate: z.string().optional(),
+      })),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const count = await importPeopleFromCSV(input.churchId, input.csvData);
+      await upsertOnboardingProgress({ churchId: input.churchId, stepImportMembers: true });
+      return { success: true, imported: count };
+    }),
+});
+
 // ─── APP ROUTER ───────────────────────────────────────────────────────────────
 
 export const appRouter = router({
@@ -843,6 +1010,8 @@ export const appRouter = router({
   superAdmin: superAdminRouter,
   visitor: visitorRouter,
   register: registerRouter,
+  onboarding: onboardingRouter,
+  reports: reportsRouter,
   contact: router({
     send: publicProcedure
       .input(z.object({

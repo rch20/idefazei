@@ -591,3 +591,20 @@ export const visitorLeads = mysqlTable("visitor_leads", {
 });
 
 export type VisitorLead = typeof visitorLeads.$inferSelect;
+
+// ─── ONBOARDING ───────────────────────────────────────────────────────────────
+
+export const onboardingProgress = mysqlTable("onboarding_progress", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  stepWelcome: boolean("stepWelcome").default(false).notNull(),
+  stepImportMembers: boolean("stepImportMembers").default(false).notNull(),
+  stepCreateCell: boolean("stepCreateCell").default(false).notNull(),
+  stepInviteLeaders: boolean("stepInviteLeaders").default(false).notNull(),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type OnboardingProgress = typeof onboardingProgress.$inferSelect;
+export type InsertOnboardingProgress = typeof onboardingProgress.$inferInsert;

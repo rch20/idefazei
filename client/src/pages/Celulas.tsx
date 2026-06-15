@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MapView } from "@/components/Map";
 import { trpc } from "@/lib/trpc";
 import { Globe, MapPin, Plus, Users } from "lucide-react";
+import { ReportButton } from "@/components/ReportButton";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -33,6 +34,7 @@ const defaultForm = {
 
 export default function Celulas() {
   const { churchId } = useChurch();
+  const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("lista");
   const [form, setForm] = useState(defaultForm);
@@ -102,10 +104,16 @@ export default function Celulas() {
             Gerencie os grupos de célula da sua igreja
           </p>
         </div>
-        <Button onClick={() => setOpen(true)} className="bg-navy hover:bg-navy-light text-white gap-2">
-          <Plus className="w-4 h-4" />
-          Nova Célula
-        </Button>
+        <div className="flex items-center gap-2">
+          <ReportButton
+            label="Exportar"
+            onFetch={() => utils.reports.cells.fetch({ churchId })}
+          />
+          <Button onClick={() => setOpen(true)} className="bg-navy hover:bg-navy-light text-white gap-2">
+            <Plus className="w-4 h-4" />
+            Nova Célula
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}

@@ -110,3 +110,28 @@
 - [x] Redirecionamento automático por perfil após login (pastor/secretario → dashboard, líder/supervisor → células, consolidador → consolidação)
 - [x] Portal do Visitante (/visitante) público sem login
 - [x] Middleware de resolução de tenant no frontend (hook useTenant) e backend (context.ts)
+
+## FASE 6 – Próximos Passos
+
+### Onboarding Guiado Pós-Cadastro
+- [x] Backend: API para salvar progresso do onboarding por igreja
+- [x] Backend: endpoint de importação de membros via CSV
+- [x] Wizard de onboarding com 4 etapas: boas-vindas, importar membros, criar célula, convidar líderes
+- [ ] Indicador de progresso do onboarding no Dashboard (% concluído)
+- [x] Rota /onboarding acessível após cadastro da igreja
+
+### Relatórios Exportáveis em HTML/PDF
+- [x] Backend: módulo `server/reports.ts` com geração de HTML estilizado em base64
+- [x] Backend: router `reports` com 3 endpoints (dashboard, células, consolidação)
+- [x] Componente `ReportButton` reutilizável
+- [x] Botão "Exportar Relatório" no Dashboard Executivo
+- [x] Botão "Exportar" na página de Células
+- [x] Botão "Exportar Relatório" na página de Consolidação
+
+### Notificações Automáticas (Heartbeat)
+- [x] Ler references/periodic-updates.md para entender o sistema de heartbeat
+- [x] Backend: handler `server/scheduledNotifications.ts`
+- [x] Backend: endpoint POST `/api/scheduled/daily-notifications` registrado no index.ts
+- [x] Alerta de aniversários do dia (notificação ao owner)
+- [x] Alerta de membros ausentes há mais de 30 dias (notificação ao owner)
+- [ ] Cron heartbeat criado após deploy (diário 09:00 UTC) — requer site publicado
