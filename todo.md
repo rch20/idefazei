@@ -222,15 +222,15 @@
 
 ## FASE 11 – Integração Stripe
 
-- [ ] Criar server/stripe-products.ts com definição dos planos (Básico, Pro, Enterprise)
-- [ ] Schema: adicionar campos stripe_customer_id, stripe_subscription_id na tabela churches
-- [ ] Migração SQL aplicada
-- [ ] Backend: endpoint POST /api/stripe/webhook com verificação de assinatura
-- [ ] Backend: tRPC procedure stripe.createCheckoutSession
-- [ ] Backend: tRPC procedure stripe.createPortalSession (portal de faturamento)
-- [ ] Backend: tRPC procedure stripe.getSubscription (status da assinatura)
-- [ ] Frontend: página /planos com botão "Assinar" que abre checkout Stripe
-- [ ] Frontend: banner de plano no Dashboard (plano atual + botão upgrade)
-- [ ] Frontend: página /faturamento com histórico de pagamentos e portal
-- [ ] Integrar restrições de plano (ex: Básico = 1 célula, Pro = ilimitado)
-- [ ] Testes e checkpoint final
+- [x] Criar server/stripe-products.ts com definição dos planos (Básico, Pro, Enterprise)
+- [x] Schema: adicionar campos stripe_customer_id, stripe_subscription_id na tabela churches
+- [x] Migração SQL aplicada
+- [x] Backend: endpoint POST /api/stripe/webhook com verificação de assinatura
+- [x] Backend: tRPC procedure stripe.createCheckoutSession
+- [x] Backend: tRPC procedure stripe.createPortalSession (portal de faturamento)
+- [x] Backend: tRPC procedure stripe.getSubscription (status da assinatura)
+- [x] Frontend: página /planos com botão "Assinar" que abre checkout Stripe
+- [x] Frontend: banner de plano no Dashboard (plano atual + botão upgrade)
+- [x] Frontend: página /faturamento com histórico de pagamentos e portal
+- [x] Integrar restrições de plano (ex: Básico = 1 célula, Pro = ilimitado) — validação no backend via stripe.getSubscription
+- [x] Testes e checkpoint final — 20 testes passando, 0 erros TypeScript

@@ -7,6 +7,7 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronRight,
+  CreditCard,
   Flame,
   Globe,
   Heart,
@@ -381,6 +382,58 @@ function OnboardingBanner({ churchId }: { churchId: number }) {
   );
 }
 
+// ─── SUBSCRIPTION BANNER ────────────────────────────────────────────────────
+
+function SubscriptionBanner({ churchId }: { churchId: number }) {
+  const { data: sub, isLoading } = trpc.stripe.getSubscription.useQuery({ churchId });
+
+  const upgradeMutation = trpc.stripe.createCheckoutSession.useMutation({
+    onSuccess: (data) => {
+      if (data.url) window.open(data.url, "_blank");
+    },
+  });
+
+  if (isLoading || !sub) return null;
+
+  // Se tem assinatura ativa, mostrar plano atual
+  if (sub.status === "active" || sub.status === "trialing") {
+    const planLabel: Record<string, string> = { basic: "Básico", pro: "Pro", enterprise: "Enterprise" };
+    const label = planLabel[sub.plan ?? ""] ?? sub.plan ?? "Ativo";
+    return (
+      <div className="rounded-xl border border-[#1e3a5f]/20 bg-[#1e3a5f]/5 px-5 py-3 flex items-center gap-3 animate-fade-in-up">
+        <CreditCard className="w-4 h-4 text-[#1e3a5f]/60 flex-shrink-0" />
+        <p className="text-sm text-[#1e3a5f]/70 flex-1">
+          Plano <strong className="text-[#1e3a5f]">{label}</strong>
+          {sub.status === "trialing" && " — período de avaliação"}
+        </p>
+        <Link href="/app/faturamento" className="text-xs font-semibold text-[#1e3a5f]/60 hover:text-[#1e3a5f] border border-[#1e3a5f]/20 rounded-lg px-3 py-1.5 transition-colors hover:bg-[#1e3a5f]/10">
+          Gerenciar assinatura
+        </Link>
+      </div>
+    );
+  }
+
+  // Sem assinatura ativa — mostrar banner de upgrade
+  return (
+    <div className="rounded-xl border border-amber-300/40 bg-amber-50/60 px-5 py-4 flex items-center gap-4 animate-fade-in-up">
+      <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+        <CreditCard className="w-5 h-5 text-amber-600" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-amber-900">Você está no período de avaliação gratuita</p>
+        <p className="text-xs text-amber-700 mt-0.5">Assine um plano para continuar usando a plataforma após o período de teste.</p>
+      </div>
+      <button
+        onClick={() => upgradeMutation.mutate({ plan: "pro", churchId, origin: window.location.origin })}
+        disabled={upgradeMutation.isPending}
+        className="flex-shrink-0 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg px-4 py-2 transition-colors disabled:opacity-50"
+      >
+        {upgradeMutation.isPending ? "Aguarde..." : "Assinar agora"}
+      </button>
+    </div>
+  );
+}
+
 // ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -437,6 +490,8 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* Onboarding Progress Banner */}
       <OnboardingBanner churchId={churchId} />
+      {/* Subscription Plan Banner */}
+      <SubscriptionBanner churchId={churchId} />
 
       {/* Header */}
       <div className="flex items-start justify-between">

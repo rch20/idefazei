@@ -1,8 +1,11 @@
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Check, X, Zap, Crown, Building2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/_core/hooks/useAuth";
+import { toast } from "sonner";
 
 const PLANS = [
   {
@@ -106,8 +109,40 @@ const PLANS = [
   },
 ];
 
+const PLAN_IDS: Record<string, "basic" | "pro" | "enterprise"> = {
+  basico: "basic",
+  pro: "pro",
+  enterprise: "enterprise",
+};
+
 export default function Planos() {
   const [annual, setAnnual] = useState(false);
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
+
+  const checkoutMutation = trpc.stripe.createCheckoutSession.useMutation({
+    onSuccess: (data) => {
+      if (data.url) window.open(data.url, "_blank");
+      toast.info("Redirecionando para o checkout Stripe...");
+    },
+    onError: (err) => {
+      toast.error(err.message || "Erro ao iniciar checkout");
+    },
+  });
+
+  function handleSelectPlan(planId: string) {
+    if (!user) {
+      navigate("/cadastro-igreja");
+      return;
+    }
+    const churchId = (user as { churchId?: number })?.churchId ?? 0;
+    checkoutMutation.mutate({
+      plan: PLAN_IDS[planId],
+      churchId,
+      origin: window.location.origin,
+      interval: annual ? "year" : "month",
+    });
+  }
 
   return (
     <div className="min-h-screen bg-[#f5f0e8]">
@@ -223,13 +258,13 @@ export default function Planos() {
                   ))}
                 </div>
 
-                <Link href="/cadastro-igreja">
-                  <Button
-                    className={`w-full ${isPopular ? "bg-[#1e3a5f] hover:bg-[#162d4a] text-white" : "bg-[#1e3a5f]/10 hover:bg-[#1e3a5f]/20 text-[#1e3a5f]"}`}
-                  >
-                    Começar gratuitamente
-                  </Button>
-                </Link>
+                <Button
+                  className={`w-full ${isPopular ? "bg-[#1e3a5f] hover:bg-[#162d4a] text-white" : "bg-[#1e3a5f]/10 hover:bg-[#1e3a5f]/20 text-[#1e3a5f]"}`}
+                  onClick={() => handleSelectPlan(plan.id)}
+                  disabled={checkoutMutation.isPending}
+                >
+                  {checkoutMutation.isPending ? "Aguarde..." : user ? "Assinar agora" : "Começar gratuitamente"}
+                </Button>
 
                 <div className="mt-6 space-y-2">
                   {plan.included.map((f, i) => (
