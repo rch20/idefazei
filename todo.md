@@ -219,3 +219,18 @@
 - [x] Etapa 5: Certificado (certificates.generate) — batismo, fundamentos, líderes e acesso negado
 - [x] Segurança: isolamento por tenant — acesso negado a igreja diferente e permitido à própria
 - [x] Total: 20 testes passando (3 arquivos)
+
+## FASE 11 – Integração Stripe
+
+- [ ] Criar server/stripe-products.ts com definição dos planos (Básico, Pro, Enterprise)
+- [ ] Schema: adicionar campos stripe_customer_id, stripe_subscription_id na tabela churches
+- [ ] Migração SQL aplicada
+- [ ] Backend: endpoint POST /api/stripe/webhook com verificação de assinatura
+- [ ] Backend: tRPC procedure stripe.createCheckoutSession
+- [ ] Backend: tRPC procedure stripe.createPortalSession (portal de faturamento)
+- [ ] Backend: tRPC procedure stripe.getSubscription (status da assinatura)
+- [ ] Frontend: página /planos com botão "Assinar" que abre checkout Stripe
+- [ ] Frontend: banner de plano no Dashboard (plano atual + botão upgrade)
+- [ ] Frontend: página /faturamento com histórico de pagamentos e portal
+- [ ] Integrar restrições de plano (ex: Básico = 1 célula, Pro = ilimitado)
+- [ ] Testes e checkpoint final

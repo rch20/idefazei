@@ -1452,6 +1452,103 @@ const certificatesRouter = router({
     }),
 });
 
+// ─── STRIPE ROUTER ────────────────────────────────────────────────────────────
+const stripeRouter = router({
+  // Retorna o status da assinatura da igreja
+  getSubscription: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const church = await getChurchById(input.churchId);
+      if (!church) throw new TRPCError({ code: "NOT_FOUND", message: "Igreja não encontrada" });
+      return {
+        plan: church.stripePlan ?? null,
+        status: church.stripeStatus ?? null,
+        currentPeriodEnd: church.stripeCurrentPeriodEnd ?? null,
+        trialEndsAt: church.trialEndsAt ?? null,
+        hasSubscription: !!church.stripeSubscriptionId,
+      };
+    }),
+
+  // Cria uma sessão de checkout Stripe
+  createCheckoutSession: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      plan: z.enum(["basic", "pro", "enterprise"]),
+      interval: z.enum(["month", "year"]).default("month"),
+      origin: z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const church = await getChurchById(input.churchId);
+      if (!church) throw new TRPCError({ code: "NOT_FOUND", message: "Igreja não encontrada" });
+
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
+        apiVersion: "2026-05-27.dahlia" as any,
+      });
+
+      const { PLANS } = await import("./stripe-products");
+      const planData = PLANS[input.plan];
+      const unitAmount = input.interval === "year" ? planData.yearlyPrice : planData.monthlyPrice;
+
+      const session = await stripe.checkout.sessions.create({
+        mode: "subscription",
+        payment_method_types: ["card"],
+        customer_email: ctx.user.email ?? undefined,
+        allow_promotion_codes: true,
+        line_items: [{
+          price_data: {
+            currency: "brl",
+            product_data: {
+              name: `Lampas ${planData.name}`,
+              description: planData.description,
+            },
+            unit_amount: unitAmount,
+            recurring: { interval: input.interval },
+          },
+          quantity: 1,
+        }],
+        metadata: {
+          church_id: input.churchId.toString(),
+          plan: input.plan,
+          user_id: ctx.user.id.toString(),
+        },
+        client_reference_id: ctx.user.id.toString(),
+        success_url: `${input.origin}/app/faturamento?success=1`,
+        cancel_url: `${input.origin}/planos?canceled=1`,
+      });
+
+      return { url: session.url };
+    }),
+
+  // Cria uma sessão do portal de faturamento Stripe
+  createPortalSession: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      origin: z.string(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const church = await getChurchById(input.churchId);
+      if (!church?.stripeCustomerId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhuma assinatura ativa encontrada" });
+      }
+
+      const Stripe = (await import("stripe")).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
+        apiVersion: "2026-05-27.dahlia" as any,
+      });
+
+      const session = await stripe.billingPortal.sessions.create({
+        customer: church.stripeCustomerId,
+        return_url: `${input.origin}/app/faturamento`,
+      });
+
+      return { url: session.url };
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -1491,6 +1588,7 @@ export const appRouter = router({
   aconselhamento: aconselhamentoRouter,
   comunicacao: comunicacaoRouter,
   certificates: certificatesRouter,
+  stripe: stripeRouter,
   contact: router({
     send: publicProcedure
       .input(z.object({

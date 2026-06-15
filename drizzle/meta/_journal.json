@@ -43,6 +43,13 @@
       "when": 1781499121681,
       "tag": "0005_large_spiral",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1781525481427,
+      "tag": "0006_rainy_colossus",
+      "breakpoints": true
     }
   ]
 }

@@ -57,6 +57,13 @@ export const churches = mysqlTable("churches", {
   certVerseBatismo: text("certVerseBatismo"),
   certVerseLideres: text("certVerseLideres"),
   certSignatureLabel: varchar("certSignatureLabel", { length: 100 }).default("Pastor(a) Presidente"),
+  // Stripe
+  stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
+  stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),
+  stripePlan: mysqlEnum("stripePlan", ["basic", "pro", "enterprise"]),
+  stripeStatus: varchar("stripeStatus", { length: 50 }), // active, trialing, past_due, canceled
+  stripeCurrentPeriodEnd: timestamp("stripeCurrentPeriodEnd"),
+  trialEndsAt: timestamp("trialEndsAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
