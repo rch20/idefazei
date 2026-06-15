@@ -1,9 +1,11 @@
 import { trpc } from "@/lib/trpc";
 import { useChurch } from "@/components/ChurchLayout";
 import { ReportButton } from "@/components/ReportButton";
+import { Progress } from "@/components/ui/progress";
 import {
   AlertTriangle,
   BookOpen,
+  CheckCircle2,
   ChevronRight,
   Flame,
   Globe,
@@ -14,6 +16,7 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { Link } from "wouter";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 // ─── STAGE LABELS ─────────────────────────────────────────────────────────────
@@ -329,6 +332,55 @@ function ArvoreDiscipulado({ churchId }: { churchId: number }) {
   );
 }
 
+// ─── ONBOARDING PROGRESS BANNER ──────────────────────────────────────────────
+
+function OnboardingBanner({ churchId }: { churchId: number }) {
+  const { data, isLoading } = trpc.onboarding.get.useQuery({ churchId });
+
+  if (isLoading) return null;
+
+  const steps = [
+    data?.stepWelcome ?? false,
+    data?.stepImportMembers ?? false,
+    data?.stepCreateCell ?? false,
+    data?.stepInviteLeaders ?? false,
+  ];
+  const completed = steps.filter(Boolean).length;
+  const total = steps.length;
+  const pct = Math.round((completed / total) * 100);
+
+  if (pct >= 100) return null;
+
+  return (
+    <div className="rounded-xl border border-gold/30 bg-gold/5 px-5 py-4 flex items-center gap-4 animate-fade-in-up">
+      <div className="w-10 h-10 rounded-xl bg-gold/15 flex items-center justify-center flex-shrink-0">
+        <CheckCircle2 className="w-5 h-5 text-gold" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="text-sm font-semibold text-navy">
+            Configuração inicial da igreja
+          </p>
+          <span className="text-xs font-bold text-gold">{pct}% concluído</span>
+        </div>
+        <Progress
+          value={pct}
+          className="h-1.5 bg-gold/20 [&>div]:bg-gold"
+        />
+        <p className="text-xs text-muted-foreground mt-1.5">
+          {completed} de {total} etapas concluídas
+        </p>
+      </div>
+      <Link
+        href="/onboarding"
+        className="flex-shrink-0 text-xs font-semibold text-gold hover:text-gold/80 border border-gold/30 rounded-lg px-3 py-1.5 transition-colors hover:bg-gold/10"
+      >
+        Continuar →
+      </Link>
+    </div>
+  );
+}
+
 // ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -383,6 +435,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Onboarding Progress Banner */}
+      <OnboardingBanner churchId={churchId} />
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>

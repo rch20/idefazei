@@ -117,7 +117,7 @@
 - [x] Backend: API para salvar progresso do onboarding por igreja
 - [x] Backend: endpoint de importação de membros via CSV
 - [x] Wizard de onboarding com 4 etapas: boas-vindas, importar membros, criar célula, convidar líderes
-- [ ] Indicador de progresso do onboarding no Dashboard (% concluído)
+- [x] Indicador de progresso do onboarding no Dashboard (% concluído)
 - [x] Rota /onboarding acessível após cadastro da igreja
 
 ### Relatórios Exportáveis em HTML/PDF
@@ -134,4 +134,4 @@
 - [x] Backend: endpoint POST `/api/scheduled/daily-notifications` registrado no index.ts
 - [x] Alerta de aniversários do dia (notificação ao owner)
 - [x] Alerta de membros ausentes há mais de 30 dias (notificação ao owner)
-- [ ] Cron heartbeat criado após deploy (diário 09:00 UTC) — requer site publicado
+- [ ] Cron heartbeat criado após deploy (diário 09:00 UTC) — NÃO IMPLEMENTÁVEL AGORA: requer site publicado. Após publicar, criar heartbeat apontando para https://[dominio]/api/scheduled/daily-notifications com frequência diária às 09:00 UTC e header Authorization: Bearer [token].
