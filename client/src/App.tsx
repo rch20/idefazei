@@ -6,8 +6,14 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import ChurchLayout from "./components/ChurchLayout";
 
-// Pages
-import Home from "./pages/Home";
+// Pages — Public / Auth
+import LandingPage from "./pages/LandingPage";
+import LoginIgreja from "./pages/LoginIgreja";
+import CadastroIgreja from "./pages/CadastroIgreja";
+import PortalVisitante from "./pages/PortalVisitante";
+import AdminPanel from "./pages/AdminPanel";
+
+// Pages — App
 import Dashboard from "./pages/Dashboard";
 import GanharAlmas from "./pages/GanharAlmas";
 import Consolidacao from "./pages/Consolidacao";
@@ -23,9 +29,7 @@ import Ministerios from "./pages/Ministerios";
 import Escalas from "./pages/Escalas";
 import Configuracoes from "./pages/Configuracoes";
 import Biblioteca from "./pages/Biblioteca";
-import {
-  TreePine,
-} from "lucide-react";
+import { TreePine } from "lucide-react";
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
 
@@ -42,10 +46,19 @@ function AppPage({ children, title }: { children: React.ReactNode; title?: strin
 function Router() {
   return (
     <Switch>
-      {/* Public */}
-      <Route path="/" component={Home} />
+      {/* ── Domínio Principal ── */}
+      <Route path="/" component={LandingPage} />
+      <Route path="/cadastro-igreja" component={CadastroIgreja} />
 
-      {/* App routes */}
+      {/* ── Super Admin ── */}
+      <Route path="/admin" component={AdminPanel} />
+      <Route path="/admin/login" component={AdminPanel} />
+
+      {/* ── Login e Portal da Igreja ── */}
+      <Route path="/login" component={LoginIgreja} />
+      <Route path="/visitante" component={PortalVisitante} />
+
+      {/* ── App — Dashboard ── */}
       <Route path="/app/dashboard">
         <AppPage title="Dashboard">
           <Dashboard />
@@ -64,6 +77,7 @@ function Router() {
         </AppPage>
       </Route>
 
+      {/* ── App — Ciclo de Discipulado ── */}
       <Route path="/app/almas">
         <AppPage title="Ganhar Almas">
           <GanharAlmas />
@@ -82,6 +96,7 @@ function Router() {
         </AppPage>
       </Route>
 
+      {/* ── App — Membros ── */}
       <Route path="/app/pessoas">
         <AppPage title="Pessoas">
           <Pessoas />
@@ -89,9 +104,12 @@ function Router() {
       </Route>
 
       <Route path="/app/familias">
-        <Familias />
+        <AppPage title="Famílias">
+          <Familias />
+        </AppPage>
       </Route>
 
+      {/* ── App — Células ── */}
       <Route path="/app/celulas">
         <AppPage title="Células">
           <Celulas />
@@ -104,6 +122,7 @@ function Router() {
         </AppPage>
       </Route>
 
+      {/* ── App — Ministério ── */}
       <Route path="/app/eventos">
         <AppPage title="Eventos">
           <Eventos />
@@ -111,13 +130,18 @@ function Router() {
       </Route>
 
       <Route path="/app/ministerios">
-        <Ministerios />
+        <AppPage title="Ministérios">
+          <Ministerios />
+        </AppPage>
       </Route>
 
       <Route path="/app/escalas">
-        <Escalas />
+        <AppPage title="Escalas">
+          <Escalas />
+        </AppPage>
       </Route>
 
+      {/* ── App — Comunicação ── */}
       <Route path="/app/oracao">
         <AppPage title="Pedidos de Oração">
           <Oracao />
@@ -130,12 +154,17 @@ function Router() {
         </AppPage>
       </Route>
 
+      {/* ── App — Admin ── */}
       <Route path="/app/biblioteca">
-        <Biblioteca />
+        <AppPage title="Biblioteca Digital">
+          <Biblioteca />
+        </AppPage>
       </Route>
 
       <Route path="/app/configuracoes">
-        <Configuracoes />
+        <AppPage title="Configurações">
+          <Configuracoes />
+        </AppPage>
       </Route>
 
       {/* Fallback */}

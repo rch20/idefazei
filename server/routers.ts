@@ -5,6 +5,12 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
+  loginChurchUser,
+  loginSuperAdmin,
+  createChurchUser,
+  createSuperAdmin,
+} from "./auth";
+import {
   createAnnouncement,
   createCell,
   createChurch,
@@ -35,6 +41,13 @@ import {
   updatePerson,
   updateSoul,
   getAllChurches,
+  getAllChurchesAdmin,
+  getGlobalStats,
+  getPendingRegistrations,
+  updateChurchRegistration,
+  createChurchRegistration,
+  createVisitorLead,
+  getVisitorLeadsByChurch,
 } from "./db";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -592,6 +605,145 @@ const dashboardRouter = router({
     }),
 });
 
+// ─── CHURCH AUTH ROUTER ─────────────────────────────────────────────────────
+
+const churchAuthRouter = router({
+  login: publicProcedure
+    .input(z.object({ email: z.string().email(), password: z.string().min(6) }))
+    .mutation(async ({ input }) => {
+      const result = await loginChurchUser(input.email, input.password);
+      if (!result) throw new TRPCError({ code: "UNAUTHORIZED", message: "Email ou senha inválidos" });
+      return result;
+    }),
+
+  register: publicProcedure
+    .input(z.object({
+      churchId: z.number(),
+      name: z.string().min(2),
+      email: z.string().email(),
+      password: z.string().min(6),
+      role: z.enum(["pastor_presidente","pastor_local","supervisor","lider","consolidador","diacono","secretario","tesoureiro","membro"]).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const user = await createChurchUser({
+        churchId: input.churchId,
+        name: input.name,
+        email: input.email,
+        password: input.password,
+        role: input.role ?? "membro",
+      });
+      return { success: true, userId: user?.id };
+    }),
+});
+
+// ─── ADMIN AUTH ROUTER ────────────────────────────────────────────────────────
+
+const adminAuthRouter = router({
+  login: publicProcedure
+    .input(z.object({ email: z.string().email(), password: z.string().min(6) }))
+    .mutation(async ({ input }) => {
+      const result = await loginSuperAdmin(input.email, input.password);
+      if (!result) throw new TRPCError({ code: "UNAUTHORIZED", message: "Credenciais inválidas" });
+      return result;
+    }),
+
+  seed: publicProcedure
+    .input(z.object({ name: z.string(), email: z.string().email(), password: z.string().min(8), secret: z.string() }))
+    .mutation(async ({ input }) => {
+      if (input.secret !== "lampas-super-admin-2025") throw new TRPCError({ code: "FORBIDDEN" });
+      await createSuperAdmin(input.name, input.email, input.password);
+      return { success: true };
+    }),
+});
+
+// ─── SUPER ADMIN ROUTER ───────────────────────────────────────────────────────
+
+const superAdminRouter = router({
+  stats: publicProcedure.query(() => getGlobalStats()),
+
+  churches: publicProcedure.query(() => getAllChurchesAdmin()),
+
+  pendingRegistrations: publicProcedure.query(() => getPendingRegistrations()),
+
+  reviewRegistration: publicProcedure
+    .input(z.object({
+      id: z.number(),
+      status: z.enum(["approved", "rejected", "suspended"]),
+      reason: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      return updateChurchRegistration(input.id, input.status, input.reason);
+    }),
+});
+
+// ─── VISITOR ROUTER ───────────────────────────────────────────────────────────
+
+const visitorRouter = router({
+  submit: publicProcedure
+    .input(z.object({
+      churchSlug: z.string(),
+      name: z.string().min(2),
+      phone: z.string().optional(),
+      email: z.string().email().optional(),
+      type: z.enum(["pedido_oracao","visita_pastoral","primeira_visita","interesse_participar"]),
+      message: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const church = await getChurchBySlug(input.churchSlug);
+      if (!church) throw new TRPCError({ code: "NOT_FOUND", message: "Igreja não encontrada" });
+      return createVisitorLead({ ...input, churchId: church.id });
+    }),
+
+  getLeads: publicProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input }) => {
+      return getVisitorLeadsByChurch(input.churchId);
+    }),
+});
+
+// ─── REGISTER ROUTER ──────────────────────────────────────────────────────────
+
+const registerRouter = router({
+  church: publicProcedure
+    .input(z.object({
+      churchName: z.string().min(2),
+      slug: z.string().min(3).max(50).regex(/^[a-z0-9-]+$/, "Apenas letras minúsculas, números e hífens"),
+      city: z.string().optional(),
+      state: z.string().length(2).optional(),
+      phone: z.string().optional(),
+      email: z.string().email(),
+      pastorName: z.string().min(2),
+      pastorEmail: z.string().email(),
+      pastorPassword: z.string().min(8),
+    }))
+    .mutation(async ({ input }) => {
+      // 1. Criar a igreja
+      const church = await createChurch({
+        name: input.churchName,
+        slug: input.slug,
+        city: input.city,
+        state: input.state,
+        phone: input.phone,
+        email: input.email,
+      });
+      if (!church?.id) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar a igreja" });
+
+      // 2. Criar o Pastor Presidente
+      await createChurchUser({
+        churchId: church.id,
+        name: input.pastorName,
+        email: input.pastorEmail,
+        password: input.pastorPassword,
+        role: "pastor_presidente",
+      });
+
+      // 3. Criar registro de aprovação (status: pending)
+      await createChurchRegistration(church.id);
+
+      return { success: true, churchId: church.id, slug: input.slug };
+    }),
+});
+
 // ─── APP ROUTER ───────────────────────────────────────────────────────────────
 
 export const appRouter = router({
@@ -614,9 +766,13 @@ export const appRouter = router({
   announcements: announcementsRouter,
   prayer: prayerRouter,
   dashboard: dashboardRouter,
-  families: familiesRouter,
+    families: familiesRouter,
   schedules: schedulesRouter,
   library: libraryRouter,
+  churchAuth: churchAuthRouter,
+  adminAuth: adminAuthRouter,
+  superAdmin: superAdminRouter,
+  visitor: visitorRouter,
+  register: registerRouter,
 });
-
 export type AppRouter = typeof appRouter;

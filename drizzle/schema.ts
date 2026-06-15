@@ -477,3 +477,117 @@ export const courseEnrollments = mysqlTable("course_enrollments", {
   certificateUrl: text("certificateUrl"),
   status: mysqlEnum("status", ["matriculado", "em_andamento", "concluido"]).default("matriculado"),
 });
+
+// ─── AUTENTICAÇÃO PRÓPRIA DA PLATAFORMA ──────────────────────────────────────
+
+/** Usuários das igrejas (login próprio, sem Manus OAuth) */
+export const churchUsers = mysqlTable("church_users", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  role: mysqlEnum("role", [
+    "pastor_presidente",
+    "pastor_local",
+    "supervisor",
+    "lider",
+    "consolidador",
+    "diacono",
+    "secretario",
+    "tesoureiro",
+    "membro",
+  ]).default("membro").notNull(),
+  personId: int("personId"), // vínculo com tabela people
+  active: boolean("active").default(true).notNull(),
+  lastLoginAt: timestamp("lastLoginAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ChurchUser = typeof churchUsers.$inferSelect;
+export type InsertChurchUser = typeof churchUsers.$inferInsert;
+
+/** Super Admins da plataforma SaaS */
+export const superAdmins = mysqlTable("super_admins", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  email: varchar("email", { length: 320 }).notNull().unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type SuperAdmin = typeof superAdmins.$inferSelect;
+
+// ─── PLANOS E ASSINATURAS ─────────────────────────────────────────────────────
+
+export const plans = mysqlTable("plans", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(), // Básico, Pro, Enterprise
+  slug: varchar("slug", { length: 50 }).notNull().unique(),
+  description: text("description"),
+  priceMonthly: decimal("priceMonthly", { precision: 10, scale: 2 }),
+  priceYearly: decimal("priceYearly", { precision: 10, scale: 2 }),
+  maxMembers: int("maxMembers"), // null = ilimitado
+  maxCells: int("maxCells"),
+  features: json("features"), // lista de features habilitadas
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Plan = typeof plans.$inferSelect;
+
+export const subscriptions = mysqlTable("subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull().unique(),
+  planId: int("planId").notNull(),
+  status: mysqlEnum("status", ["trial", "active", "suspended", "cancelled", "pending"]).default("pending").notNull(),
+  trialEndsAt: timestamp("trialEndsAt"),
+  currentPeriodStart: timestamp("currentPeriodStart"),
+  currentPeriodEnd: timestamp("currentPeriodEnd"),
+  cancelledAt: timestamp("cancelledAt"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Subscription = typeof subscriptions.$inferSelect;
+
+// ─── STATUS DE APROVAÇÃO DA IGREJA ───────────────────────────────────────────
+
+/** Estende a tabela churches com campos de aprovação */
+export const churchRegistrations = mysqlTable("church_registrations", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull().unique(),
+  status: mysqlEnum("status", ["pending", "approved", "rejected", "suspended"]).default("pending").notNull(),
+  reviewedBy: int("reviewedBy"), // superAdminId
+  reviewedAt: timestamp("reviewedAt"),
+  rejectionReason: text("rejectionReason"),
+  suspensionReason: text("suspensionReason"),
+  submittedAt: timestamp("submittedAt").defaultNow().notNull(),
+});
+
+export type ChurchRegistration = typeof churchRegistrations.$inferSelect;
+
+// ─── PORTAL DO VISITANTE ──────────────────────────────────────────────────────
+
+export const visitorLeads = mysqlTable("visitor_leads", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  phone: varchar("phone", { length: 20 }),
+  email: varchar("email", { length: 320 }),
+  type: mysqlEnum("type", [
+    "pedido_oracao",
+    "visita_pastoral",
+    "primeira_visita",
+    "interesse_participar",
+  ]).notNull(),
+  message: text("message"),
+  status: mysqlEnum("status", ["novo", "em_contato", "convertido", "encerrado"]).default("novo").notNull(),
+  assignedTo: int("assignedTo"), // personId do responsável
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type VisitorLead = typeof visitorLeads.$inferSelect;

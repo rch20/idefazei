@@ -80,7 +80,7 @@ const groups = [
 // ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { user, logout } = useAuth();
   const { churchName, logoUrl } = useChurch();
 
@@ -139,15 +139,14 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
                   {items.map((item) => {
                     const isActive = location === item.path || location.startsWith(item.path + "/");
                     return (
-                      <Link key={item.path} href={item.path}>
-                        <a
-                          className={`sidebar-item ${isActive ? "active" : ""}`}
-                          onClick={onClose}
-                        >
-                          <item.icon className="w-4 h-4 flex-shrink-0" />
-                          <span>{item.label}</span>
-                        </a>
-                      </Link>
+                      <button
+                        key={item.path}
+                        className={`sidebar-item w-full ${isActive ? "active" : ""}`}
+                        onClick={() => { navigate(item.path); onClose(); }}
+                      >
+                        <item.icon className="w-4 h-4 flex-shrink-0" />
+                        <span>{item.label}</span>
+                      </button>
                     );
                   })}
                 </div>

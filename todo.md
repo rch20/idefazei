@@ -71,3 +71,42 @@
 - [ ] Service Worker para modo offline
 - [ ] Notificações push integradas
 - [x] Checkpoint final
+
+## FASE 5 – Multi-Tenant Completo (Autenticação Própria + Subdomínios)
+
+### Backend
+- [ ] Schema: tabela `church_users` com email, senha hash, perfil e churchId
+- [ ] Schema: tabela `super_admins` para proprietários da plataforma
+- [ ] Schema: tabela `plans` (planos de assinatura: Básico, Pro, Enterprise)
+- [ ] Schema: tabela `subscriptions` (assinatura por igreja com status e vencimento)
+- [ ] Schema: tabela `visitor_leads` (registros do portal do visitante)
+- [ ] Migração SQL das novas tabelas
+- [ ] API: autenticação própria (email+senha) com JWT, sem Manus OAuth
+- [ ] API: resolução de tenant por subdomínio (middleware)
+- [ ] API: cadastro de nova igreja (fluxo completo)
+- [ ] API: Super Admin (login separado, aprovação, suspensão, métricas globais)
+- [ ] API: Portal do Visitante (pedido de oração, visita pastoral, interesse em participar)
+- [ ] API: convite de usuários por email dentro da igreja
+
+### Domínio Principal (/)
+- [ ] Landing Page com seções: Hero, Recursos, Funil, Planos, Depoimentos, CTA
+- [ ] Página /planos com comparativo de planos
+- [ ] Página /recursos com lista de funcionalidades
+- [ ] Página /demo com tour interativo
+- [ ] Página /contato com formulário
+- [ ] Página /cadastro-igreja com formulário multi-step (dados da igreja + subdomínio + conta do pastor)
+
+### Painel Super Admin (/admin)
+- [ ] Login exclusivo do Super Admin (/admin/login)
+- [ ] Dashboard com métricas globais (total de igrejas, membros, receita)
+- [ ] Lista de igrejas com status (pendente, ativa, suspensa)
+- [ ] Aprovação/rejeição de novas igrejas
+- [ ] Gerenciamento de planos e assinaturas
+- [ ] Bloqueio/suspensão de igrejas
+- [ ] Painel de suporte
+
+### Subdomínio da Igreja
+- [ ] Página de login da igreja (/login) com email+senha e seleção de perfil
+- [ ] Redirecionamento automático por perfil após login
+- [ ] Portal do Visitante (/visitante) público sem login
+- [ ] Middleware de resolução de tenant no frontend

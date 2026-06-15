@@ -7,6 +7,7 @@ import {
   cellMembers,
   cells,
   churchMembers,
+  churchRegistrations,
   churches,
   consolidations,
   courseEnrollments,
@@ -24,6 +25,7 @@ import {
   scheduleItems,
   souls,
   users,
+  visitorLeads,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -111,7 +113,10 @@ export async function createChurch(data: typeof churches.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   const result = await db.insert(churches).values(data);
-  return result[0];
+  const insertId = (result[0] as { insertId?: number })?.insertId;
+  if (!insertId) throw new Error("Failed to create church");
+  const rows = await db.select().from(churches).where(eq(churches.id, insertId)).limit(1);
+  return rows[0];
 }
 
 export async function updateChurch(id: number, data: Partial<typeof churches.$inferInsert>) {
@@ -581,5 +586,111 @@ export async function createFamily(input: { churchId: number; name: string }) {
     churchId: input.churchId,
     familyName: input.name,
   });
+  return { success: true };
+}
+
+// ─── SUPER ADMIN ──────────────────────────────────────────────────────────────
+
+export async function getAllChurchesAdmin() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      id: churches.id,
+      name: churches.name,
+      slug: churches.slug,
+      city: churches.city,
+      state: churches.state,
+      email: churches.email,
+      phone: churches.phone,
+      active: churches.active,
+      createdAt: churches.createdAt,
+    })
+    .from(churches)
+    .orderBy(churches.createdAt);
+  return rows;
+}
+
+export async function getGlobalStats() {
+  const db = await getDb();
+  if (!db) return { totalChurches: 0, totalMembers: 0, totalCells: 0, totalSouls: 0 };
+  const [churchCount] = await db.select({ count: sql<number>`count(*)` }).from(churches);
+  const [memberCount] = await db.select({ count: sql<number>`count(*)` }).from(people);
+  const [cellCount] = await db.select({ count: sql<number>`count(*)` }).from(cells);
+  const [soulCount] = await db.select({ count: sql<number>`count(*)` }).from(souls);
+  return {
+    totalChurches: Number(churchCount?.count ?? 0),
+    totalMembers: Number(memberCount?.count ?? 0),
+    totalCells: Number(cellCount?.count ?? 0),
+    totalSouls: Number(soulCount?.count ?? 0),
+  };
+}
+
+// ─── VISITOR LEADS ────────────────────────────────────────────────────────────
+
+export async function createVisitorLead(input: {
+  churchId: number;
+  name: string;
+  phone?: string;
+  email?: string;
+  type: "pedido_oracao" | "visita_pastoral" | "primeira_visita" | "interesse_participar";
+  message?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(visitorLeads).values({
+    churchId: input.churchId,
+    name: input.name,
+    phone: input.phone ?? null,
+    email: input.email ?? null,
+    type: input.type,
+    message: input.message ?? null,
+  });
+  return { success: true };
+}
+
+export async function getVisitorLeadsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(visitorLeads).where(eq(visitorLeads.churchId, churchId)).orderBy(visitorLeads.createdAt);
+}
+
+// ─── CHURCH REGISTRATION ──────────────────────────────────────────────────────
+
+export async function createChurchRegistration(churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(churchRegistrations).values({ churchId });
+  return { success: true };
+}
+
+export async function getPendingRegistrations() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: churchRegistrations.id,
+      churchId: churchRegistrations.churchId,
+      status: churchRegistrations.status,
+      submittedAt: churchRegistrations.submittedAt,
+      churchName: churches.name,
+      churchSlug: churches.slug,
+      email: churches.email,
+    })
+    .from(churchRegistrations)
+    .innerJoin(churches, eq(churches.id, churchRegistrations.churchId))
+    .where(eq(churchRegistrations.status, "pending"))
+    .orderBy(churchRegistrations.submittedAt);
+}
+
+export async function updateChurchRegistration(id: number, status: "approved" | "rejected" | "suspended", reason?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(churchRegistrations).set({
+    status,
+    reviewedAt: new Date(),
+    rejectionReason: status === "rejected" ? (reason ?? null) : null,
+    suspensionReason: status === "suspended" ? (reason ?? null) : null,
+  }).where(eq(churchRegistrations.id, id));
   return { success: true };
 }
