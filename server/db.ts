@@ -2,6 +2,8 @@ import { and, count, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   announcements,
+  baptismClasses,
+  baptismEnrollments,
   cellAttendance,
   cellMeetings,
   cellMembers,
@@ -9,14 +11,22 @@ import {
   churchMembers,
   churchRegistrations,
   churches,
+  communicationLogs,
   consolidations,
+  counselingNotes,
+  counselingSessions,
   courseEnrollments,
   courses,
+  encounterEnrollments,
+  encounterEvents,
   eventRegistrations,
   events,
   families,
   familyMembers,
   InsertUser,
+  leadershipHistory,
+  leadershipSchoolClasses,
+  leadershipSchoolEnrollments,
   libraryItems,
   ministries,
   ministryMembers,
@@ -757,4 +767,278 @@ export async function importPeopleFromCSV(
     imported++;
   }
   return imported;
+}
+
+// ─── ESCOLA DE FUNDAMENTOS ────────────────────────────────────────────────────
+
+export async function getCoursesByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(courses).where(eq(courses.churchId, churchId));
+}
+
+export async function getCourseEnrollments(courseId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    enrollment: courseEnrollments,
+    person: { id: people.id, fullName: people.fullName, phone: people.phone },
+  })
+  .from(courseEnrollments)
+  .innerJoin(people, eq(courseEnrollments.personId, people.id))
+  .where(and(eq(courseEnrollments.courseId, courseId), eq(people.churchId, churchId)));
+}
+
+export async function enrollInCourse(data: { courseId: number; personId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(courseEnrollments).values({
+    courseId: data.courseId,
+    personId: data.personId,
+    status: "matriculado",
+  } as typeof courseEnrollments.$inferInsert);
+}
+
+export async function updateCourseEnrollment(id: number, data: { status?: string; completedAt?: Date | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.status !== undefined) update.status = data.status;
+  if (data.completedAt !== undefined) update.completedAt = data.completedAt;
+  await db.update(courseEnrollments).set(update).where(eq(courseEnrollments.id, id));
+}
+
+// ─── BATISMO ──────────────────────────────────────────────────────────────────
+
+export async function getBaptismClassesByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(baptismClasses).where(eq(baptismClasses.churchId, churchId));
+}
+
+export async function getBaptismEnrollments(classId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    enrollment: baptismEnrollments,
+    person: { id: people.id, fullName: people.fullName, phone: people.phone },
+  })
+  .from(baptismEnrollments)
+  .innerJoin(people, eq(baptismEnrollments.personId, people.id))
+  .where(and(eq(baptismEnrollments.baptismClassId, classId), eq(baptismEnrollments.churchId, churchId)));
+}
+
+export async function createBaptismClass(data: {
+  churchId: number; name: string; date: string; location?: string; pastor?: string; notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(baptismClasses).values(data as unknown as typeof baptismClasses.$inferInsert);
+}
+
+export async function enrollInBaptism(data: { baptismClassId: number; personId: number; churchId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(baptismEnrollments).values({ ...data, status: "inscrito" } as typeof baptismEnrollments.$inferInsert);
+}
+
+export async function updateBaptismEnrollment(id: number, data: { status?: string; completedAt?: Date | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.status !== undefined) update.status = data.status;
+  if (data.completedAt !== undefined) update.completedAt = data.completedAt;
+  await db.update(baptismEnrollments).set(update).where(eq(baptismEnrollments.id, id));
+}
+
+// ─── ENCONTRO COM DEUS ────────────────────────────────────────────────────────
+
+export async function getEncounterEventsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(encounterEvents).where(eq(encounterEvents.churchId, churchId));
+}
+
+export async function getEncounterEnrollments(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    enrollment: encounterEnrollments,
+    person: { id: people.id, fullName: people.fullName, phone: people.phone },
+  })
+  .from(encounterEnrollments)
+  .innerJoin(people, eq(encounterEnrollments.personId, people.id))
+  .where(and(eq(encounterEnrollments.encounterEventId, eventId), eq(encounterEnrollments.churchId, churchId)));
+}
+
+export async function createEncounterEvent(data: {
+  churchId: number; name: string; date: string; endDate?: string; location?: string; maxParticipants?: number; description?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(encounterEvents).values(data as unknown as typeof encounterEvents.$inferInsert);
+}
+
+export async function enrollInEncounter(data: { encounterEventId: number; personId: number; churchId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(encounterEnrollments).values({ ...data, status: "inscrito" } as typeof encounterEnrollments.$inferInsert);
+}
+
+export async function updateEncounterEnrollment(id: number, data: { status?: string; completedAt?: Date | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.status !== undefined) update.status = data.status;
+  if (data.completedAt !== undefined) update.completedAt = data.completedAt;
+  await db.update(encounterEnrollments).set(update).where(eq(encounterEnrollments.id, id));
+}
+
+// ─── ESCOLA DE LÍDERES ────────────────────────────────────────────────────────
+
+export async function getLeadershipClassesByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(leadershipSchoolClasses).where(eq(leadershipSchoolClasses.churchId, churchId));
+}
+
+export async function getLeadershipEnrollments(classId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    enrollment: leadershipSchoolEnrollments,
+    person: { id: people.id, fullName: people.fullName, phone: people.phone },
+  })
+  .from(leadershipSchoolEnrollments)
+  .innerJoin(people, eq(leadershipSchoolEnrollments.personId, people.id))
+  .where(and(eq(leadershipSchoolEnrollments.classId, classId), eq(leadershipSchoolEnrollments.churchId, churchId)));
+}
+
+export async function createLeadershipClass(data: {
+  churchId: number; name: string; period?: string; startDate?: string; endDate?: string; pastor?: string; description?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(leadershipSchoolClasses).values(data as unknown as typeof leadershipSchoolClasses.$inferInsert);
+}
+
+export async function enrollInLeadershipSchool(data: { classId: number; personId: number; churchId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(leadershipSchoolEnrollments).values({ ...data, status: "matriculado" } as typeof leadershipSchoolEnrollments.$inferInsert);
+}
+
+export async function updateLeadershipEnrollment(id: number, data: { status?: string; grade?: number; attendance?: number; completedAt?: Date | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.status !== undefined) update.status = data.status;
+  if (data.grade !== undefined) update.grade = data.grade;
+  if (data.attendance !== undefined) update.attendance = data.attendance;
+  if (data.completedAt !== undefined) update.completedAt = data.completedAt;
+  await db.update(leadershipSchoolEnrollments).set(update).where(eq(leadershipSchoolEnrollments.id, id));
+}
+
+// ─── HISTÓRICO DE LIDERANÇA ───────────────────────────────────────────────────
+
+export async function getLeadershipHistory(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    history: leadershipHistory,
+    person: { id: people.id, fullName: people.fullName },
+  })
+  .from(leadershipHistory)
+  .innerJoin(people, eq(leadershipHistory.personId, people.id))
+  .where(eq(leadershipHistory.churchId, churchId))
+  .orderBy(desc(leadershipHistory.createdAt));
+}
+
+export async function getLeadershipHistoryByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(leadershipHistory)
+    .where(and(eq(leadershipHistory.personId, personId), eq(leadershipHistory.churchId, churchId)))
+    .orderBy(desc(leadershipHistory.startDate));
+}
+
+export async function addLeadershipHistory(data: {
+  churchId: number; personId: number; role: string; startDate: string; endDate?: string; ministry?: string; notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(leadershipHistory).values(data as unknown as typeof leadershipHistory.$inferInsert);
+}
+
+// ─── ACONSELHAMENTO PASTORAL ──────────────────────────────────────────────────
+
+export async function getCounselingSessionsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    session: counselingSessions,
+    person: { id: people.id, fullName: people.fullName },
+  })
+  .from(counselingSessions)
+  .innerJoin(people, eq(counselingSessions.personId, people.id))
+  .where(eq(counselingSessions.churchId, churchId))
+  .orderBy(desc(counselingSessions.scheduledAt));
+}
+
+export async function createCounselingSession(data: {
+  churchId: number; personId: number; counselorId: number; scheduledAt: Date; notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(counselingSessions).values(data as typeof counselingSessions.$inferInsert);
+}
+
+export async function updateCounselingSession(id: number, data: { status?: string; notes?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.status !== undefined) update.status = data.status;
+  if (data.notes !== undefined) update.notes = data.notes;
+  await db.update(counselingSessions).set(update).where(eq(counselingSessions.id, id));
+}
+
+export async function getCounselingNotes(sessionId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(counselingNotes)
+    .where(and(eq(counselingNotes.sessionId, sessionId), eq(counselingNotes.churchId, churchId)));
+}
+
+export async function addCounselingNote(data: {
+  sessionId: number; churchId: number; authorId: number; content: string; confidential?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(counselingNotes).values(data as typeof counselingNotes.$inferInsert);
+}
+
+// ─── COMUNICAÇÃO ──────────────────────────────────────────────────────────────
+
+export async function getCommunicationLogs(churchId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(communicationLogs)
+    .where(eq(communicationLogs.churchId, churchId))
+    .orderBy(desc(communicationLogs.sentAt))
+    .limit(limit);
+}
+
+export async function logCommunication(data: {
+  churchId: number;
+  type: "push" | "email" | "whatsapp" | "sms";
+  category: "boas_vindas" | "aniversario" | "lembrete_evento" | "lembrete_celula" | "convite" | "aviso" | "outro";
+  recipientPersonId?: number;
+  recipientName?: string;
+  title?: string;
+  message?: string;
+  status?: "enviado" | "entregue" | "falhou";
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(communicationLogs).values(data as typeof communicationLogs.$inferInsert);
 }

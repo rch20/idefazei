@@ -608,3 +608,158 @@ export const onboardingProgress = mysqlTable("onboarding_progress", {
 
 export type OnboardingProgress = typeof onboardingProgress.$inferSelect;
 export type InsertOnboardingProgress = typeof onboardingProgress.$inferInsert;
+
+// ─── BATISMO ──────────────────────────────────────────────────────────────────
+
+export const baptismClasses = mysqlTable("baptism_classes", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  date: date("date").notNull(),
+  location: varchar("location", { length: 255 }),
+  pastor: varchar("pastor", { length: 255 }),
+  notes: text("notes"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type BaptismClass = typeof baptismClasses.$inferSelect;
+
+export const baptismEnrollments = mysqlTable("baptism_enrollments", {
+  id: int("id").autoincrement().primaryKey(),
+  baptismClassId: int("baptismClassId").notNull(),
+  personId: int("personId").notNull(),
+  churchId: int("churchId").notNull(),
+  status: mysqlEnum("status", ["inscrito", "participou", "concluiu", "cancelado"]).default("inscrito").notNull(),
+  certificateUrl: text("certificateUrl"),
+  enrolledAt: timestamp("enrolledAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+});
+
+export type BaptismEnrollment = typeof baptismEnrollments.$inferSelect;
+
+// ─── ENCONTRO COM DEUS ────────────────────────────────────────────────────────
+
+export const encounterEvents = mysqlTable("encounter_events", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  date: date("date").notNull(),
+  endDate: date("endDate"),
+  location: varchar("location", { length: 255 }),
+  maxParticipants: int("maxParticipants"),
+  description: text("description"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type EncounterEvent = typeof encounterEvents.$inferSelect;
+
+export const encounterEnrollments = mysqlTable("encounter_enrollments", {
+  id: int("id").autoincrement().primaryKey(),
+  encounterEventId: int("encounterEventId").notNull(),
+  personId: int("personId").notNull(),
+  churchId: int("churchId").notNull(),
+  status: mysqlEnum("status", ["inscrito", "confirmado", "participou", "concluiu", "cancelado"]).default("inscrito").notNull(),
+  enrolledAt: timestamp("enrolledAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+});
+
+export type EncounterEnrollment = typeof encounterEnrollments.$inferSelect;
+
+// ─── ESCOLA DE LÍDERES ────────────────────────────────────────────────────────
+
+export const leadershipSchoolClasses = mysqlTable("leadership_school_classes", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  period: varchar("period", { length: 100 }), // ex: "1º Semestre 2025"
+  startDate: date("startDate"),
+  endDate: date("endDate"),
+  pastor: varchar("pastor", { length: 255 }),
+  description: text("description"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type LeadershipSchoolClass = typeof leadershipSchoolClasses.$inferSelect;
+
+export const leadershipSchoolEnrollments = mysqlTable("leadership_school_enrollments", {
+  id: int("id").autoincrement().primaryKey(),
+  classId: int("classId").notNull(),
+  personId: int("personId").notNull(),
+  churchId: int("churchId").notNull(),
+  status: mysqlEnum("status", ["matriculado", "lider_em_formacao", "concluido", "cancelado"]).default("matriculado").notNull(),
+  grade: decimal("grade", { precision: 4, scale: 2 }),
+  attendance: int("attendance").default(0), // % presença
+  certificateUrl: text("certificateUrl"),
+  enrolledAt: timestamp("enrolledAt").defaultNow().notNull(),
+  completedAt: timestamp("completedAt"),
+});
+
+export type LeadershipSchoolEnrollment = typeof leadershipSchoolEnrollments.$inferSelect;
+
+// ─── HISTÓRICO DE LIDERANÇA ───────────────────────────────────────────────────
+
+export const leadershipHistory = mysqlTable("leadership_history", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  personId: int("personId").notNull(),
+  role: mysqlEnum("role", [
+    "pastor_presidente",
+    "pastor_local",
+    "supervisor",
+    "lider",
+    "consolidador",
+    "diacono",
+    "secretario",
+    "tesoureiro",
+    "membro",
+  ]).notNull(),
+  startDate: date("startDate").notNull(),
+  endDate: date("endDate"),
+  ministry: varchar("ministry", { length: 255 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type LeadershipHistory = typeof leadershipHistory.$inferSelect;
+
+// ─── ACONSELHAMENTO PASTORAL (NOTAS) ─────────────────────────────────────────
+
+export const counselingNotes = mysqlTable("counseling_notes", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: int("sessionId").notNull(),
+  churchId: int("churchId").notNull(),
+  authorId: int("authorId").notNull(), // churchUserId do pastor
+  content: text("content").notNull(),
+  confidential: boolean("confidential").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CounselingNote = typeof counselingNotes.$inferSelect;
+
+// ─── COMUNICAÇÃO ──────────────────────────────────────────────────────────────
+
+export const communicationLogs = mysqlTable("communication_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  type: mysqlEnum("type", ["push", "email", "whatsapp", "sms"]).notNull(),
+  category: mysqlEnum("category", [
+    "boas_vindas",
+    "aniversario",
+    "lembrete_evento",
+    "lembrete_celula",
+    "convite",
+    "aviso",
+    "outro",
+  ]).notNull(),
+  recipientPersonId: int("recipientPersonId"),
+  recipientName: varchar("recipientName", { length: 255 }),
+  title: varchar("title", { length: 255 }),
+  message: text("message"),
+  status: mysqlEnum("status", ["enviado", "entregue", "falhou"]).default("enviado").notNull(),
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+});
+
+export type CommunicationLog = typeof communicationLogs.$inferSelect;

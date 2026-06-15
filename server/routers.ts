@@ -51,6 +51,42 @@ import {
   getOnboardingProgress,
   upsertOnboardingProgress,
   importPeopleFromCSV,
+  // Escola de Fundamentos
+  getCoursesByChurch,
+  getCourseEnrollments,
+  enrollInCourse,
+  updateCourseEnrollment,
+  // Batismo
+  getBaptismClassesByChurch,
+  getBaptismEnrollments,
+  createBaptismClass,
+  enrollInBaptism,
+  updateBaptismEnrollment,
+  // Encontro com Deus
+  getEncounterEventsByChurch,
+  getEncounterEnrollments,
+  createEncounterEvent,
+  enrollInEncounter,
+  updateEncounterEnrollment,
+  // Escola de Líderes
+  getLeadershipClassesByChurch,
+  getLeadershipEnrollments,
+  createLeadershipClass,
+  enrollInLeadershipSchool,
+  updateLeadershipEnrollment,
+  // Histórico de Liderança
+  getLeadershipHistory,
+  getLeadershipHistoryByPerson,
+  addLeadershipHistory,
+  // Aconselhamento Pastoral
+  getCounselingSessionsByChurch,
+  createCounselingSession,
+  updateCounselingSession,
+  getCounselingNotes,
+  addCounselingNote,
+  // Comunicação
+  getCommunicationLogs,
+  logCommunication,
 } from "./db";
 import { getDb } from "./db";
 import { events } from "../drizzle/schema";
@@ -979,6 +1015,312 @@ const onboardingRouter = router({
     }),
 });
 
+// ─── ESCOLA DE FUNDAMENTOS ROUTER ──────────────────────────────────────────
+const escolaFundamentosRouter = router({
+  listCourses: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getCoursesByChurch(input.churchId);
+    }),
+  getEnrollments: protectedProcedure
+    .input(z.object({ courseId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getCourseEnrollments(input.courseId, input.churchId);
+    }),
+  enroll: protectedProcedure
+    .input(z.object({ courseId: z.number(), personId: z.number(), churchId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await enrollInCourse({ courseId: input.courseId, personId: input.personId });
+      return { success: true };
+    }),
+  updateEnrollment: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      churchId: z.number(),
+      status: z.enum(["matriculado", "em_andamento", "concluido"]).optional(),
+      completedAt: z.date().nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await updateCourseEnrollment(input.id, { status: input.status, completedAt: input.completedAt });
+      return { success: true };
+    }),
+});
+
+// ─── BATISMO ROUTER ───────────────────────────────────────────────────────────
+const batismoRouter = router({
+  listClasses: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getBaptismClassesByChurch(input.churchId);
+    }),
+  getEnrollments: protectedProcedure
+    .input(z.object({ classId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getBaptismEnrollments(input.classId, input.churchId);
+    }),
+  createClass: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      name: z.string().min(2),
+      date: z.string(),
+      location: z.string().optional(),
+      pastor: z.string().optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await createBaptismClass(input);
+      return { success: true };
+    }),
+  enroll: protectedProcedure
+    .input(z.object({ baptismClassId: z.number(), personId: z.number(), churchId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await enrollInBaptism(input);
+      return { success: true };
+    }),
+  updateEnrollment: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      churchId: z.number(),
+      status: z.enum(["inscrito", "participou", "concluiu", "cancelado"]).optional(),
+      completedAt: z.date().nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await updateBaptismEnrollment(input.id, { status: input.status, completedAt: input.completedAt });
+      return { success: true };
+    }),
+});
+
+// ─── ENCONTRO COM DEUS ROUTER ─────────────────────────────────────────────────
+const encontroRouter = router({
+  listEvents: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getEncounterEventsByChurch(input.churchId);
+    }),
+  getEnrollments: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getEncounterEnrollments(input.eventId, input.churchId);
+    }),
+  createEvent: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      name: z.string().min(2),
+      date: z.string(),
+      endDate: z.string().optional(),
+      location: z.string().optional(),
+      maxParticipants: z.number().optional(),
+      description: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await createEncounterEvent(input);
+      return { success: true };
+    }),
+  enroll: protectedProcedure
+    .input(z.object({ encounterEventId: z.number(), personId: z.number(), churchId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await enrollInEncounter(input);
+      return { success: true };
+    }),
+  updateEnrollment: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      churchId: z.number(),
+      status: z.enum(["inscrito", "confirmado", "participou", "concluiu", "cancelado"]).optional(),
+      completedAt: z.date().nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await updateEncounterEnrollment(input.id, { status: input.status, completedAt: input.completedAt });
+      return { success: true };
+    }),
+});
+
+// ─── ESCOLA DE LÍDERES ROUTER ─────────────────────────────────────────────────
+const escolaLideresRouter = router({
+  listClasses: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getLeadershipClassesByChurch(input.churchId);
+    }),
+  getEnrollments: protectedProcedure
+    .input(z.object({ classId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getLeadershipEnrollments(input.classId, input.churchId);
+    }),
+  createClass: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      name: z.string().min(2),
+      period: z.string().optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+      pastor: z.string().optional(),
+      description: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await createLeadershipClass(input);
+      return { success: true };
+    }),
+  enroll: protectedProcedure
+    .input(z.object({ classId: z.number(), personId: z.number(), churchId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await enrollInLeadershipSchool(input);
+      return { success: true };
+    }),
+  updateEnrollment: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      churchId: z.number(),
+      status: z.enum(["matriculado", "lider_em_formacao", "concluido", "cancelado"]).optional(),
+      grade: z.number().optional(),
+      attendance: z.number().optional(),
+      completedAt: z.date().nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await updateLeadershipEnrollment(input.id, {
+        status: input.status,
+        grade: input.grade,
+        attendance: input.attendance,
+        completedAt: input.completedAt,
+      });
+      return { success: true };
+    }),
+});
+
+// ─── LIDERANÇA ROUTER ─────────────────────────────────────────────────────────
+const liderancaRouter = router({
+  list: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getLeadershipHistory(input.churchId);
+    }),
+  getByPerson: protectedProcedure
+    .input(z.object({ personId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getLeadershipHistoryByPerson(input.personId, input.churchId);
+    }),
+  add: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      personId: z.number(),
+      role: z.enum(["pastor_presidente","pastor_local","supervisor","lider","consolidador","diacono","secretario","tesoureiro","membro"]),
+      startDate: z.string(),
+      endDate: z.string().optional(),
+      ministry: z.string().optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await addLeadershipHistory(input);
+      return { success: true };
+    }),
+});
+
+// ─── ACONSELHAMENTO ROUTER ────────────────────────────────────────────────────
+const aconselhamentoRouter = router({
+  list: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getCounselingSessionsByChurch(input.churchId);
+    }),
+  create: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      personId: z.number(),
+      counselorId: z.number(),
+      scheduledAt: z.date(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await createCounselingSession(input);
+      return { success: true };
+    }),
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number(),
+      churchId: z.number(),
+      status: z.enum(["agendado", "realizado", "cancelado"]).optional(),
+      notes: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await updateCounselingSession(input.id, { status: input.status, notes: input.notes });
+      return { success: true };
+    }),
+  getNotes: protectedProcedure
+    .input(z.object({ sessionId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getCounselingNotes(input.sessionId, input.churchId);
+    }),
+  addNote: protectedProcedure
+    .input(z.object({
+      sessionId: z.number(),
+      churchId: z.number(),
+      content: z.string().min(1),
+      confidential: z.boolean().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await addCounselingNote({
+        sessionId: input.sessionId,
+        churchId: input.churchId,
+        authorId: ctx.user.id,
+        content: input.content,
+        confidential: input.confidential ?? true,
+      });
+      return { success: true };
+    }),
+});
+
+// ─── COMUNICAÇÃO ROUTER ───────────────────────────────────────────────────────
+const comunicacaoRouter = router({
+  list: protectedProcedure
+    .input(z.object({ churchId: z.number(), limit: z.number().optional() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getCommunicationLogs(input.churchId, input.limit ?? 50);
+    }),
+  send: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      type: z.enum(["push", "email", "whatsapp", "sms"]),
+      category: z.enum(["boas_vindas","aniversario","lembrete_evento","lembrete_celula","convite","aviso","outro"]),
+      recipientPersonId: z.number().optional(),
+      recipientName: z.string().optional(),
+      title: z.string().optional(),
+      message: z.string().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      await logCommunication({ ...input, status: "enviado" });
+      return { success: true };
+    }),
+});
+
 // ─── APP ROUTER ───────────────────────────────────────────────────────────────
 
 export const appRouter = router({
@@ -1012,6 +1354,13 @@ export const appRouter = router({
   register: registerRouter,
   onboarding: onboardingRouter,
   reports: reportsRouter,
+  escolaFundamentos: escolaFundamentosRouter,
+  batismo: batismoRouter,
+  encontro: encontroRouter,
+  escolaLideres: escolaLideresRouter,
+  lideranca: liderancaRouter,
+  aconselhamento: aconselhamentoRouter,
+  comunicacao: comunicacaoRouter,
   contact: router({
     send: publicProcedure
       .input(z.object({

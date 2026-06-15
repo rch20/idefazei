@@ -38,6 +38,13 @@ import CheckinEvento from "./pages/CheckinEvento";
 import Demo from "./pages/Demo";
 import Onboarding from "./pages/Onboarding";
 import CadastroSucesso from "./pages/CadastroSucesso";
+import EscolaFundamentos from "./pages/EscolaFundamentos";
+import Batismo from "./pages/Batismo";
+import EncontroComDeus from "./pages/EncontroComDeus";
+import EscolaLideres from "./pages/EscolaLideres";
+import GestaoLideranca from "./pages/GestaoLideranca";
+import Aconselhamento from "./pages/Aconselhamento";
+import Comunicacao from "./pages/Comunicacao";
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
 
@@ -163,6 +170,49 @@ function Router() {
       <Route path="/app/mural">
         <AppPage title="Mural de Avisos">
           <Mural />
+        </AppPage>
+      </Route>
+
+      {/* ── App — Novos Módulos ── */}
+      <Route path="/app/escola-fundamentos">
+        <AppPage title="Escola de Fundamentos">
+          <EscolaFundamentos />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/batismo">
+        <AppPage title="Batismo nas Águas">
+          <Batismo />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/encontro-com-deus">
+        <AppPage title="Encontro com Deus">
+          <EncontroComDeus />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/escola-lideres">
+        <AppPage title="Escola de Líderes">
+          <EscolaLideres />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/gestao-lideranca">
+        <AppPage title="Gestão de Liderança">
+          <GestaoLideranca />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/aconselhamento">
+        <AppPage title="Aconselhamento Pastoral">
+          <Aconselhamento />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/comunicacao">
+        <AppPage title="Comunicação">
+          <Comunicacao />
         </AppPage>
       </Route>
 

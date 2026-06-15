@@ -135,3 +135,55 @@
 - [x] Alerta de aniversários do dia (notificação ao owner)
 - [x] Alerta de membros ausentes há mais de 30 dias (notificação ao owner)
 - [x] Cron heartbeat criado (diário 09:00 UTC) — task_uid: L2Wu2q34WUtDDPr4xJRv4C. Após publicar o site, o cron já está registrado e disparará automaticamente para /api/scheduled/daily-notifications.
+
+## FASE 7 – Módulos Faltantes
+
+### Módulo 8 – Escola de Fundamentos
+- [x] Schema: tabela `foundation_courses` (cursos: Salvação, Oração, Bíblia, Igreja, Espírito Santo, Batismo)
+- [x] Schema: tabela `foundation_enrollments` (matrícula por pessoa + curso + churchId)
+- [x] API tRPC: CRUD de cursos e matrículas, controle de frequência e conclusão
+- [x] Página /app/escola-fundamentos — listagem de cursos e turmas
+- [x] Geração de certificado HTML/PDF ao concluir curso
+- [x] Atualização automática do status espiritual da pessoa ao concluir
+
+### Módulo 9 – Batismo
+- [x] Schema: tabela `baptism_classes` (turmas de batismo: data, local, pastor)
+- [x] Schema: tabela `baptism_enrollments` (inscrição por pessoa + turma)
+- [x] API tRPC: CRUD de turmas, inscrição, controle de participação/conclusão
+- [x] Página /app/batismo — gestão de turmas e inscritos
+- [x] Geração de certificado de batismo HTML/PDF
+- [x] Atualização automática do discipleshipStage para 'batismo' ao concluir
+
+### Módulo 13 – Encontro com Deus
+- [x] Schema: tabela `encounter_events` (eventos tipo retiro: data, local, vagas)
+- [x] Schema: tabela `encounter_enrollments` (inscrição por pessoa + evento)
+- [x] API tRPC: CRUD de eventos, inscrição, participação, conclusão
+- [x] Página /app/encontro-com-deus — gestão de eventos e inscritos
+- [x] Atualização automática do discipleshipStage para 'encontro_com_deus' ao concluir
+
+### Módulo 14 – Escola de Líderes
+- [x] Schema: tabela `leadership_school_classes` (turmas: nome, período, pastor)
+- [x] Schema: tabela `leadership_school_enrollments` (matrícula + frequência + notas)
+- [x] API tRPC: CRUD de turmas, matrícula, frequência, notas, certificação
+- [x] Página /app/escola-lideres — gestão de turmas e alunos
+- [x] Geração de certificado de conclusão
+- [x] Status "Líder em Formação" ao matricular, atualização de discipleshipStage ao concluir
+
+### Módulo 15 – Gestão de Liderança
+- [x] Schema: tabela `leadership_history` (histórico ministerial: cargo, data início/fim, observação)
+- [x] API tRPC: CRUD de histórico ministerial por pessoa
+- [x] Página /app/gestao-lideranca — visão geral de líderes com histórico ministerial completo
+
+### Módulo 21 – Aconselhamento Pastoral
+- [x] Schema: tabela `counseling_sessions` (agendamentos: pessoa, pastor, data, tipo, status)
+- [x] Schema: tabela `counseling_notes` (anotações reservadas: visível apenas ao pastor/aconselhador)
+- [x] API tRPC: CRUD de sessões e anotações com controle de permissão por perfil
+- [x] Página /app/aconselhamento — agenda e histórico (acesso restrito)
+
+### Módulo 22 – Comunicação
+- [x] Schema: tabela `communication_logs` (log de mensagens enviadas: tipo, destinatário, status)
+- [x] API tRPC: envio de notificações push via Service Worker existente
+- [x] Automação: mensagem de boas-vindas ao cadastrar nova alma
+- [x] Automação: lembrete de aniversário (integrar com heartbeat existente)
+- [x] Automação: lembrete de evento 24h antes (heartbeat)
+- [x] Página /app/comunicacao — central de comunicações e histórico de envios

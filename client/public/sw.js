@@ -1,23 +1,10 @@
 // Service Worker — Lampas Igreja SaaS
 // Estratégia: Cache-First para assets estáticos, Network-First para API
 
-const CACHE_NAME = "lampas-v1";
-const STATIC_ASSETS = [
-  "/",
-  "/login",
-  "/visitante",
-  "/manifest.json",
-];
+const CACHE_NAME = "lampas-v3";
 
-// Instalar e pré-cachear assets essenciais
+// Instalar
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch(() => {
-        // Falha silenciosa se algum asset não estiver disponível
-      });
-    })
-  );
   self.skipWaiting();
 });
 
@@ -50,33 +37,47 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Para navegação (HTML), tenta rede primeiro, cai para cache
+  // Ignorar arquivos do Vite dev server (/@vite/, /@fs/, etc.) e arquivos com ?v= ou ?t=
+  if (
+    url.pathname.startsWith("/@") ||
+    url.pathname.startsWith("/__vite") ||
+    url.pathname.startsWith("/__manus") ||
+    url.searchParams.has("v") ||
+    url.searchParams.has("t")
+  ) {
+    return; // Deixar o browser buscar diretamente da rede
+  }
+
+  // Para navegação (HTML), sempre vai para a rede
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          return response;
-        })
-        .catch(() => caches.match("/") || caches.match(request))
+      fetch(request).catch(() => caches.match("/"))
     );
     return;
   }
 
-  // Para assets estáticos (JS, CSS, imagens), Cache-First
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then((response) => {
-        if (response.ok && request.method === "GET") {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
-        return response;
-      });
-    })
-  );
+  // Para assets estáticos conhecidos (manifest, icons), Cache-First
+  if (
+    url.pathname === "/manifest.json" ||
+    url.pathname.startsWith("/icon-") ||
+    url.pathname.endsWith(".png") ||
+    url.pathname.endsWith(".ico")
+  ) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((response) => {
+          if (response.ok && request.method === "GET") {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        });
+      })
+    );
+    return;
+  }
+  // Para todo o resto (JS, CSS, etc.), sempre vai para a rede — sem cache
 });
 
 // Receber notificações push
