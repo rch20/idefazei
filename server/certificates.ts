@@ -17,6 +17,9 @@ export interface CertificateData {
   memberName: string;
   churchName: string;
   pastorName?: string;
+  signatureLabel?: string; // Ex: "Pastor(a) Presidente", "Bispa", etc.
+  logoUrl?: string; // URL do logo da igreja para incluir no certificado
+  verse?: string; // Versículo personalizado por tipo de certificado
   courseName?: string; // Para fundamentos: nome do curso específico
   date?: string; // ISO string ou "DD/MM/YYYY"
   className?: string; // Nome da turma
@@ -176,6 +179,33 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Uin
     height,
     color: CREAM,
   });
+
+  // ── Logo da Igreja (se fornecida) ──
+  if (data.logoUrl) {
+    try {
+      const logoResp = await fetch(data.logoUrl);
+      if (logoResp.ok) {
+        const logoBuffer = await logoResp.arrayBuffer();
+        const logoBytes = new Uint8Array(logoBuffer);
+        const contentType = logoResp.headers.get("content-type") ?? "";
+        let logoImage;
+        if (contentType.includes("png") || data.logoUrl.endsWith(".png")) {
+          logoImage = await pdfDoc.embedPng(logoBytes);
+        } else {
+          logoImage = await pdfDoc.embedJpg(logoBytes);
+        }
+        const logoDims = logoImage.scaleToFit(50, 50);
+        page.drawImage(logoImage, {
+          x: margin + 8,
+          y: height - margin - 1 - 55,
+          width: logoDims.width,
+          height: logoDims.height,
+        });
+      }
+    } catch {
+      // Logo não pôde ser carregada — continua sem ela
+    }
+  }
 
   // ── Faixa decorativa superior (azul-marinho) ──
   page.drawRectangle({
@@ -359,7 +389,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Uin
     });
 
     // Cargo
-    const cargoText = "Pastor Presidente";
+    const cargoText = data.signatureLabel ?? "Pastor(a) Presidente";
     const cargoSize = 9;
     const cargoWidth = helvetica.widthOfTextAtSize(cargoText, cargoSize);
     page.drawText(cargoText, {
@@ -368,6 +398,33 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Uin
       size: cargoSize,
       font: helvetica,
       color: LIGHT_NAVY,
+    });
+  }
+
+  // ── Versículo personalizado (se fornecido) ──
+  if (data.verse) {
+    const verseY = bodyY - (data.pastorName ? 145 : 100);
+    // Limitar versículo a 80 caracteres por linha
+    const maxLen = 80;
+    const verseLines: string[] = [];
+    let remaining = data.verse;
+    while (remaining.length > maxLen) {
+      const breakAt = remaining.lastIndexOf(" ", maxLen);
+      verseLines.push(remaining.slice(0, breakAt > 0 ? breakAt : maxLen));
+      remaining = remaining.slice(breakAt > 0 ? breakAt + 1 : maxLen);
+    }
+    verseLines.push(remaining);
+
+    const verseSize = 8;
+    verseLines.forEach((line, i) => {
+      const vw = timesItalic.widthOfTextAtSize(line, verseSize);
+      page.drawText(line, {
+        x: centerX - vw / 2,
+        y: verseY - i * 12,
+        size: verseSize,
+        font: timesItalic,
+        color: LIGHT_NAVY,
+      });
     });
   }
 

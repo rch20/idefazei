@@ -2,6 +2,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
 import { trpc } from "@/lib/trpc";
 import {
+  Award,
   BookOpen,
   Building2,
   CalendarDays,
@@ -76,6 +77,7 @@ const navItems = [
   { icon: MessageSquare, label: "Comunicação", path: "/app/comunicacao", group: "comunicacao" },
   { icon: Shield, label: "Biblioteca", path: "/app/biblioteca", group: "comunicacao" },
   { icon: Building2, label: "Configurações", path: "/app/configuracoes", group: "admin" },
+  { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin" },
   { icon: Users, label: "Área do Membro", path: "/app/membro", group: "membros" },
   { icon: Star, label: "App do Líder", path: "/app/lider", group: "membros" },
 ];

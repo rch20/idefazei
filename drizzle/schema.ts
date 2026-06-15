@@ -50,6 +50,13 @@ export const churches = mysqlTable("churches", {
   mission: text("mission"),
   values: text("values"),
   active: boolean("active").default(true).notNull(),
+  // Personalização de certificados
+  certPastorName: varchar("certPastorName", { length: 255 }),
+  certLogoUrl: text("certLogoUrl"),
+  certVerseFundamentos: text("certVerseFundamentos"),
+  certVerseBatismo: text("certVerseBatismo"),
+  certVerseLideres: text("certVerseLideres"),
+  certSignatureLabel: varchar("certSignatureLabel", { length: 100 }).default("Pastor(a) Presidente"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

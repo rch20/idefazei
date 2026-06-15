@@ -45,6 +45,7 @@ import EscolaLideres from "./pages/EscolaLideres";
 import GestaoLideranca from "./pages/GestaoLideranca";
 import Aconselhamento from "./pages/Aconselhamento";
 import Comunicacao from "./pages/Comunicacao";
+import ConfiguracoesCertificados from "./pages/ConfiguracoesCertificados";
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
 
@@ -226,6 +227,12 @@ function Router() {
       <Route path="/app/configuracoes">
         <AppPage title="Configurações">
           <Configuracoes />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/configuracoes/certificados">
+        <AppPage title="Certificados">
+          <ConfiguracoesCertificados />
         </AppPage>
       </Route>
 

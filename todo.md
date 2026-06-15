@@ -197,3 +197,14 @@
 - [x] Integrar botão "Gerar Certificado" real na página Escola de Fundamentos
 - [x] Integrar botão "Gerar Certificado" real na página Batismo nas Águas
 - [x] Integrar botão "Gerar Certificado" real na página Escola de Líderes
+
+## FASE 9 – Personalização de Certificados por Igreja
+
+- [x] Schema: adicionar campos `certPastorName`, `certLogoUrl`, `certVerse*`, `certSignatureLabel` na tabela `churches`
+- [x] Migração SQL aplicada via webdev_execute_sql
+- [x] API tRPC: procedure `certificates.getConfig` (lê configuração da igreja)
+- [x] API tRPC: procedure `certificates.saveConfig` (salva configuração da igreja)
+- [x] Upload de logo da igreja para S3 via endpoint existente
+- [x] Integrar configuração no gerador PDF (server/certificates.ts usa dados da igreja)
+- [x] Página de configuração `/app/configuracoes/certificados` com formulário
+- [x] Entrada no sidebar em Configurações

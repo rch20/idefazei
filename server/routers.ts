@@ -1326,6 +1326,57 @@ const comunicacaoRouter = router({
 // ─── CERTIFICATES ROUTER ─────────────────────────────────────────────────────────────────────────────────────
 
 const certificatesRouter = router({
+  // Busca a configuração de certificado da igreja
+  getConfig: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const church = await getChurchById(input.churchId);
+      if (!church) throw new TRPCError({ code: "NOT_FOUND" });
+      return {
+        pastorName: church.certPastorName ?? "",
+        logoUrl: church.certLogoUrl ?? "",
+        verseFundamentos: church.certVerseFundamentos ?? "",
+        verseBatismo: church.certVerseBatismo ?? "",
+        verseLideres: church.certVerseLideres ?? "",
+        signatureLabel: church.certSignatureLabel ?? "Pastor(a) Presidente",
+      };
+    }),
+
+  // Salva a configuração de certificado da igreja
+  saveConfig: protectedProcedure
+    .input(
+      z.object({
+        churchId: z.number(),
+        pastorName: z.string().max(255).optional(),
+        logoUrl: z.string().max(2048).optional(),
+        verseFundamentos: z.string().max(500).optional(),
+        verseBatismo: z.string().max(500).optional(),
+        verseLideres: z.string().max(500).optional(),
+        signatureLabel: z.string().max(100).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { churches: churchesTable } = await import("../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      await db
+        .update(churchesTable)
+        .set({
+          certPastorName: input.pastorName,
+          certLogoUrl: input.logoUrl,
+          certVerseFundamentos: input.verseFundamentos,
+          certVerseBatismo: input.verseBatismo,
+          certVerseLideres: input.verseLideres,
+          certSignatureLabel: input.signatureLabel,
+        })
+        .where(eq(churchesTable.id, input.churchId));
+      return { success: true };
+    }),
+
+  // Gera o PDF do certificado
   generate: protectedProcedure
     .input(
       z.object({
@@ -1346,10 +1397,10 @@ const certificatesRouter = router({
 
       // Validar que a pessoa pertence à igreja (se personId fornecido)
       if (input.personId) {
-        const { getDb } = await import("./db");
+        const { getDb: getDbInner } = await import("./db");
         const { people } = await import("../drizzle/schema");
         const { eq, and } = await import("drizzle-orm");
-        const db = await getDb();
+        const db = await getDbInner();
         if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
         const [person] = await db
           .select({ id: people.id })
@@ -1364,6 +1415,17 @@ const certificatesRouter = router({
       const church = await getChurchById(input.churchId);
       const churchName = church?.name ?? "Igreja";
 
+      // Usar dados de personalização da igreja
+      const pastorName = input.pastorName ?? church?.certPastorName ?? undefined;
+      const signatureLabel = church?.certSignatureLabel ?? "Pastor(a) Presidente";
+      const logoUrl = church?.certLogoUrl ?? undefined;
+      const verse =
+        input.type === "fundamentos"
+          ? (church?.certVerseFundamentos ?? undefined)
+          : input.type === "batismo"
+            ? (church?.certVerseBatismo ?? undefined)
+            : (church?.certVerseLideres ?? undefined);
+
       const { generateCertificatePDF } = await import("./certificates");
       const { storagePut } = await import("./storage");
 
@@ -1371,7 +1433,10 @@ const certificatesRouter = router({
         type: input.type,
         memberName: input.memberName,
         churchName,
-        pastorName: input.pastorName,
+        pastorName,
+        signatureLabel,
+        logoUrl,
+        verse,
         courseName: input.courseName,
         className: input.className,
         date: input.date,

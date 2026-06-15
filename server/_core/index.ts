@@ -9,6 +9,8 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { dailyNotificationsHandler } from "../scheduledNotifications";
+import Busboy from "busboy";
+import { storagePut } from "../storage";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -40,6 +42,56 @@ async function startServer() {
 
   // Scheduled heartbeat endpoints
   app.post("/api/scheduled/daily-notifications", dailyNotificationsHandler);
+
+  // Upload de imagens (logo da igreja, etc.)
+  app.post("/api/upload", (req, res) => {
+    const contentType = req.headers["content-type"] ?? "";
+    if (!contentType.includes("multipart/form-data")) {
+      res.status(400).json({ error: "Expected multipart/form-data" });
+      return;
+    }
+    const bb = Busboy({ headers: req.headers, limits: { fileSize: 2 * 1024 * 1024 } });
+    let fileBuffer: Buffer | null = null;
+    let mimeType = "image/png";
+    let fileName = "upload";
+    let limitReached = false;
+
+    bb.on("file", (_field, stream, info) => {
+      mimeType = info.mimeType || "image/png";
+      fileName = info.filename || "upload";
+      const chunks: Buffer[] = [];
+      stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+      stream.on("limit", () => { limitReached = true; stream.resume(); });
+      stream.on("end", () => { if (!limitReached) fileBuffer = Buffer.concat(chunks); });
+    });
+
+    bb.on("finish", async () => {
+      if (limitReached) {
+        res.status(413).json({ error: "File too large (max 2MB)" });
+        return;
+      }
+      if (!fileBuffer) {
+        res.status(400).json({ error: "No file received" });
+        return;
+      }
+      try {
+        const ext = fileName.split(".").pop() ?? "png";
+        const key = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const { url } = await storagePut(key, fileBuffer, mimeType);
+        res.json({ url, key });
+      } catch (err) {
+        console.error("[Upload] Error:", err);
+        res.status(500).json({ error: "Upload failed" });
+      }
+    });
+
+    bb.on("error", (err) => {
+      console.error("[Upload] Busboy error:", err);
+      res.status(500).json({ error: "Upload error" });
+    });
+
+    req.pipe(bb);
+  });
   // tRPC API
   app.use(
     "/api/trpc",
