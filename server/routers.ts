@@ -49,6 +49,9 @@ import {
   createVisitorLead,
   getVisitorLeadsByChurch,
 } from "./db";
+import { getDb } from "./db";
+import { events } from "../drizzle/schema";
+import { eq } from "drizzle-orm";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -358,7 +361,7 @@ const eventsRouter = router({
       return getEventsByChurch(input.churchId);
     }),
 
-  create: protectedProcedure
+    create: protectedProcedure
     .input(
       z.object({
         churchId: z.number(),
@@ -383,8 +386,60 @@ const eventsRouter = router({
       await requireChurchMember(ctx.user.id, input.churchId);
       return createEvent({ ...input, startDate: new Date(input.startDate) } as any);
     }),
+  generateQrCode: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { nanoid } = await import("nanoid");
+      const token = nanoid(16);
+      const qrCode = `checkin:${input.eventId}:${token}`;
+      await db.update(events).set({ qrCode }).where(eq(events.id, input.eventId));
+      return { qrCode, token };
+    }),
+  checkin: publicProcedure
+    .input(z.object({ token: z.string(), eventId: z.number(), visitorName: z.string().optional(), personId: z.number().optional() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const eventRows = await db.select().from(events).where(eq(events.id, input.eventId)).limit(1);
+      const event = eventRows[0];
+      if (!event) throw new TRPCError({ code: "NOT_FOUND", message: "Evento não encontrado" });
+      if (!event.active) throw new TRPCError({ code: "BAD_REQUEST", message: "Evento encerrado" });
+      const expectedToken = event.qrCode?.split(":")[2];
+      if (!expectedToken || expectedToken !== input.token) {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "QR Code inválido" });
+      }
+      // Registrar check-in em event_registrations
+      const { eventRegistrations } = await import("../drizzle/schema");
+      if (input.personId) {
+        // Verificar se já fez check-in
+        const existing = await db.select().from(eventRegistrations)
+          .where(eq(eventRegistrations.eventId, input.eventId))
+          .limit(50);
+        const alreadyCheckedIn = existing.find((r: any) => r.personId === input.personId && r.checkedIn);
+        if (alreadyCheckedIn) {
+          return { success: true, eventName: event.name, checkedIn: alreadyCheckedIn.checkedInAt, alreadyRegistered: true };
+        }
+        // Upsert: se já inscrito, atualizar; senão inserir
+        const alreadyRegistered = existing.find((r: any) => r.personId === input.personId);
+        if (alreadyRegistered) {
+          await db.update(eventRegistrations)
+            .set({ checkedIn: true, checkedInAt: new Date() })
+            .where(eq(eventRegistrations.id, alreadyRegistered.id));
+        } else {
+          await db.insert(eventRegistrations).values({
+            eventId: input.eventId,
+            personId: input.personId,
+            checkedIn: true,
+            checkedInAt: new Date(),
+          });
+        }
+      }
+      return { success: true, eventName: event.name, checkedIn: new Date(), alreadyRegistered: false };
+    }),
 });
-
 const familiesRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number(), search: z.string().optional() }))
@@ -743,7 +798,20 @@ const registerRouter = router({
       return { success: true, churchId: church.id, slug: input.slug };
     }),
 });
-
+// ─── INVITE ROUTER ───────────────────────────────────────────────────────────
+const inviteRouter = router({
+  create: protectedProcedure
+    .input(z.object({ churchId: z.number(), email: z.string().email(), name: z.string().min(1), role: z.enum(["pastor_presidente","pastor_local","supervisor","lider","consolidador","diacono","secretario","tesoureiro","membro"]) }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const tempPassword = Math.random().toString(36).slice(-8);
+      const { createChurchUser } = await import("./auth");
+      const user = await createChurchUser({ churchId: input.churchId, name: input.name, email: input.email, password: tempPassword, role: input.role });
+            const { notifyOwner } = await import("./_core/notification");
+      await notifyOwner({ title: `Novo convite: ${input.name}`, content: `Usuário ${input.name} (${input.email}) foi convidado para a igreja ${input.churchId} com o perfil ${input.role}. Senha temporária: ${tempPassword}` });
+      return { success: true, userId: user.id, tempPassword };
+    }),
+});
 // ─── APP ROUTER ───────────────────────────────────────────────────────────────
 
 export const appRouter = router({
@@ -769,6 +837,7 @@ export const appRouter = router({
     families: familiesRouter,
   schedules: schedulesRouter,
   library: libraryRouter,
+  invites: inviteRouter,
   churchAuth: churchAuthRouter,
   adminAuth: adminAuthRouter,
   superAdmin: superAdminRouter,

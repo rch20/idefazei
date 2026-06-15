@@ -6,9 +6,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { CalendarDays, MapPin, Plus, Users } from "lucide-react";
+import { CalendarDays, MapPin, Plus, QrCode, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { QRCodeSVG } from "qrcode.react";
 
 const EVENT_TYPES = [
   { value: "congresso", label: "Congresso" },
@@ -197,39 +198,109 @@ export default function Eventos() {
 }
 
 function EventCard({ event }: { event: any }) {
+  const { churchId } = useChurch();
   const typeLabel = EVENT_TYPES.find((t) => t.value === event.type)?.label ?? event.type;
   const colorClass = TYPE_COLORS[event.type] ?? TYPE_COLORS.outro;
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qrValue, setQrValue] = useState<string | null>(event.qrCode ?? null);
+
+  const generateQr = trpc.events.generateQrCode.useMutation({
+    onSuccess: (data) => {
+      setQrValue(data.qrCode);
+      setQrOpen(true);
+      toast.success("QR Code gerado!");
+    },
+    onError: () => toast.error("Erro ao gerar QR Code"),
+  });
+
+  const checkinUrl = qrValue
+    ? `${window.location.origin}/checkin?event=${event.id}&token=${qrValue.split(":")[2]}`
+    : null;
 
   return (
-    <div className="card-sacred p-4 flex items-center gap-4">
-      <div className="w-14 h-14 rounded-xl bg-cream-dark flex flex-col items-center justify-center flex-shrink-0 text-center">
-        <span className="text-lg font-bold font-display text-navy leading-none">
-          {new Date(event.startDate).getDate()}
-        </span>
-        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
-          {new Date(event.startDate).toLocaleString("pt-BR", { month: "short" })}
-        </span>
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-navy">{event.name}</p>
-        <div className="flex items-center gap-3 mt-0.5">
-          {event.location && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <MapPin className="w-3 h-3" />
-              {event.location}
-            </span>
-          )}
-          {event.maxCapacity && (
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <Users className="w-3 h-3" />
-              {event.maxCapacity} vagas
-            </span>
-          )}
+    <>
+      <div className="card-sacred p-4 flex items-center gap-4">
+        <div className="w-14 h-14 rounded-xl bg-cream-dark flex flex-col items-center justify-center flex-shrink-0 text-center">
+          <span className="text-lg font-bold font-display text-navy leading-none">
+            {new Date(event.startDate).getDate()}
+          </span>
+          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+            {new Date(event.startDate).toLocaleString("pt-BR", { month: "short" })}
+          </span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-navy">{event.name}</p>
+          <div className="flex items-center gap-3 mt-0.5">
+            {event.location && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <MapPin className="w-3 h-3" />
+                {event.location}
+              </span>
+            )}
+            {event.maxCapacity && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Users className="w-3 h-3" />
+                {event.maxCapacity} vagas
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorClass}`}>
+            {typeLabel}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 px-2 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5"
+            onClick={() => {
+              if (qrValue) {
+                setQrOpen(true);
+              } else {
+                generateQr.mutate({ eventId: event.id, churchId });
+              }
+            }}
+            disabled={generateQr.isPending}
+          >
+            <QrCode className="w-4 h-4" />
+          </Button>
         </div>
       </div>
-      <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-shrink-0 ${colorClass}`}>
-        {typeLabel}
-      </span>
-    </div>
+
+      {/* Dialog QR Code */}
+      <Dialog open={qrOpen} onOpenChange={setQrOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-[#c9a84c]" />
+              Check-in — {event.name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-4">
+            {checkinUrl && (
+              <>
+                <div className="p-4 bg-white rounded-2xl border border-[#1e3a5f]/10 shadow-sm">
+                  <QRCodeSVG
+                    value={checkinUrl}
+                    size={200}
+                    fgColor="#1e3a5f"
+                    bgColor="#ffffff"
+                    level="M"
+                  />
+                </div>
+                <p className="text-xs text-center text-[#1e3a5f]/50 leading-relaxed">
+                  Mostre este QR Code na entrada do evento.<br />
+                  Os participantes escaneiam para confirmar presença.
+                </p>
+                <div className="w-full p-3 bg-[#f5f0e8] rounded-xl">
+                  <p className="text-[10px] text-[#1e3a5f]/40 uppercase tracking-wider mb-1">Link de check-in</p>
+                  <p className="text-xs text-[#1e3a5f] font-mono break-all">{checkinUrl}</p>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

@@ -34,6 +34,7 @@ import Configuracoes from "./pages/Configuracoes";
 import Biblioteca from "./pages/Biblioteca";
 import AreaMembro from "./pages/AreaMembro";
 import AppLider from "./pages/AppLider";
+import CheckinEvento from "./pages/CheckinEvento";
 import { TreePine } from "lucide-react";
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
@@ -186,6 +187,9 @@ function Router() {
           <AppLider />
         </AppPage>
       </Route>
+
+      {/* ── Check-in público ── */}
+      <Route path="/checkin" component={CheckinEvento} />
 
       {/* Fallback */}
       <Route path="/404" component={NotFound} />

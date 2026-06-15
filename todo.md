@@ -28,7 +28,7 @@
 - [x] API tRPC: Árvore de Discipulado
 - [x] API tRPC: CRUD de famílias
 - [x] API tRPC: ministérios e escalas completos
-- [ ] API tRPC: check-in QR para eventos
+- [x] API tRPC: check-in QR para eventos (geração de QR Code + endpoint de check-in público)
 
 ## FASE 2 – Design e Layout
 
@@ -86,7 +86,7 @@
 - [x] API: cadastro de nova igreja (fluxo completo)
 - [x] API: Super Admin (login separado, aprovação, suspensão, métricas globais)
 - [x] API: Portal do Visitante (pedido de oração, visita pastoral, interesse em participar)
-- [ ] API: convite de usuários por email dentro da igreja
+- [x] API: convite de usuários por email dentro da igreja (cria conta + senha temporária + notificação)
 
 ### Domínio Principal (/)
 - [x] Landing Page com seções: Hero, Recursos, Funil, Planos, Depoimentos, CTA
