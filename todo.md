@@ -208,3 +208,14 @@
 - [x] Integrar configuração no gerador PDF (server/certificates.ts usa dados da igreja)
 - [x] Página de configuração `/app/configuracoes/certificados` com formulário
 - [x] Entrada no sidebar em Configurações
+
+## FASE 10 – Testes de Integração End-to-End
+
+- [x] Criar server/discipleship.flow.test.ts com 15 casos de teste
+- [x] Etapa 1: Cadastro de nova alma (souls.create) — sucesso e validação de nome curto
+- [x] Etapa 2: Consolidação (consolidation.create + updateChecklist) — abertura e checklist
+- [x] Etapa 3: Batismo (batismo.createClass + enroll + updateEnrollment) — turma, inscrição e conclusão
+- [x] Etapa 4: Célula (cells.create) — criação e validação de nome mínimo
+- [x] Etapa 5: Certificado (certificates.generate) — batismo, fundamentos, líderes e acesso negado
+- [x] Segurança: isolamento por tenant — acesso negado a igreja diferente e permitido à própria
+- [x] Total: 20 testes passando (3 arquivos)
