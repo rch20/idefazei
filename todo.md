@@ -68,8 +68,8 @@
 
 - [x] Testes vitest para rotas principais (5 testes passando)
 - [x] Manifest PWA com atalhos e meta tags
-- [ ] Service Worker para modo offline
-- [ ] Notificações push integradas
+- [x] Service Worker para modo offline (sw.js + hook usePWA)
+- [x] Notificações push integradas (requestNotifications via usePWA)
 - [x] Checkpoint final
 
 ## FASE 5 – Multi-Tenant Completo (Autenticação Própria + Subdomínios)
@@ -92,7 +92,7 @@
 - [x] Landing Page com seções: Hero, Recursos, Funil, Planos, Depoimentos, CTA
 - [x] Página /planos com comparativo de planos
 - [x] Página /recursos com lista de funcionalidades
-- [ ] Página /demo com tour interativo
+- [x] Página /demo com tour interativo (6 passos interativos com preview visual)
 - [x] Página /contato com formulário
 - [x] Página /cadastro-igreja com formulário multi-step (dados da igreja + subdomínio + conta do pastor)
 

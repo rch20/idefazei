@@ -35,6 +35,7 @@ import Biblioteca from "./pages/Biblioteca";
 import AreaMembro from "./pages/AreaMembro";
 import AppLider from "./pages/AppLider";
 import CheckinEvento from "./pages/CheckinEvento";
+import Demo from "./pages/Demo";
 import { TreePine } from "lucide-react";
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
@@ -187,6 +188,9 @@ function Router() {
           <AppLider />
         </AppPage>
       </Route>
+
+      {/* ── Demo interativa ── */}
+      <Route path="/demo" component={Demo} />
 
       {/* ── Check-in público ── */}
       <Route path="/checkin" component={CheckinEvento} />

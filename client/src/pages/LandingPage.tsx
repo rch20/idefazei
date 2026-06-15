@@ -102,6 +102,7 @@ export default function LandingPage() {
               <a href="#recursos" className="text-[#1e3a5f]/70 hover:text-[#1e3a5f] text-sm font-medium transition-colors">Recursos</a>
               <a href="#planos" className="text-[#1e3a5f]/70 hover:text-[#1e3a5f] text-sm font-medium transition-colors">Planos</a>
               <a href="#funil" className="text-[#1e3a5f]/70 hover:text-[#1e3a5f] text-sm font-medium transition-colors">Funil</a>
+              <Link href="/demo" className="text-[#1e3a5f]/70 hover:text-[#1e3a5f] text-sm font-medium transition-colors">Demo</Link>
               <a href="#contato" className="text-[#1e3a5f]/70 hover:text-[#1e3a5f] text-sm font-medium transition-colors">Contato</a>
             </nav>
 
