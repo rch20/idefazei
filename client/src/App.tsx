@@ -32,6 +32,8 @@ import Ministerios from "./pages/Ministerios";
 import Escalas from "./pages/Escalas";
 import Configuracoes from "./pages/Configuracoes";
 import Biblioteca from "./pages/Biblioteca";
+import AreaMembro from "./pages/AreaMembro";
+import AppLider from "./pages/AppLider";
 import { TreePine } from "lucide-react";
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
@@ -170,6 +172,18 @@ function Router() {
       <Route path="/app/configuracoes">
         <AppPage title="Configurações">
           <Configuracoes />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/membro">
+        <AppPage title="Área do Membro">
+          <AreaMembro />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/lider">
+        <AppPage title="App do Líder">
+          <AppLider />
         </AppPage>
       </Route>
 

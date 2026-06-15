@@ -58,8 +58,8 @@
 - [x] Gestão de Famílias
 - [x] Módulo de Ministérios completo
 - [x] Escalas com calendário visual
-- [ ] Área do Membro (portal pessoal)
-- [ ] App do Líder (tela simplificada)
+- [x] Área do Membro (portal pessoal)
+- [x] App do Líder (tela simplificada)
 - [x] Portal do Visitante (sem login)
 - [x] Biblioteca Digital
 - [x] Configurações da Igreja (multi-tenant)
@@ -101,9 +101,9 @@
 - [x] Dashboard com métricas globais (total de igrejas, membros, receita)
 - [x] Lista de igrejas com status (pendente, ativa, suspensa)
 - [x] Aprovação/rejeição de novas igrejas
-- [ ] Gerenciamento de planos e assinaturas
+- [x] Gerenciamento de planos e assinaturas
 - [x] Bloqueio/suspensão de igrejas
-- [ ] Painel de suporte
+- [x] Painel de suporte
 
 ### Subdomínio da Igreja
 - [x] Página de login da igreja (/login) com email+senha e seleção de perfil

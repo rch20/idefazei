@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Eye, EyeOff, Building2, Users, TrendingUp, Shield, CheckCircle2, XCircle, Clock, LogOut, LayoutDashboard, Settings } from "lucide-react";
+import { Loader2, Eye, EyeOff, Building2, Users, TrendingUp, Shield, CheckCircle2, XCircle, Clock, LogOut, LayoutDashboard, Settings, CreditCard, MessageSquare } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -113,7 +113,7 @@ type Church = {
 };
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<"overview" | "churches" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "churches" | "plans" | "support" | "settings">("overview");
 
   const { data: churches, isLoading, refetch } = trpc.superAdmin.churches.useQuery();
   const { data: pendingRegs, refetch: refetchPending } = trpc.superAdmin.pendingRegistrations.useQuery();
@@ -156,6 +156,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           {[
             { id: "overview", label: "Visão Geral", icon: LayoutDashboard },
             { id: "churches", label: "Igrejas", icon: Building2 },
+            { id: "plans", label: "Planos", icon: CreditCard },
+            { id: "support", label: "Suporte", icon: MessageSquare },
             { id: "settings", label: "Configurações", icon: Settings },
           ].map((item) => {
             const Icon = item.icon;
@@ -327,6 +329,74 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Plans */}
+          {activeTab === "plans" && (
+            <div>
+              <h1 className="font-serif text-2xl font-bold text-white mb-1">Planos e Assinaturas</h1>
+              <p className="text-white/40 text-sm mb-8">Gerencie os planos disponíveis na plataforma</p>
+              <div className="grid grid-cols-3 gap-4 mb-8">
+                {[
+                  { name: "Básico", price: "R$ 97/mês", members: "200", cells: "10", color: "border-blue-500/30" },
+                  { name: "Pro", price: "R$ 197/mês", members: "1.000", cells: "50", color: "border-[#c9a84c]/50" },
+                  { name: "Enterprise", price: "R$ 497/mês", members: "Ilimitado", cells: "Ilimitado", color: "border-purple-500/30" },
+                ].map((plan) => (
+                  <Card key={plan.name} className={`bg-white/5 border-2 ${plan.color}`}>
+                    <CardContent className="pt-6">
+                      <h3 className="text-white font-bold text-lg mb-1">{plan.name}</h3>
+                      <p className="text-[#c9a84c] font-semibold mb-4">{plan.price}</p>
+                      <div className="space-y-2 text-sm text-white/60">
+                        <div className="flex justify-between"><span>Membros</span><span className="text-white">{plan.members}</span></div>
+                        <div className="flex justify-between"><span>Células</span><span className="text-white">{plan.cells}</span></div>
+                      </div>
+                      <Button size="sm" className="w-full mt-4 bg-white/10 hover:bg-white/20 text-white border-0">Editar plano</Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <Card className="bg-white/5 border-white/10">
+                <CardContent className="pt-6">
+                  <h3 className="text-white font-semibold mb-4">Assinaturas Ativas</h3>
+                  <div className="text-center py-8 text-white/30">
+                    <CreditCard className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm">Nenhuma assinatura ativa ainda.</p>
+                    <p className="text-xs mt-1">As assinaturas aparecerão aqui quando as igrejas fizerem upgrade.</p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Support */}
+          {activeTab === "support" && (
+            <div>
+              <h1 className="font-serif text-2xl font-bold text-white mb-1">Painel de Suporte</h1>
+              <p className="text-white/40 text-sm mb-8">Mensagens de contato e solicitações de suporte</p>
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                {[
+                  { label: "Tickets Abertos", value: "0", color: "text-yellow-400" },
+                  { label: "Resolvidos Hoje", value: "0", color: "text-green-400" },
+                  { label: "Tempo Médio", value: "—", color: "text-blue-400" },
+                ].map((stat) => (
+                  <Card key={stat.label} className="bg-white/5 border-white/10">
+                    <CardContent className="pt-6 text-center">
+                      <p className={`text-3xl font-bold ${stat.color} mb-1`}>{stat.value}</p>
+                      <p className="text-white/40 text-xs">{stat.label}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <Card className="bg-white/5 border-white/10">
+                <CardContent className="pt-6">
+                  <div className="text-center py-8 text-white/30">
+                    <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                    <p className="text-sm">Nenhuma mensagem de suporte ainda.</p>
+                    <p className="text-xs mt-1">Mensagens enviadas pelo formulário de contato aparecerão aqui.</p>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           )}
 

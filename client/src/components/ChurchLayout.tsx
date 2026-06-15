@@ -65,6 +65,8 @@ const navItems = [
   { icon: BookOpen, label: "Mural", path: "/app/mural", group: "comunicacao" },
   { icon: Shield, label: "Biblioteca", path: "/app/biblioteca", group: "comunicacao" },
   { icon: Building2, label: "Configurações", path: "/app/configuracoes", group: "admin" },
+  { icon: Users, label: "Área do Membro", path: "/app/membro", group: "membros" },
+  { icon: Star, label: "App do Líder", path: "/app/lider", group: "membros" },
 ];
 
 const groups = [
