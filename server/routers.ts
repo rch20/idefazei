@@ -23,6 +23,7 @@ import {
   findPossiblePeopleByIdentity,
   getAnnouncementsByChurch,
   getCellsByChurch,
+  getActiveMembersByCell,
   getCellById,
   getActiveCellMembership,
   getCellMembershipHistory,
@@ -556,6 +557,15 @@ const cellsRouter = router({
     .query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
       return getCellsByChurch(input.churchId);
+    }),
+
+  members: protectedProcedure
+    .input(z.object({ churchId: z.number(), cellId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const cell = await getCellById(input.cellId, input.churchId);
+      if (!cell) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada." });
+      return getActiveMembersByCell(input.cellId, input.churchId);
     }),
 
   personMembership: protectedProcedure

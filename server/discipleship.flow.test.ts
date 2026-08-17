@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, findPossiblePeopleByIdentity, getPersonById, isActiveMinistryMember, setCurrentCareAssignment, updateConsolidation } from "./db";
+import { assignPersonToCell, findPossiblePeopleByIdentity, getActiveMembersByCell, getPersonById, isActiveMinistryMember, setCurrentCareAssignment, updateConsolidation } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +55,7 @@ vi.mock("./db", () => ({
   createConsolidation: vi.fn().mockResolvedValue({ id: 1, soulId: 1, churchId: 100 }),
   updateConsolidation: vi.fn().mockResolvedValue({ id: 1, callMade: true, status: "consolidado" }),
   getCellsByChurch: vi.fn().mockResolvedValue([]),
+  getActiveMembersByCell: vi.fn().mockResolvedValue([]),
   getCellById: vi.fn().mockResolvedValue({ id: 2, churchId: 100, name: "Célula Vida", leaderId: 10, active: true }),
   getActiveCellMembership: vi.fn().mockResolvedValue(null),
   getCellMembershipHistory: vi.fn().mockResolvedValue([]),
@@ -338,6 +339,19 @@ describe("Fluxo completo de discipulado", () => {
       expect(setCurrentCareAssignment).toHaveBeenCalledWith(
         expect.objectContaining({ personId: 10, responsiblePersonId: 10, role: "lider_celula" })
       );
+    });
+
+    it("lista as Pessoas ativas quando os detalhes da Célula são abertos", async () => {
+      (getActiveMembersByCell as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { membership: { id: 8, cellId: 2, personId: 10, active: true }, person: { id: 10, fullName: "Ana Silva" } },
+      ]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const members = await caller.cells.members({ churchId: CHURCH_ID, cellId: 2 });
+
+      expect(members).toHaveLength(1);
+      expect(members[0].person.fullName).toBe("Ana Silva");
+      expect(getActiveMembersByCell).toHaveBeenCalledWith(2, CHURCH_ID);
     });
   });
 

@@ -1,5 +1,6 @@
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MapView } from "@/components/Map";
 import { trpc } from "@/lib/trpc";
-import { Globe, MapPin, Plus, Users } from "lucide-react";
+import { Globe, MapPin, Plus, Users, UserRound } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -36,6 +37,7 @@ export default function Celulas() {
   const { churchId } = useChurch();
   const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
+  const [selectedCell, setSelectedCell] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("lista");
   const [form, setForm] = useState(defaultForm);
   const [mapReady, setMapReady] = useState(false);
@@ -43,6 +45,10 @@ export default function Celulas() {
 
   const { data: cells, isLoading, refetch } = trpc.cells.list.useQuery({ churchId });
   const { data: people } = trpc.people.list.useQuery({ churchId });
+  const cellMembers = trpc.cells.members.useQuery(
+    { churchId, cellId: selectedCell?.id ?? 0 },
+    { enabled: Boolean(selectedCell?.id) }
+  );
   const createCell = trpc.cells.create.useMutation({
     onSuccess: () => {
       toast.success("Célula criada com sucesso!");
@@ -167,7 +173,13 @@ export default function Celulas() {
           ) : (
             <div className="space-y-3 animate-stagger">
               {(cells ?? []).map((cell) => (
-                <div key={cell.id} className="card-sacred p-4 flex items-center gap-4">
+                <button
+                  key={cell.id}
+                  type="button"
+                  onClick={() => setSelectedCell(cell)}
+                  className="card-sacred flex w-full items-center gap-4 p-4 text-left transition-colors hover:border-gold/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+                  aria-label={`Abrir membros da célula ${cell.name}`}
+                >
                   <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center flex-shrink-0">
                     <Globe className="w-5 h-5 text-indigo-600" />
                   </div>
@@ -192,7 +204,7 @@ export default function Celulas() {
                       No mapa
                     </span>
                   )}
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -224,6 +236,41 @@ export default function Celulas() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={Boolean(selectedCell)} onOpenChange={(nextOpen) => !nextOpen && setSelectedCell(null)}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 font-display text-navy"><Globe className="h-5 w-5 text-indigo-600" />{selectedCell?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 text-sm text-muted-foreground">
+              <p>{selectedCell?.meetingDay ? `${DAYS.find((day) => day.value === selectedCell.meetingDay)?.label} às ${selectedCell.meetingTime ?? "—"}` : "Horário ainda não definido"}</p>
+              {selectedCell?.neighborhood && <p className="mt-1">{selectedCell.neighborhood}{selectedCell.city ? ` · ${selectedCell.city}` : ""}</p>}
+            </div>
+            <div className="rounded-xl border border-border">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <span className="text-sm font-semibold text-navy">Pessoas na célula</span>
+                <Badge variant="outline">{cellMembers.data?.length ?? 0}</Badge>
+              </div>
+              {cellMembers.isLoading ? (
+                <div className="p-4 text-sm text-muted-foreground">Carregando Pessoas…</div>
+              ) : (cellMembers.data ?? []).length === 0 ? (
+                <div className="p-6 text-center text-sm text-muted-foreground">Ainda não há Pessoas vinculadas a esta célula.</div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {(cellMembers.data ?? []).map((item) => (
+                    <div key={item.membership.id} className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cream-dark text-navy"><UserRound className="h-4 w-4" /></div>
+                      <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-navy">{item.person.fullName}</p><p className="text-xs text-muted-foreground">{item.person.phone || item.person.email || "Sem contato informado"}</p></div>
+                      <span className="text-[11px] text-muted-foreground">desde {new Date(item.membership.joinedAt).toLocaleDateString("pt-BR")}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>

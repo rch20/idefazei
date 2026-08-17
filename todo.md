@@ -283,3 +283,9 @@
 - [x] Restringir escalas a Pessoas participantes ativas do Ministério correspondente
 - [x] Criar visão de liderança para pessoas sem responsável, sem célula e sem acompanhamento recente
 - [x] Cobrir a jornada com testes de integração e validar em desktop e mobile
+
+## FASE 16 – Membros por Célula
+
+- [x] Exibir ao líder as Pessoas ativas vinculadas a cada Célula
+- [x] Permitir abrir os detalhes da Célula sem perder a lista principal
+- [ ] Validar com uma sessão autenticada a experiência em desktop e mobile, salvar checkpoint

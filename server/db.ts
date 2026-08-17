@@ -516,6 +516,18 @@ export async function getCellMembersCount(churchId: number) {
     .groupBy(cellMembers.cellId);
 }
 
+export async function getActiveMembersByCell(cellId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ membership: cellMembers, person: people })
+    .from(cellMembers)
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .innerJoin(people, eq(people.id, cellMembers.personId))
+    .where(and(eq(cellMembers.cellId, cellId), eq(cellMembers.active, true), eq(cells.churchId, churchId), eq(people.churchId, churchId)))
+    .orderBy(people.fullName);
+}
+
 export async function getActiveCellMembership(personId: number, churchId: number) {
   const db = await getDb();
   if (!db) return null;
