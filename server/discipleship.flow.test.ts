@@ -20,6 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
+import { getPersonById } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ vi.mock("./db", () => ({
   getChurchBySlug: vi.fn().mockResolvedValue(null),
   createChurch: vi.fn().mockResolvedValue({ id: 100 }),
   getPeopleByChurch: vi.fn().mockResolvedValue([]),
-  getPersonById: vi.fn().mockResolvedValue(null),
+  getPersonById: vi.fn().mockResolvedValue({ id: 10, churchId: 100, fullName: "Líder Teste" }),
   createPerson: vi.fn().mockResolvedValue({ id: 1 }),
   updatePerson: vi.fn().mockResolvedValue({ id: 1 }),
   getEventsByChurch: vi.fn().mockResolvedValue([]),
@@ -212,6 +213,24 @@ describe("Fluxo completo de discipulado", () => {
           wonById: 10,
         })
       ).rejects.toThrow();
+    });
+
+    it("rejeita responsável que não pertence à igreja", async () => {
+      (getPersonById as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(
+        caller.souls.create({
+          churchId: CHURCH_ID,
+          name: "Maria Silva",
+          decisionDate: "2026-06-15",
+          origin: "culto",
+          acceptedJesus: true,
+          reconciliation: false,
+          firstVisit: false,
+          wonById: 999,
+        })
+      ).rejects.toThrow("Selecione uma pessoa válida da sua igreja.");
     });
   });
 

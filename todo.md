@@ -265,3 +265,11 @@
 - [x] Proteger o endpoint de upload de logo contra envios não autenticados e tipos de arquivo indevidos
 - [x] Implementar estado explícito para recuperação de senha na tela de login
 - [x] Substituir o upload provisório de logo em Configurações por fluxo funcional
+
+## FASE 14 – Revisão de Ganhar Almas
+
+- [x] Auditar todos os botões, filtros, ações e estados da página Ganhar Almas
+- [x] Revisar e aprimorar o modal de cadastro de nova alma, incluindo validações e feedbacks
+- [x] Ajustar responsividade, acessibilidade e fluxo mobile da página Ganhar Almas
+- [x] Validar com testes, screenshots e checkpoint
+- [x] Corrigir a rota direta `/app/ganhar-almas` para evitar página 404

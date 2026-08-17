@@ -105,6 +105,12 @@ function Router() {
         </AppPage>
       </Route>
 
+      <Route path="/app/ganhar-almas">
+        <AppPage title="Ganhar Almas">
+          <GanharAlmas />
+        </AppPage>
+      </Route>
+
       <Route path="/app/consolidacao">
         <AppPage title="Consolidação">
           <Consolidacao />

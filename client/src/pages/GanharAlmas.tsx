@@ -1,14 +1,14 @@
 import { useChurch } from "@/components/ChurchLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { Flame, Plus, Search } from "lucide-react";
-import { useState } from "react";
+import { CalendarDays, Flame, Plus, Search, Users } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 const ORIGINS = [
@@ -16,265 +16,282 @@ const ORIGINS = [
   { value: "evangelismo", label: "Evangelismo" },
   { value: "celula", label: "Célula" },
   { value: "evento", label: "Evento" },
-  { value: "redes_sociais", label: "Redes Sociais" },
+  { value: "redes_sociais", label: "Redes sociais" },
   { value: "indicacao", label: "Indicação" },
-];
+] as const;
+
+type Origin = (typeof ORIGINS)[number]["value"];
 
 const STATUS_MAP = {
-  nova_alma: { label: "Nova Alma", class: "badge-nova-alma" },
-  em_consolidacao: { label: "Em Consolidação", class: "badge-consolidacao" },
+  nova_alma: { label: "Nova alma", class: "badge-nova-alma" },
+  em_consolidacao: { label: "Em consolidação", class: "badge-consolidacao" },
   consolidado: { label: "Consolidado", class: "badge-celula" },
-};
+} as const;
+
+function createInitialForm() {
+  return {
+    name: "",
+    phone: "",
+    address: "",
+    decisionDate: new Date().toISOString().slice(0, 10),
+    origin: "culto" as Origin,
+    acceptedJesus: true,
+    reconciliation: false,
+    firstVisit: false,
+    wonById: "",
+    notes: "",
+  };
+}
 
 export default function GanharAlmas() {
   const { churchId } = useChurch();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [form, setForm] = useState({
-    name: "",
-    phone: "",
-    address: "",
-    decisionDate: new Date().toISOString().split("T")[0],
-    origin: "culto" as const,
-    acceptedJesus: true,
-    reconciliation: false,
-    firstVisit: false,
-    wonById: 1,
-    notes: "",
-  });
+  const [form, setForm] = useState(createInitialForm);
+  const [formError, setFormError] = useState("");
 
-  const { data: souls, isLoading, refetch } = trpc.souls.list.useQuery({ churchId });
-  const createSoul = trpc.souls.create.useMutation({
-    onSuccess: () => {
-      toast.success("Nova alma registrada com sucesso!");
-      setOpen(false);
-      setForm({ ...form, name: "", phone: "", address: "", notes: "" });
-      refetch();
-    },
-    onError: () => toast.error("Erro ao registrar nova alma"),
-  });
-
-  const filtered = (souls ?? []).filter(
-    (s) =>
-      !search ||
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.phone?.includes(search)
+  const soulsQuery = trpc.souls.list.useQuery(
+    { churchId: churchId! },
+    { enabled: Boolean(churchId) }
+  );
+  const peopleQuery = trpc.people.list.useQuery(
+    { churchId: churchId! },
+    { enabled: Boolean(churchId) }
   );
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    createSoul.mutate({ churchId, ...form });
+  const souls = soulsQuery.data ?? [];
+  const people = peopleQuery.data ?? [];
+  const filteredSouls = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("pt-BR");
+    if (!query) return souls;
+    return souls.filter((soul) =>
+      soul.name.toLocaleLowerCase("pt-BR").includes(query) || soul.phone?.includes(search.trim())
+    );
+  }, [search, souls]);
+
+  const createSoul = trpc.souls.create.useMutation({
+    onSuccess: async () => {
+      setOpen(false);
+      setForm(createInitialForm());
+      setFormError("");
+      await soulsQuery.refetch();
+      toast.success("Nova alma registrada e pronta para consolidação.");
+    },
+    onError: (error) => setFormError(error.message || "Não foi possível registrar a nova alma."),
+  });
+
+  function openNewSoulDialog() {
+    setForm(createInitialForm());
+    setFormError("");
+    setOpen(true);
   }
 
+  function closeDialog() {
+    if (createSoul.isPending) return;
+    setOpen(false);
+    setFormError("");
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError("");
+    const name = form.name.trim();
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (!churchId) {
+      setFormError("Não foi possível identificar a igreja ativa. Entre novamente e tente outra vez.");
+      return;
+    }
+    if (name.length < 2) {
+      setFormError("Informe o nome completo da nova alma.");
+      return;
+    }
+    if (form.decisionDate > today) {
+      setFormError("A data da decisão não pode estar no futuro.");
+      return;
+    }
+    if (!form.wonById) {
+      setFormError("Selecione quem ganhou esta alma para Cristo.");
+      return;
+    }
+
+    createSoul.mutate({
+      churchId,
+      name,
+      phone: form.phone.trim() || undefined,
+      address: form.address.trim() || undefined,
+      decisionDate: form.decisionDate,
+      origin: form.origin,
+      acceptedJesus: form.acceptedJesus,
+      reconciliation: form.reconciliation,
+      firstVisit: form.firstVisit,
+      wonById: Number(form.wonById),
+      notes: form.notes.trim() || undefined,
+    });
+  }
+
+  const stats = (["nova_alma", "em_consolidacao", "consolidado"] as const).map((status) => ({
+    status,
+    count: souls.filter((soul) => soul.status === status).length,
+    ...STATUS_MAP[status],
+  }));
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <section className="space-y-5 md:space-y-6" aria-labelledby="ganhar-almas-title">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-display text-navy">Ganhar Almas</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Registre novas conversões e decisões
-          </p>
+          <h1 id="ganhar-almas-title" className="text-2xl font-bold font-display text-navy">Ganhar Almas</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Registre decisões de fé e inicie o acompanhamento com clareza.</p>
         </div>
-        <Button onClick={() => setOpen(true)} className="bg-navy hover:bg-navy-light text-white gap-2">
-          <Plus className="w-4 h-4" />
-          Nova Alma
+        <Button onClick={openNewSoulDialog} className="w-full bg-navy text-white hover:bg-navy-light sm:w-auto">
+          <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
+          Nova alma
         </Button>
-      </div>
+      </header>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        {(["nova_alma", "em_consolidacao", "consolidado"] as const).map((status) => {
-          const count = (souls ?? []).filter((s) => s.status === status).length;
-          const cfg = STATUS_MAP[status];
-          return (
-            <div key={status} className="metric-card">
-              <p className="text-2xl font-bold font-display text-navy">{count}</p>
-              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${cfg.class}`}>
-                {cfg.label}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar por nome ou telefone..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
-
-      {/* List */}
-      {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-20 bg-muted rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="card-sacred p-12 flex flex-col items-center gap-3 text-center">
-          <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center">
-            <Flame className="w-7 h-7 text-amber-500" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4" aria-label="Resumo das novas almas">
+        {stats.map(({ status, count, label, class: className }) => (
+          <div key={status} className="metric-card flex items-center justify-between gap-3 sm:block">
+            <p className="text-2xl font-bold font-display text-navy">{count}</p>
+            <Badge variant="outline" className={`font-medium ${className}`}>{label}</Badge>
           </div>
-          <p className="font-semibold text-navy">Nenhuma alma registrada</p>
-          <p className="text-sm text-muted-foreground">
-            Comece registrando a primeira decisão de fé
-          </p>
+        ))}
+      </div>
+
+      <div className="relative">
+        <Label htmlFor="soul-search" className="sr-only">Buscar nova alma</Label>
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input
+          id="soul-search"
+          placeholder="Buscar por nome ou telefone"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className="pl-9 pr-24"
+          aria-describedby="soul-search-result"
+        />
+        {search && (
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSearch("")} className="absolute right-1 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+            Limpar
+          </Button>
+        )}
+      </div>
+      <p id="soul-search-result" className="sr-only" aria-live="polite">{filteredSouls.length} registros encontrados.</p>
+
+      {soulsQuery.isLoading ? (
+        <div className="space-y-3" aria-label="Carregando novas almas">
+          {[1, 2, 3].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-muted" />)}
+        </div>
+      ) : soulsQuery.isError ? (
+        <div className="card-sacred flex flex-col items-center gap-3 p-8 text-center">
+          <p className="font-semibold text-navy">Não foi possível carregar as novas almas.</p>
+          <Button type="button" variant="outline" onClick={() => soulsQuery.refetch()}>Tentar novamente</Button>
+        </div>
+      ) : filteredSouls.length === 0 ? (
+        <div className="card-sacred flex flex-col items-center gap-3 p-8 text-center sm:p-12">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50"><Flame className="h-7 w-7 text-amber-500" aria-hidden="true" /></div>
+          <p className="font-semibold text-navy">{search ? "Nenhuma alma encontrada" : "Nenhuma alma registrada"}</p>
+          <p className="max-w-sm text-sm text-muted-foreground">{search ? "Ajuste sua busca ou limpe o filtro para ver todos os registros." : "Comece registrando a primeira decisão de fé."}</p>
+          {search ? <Button type="button" variant="outline" onClick={() => setSearch("")}>Limpar busca</Button> : <Button type="button" onClick={openNewSoulDialog} className="bg-navy text-white">Registrar nova alma</Button>}
         </div>
       ) : (
         <div className="space-y-3 animate-stagger">
-          {filtered.map((soul) => {
-            const cfg = STATUS_MAP[soul.status];
+          {filteredSouls.map((soul) => {
+            const status = STATUS_MAP[soul.status];
+            const origin = ORIGINS.find((item) => item.value === soul.origin)?.label ?? soul.origin;
             return (
-              <div key={soul.id} className="card-sacred p-4 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center flex-shrink-0">
-                  <Flame className="w-5 h-5 text-amber-500" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-navy">{soul.name}</p>
-                  <div className="flex items-center gap-3 mt-0.5">
-                    {soul.phone && (
-                      <span className="text-xs text-muted-foreground">{soul.phone}</span>
-                    )}
-                    <span className="text-xs text-muted-foreground">
-                      {ORIGINS.find((o) => o.value === soul.origin)?.label}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(soul.decisionDate).toLocaleDateString("pt-BR")}
-                    </span>
+              <article key={soul.id} className="card-sacred flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-50"><Flame className="h-5 w-5 text-amber-500" aria-hidden="true" /></div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold text-navy">{soul.name}</p>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {soul.phone && <span>{soul.phone}</span>}
+                    <span>{origin}</span>
+                    <span className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" aria-hidden="true" />{new Date(soul.decisionDate).toLocaleDateString("pt-BR")}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {soul.acceptedJesus && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 font-medium">
-                      Aceitou Jesus
-                    </span>
-                  )}
-                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${cfg.class}`}>
-                    {cfg.label}
-                  </span>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  {soul.acceptedJesus && <Badge className="border border-green-200 bg-green-50 text-green-700 hover:bg-green-50">Aceitou Jesus</Badge>}
+                  <Badge variant="outline" className={status.class}>{status.label}</Badge>
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
       )}
 
-      {/* Dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
+      <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? setOpen(true) : closeDialog())}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto rounded-xl p-5 sm:max-w-xl sm:p-6">
           <DialogHeader>
-            <DialogTitle className="font-display text-navy flex items-center gap-2">
-              <Flame className="w-5 h-5 text-amber-500" />
-              Registrar Nova Alma
-            </DialogTitle>
+            <DialogTitle className="flex items-center gap-2 font-display text-navy"><Flame className="h-5 w-5 text-amber-500" aria-hidden="true" />Registrar nova alma</DialogTitle>
+            <DialogDescription>Registre as informações essenciais para iniciar o cuidado e a consolidação.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <Label>Nome *</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Nome completo"
-                  required
-                />
+
+          {peopleQuery.isLoading ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">Carregando pessoas da igreja…</div>
+          ) : peopleQuery.isError ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Não foi possível carregar as pessoas da igreja. Feche e tente novamente.</div>
+          ) : people.length === 0 ? (
+            <div className="rounded-lg border border-gold/30 bg-gold/5 p-4 text-sm text-muted-foreground">
+              <div className="mb-1 flex items-center gap-2 font-medium text-navy"><Users className="h-4 w-4" aria-hidden="true" />Cadastre uma pessoa antes</div>
+              A nova alma precisa ser vinculada à pessoa que a ganhou. Cadastre essa pessoa no módulo Pessoas e retorne aqui.
+              <a href="/app/pessoas" className="mt-3 inline-flex font-medium text-navy underline underline-offset-4">Ir para Pessoas</a>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+              {formError && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</div>}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Label htmlFor="soul-name">Nome completo *</Label>
+                  <Input id="soul-name" autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Nome da pessoa" className="mt-1" />
+                </div>
+                <div>
+                  <Label htmlFor="soul-phone">Telefone</Label>
+                  <Input id="soul-phone" inputMode="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="(00) 00000-0000" className="mt-1" />
+                </div>
+                <div>
+                  <Label htmlFor="soul-decision-date">Data da decisão *</Label>
+                  <Input id="soul-decision-date" type="date" max={new Date().toISOString().slice(0, 10)} value={form.decisionDate} onChange={(event) => setForm({ ...form, decisionDate: event.target.value })} className="mt-1" />
+                </div>
+                <div>
+                  <Label htmlFor="soul-origin">Origem *</Label>
+                  <Select value={form.origin} onValueChange={(value) => setForm({ ...form, origin: value as Origin })}>
+                    <SelectTrigger id="soul-origin" className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>{ORIGINS.map((origin) => <SelectItem key={origin.value} value={origin.value}>{origin.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="soul-winner">Quem ganhou? *</Label>
+                  <Select value={form.wonById} onValueChange={(value) => setForm({ ...form, wonById: value })}>
+                    <SelectTrigger id="soul-winner" className="mt-1"><SelectValue placeholder="Selecione uma pessoa" /></SelectTrigger>
+                    <SelectContent>{people.map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="sm:col-span-2">
+                  <Label htmlFor="soul-address">Endereço</Label>
+                  <Input id="soul-address" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="Rua, número e bairro" className="mt-1" />
+                </div>
               </div>
+
+              <fieldset className="space-y-3 rounded-lg border border-border p-3">
+                <legend className="px-1 text-sm font-semibold text-navy">Informações da decisão</legend>
+                <label className="flex min-h-7 items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={form.acceptedJesus} onChange={(event) => setForm({ ...form, acceptedJesus: event.target.checked })} className="h-4 w-4 accent-navy" />Aceitou Jesus</label>
+                <label className="flex min-h-7 items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={form.reconciliation} onChange={(event) => setForm({ ...form, reconciliation: event.target.checked })} className="h-4 w-4 accent-navy" />Reconciliação</label>
+                <label className="flex min-h-7 items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={form.firstVisit} onChange={(event) => setForm({ ...form, firstVisit: event.target.checked })} className="h-4 w-4 accent-navy" />Primeira visita</label>
+              </fieldset>
+
               <div>
-                <Label>Telefone</Label>
-                <Input
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="(00) 00000-0000"
-                />
+                <Label htmlFor="soul-notes">Observações</Label>
+                <Textarea id="soul-notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Informações que ajudem no primeiro contato" rows={3} className="mt-1" />
               </div>
-              <div>
-                <Label>Data da Decisão *</Label>
-                <Input
-                  type="date"
-                  value={form.decisionDate}
-                  onChange={(e) => setForm({ ...form, decisionDate: e.target.value })}
-                  required
-                />
-              </div>
-              <div className="col-span-2">
-                <Label>Origem *</Label>
-                <Select
-                  value={form.origin}
-                  onValueChange={(v) => setForm({ ...form, origin: v as any })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ORIGINS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-2">
-                <Label>Endereço</Label>
-                <Input
-                  value={form.address}
-                  onChange={(e) => setForm({ ...form, address: e.target.value })}
-                  placeholder="Rua, número, bairro"
-                />
-              </div>
-            </div>
 
-            {/* Checkboxes */}
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Informações da Decisão</Label>
-              {[
-                { key: "acceptedJesus", label: "Aceitou Jesus?" },
-                { key: "reconciliation", label: "Reconciliação?" },
-                { key: "firstVisit", label: "Primeira visita?" },
-              ].map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={(form as any)[key]}
-                    onChange={(e) => setForm({ ...form, [key]: e.target.checked })}
-                    className="w-4 h-4 accent-navy"
-                  />
-                  <span className="text-sm text-foreground">{label}</span>
-                </label>
-              ))}
-            </div>
-
-            <div>
-              <Label>Observações</Label>
-              <Textarea
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                placeholder="Observações sobre a decisão..."
-                rows={3}
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">
-                Cancelar
-              </Button>
-              <Button
-                type="submit"
-                className="flex-1 bg-navy hover:bg-navy-light text-white"
-                disabled={createSoul.isPending}
-              >
-                {createSoul.isPending ? "Salvando..." : "Registrar"}
-              </Button>
-            </div>
-          </form>
+              <div className="sticky bottom-0 -mx-5 flex flex-col-reverse gap-2 border-t border-border bg-background px-5 pt-4 sm:-mx-6 sm:flex-row sm:justify-end sm:px-6">
+                <Button type="button" variant="outline" onClick={closeDialog} disabled={createSoul.isPending}>Cancelar</Button>
+                <Button type="submit" className="bg-navy text-white hover:bg-navy-light" disabled={createSoul.isPending}>{createSoul.isPending ? "Registrando…" : "Registrar nova alma"}</Button>
+              </div>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
-    </div>
+    </section>
   );
 }

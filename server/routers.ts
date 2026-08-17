@@ -318,6 +318,10 @@ const soulsRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
+      const winner = await getPersonById(input.wonById, input.churchId);
+      if (!winner) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma pessoa válida da sua igreja." });
+      }
       return createSoul(input as any);
     }),
 
