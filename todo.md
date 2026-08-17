@@ -234,3 +234,34 @@
 - [x] Frontend: página /faturamento com histórico de pagamentos e portal
 - [x] Integrar restrições de plano (ex: Básico = 1 célula, Pro = ilimitado) — validação no backend via stripe.getSubscription
 - [x] Testes e checkpoint final — 20 testes passando, 0 erros TypeScript
+
+## FASE 12 – Correção de Acesso ao Dashboard do Tenant
+
+- [x] Diagnosticar e corrigir o fluxo de cadastro, login e redirecionamento ao Dashboard do tenant
+- [x] Validar acesso ao Dashboard com sessão JWT, redirecionamento ao login e preservação do isolamento multi-tenant
+- [ ] Validar no navegador o fluxo completo: login de igreja → Dashboard carregado sem erros → queries protegidas autenticadas por JWT
+- [x] Adicionar teste de integração de churchAuth.login seguido de chamada protegida com o JWT do tenant
+
+## FASE 13 – Auditoria Integral de Qualidade e Experiência
+
+- [x] Mapear todos os fluxos críticos, rotas, botões, formulários e modais da plataforma
+- [x] Auditar autenticação, sessões JWT, permissões e isolamento multi-tenant
+- [x] Auditar validações, estados de carregamento, erros e feedback de ações
+- [x] Validar acessibilidade final: foco visível global, teclado, labels e contraste dos fluxos principais
+- [x] Eliminar a última ação provisória dos placeholders de Radar e Árvore de Discipulado
+- [x] Ampliar testes automatizados para os fluxos corrigidos e validar sem regressões
+- [x] Salvar checkpoint e documentar as melhorias aplicadas
+
+### Achados críticos priorizados
+
+- [x] Proteger endpoints Super Admin com sessão JWT administrativa e remover exposição pública de métricas, igrejas e aprovações
+- [x] Restringir a criação de usuários de igreja para impedir cadastro arbitrário em qualquer tenant
+- [x] Proteger a consulta de leads do Portal do Visitante por vínculo de igreja
+- [x] Corrigir Onboarding: contexto autenticado, rota final `/app/dashboard` e remoção de líder fixo
+- [x] Alinhar checkout público de planos com a sessão JWT da igreja
+- [x] Remover layouts aninhados e substituir todas as ações sem efeito por fluxos úteis ou estados explícitos
+- [x] Implementar modais funcionais para criar escala e cadastrar material na Biblioteca
+- [x] Fazer aprovação, rejeição e suspensão alterarem efetivamente o estado de acesso da igreja
+- [x] Proteger o endpoint de upload de logo contra envios não autenticados e tipos de arquivo indevidos
+- [x] Implementar estado explícito para recuperação de senha na tela de login
+- [x] Substituir o upload provisório de logo em Configurações por fluxo funcional

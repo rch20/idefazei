@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   loginChurchUser,
   loginSuperAdmin,
@@ -24,6 +24,7 @@ import {
   getChurchById,
   getChurchBySlug,
   getChurchMemberByUserId,
+  getActiveChurchUserById,
   getChurchMembersByChurch,
   getConsolidationsByChurch,
   getDashboardStats,
@@ -96,8 +97,26 @@ import { generateReportHTML, htmlToBase64 } from "./reports";
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
 async function requireChurchMember(userId: number, churchId: number) {
+  if (userId < 0) {
+    const churchUser = await getActiveChurchUserById(Math.abs(userId));
+    if (!churchUser || churchUser.churchId !== churchId) {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Acesso negado a esta igreja" });
+    }
+    return churchUser;
+  }
+
   const member = await getChurchMemberByUserId(userId, churchId);
-  if (!member) throw new TRPCError({ code: "FORBIDDEN", message: "Acesso negado a esta igreja" });
+if (!member) throw new TRPCError({ code: "FORBIDDEN", message: "Acesso negado a esta igreja" });
+return member;
+}
+
+const CHURCH_ADMIN_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario"]);
+
+async function requireChurchAdministrator(userId: number, churchId: number) {
+  const member = await requireChurchMember(userId, churchId);
+  if (!CHURCH_ADMIN_ROLES.has(member.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Seu perfil não tem permissão para esta ação" });
+  }
   return member;
 }
 
@@ -163,7 +182,7 @@ const churchRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const { id, ...data } = input;
-      await requireChurchMember(ctx.user.id, id);
+      await requireChurchAdministrator(ctx.user.id, id);
       return updateChurch(id, data);
     }),
 });
@@ -711,7 +730,7 @@ const churchAuthRouter = router({
       return result;
     }),
 
-  register: publicProcedure
+  register: protectedProcedure
     .input(z.object({
       churchId: z.number(),
       name: z.string().min(2),
@@ -719,7 +738,8 @@ const churchAuthRouter = router({
       password: z.string().min(6),
       role: z.enum(["pastor_presidente","pastor_local","supervisor","lider","consolidador","diacono","secretario","tesoureiro","membro"]).optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
       const user = await createChurchUser({
         churchId: input.churchId,
         name: input.name,
@@ -742,10 +762,9 @@ const adminAuthRouter = router({
       return result;
     }),
 
-  seed: publicProcedure
-    .input(z.object({ name: z.string(), email: z.string().email(), password: z.string().min(8), secret: z.string() }))
+  seed: adminProcedure
+    .input(z.object({ name: z.string(), email: z.string().email(), password: z.string().min(8) }))
     .mutation(async ({ input }) => {
-      if (input.secret !== "lampas-super-admin-2025") throw new TRPCError({ code: "FORBIDDEN" });
       await createSuperAdmin(input.name, input.email, input.password);
       return { success: true };
     }),
@@ -754,13 +773,13 @@ const adminAuthRouter = router({
 // ─── SUPER ADMIN ROUTER ───────────────────────────────────────────────────────
 
 const superAdminRouter = router({
-  stats: publicProcedure.query(() => getGlobalStats()),
+  stats: adminProcedure.query(() => getGlobalStats()),
 
-  churches: publicProcedure.query(() => getAllChurchesAdmin()),
+  churches: adminProcedure.query(() => getAllChurchesAdmin()),
 
-  pendingRegistrations: publicProcedure.query(() => getPendingRegistrations()),
+  pendingRegistrations: adminProcedure.query(() => getPendingRegistrations()),
 
-  reviewRegistration: publicProcedure
+  reviewRegistration: adminProcedure
     .input(z.object({
       id: z.number(),
       status: z.enum(["approved", "rejected", "suspended"]),
@@ -789,9 +808,10 @@ const visitorRouter = router({
       return createVisitorLead({ ...input, churchId: church.id });
     }),
 
-  getLeads: publicProcedure
+  getLeads: protectedProcedure
     .input(z.object({ churchId: z.number() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
       return getVisitorLeadsByChurch(input.churchId);
     }),
 });
@@ -820,6 +840,7 @@ const registerRouter = router({
         state: input.state,
         phone: input.phone,
         email: input.email,
+        active: false,
       });
       if (!church?.id) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Erro ao criar a igreja" });
 
@@ -843,7 +864,7 @@ const inviteRouter = router({
   create: protectedProcedure
     .input(z.object({ churchId: z.number(), email: z.string().email(), name: z.string().min(1), role: z.enum(["pastor_presidente","pastor_local","supervisor","lider","consolidador","diacono","secretario","tesoureiro","membro"]) }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
       const tempPassword = Math.random().toString(36).slice(-8);
       const { createChurchUser } = await import("./auth");
       const user = await createChurchUser({ churchId: input.churchId, name: input.name, email: input.email, password: tempPassword, role: input.role });
@@ -1357,7 +1378,7 @@ const certificatesRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const { churches: churchesTable } = await import("../drizzle/schema");
@@ -1471,16 +1492,16 @@ const stripeRouter = router({
     }),
 
   // Cria uma sessão de checkout Stripe
-  createCheckoutSession: protectedProcedure
-    .input(z.object({
-      churchId: z.number(),
-      plan: z.enum(["basic", "pro", "enterprise"]),
-      interval: z.enum(["month", "year"]).default("month"),
-      origin: z.string(),
-    }))
-    .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      const church = await getChurchById(input.churchId);
+ createCheckoutSession: protectedProcedure
+   .input(z.object({
+     churchId: z.number(),
+     plan: z.enum(["basic", "pro", "enterprise"]),
+     interval: z.enum(["month", "year"]).default("month"),
+     origin: z.string(),
+   }))
+   .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+     const church = await getChurchById(input.churchId);
       if (!church) throw new TRPCError({ code: "NOT_FOUND", message: "Igreja não encontrada" });
 
       const Stripe = (await import("stripe")).default;
@@ -1523,14 +1544,14 @@ const stripeRouter = router({
     }),
 
   // Cria uma sessão do portal de faturamento Stripe
-  createPortalSession: protectedProcedure
-    .input(z.object({
-      churchId: z.number(),
-      origin: z.string(),
-    }))
-    .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      const church = await getChurchById(input.churchId);
+ createPortalSession: protectedProcedure
+   .input(z.object({
+     churchId: z.number(),
+     origin: z.string(),
+   }))
+   .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+     const church = await getChurchById(input.churchId);
       if (!church?.stripeCustomerId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhuma assinatura ativa encontrada" });
       }

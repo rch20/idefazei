@@ -1,8 +1,10 @@
 import { useState } from "react";
-import ChurchLayout, { useChurch } from "@/components/ChurchLayout";
+import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { BookOpen, FileText, Video, Music, Search, ExternalLink } from "lucide-react";
@@ -27,14 +29,39 @@ export default function Biblioteca() {
   const { churchId } = useChurch();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("Todos");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState<{ title: string; type: "pdf" | "video" | "apostila" | "devocional"; fileUrl: string; description: string }>({ title: "", type: "pdf", fileUrl: "", description: "" });
 
-  const { data: items = [], isLoading } = trpc.library.list.useQuery(
+  const { data: items = [], isLoading, refetch } = trpc.library.list.useQuery(
     { churchId: churchId!, search: search || undefined, type: category !== "Todos" ? category : undefined },
     { enabled: !!churchId }
   );
+  const createMutation = trpc.library.create.useMutation({
+    onSuccess: () => {
+      toast.success("Material adicionado à biblioteca!");
+      setCreateOpen(false);
+      setForm({ title: "", type: "pdf", fileUrl: "", description: "" });
+      refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  function handleCreate(event: React.FormEvent) {
+    event.preventDefault();
+    if (!churchId || !form.title.trim()) {
+      toast.error("Informe o título do material.");
+      return;
+    }
+    createMutation.mutate({
+      churchId,
+      title: form.title.trim(),
+      type: form.type,
+      fileUrl: form.fileUrl.trim() || undefined,
+      description: form.description.trim() || undefined,
+    });
+  }
 
   return (
-    <ChurchLayout>
       <div className="p-6 max-w-5xl mx-auto animate-fade-in-up">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
@@ -42,12 +69,43 @@ export default function Biblioteca() {
             <h1 className="text-2xl font-display font-bold text-navy">Biblioteca Digital</h1>
             <p className="text-sm text-muted-foreground mt-1">Recursos, estudos e materiais da sua igreja</p>
           </div>
-          <Button
-            className="bg-navy text-white hover:bg-navy-light gap-2"
-            onClick={() => toast.info("Upload de material em breve!")}
-          >
-            + Adicionar Material
-          </Button>
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-navy text-white hover:bg-navy-light gap-2">+ Adicionar Material</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="font-display text-navy">Adicionar Material</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleCreate} className="space-y-4 pt-2">
+                <div>
+                  <Label htmlFor="library-title">Título *</Label>
+                  <Input id="library-title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Ex.: Guia de Discipulado" className="mt-1" />
+                </div>
+                <div>
+                  <Label htmlFor="library-type">Tipo *</Label>
+                  <select id="library-type" value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as typeof form.type })} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="pdf">PDF</option>
+                    <option value="video">Vídeo</option>
+                    <option value="apostila">Apostila</option>
+                    <option value="devocional">Devocional</option>
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="library-url">Link do material</Label>
+                  <Input id="library-url" type="url" value={form.fileUrl} onChange={(event) => setForm({ ...form, fileUrl: event.target.value })} placeholder="https://..." className="mt-1" />
+                </div>
+                <div>
+                  <Label htmlFor="library-description">Descrição</Label>
+                  <Input id="library-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Resumo do conteúdo" className="mt-1" />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+                  <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>{createMutation.isPending ? "Salvando..." : "Adicionar"}</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Search & Filter */}
@@ -67,6 +125,8 @@ export default function Biblioteca() {
         <div className="flex gap-2 mb-5 flex-wrap">
           {CATEGORIES.map((cat) => (
             <button
+              type="button"
+              aria-pressed={category === cat}
               key={cat}
               onClick={() => setCategory(cat)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
@@ -143,6 +203,5 @@ export default function Biblioteca() {
           </div>
         )}
       </div>
-    </ChurchLayout>
   );
 }

@@ -6,10 +6,12 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { clearChurchSession } from "@/hooks/useChurchAuth";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -33,6 +35,8 @@ const ROLE_LABELS: Record<string, string> = {
 export default function LoginIgreja() {
   const [, navigate] = useLocation();
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
 
   const { register, handleSubmit, formState: { errors } } = useForm<LoginData>({
     resolver: zodResolver(loginSchema),
@@ -41,8 +45,11 @@ export default function LoginIgreja() {
   const loginMutation = trpc.churchAuth.login.useMutation({
     onSuccess: (data: { token: string; user: { id: number; name: string | null; role: string; churchId: number } }) => {
       // Armazena o token JWT no localStorage
-      localStorage.setItem("church_token", data.token);
-      localStorage.setItem("church_user", JSON.stringify(data.user));
+      localStorage.removeItem("admin_token");
+      clearChurchSession();
+      const storage = rememberMe ? localStorage : sessionStorage;
+      storage.setItem("church_token", data.token);
+      storage.setItem("church_user", JSON.stringify(data.user));
       toast.success(`Bem-vindo(a), ${data.user.name ?? ""}!`);
       // Redirecionamento automático por perfil
       const role = data.user.role;
@@ -138,6 +145,7 @@ export default function LoginIgreja() {
                     />
                     <button
                       type="button"
+                      aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1e3a5f]/40 hover:text-[#1e3a5f] transition-colors"
                       onClick={() => setShowPassword(!showPassword)}
                     >
@@ -149,12 +157,27 @@ export default function LoginIgreja() {
 
                 <div className="flex items-center justify-between text-sm">
                   <label className="flex items-center gap-2 text-[#1e3a5f]/60 cursor-pointer">
-                    <input type="checkbox" className="rounded border-[#c9a84c]/30" />
+                    <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} className="rounded border-[#c9a84c]/30" />
                     Lembrar-me
                   </label>
-                  <button type="button" className="text-[#c9a84c] hover:text-[#b8943e] transition-colors">
-                    Esqueci a senha
-                  </button>
+                  <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
+                    <DialogTrigger asChild>
+                      <button type="button" className="text-[#c9a84c] hover:text-[#b8943e] transition-colors">
+                        Esqueci a senha
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle className="font-display text-navy">Recuperação de senha</DialogTitle>
+                        <DialogDescription>
+                          Para proteger os dados da igreja, a redefinição de senha é feita pelo Pastor Presidente ou administrador responsável. Entre em contato com a liderança da sua igreja para receber uma nova senha de acesso.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="flex justify-end pt-2">
+                        <Button type="button" className="bg-navy text-white" onClick={() => setForgotPasswordOpen(false)}>Entendi</Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
 
                 <Button

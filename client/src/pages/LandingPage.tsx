@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Users, MapPin, BarChart3, Bell, BookOpen, Heart,
-  ChevronRight, Star, CheckCircle2, ArrowRight, Menu, X,
+  ChevronRight, CheckCircle2, ArrowRight, Menu, X,
   Layers, GitBranch, Globe, Shield, Zap, Phone
 } from "lucide-react";
 
@@ -305,28 +305,24 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* DEPOIMENTOS */}
+      {/* PRINCÍPIOS DA PLATAFORMA */}
       <section className="py-24 px-4">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-12">
-            <h2 className="font-serif text-4xl font-bold text-[#1e3a5f] mb-4">O que dizem os pastores</h2>
+            <h2 className="font-serif text-4xl font-bold text-[#1e3a5f] mb-4">Feita para o cuidado ministerial</h2>
+            <p className="text-[#1e3a5f]/60 max-w-2xl mx-auto">Uma base organizada para acompanhar pessoas, fortalecer líderes e multiplicar comunidades com responsabilidade.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              { name: "Pr. Ricardo Alves", church: "Igreja Viver, São Paulo", text: "O Funil de Discipulado transformou nossa forma de acompanhar os membros. Conseguimos visualizar claramente onde cada pessoa está na jornada espiritual." },
-              { name: "Pr. Marcos Ferreira", church: "Comunidade Luz, Curitiba", text: "O Radar Espiritual nos ajudou a identificar membros em risco antes que se afastassem. Uma ferramenta indispensável para o cuidado pastoral." },
-              { name: "Pra. Ana Costa", church: "Igreja Renova, Fortaleza", text: "A gestão de células ficou muito mais eficiente. O mapa geográfico nos mostrou áreas da cidade sem cobertura e planejamos a expansão com precisão." },
-            ].map((t, i) => (
-              <Card key={i} className="bg-white/60 border-[#c9a84c]/20">
+              { title: "Jornada visível", text: "Organize cada etapa do discipulado, da nova alma à multiplicação, em uma visão única e acompanhável." },
+              { title: "Cuidado proativo", text: "Use indicadores, consolidação e células para identificar necessidades de acompanhamento no momento certo." },
+              { title: "Gestão responsável", text: "Mantenha informações da igreja protegidas por tenant, com perfis de acesso e processos claros." },
+            ].map((item) => (
+              <Card key={item.title} className="bg-white/60 border-[#c9a84c]/20">
                 <CardContent className="p-6">
-                  <div className="flex gap-1 mb-4">
-                    {[...Array(5)].map((_, j) => <Star key={j} size={14} className="text-[#c9a84c] fill-[#c9a84c]" />)}
-                  </div>
-                  <p className="text-[#1e3a5f]/70 text-sm italic leading-relaxed mb-4">"{t.text}"</p>
-                  <div>
-                    <div className="font-semibold text-[#1e3a5f] text-sm">{t.name}</div>
-                    <div className="text-[#1e3a5f]/50 text-xs">{t.church}</div>
-                  </div>
+                  <CheckCircle2 className="w-5 h-5 text-[#c9a84c] mb-4" />
+                  <h3 className="font-semibold text-[#1e3a5f] mb-2">{item.title}</h3>
+                  <p className="text-[#1e3a5f]/70 text-sm leading-relaxed">{item.text}</p>
                 </CardContent>
               </Card>
             ))}

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import ChurchLayout, { useChurch } from "@/components/ChurchLayout";
+import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -52,7 +52,6 @@ export default function Ministerios() {
   ) ?? [];
 
   return (
-    <ChurchLayout>
       <div className="p-6 max-w-5xl mx-auto animate-fade-in-up">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
@@ -170,6 +169,5 @@ export default function Ministerios() {
           </div>
         )}
       </div>
-    </ChurchLayout>
   );
 }

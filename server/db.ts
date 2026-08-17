@@ -10,6 +10,7 @@ import {
   cells,
   churchMembers,
   churchRegistrations,
+  churchUsers,
   churches,
   communicationLogs,
   consolidations,
@@ -33,6 +34,7 @@ import {
   people,
   prayerRequests,
   scheduleItems,
+  superAdmins,
   souls,
   users,
   visitorLeads,
@@ -145,6 +147,30 @@ export async function getChurchMemberByUserId(userId: number, churchId: number) 
     .select()
     .from(churchMembers)
     .where(and(eq(churchMembers.userId, userId), eq(churchMembers.churchId, churchId)))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+/** Retorna somente um usuário próprio de igreja que continua ativo. */
+export async function getActiveChurchUserById(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(churchUsers)
+    .where(and(eq(churchUsers.id, userId), eq(churchUsers.active, true)))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+/** Retorna somente um Super Admin que continua ativo. */
+export async function getActiveSuperAdminById(adminId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(superAdmins)
+    .where(and(eq(superAdmins.id, adminId), eq(superAdmins.active, true)))
     .limit(1);
   return result[0] ?? null;
 }
@@ -697,12 +723,23 @@ export async function getPendingRegistrations() {
 export async function updateChurchRegistration(id: number, status: "approved" | "rejected" | "suspended", reason?: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  const registration = await db
+    .select({ churchId: churchRegistrations.churchId })
+    .from(churchRegistrations)
+    .where(eq(churchRegistrations.id, id))
+    .limit(1);
+  if (!registration[0]) throw new Error("Cadastro de igreja não encontrado");
+
   await db.update(churchRegistrations).set({
     status,
     reviewedAt: new Date(),
     rejectionReason: status === "rejected" ? (reason ?? null) : null,
     suspensionReason: status === "suspended" ? (reason ?? null) : null,
   }).where(eq(churchRegistrations.id, id));
+  await db
+    .update(churches)
+    .set({ active: status === "approved" })
+    .where(eq(churches.id, registration[0].churchId));
   return { success: true };
 }
 

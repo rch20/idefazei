@@ -1,7 +1,10 @@
 import { useState } from "react";
-import ChurchLayout, { useChurch } from "@/components/ChurchLayout";
+import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Calendar, Users, Clock, ChevronLeft, ChevronRight } from "lucide-react";
@@ -18,11 +21,30 @@ export default function Escalas() {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState({ ministryId: "", personId: "", scheduledDate: "", role: "" });
 
-  const { data: scales = [], isLoading } = trpc.schedules.list.useQuery(
+  const { data: scales = [], isLoading, refetch } = trpc.schedules.list.useQuery(
     { churchId: churchId!, month: currentMonth, year: currentYear },
     { enabled: !!churchId }
   );
+  const { data: ministries = [] } = trpc.ministries.list.useQuery(
+    { churchId: churchId! },
+    { enabled: !!churchId }
+  );
+  const { data: people = [] } = trpc.people.list.useQuery(
+    { churchId: churchId! },
+    { enabled: !!churchId }
+  );
+  const createMutation = trpc.schedules.create.useMutation({
+    onSuccess: () => {
+      toast.success("Escala criada com sucesso!");
+      setCreateOpen(false);
+      setForm({ ministryId: "", personId: "", scheduledDate: "", role: "" });
+      refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
 
   const firstDay = new Date(currentYear, currentMonth - 1, 1).getDay();
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
@@ -63,8 +85,22 @@ export default function Escalas() {
     })
   );
 
+  function handleCreate(event: React.FormEvent) {
+    event.preventDefault();
+    if (!churchId || !form.ministryId || !form.personId || !form.scheduledDate) {
+      toast.error("Selecione ministério, pessoa e data para criar a escala.");
+      return;
+    }
+    createMutation.mutate({
+      churchId,
+      ministryId: Number(form.ministryId),
+      personId: Number(form.personId),
+      scheduledDate: form.scheduledDate,
+      role: form.role.trim() || undefined,
+    });
+  }
+
   return (
-    <ChurchLayout>
       <div className="p-6 max-w-5xl mx-auto animate-fade-in-up">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -72,25 +108,59 @@ export default function Escalas() {
             <h1 className="text-2xl font-display font-bold text-navy">Escalas</h1>
             <p className="text-sm text-muted-foreground mt-1">Escalonamento de voluntários e ministérios</p>
           </div>
-          <Button
-            className="bg-navy text-white hover:bg-navy-light gap-2"
-            onClick={() => toast.info("Criação de escala em breve!")}
-          >
-            + Nova Escala
-          </Button>
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-navy text-white hover:bg-navy-light gap-2">+ Nova Escala</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="font-display text-navy">Criar Escala</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleCreate} className="space-y-4 pt-2">
+                <div>
+                  <Label htmlFor="schedule-ministry">Ministério *</Label>
+                  <select id="schedule-ministry" value={form.ministryId} onChange={(event) => setForm({ ...form, ministryId: event.target.value })} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="">Selecione o ministério</option>
+                    {ministries.map((ministry) => <option key={ministry.id} value={ministry.id}>{ministry.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="schedule-person">Pessoa escalada *</Label>
+                  <select id="schedule-person" value={form.personId} onChange={(event) => setForm({ ...form, personId: event.target.value })} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="">Selecione a pessoa</option>
+                    {people.map((person) => <option key={person.id} value={person.id}>{person.fullName}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label htmlFor="schedule-date">Data *</Label>
+                    <Input id="schedule-date" type="date" value={form.scheduledDate} onChange={(event) => setForm({ ...form, scheduledDate: event.target.value })} className="mt-1" />
+                  </div>
+                  <div>
+                    <Label htmlFor="schedule-role">Função</Label>
+                    <Input id="schedule-role" placeholder="Ex.: Vocal" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })} className="mt-1" />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+                  <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>{createMutation.isPending ? "Salvando..." : "Criar Escala"}</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Calendar */}
           <div className="lg:col-span-2 card-sacred p-5">
             <div className="flex items-center justify-between mb-4">
-              <button onClick={prevMonth} className="p-1 rounded hover:bg-muted transition-colors">
+              <button type="button" aria-label="Mês anterior" onClick={prevMonth} className="p-1 rounded hover:bg-muted focus:outline-none focus:ring-2 focus:ring-gold/40 transition-colors">
                 <ChevronLeft className="w-5 h-5 text-navy" />
               </button>
               <h2 className="font-display font-semibold text-navy">
                 {MONTHS[currentMonth - 1]} {currentYear}
               </h2>
-              <button onClick={nextMonth} className="p-1 rounded hover:bg-muted transition-colors">
+              <button type="button" aria-label="Próximo mês" onClick={nextMonth} className="p-1 rounded hover:bg-muted focus:outline-none focus:ring-2 focus:ring-gold/40 transition-colors">
                 <ChevronRight className="w-5 h-5 text-navy" />
               </button>
             </div>
@@ -185,6 +255,5 @@ export default function Escalas() {
           </div>
         </div>
       </div>
-    </ChurchLayout>
   );
 }

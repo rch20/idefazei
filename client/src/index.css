@@ -75,6 +75,11 @@
     background-color: oklch(97% 0.012 85);
   }
 
+  :where(a, button, input, select, textarea, [role="button"]):focus-visible {
+    outline: 3px solid oklch(72% 0.12 75 / 0.9);
+    outline-offset: 3px;
+  }
+
   h1, h2, h3 {
     font-family: "Playfair Display", Georgia, serif;
     color: oklch(22% 0.08 255);

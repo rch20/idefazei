@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { useChurch } from "@/components/ChurchLayout";
+import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -63,17 +63,24 @@ const STEPS = [
 ];
 
 export default function Onboarding() {
-  const { churchId } = useChurch();
+  const { user } = useChurchAuth();
+  const churchId = user?.churchId ?? null;
   const [, navigate] = useLocation();
   const [currentStep, setCurrentStep] = useState(0);
   const [csvRows, setCsvRows] = useState<CSVRow[]>([]);
   const [cellName, setCellName] = useState("");
+  const [leaderId, setLeaderId] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteName, setInviteName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const { data: progress, refetch } = trpc.onboarding.get.useQuery(
     { churchId: churchId! },
     { enabled: !!churchId }
+  );
+
+  const { data: people = [] } = trpc.people.list.useQuery(
+    { churchId: churchId ?? 0 },
+    { enabled: Boolean(churchId) }
   );
 
   const updateMutation = trpc.onboarding.update.useMutation({
@@ -146,10 +153,11 @@ export default function Onboarding() {
 
   function handleCreateCell() {
     if (!cellName.trim()) return toast.error("Informe o nome da célula");
+    if (!leaderId) return toast.error("Selecione o líder responsável pela célula");
     createCellMutation.mutate({
       churchId: churchId!,
       name: cellName,
-      leaderId: 1, // Resolvido pelo usuário autenticado em produção
+      leaderId: Number(leaderId),
     });
   }
 
@@ -172,7 +180,7 @@ export default function Onboarding() {
     if (currentStep < STEPS.length - 1) {
       setCurrentStep((s) => s + 1);
     } else {
-      navigate("/dashboard");
+      navigate("/app/dashboard");
     }
   }
 
@@ -324,8 +332,16 @@ export default function Onboarding() {
                   <span className="text-xs text-[#1e3a5f]/50">Preencha o modelo e faça upload</span>
                 </div>
                 <div
+                  role="button"
+                  tabIndex={0}
                   className="border-2 border-dashed border-[#1e3a5f]/20 rounded-xl p-8 text-center cursor-pointer hover:border-[#c9a84c]/50 transition-colors"
                   onClick={() => fileRef.current?.click()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      fileRef.current?.click();
+                    }
+                  }}
                 >
                   <Upload className="w-10 h-10 text-[#1e3a5f]/30 mx-auto mb-3" />
                   <p className="text-[#1e3a5f]/60 text-sm">
@@ -378,10 +394,27 @@ export default function Onboarding() {
                       className="mt-1 border-[#1e3a5f]/20 focus:border-[#c9a84c]"
                     />
                   </div>
+                  <div>
+                    <Label htmlFor="onboarding-cell-leader" className="text-[#1e3a5f]/70 text-sm">Líder responsável *</Label>
+                    <select
+                      id="onboarding-cell-leader"
+                      value={leaderId}
+                      onChange={(event) => setLeaderId(event.target.value)}
+                      className="mt-1 flex h-10 w-full rounded-md border border-[#1e3a5f]/20 bg-white px-3 py-2 text-sm text-[#1e3a5f] focus:border-[#c9a84c] focus:outline-none focus:ring-2 focus:ring-[#c9a84c]/20"
+                    >
+                      <option value="">Selecione uma pessoa cadastrada</option>
+                      {people.map((person) => (
+                        <option key={person.id} value={person.id}>{person.fullName}</option>
+                      ))}
+                    </select>
+                    {people.length === 0 && (
+                      <p className="mt-1 text-xs text-[#1e3a5f]/50">Importe ou cadastre ao menos uma pessoa antes de criar a célula.</p>
+                    )}
+                  </div>
                   <Button
                     className="w-full bg-[#1e3a5f] hover:bg-[#1e3a5f]/90 text-white"
                     onClick={handleCreateCell}
-                    disabled={createCellMutation.isPending || !cellName.trim()}
+                    disabled={createCellMutation.isPending || !cellName.trim() || !leaderId}
                   >
                     {createCellMutation.isPending ? "Criando..." : "Criar Célula"}
                   </Button>
@@ -443,7 +476,7 @@ export default function Onboarding() {
         <div className="flex items-center justify-between mt-6">
           <Button
             variant="outline"
-            onClick={() => currentStep > 0 ? setCurrentStep((s) => s - 1) : navigate("/dashboard")}
+            onClick={() => currentStep > 0 ? setCurrentStep((s) => s - 1) : navigate("/app/dashboard")}
             className="border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -461,7 +494,7 @@ export default function Onboarding() {
         {/* Skip all */}
         <p className="text-center mt-4">
           <button
-            onClick={() => navigate("/dashboard")}
+            onClick={() => navigate("/app/dashboard")}
             className="text-xs text-[#1e3a5f]/40 hover:text-[#1e3a5f]/70 underline transition-colors"
           >
             Pular configuração e ir direto ao Dashboard

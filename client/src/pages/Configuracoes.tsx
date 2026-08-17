@@ -1,5 +1,5 @@
-import { useState } from "react";
-import ChurchLayout, { useChurch } from "@/components/ChurchLayout";
+import { useEffect, useRef, useState } from "react";
+import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Building2, Palette, Users, Globe, Save, Upload } from "lucide-react";
+import { getChurchToken } from "@/hooks/useChurchAuth";
 
 const ROLES = [
   { value: "pastor_presidente", label: "Pastor Presidente" },
@@ -23,7 +24,7 @@ const ROLES = [
 
 export default function Configuracoes() {
   const { churchId } = useChurch();
-  const { data: church, isLoading } = trpc.churches.getById.useQuery(
+  const { data: church, isLoading, refetch } = trpc.churches.getById.useQuery(
     { id: churchId! },
     { enabled: !!churchId }
   );
@@ -31,6 +32,7 @@ export default function Configuracoes() {
   const [churchForm, setChurchForm] = useState({
     name: church?.name ?? "",
     slug: church?.slug ?? "",
+    logoUrl: church?.logoUrl ?? "",
     phone: church?.phone ?? "",
     whatsapp: church?.whatsapp ?? "",
     email: church?.email ?? "",
@@ -43,6 +45,28 @@ export default function Configuracoes() {
     primaryColor: church?.primaryColor ?? "#1e3a5f",
     secondaryColor: church?.secondaryColor ?? "#c9a84c",
   });
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+  useEffect(() => {
+    if (!church) return;
+    setChurchForm({
+      name: church.name ?? "",
+      slug: church.slug ?? "",
+      logoUrl: church.logoUrl ?? "",
+      phone: church.phone ?? "",
+      whatsapp: church.whatsapp ?? "",
+      email: church.email ?? "",
+      website: church.website ?? "",
+      address: church.address ?? "",
+      city: church.city ?? "",
+      state: church.state ?? "",
+      vision: church.vision ?? "",
+      mission: church.mission ?? "",
+      primaryColor: church.primaryColor ?? "#1e3a5f",
+      secondaryColor: church.secondaryColor ?? "#c9a84c",
+    });
+  }, [church]);
 
   const updateMutation = trpc.churches.update.useMutation({
     onSuccess: () => toast.success("Configurações salvas com sucesso!"),
@@ -53,18 +77,52 @@ export default function Configuracoes() {
     updateMutation.mutate({ id: churchId!, ...churchForm });
   };
 
+  async function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!new Set(["image/png", "image/jpeg", "image/webp"]).has(file.type)) {
+      toast.error("Escolha uma imagem PNG, JPEG ou WebP.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("A imagem deve ter no máximo 2 MB.");
+      return;
+    }
+    const token = getChurchToken();
+    if (!token) {
+      toast.error("Sua sessão expirou. Entre novamente para enviar a logo.");
+      return;
+    }
+    setIsUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await fetch("/api/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const result = await response.json() as { url?: string; error?: string };
+      if (!response.ok || !result.url) throw new Error(result.error ?? "Não foi possível enviar a logo.");
+      setChurchForm((current) => ({ ...current, logoUrl: result.url! }));
+      updateMutation.mutate({ id: churchId!, logoUrl: result.url }, { onSuccess: () => { refetch(); toast.success("Logo atualizada com sucesso!"); } });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar a logo.");
+    } finally {
+      setIsUploadingLogo(false);
+    }
+  }
+
   if (isLoading) {
     return (
-      <ChurchLayout>
-        <div className="p-6 flex items-center justify-center h-64">
-          <div className="animate-spin w-8 h-8 border-2 border-navy border-t-transparent rounded-full" />
-        </div>
-      </ChurchLayout>
+      <div className="p-6 flex items-center justify-center h-64">
+        <div className="animate-spin w-8 h-8 border-2 border-navy border-t-transparent rounded-full" />
+      </div>
     );
   }
 
   return (
-    <ChurchLayout>
       <div className="p-6 max-w-4xl mx-auto animate-fade-in-up">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
@@ -233,12 +291,13 @@ export default function Configuracoes() {
               {/* Logo upload */}
               <div>
                 <Label>Logo da Igreja</Label>
-                <div className="mt-2 border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer hover:border-gold/50 transition-colors">
-                  <Upload className="w-8 h-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">Arraste ou clique para enviar o logo</p>
-                  <p className="text-xs text-muted-foreground">PNG, JPG ou SVG — máx. 2MB</p>
-                  <Button variant="outline" size="sm" onClick={() => toast.info("Upload de logo em breve!")}>
-                    Selecionar Arquivo
+                <div role="button" tabIndex={0} onClick={() => logoInputRef.current?.click()} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); logoInputRef.current?.click(); } }} className="mt-2 border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer hover:border-gold/50 focus:outline-none focus:ring-2 focus:ring-gold/40 transition-colors">
+                  <input ref={logoInputRef} aria-label="Selecionar logo da igreja" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={handleLogoUpload} />
+                  {churchForm.logoUrl ? <img src={churchForm.logoUrl} alt="Logo atual da igreja" className="h-16 w-16 rounded-xl object-contain" /> : <Upload className="w-8 h-8 text-muted-foreground" />}
+                  <p className="text-sm text-muted-foreground">Clique para enviar ou substituir a logo</p>
+                  <p className="text-xs text-muted-foreground">PNG, JPG ou WebP — máx. 2 MB</p>
+                  <Button type="button" variant="outline" size="sm" disabled={isUploadingLogo} onClick={(event) => { event.stopPropagation(); logoInputRef.current?.click(); }}>
+                    {isUploadingLogo ? "Enviando..." : "Selecionar Arquivo"}
                   </Button>
                 </div>
               </div>
@@ -336,10 +395,10 @@ export default function Configuracoes() {
               <h2 className="font-semibold text-navy text-base border-b border-border pb-2">Integrações e API</h2>
               <div className="space-y-3">
                 {[
-                  { name: "WhatsApp Business API", desc: "Envio automático de mensagens e notificações", status: "Em breve" },
-                  { name: "YouTube Live", desc: "Transmissão ao vivo integrada ao canal da igreja", status: "Em breve" },
-                  { name: "PagSeguro / Mercado Pago", desc: "Recebimento de dízimos e ofertas online", status: "Em breve" },
-                  { name: "Google Calendar", desc: "Sincronização de eventos com o Google Calendar", status: "Em breve" },
+                  { name: "WhatsApp Business API", desc: "Envio automático de mensagens e notificações", status: "Planejado" },
+                  { name: "YouTube Live", desc: "Transmissão ao vivo integrada ao canal da igreja", status: "Planejado" },
+                  { name: "PagSeguro / Mercado Pago", desc: "Recebimento de dízimos e ofertas online", status: "Planejado" },
+                  { name: "Google Calendar", desc: "Sincronização de eventos com o Google Calendar", status: "Planejado" },
                 ].map((integration) => (
                   <div key={integration.name} className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/30">
                     <div>
@@ -354,6 +413,5 @@ export default function Configuracoes() {
           </TabsContent>
         </Tabs>
       </div>
-    </ChurchLayout>
   );
 }

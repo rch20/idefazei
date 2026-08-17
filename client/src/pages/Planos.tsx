@@ -4,7 +4,7 @@ import { Check, X, Zap, Crown, Building2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/_core/hooks/useAuth";
+import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { toast } from "sonner";
 
 const PLANS = [
@@ -117,7 +117,7 @@ const PLAN_IDS: Record<string, "basic" | "pro" | "enterprise"> = {
 
 export default function Planos() {
   const [annual, setAnnual] = useState(false);
-  const { user } = useAuth();
+  const { user } = useChurchAuth();
   const [, navigate] = useLocation();
 
   const checkoutMutation = trpc.stripe.createCheckoutSession.useMutation({
@@ -135,7 +135,7 @@ export default function Planos() {
       navigate("/cadastro-igreja");
       return;
     }
-    const churchId = (user as { churchId?: number })?.churchId ?? 0;
+    const churchId = user.churchId;
     checkoutMutation.mutate({
       plan: PLAN_IDS[planId],
       churchId,
@@ -196,6 +196,9 @@ export default function Planos() {
           <div className="flex items-center justify-center gap-4 mt-8">
             <span className={`text-sm font-medium ${!annual ? "text-[#1e3a5f]" : "text-[#1e3a5f]/40"}`}>Mensal</span>
             <button
+              type="button"
+              aria-label={annual ? "Alternar para cobrança mensal" : "Alternar para cobrança anual"}
+              aria-pressed={annual}
               onClick={() => setAnnual(!annual)}
               className={`relative w-12 h-6 rounded-full transition-colors ${annual ? "bg-[#1e3a5f]" : "bg-[#1e3a5f]/20"}`}
             >

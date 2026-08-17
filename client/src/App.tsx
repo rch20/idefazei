@@ -52,7 +52,7 @@ import Faturamento from "./pages/Faturamento";
 
 function AppPage({ children, title }: { children: React.ReactNode; title?: string }) {
   return (
-    <ChurchLayout title={title} churchId={1}>
+    <ChurchLayout title={title}>
       {children}
     </ChurchLayout>
   );

@@ -6,7 +6,7 @@
 
 import { SignJWT, jwtVerify } from "jose";
 import { ENV } from "./_core/env";
-import { getDb } from "./db";
+import { getChurchById, getDb } from "./db";
 import { churchUsers, superAdmins } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 import { createHash } from "crypto";
@@ -62,6 +62,9 @@ export async function loginChurchUser(email: string, password: string) {
   const rows = await db.select().from(churchUsers).where(eq(churchUsers.email, email.toLowerCase())).limit(1);
   const user = rows[0];
   if (!user || !user.active) return null;
+
+  const church = await getChurchById(user.churchId);
+  if (!church?.active) return null;
 
   if (!verifyPassword(password, user.passwordHash)) return null;
 

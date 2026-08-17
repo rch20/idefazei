@@ -13,6 +13,7 @@ import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import { getLoginUrl } from "./const";
+import { clearChurchSession, getChurchToken } from "./hooks/useChurchAuth";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,20 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
 
   if (!isUnauthorized) return;
+
+  const hasChurchSession = Boolean(getChurchToken());
+  const hasAdminSession = Boolean(localStorage.getItem("admin_token"));
+  if (hasChurchSession) {
+    clearChurchSession();
+    window.location.href = "/login";
+    return;
+  }
+
+  if (hasAdminSession) {
+    localStorage.removeItem("admin_token");
+    window.location.href = "/admin/login";
+    return;
+  }
 
   window.location.href = getLoginUrl();
 };
@@ -50,9 +65,18 @@ const trpcClient = trpc.createClient({
       url: "/api/trpc",
       transformer: superjson,
       fetch(input, init) {
+        const churchToken = getChurchToken();
+        const adminToken = localStorage.getItem("admin_token");
+        const sessionToken = churchToken ?? adminToken;
+        const headers = new Headers(init?.headers);
+        if (sessionToken) {
+          headers.set("Authorization", `Bearer ${sessionToken}`);
+        }
+
         return globalThis.fetch(input, {
           ...(init ?? {}),
           credentials: "include",
+          headers,
         });
       },
     }),

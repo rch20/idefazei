@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, ArrowRight, Clock } from "lucide-react";
+import { CheckCircle2, Clock } from "lucide-react";
 import { Link, useSearch } from "wouter";
 
 export default function CadastroSucesso() {
@@ -35,7 +35,7 @@ export default function CadastroSucesso() {
           </h1>
           <p className="text-muted-foreground text-lg leading-relaxed">
             Sua solicitação foi recebida e está aguardando aprovação da nossa equipe.
-            Você receberá um e-mail de confirmação em breve.
+            Após a aprovação, o acesso ao ambiente da sua igreja será liberado.
           </p>
         </div>
 
@@ -60,7 +60,7 @@ export default function CadastroSucesso() {
           <div>
             <p className="text-sm font-medium text-amber-800">Aguardando aprovação</p>
             <p className="text-xs text-amber-700 mt-1">
-              Nossa equipe analisa cada cadastro em até 24 horas úteis. Você será notificado por e-mail quando sua conta for aprovada.
+              Nossa equipe analisa cada cadastro em até 24 horas úteis. Após a aprovação, use as credenciais definidas no cadastro para entrar na plataforma.
             </p>
           </div>
         </div>
@@ -70,8 +70,8 @@ export default function CadastroSucesso() {
           <p className="text-sm font-semibold text-navy">O que acontece após a aprovação:</p>
           <ol className="space-y-3">
             {[
-              "Você receberá um e-mail com as credenciais de acesso",
-              "Acesse seu subdomínio exclusivo",
+              "O acesso da sua igreja será liberado",
+              "Entre com as credenciais definidas no cadastro",
               "Complete o onboarding guiado em 4 etapas",
               "Comece a cadastrar membros e células",
             ].map((step, i) => (
@@ -87,10 +87,9 @@ export default function CadastroSucesso() {
 
         {/* CTAs */}
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
-          <Link href="/onboarding">
+          <Link href="/contato">
             <Button className="bg-navy hover:bg-navy-light text-white gap-2 w-full sm:w-auto">
-              Iniciar Configuração Antecipada
-              <ArrowRight className="w-4 h-4" />
+              Falar com a equipe
             </Button>
           </Link>
           <Link href="/">

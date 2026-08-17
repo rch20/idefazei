@@ -1,5 +1,4 @@
-import { useAuth } from "@/_core/hooks/useAuth";
-import { getLoginUrl } from "@/const";
+import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { trpc } from "@/lib/trpc";
 import {
   Award,
@@ -29,7 +28,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 
 // ─── CHURCH CONTEXT ───────────────────────────────────────────────────────────
@@ -99,7 +98,7 @@ const groups = [
 
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [location, navigate] = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout } = useChurchAuth();
   const { churchName, logoUrl } = useChurch();
 
   return (
@@ -239,16 +238,22 @@ function TopBar({
 interface ChurchLayoutProps {
   children: React.ReactNode;
   title?: string;
-  churchId?: number;
 }
 
-export default function ChurchLayout({ children, title, churchId = 1 }: ChurchLayoutProps) {
+export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { isAuthenticated, loading, logout } = useAuth();
+  const { user, isAuthenticated, loading } = useChurchAuth();
+  const churchId = user?.churchId ?? null;
+
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      window.location.replace("/login");
+    }
+  }, [isAuthenticated, loading]);
 
   const { data: church } = trpc.churches.getById.useQuery(
-    { id: churchId },
-    { enabled: isAuthenticated }
+    { id: churchId ?? 0 },
+    { enabled: isAuthenticated && churchId !== null }
   );
 
   if (loading) {
@@ -262,8 +267,7 @@ export default function ChurchLayout({ children, title, churchId = 1 }: ChurchLa
     );
   }
 
-  if (!isAuthenticated) {
-    window.location.href = getLoginUrl();
+  if (!isAuthenticated || churchId === null) {
     return null;
   }
 

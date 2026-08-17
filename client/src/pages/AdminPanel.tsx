@@ -28,6 +28,8 @@ function AdminLogin({ onLogin }: { onLogin: (token: string) => void }) {
 
   const loginMutation = trpc.adminAuth.login.useMutation({
     onSuccess: (data: { token: string }) => {
+      localStorage.removeItem("church_token");
+      localStorage.removeItem("church_user");
       localStorage.setItem("admin_token", data.token);
       onLogin(data.token);
       toast.success("Acesso autorizado!");

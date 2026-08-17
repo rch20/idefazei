@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Construction } from "lucide-react";
-import { toast } from "sonner";
+import { Link } from "wouter";
 
 interface PlaceholderProps {
   title: string;
@@ -24,16 +24,14 @@ export default function Placeholder({ title, description, icon: Icon = Construct
         <div>
           <p className="font-semibold text-navy text-lg font-display">{title}</p>
           <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-            Este módulo está em desenvolvimento e será disponibilizado em breve.
+            A visualização detalhada deste recurso está sendo preparada. Você já pode acompanhar estes indicadores no Dashboard.
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => toast.info("Funcionalidade em desenvolvimento")}
-          className="border-gold/40 text-navy hover:bg-gold/5"
-        >
-          Notificar quando disponível
-        </Button>
+        <Link href="/app/dashboard">
+          <Button variant="outline" className="border-gold/40 text-navy hover:bg-gold/5">
+            Ver no Dashboard
+          </Button>
+        </Link>
       </div>
     </div>
   );
