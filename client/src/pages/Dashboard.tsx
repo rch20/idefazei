@@ -1,6 +1,7 @@
 import { trpc } from "@/lib/trpc";
 import { useChurch } from "@/components/ChurchLayout";
 import { ReportButton } from "@/components/ReportButton";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import {
   AlertTriangle,
@@ -434,6 +435,69 @@ function SubscriptionBanner({ churchId }: { churchId: number }) {
   );
 }
 
+// ─── FILA DE CUIDADO ──────────────────────────────────────────────────────────
+
+function CareAttentionPanel({ churchId }: { churchId: number }) {
+  const { data, isLoading, isError, refetch } = trpc.dashboard.careAttention.useQuery({ churchId });
+  const pending = (data ?? []).filter((item) => item.reasons.length > 0);
+
+  return (
+    <section className="card-sacred p-5 sm:p-6" aria-labelledby="care-attention-title">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-50">
+            <Heart className="h-5 w-5 text-rose-600" aria-hidden="true" />
+          </div>
+          <div>
+            <h2 id="care-attention-title" className="font-display text-lg font-bold text-navy">Pessoas que precisam de cuidado</h2>
+            <p className="text-xs text-muted-foreground">Pendências claras para a equipe agir com contexto.</p>
+          </div>
+        </div>
+        <span className={`w-fit rounded-full border px-2.5 py-1 text-xs font-semibold ${pending.length > 0 ? "border-rose-200 bg-rose-50 text-rose-700" : "border-green-200 bg-green-50 text-green-700"}`}>
+          {pending.length > 0 ? `${pending.length} pendente${pending.length === 1 ? "" : "s"}` : "Tudo em dia"}
+        </span>
+      </div>
+
+      {isLoading ? (
+        <div className="mt-5 space-y-2" aria-label="Carregando pendências de cuidado">
+          {[1, 2, 3].map((item) => <div key={item} className="h-14 animate-pulse rounded-lg bg-muted" />)}
+        </div>
+      ) : isError ? (
+        <div className="mt-5 flex flex-col items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          Não foi possível carregar a fila de cuidado.
+          <Button type="button" variant="outline" size="sm" onClick={() => refetch()}>Tentar novamente</Button>
+        </div>
+      ) : pending.length === 0 ? (
+        <div className="mt-5 rounded-lg border border-green-100 bg-green-50/60 p-4 text-sm text-green-800">
+          Nenhuma pendência crítica foi identificada. Continue registrando os contatos e os próximos passos.
+        </div>
+      ) : (
+        <div className="mt-5 space-y-2">
+          {pending.slice(0, 5).map((item) => {
+            const high = item.priority === "alta";
+            return (
+              <div key={item.person.id} className="flex flex-col gap-3 rounded-xl border border-border bg-cream-dark/40 p-3 sm:flex-row sm:items-center">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${high ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>
+                  {item.person.fullName.charAt(0)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-navy">{item.person.fullName}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{item.reasons.join(" · ")}</p>
+                  <p className="mt-1 text-xs font-medium text-navy">Próximo passo: {item.nextStep}</p>
+                </div>
+                <Link href="/app/pessoas" className="w-fit rounded-lg border border-navy/20 px-3 py-1.5 text-xs font-semibold text-navy transition-colors hover:bg-navy/5">
+                  Ver pessoa
+                </Link>
+              </div>
+            );
+          })}
+          {pending.length > 5 && <p className="pt-1 text-center text-xs text-muted-foreground">Mostrando 5 de {pending.length} pendências.</p>}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -524,6 +588,8 @@ export default function Dashboard() {
         <FunilVisual churchId={churchId} />
         <RadarEspiritual churchId={churchId} />
       </div>
+
+      <CareAttentionPanel churchId={churchId} />
 
       {/* Tree */}
       <ArvoreDiscipulado churchId={churchId} />

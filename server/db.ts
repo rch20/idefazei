@@ -4,6 +4,7 @@ import {
   announcements,
   baptismClasses,
   baptismEnrollments,
+  careAssignments,
   cellAttendance,
   cellMeetings,
   cellMembers,
@@ -218,11 +219,33 @@ export async function getPersonById(id: number, churchId: number) {
   return result[0] ?? null;
 }
 
+/** Sugere fichas existentes, sem vincular automaticamente pessoas homônimas. */
+export async function findPossiblePeopleByIdentity(
+  churchId: number,
+  identity: { fullName: string; phone?: string }
+) {
+  const db = await getDb();
+  if (!db) return [];
+  const matches = [eq(people.fullName, identity.fullName.trim())];
+  const phone = identity.phone?.trim();
+  if (phone) {
+    matches.push(eq(people.phone, phone), eq(people.whatsapp, phone));
+  }
+  return db
+    .select()
+    .from(people)
+    .where(and(eq(people.churchId, churchId), eq(people.active, true), or(...matches)))
+    .orderBy(people.fullName)
+    .limit(10);
+}
+
 export async function createPerson(data: typeof people.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   const result = await db.insert(people).values(data);
-  return result[0];
+  const personId = (result[0] as { insertId?: number }).insertId;
+  if (!personId) throw new Error("Failed to create person");
+  return getPersonById(personId, data.churchId);
 }
 
 export async function updatePerson(id: number, churchId: number, data: Partial<typeof people.$inferInsert>) {
@@ -244,17 +267,164 @@ export async function getSoulsByChurch(churchId: number) {
     .limit(100);
 }
 
+export async function getSoulById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(souls)
+    .where(and(eq(souls.id, id), eq(souls.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 export async function createSoul(data: typeof souls.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   const result = await db.insert(souls).values(data);
-  return result[0];
+  const soulId = (result[0] as { insertId?: number }).insertId;
+  if (!soulId) throw new Error("Failed to create soul");
+  const rows = await db
+    .select()
+    .from(souls)
+    .where(and(eq(souls.id, soulId), eq(souls.churchId, data.churchId)))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function updateSoul(id: number, churchId: number, data: Partial<typeof souls.$inferInsert>) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.update(souls).set(data).where(and(eq(souls.id, id), eq(souls.churchId, churchId)));
+}
+
+export async function linkSoulToPerson(soulId: number, churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(souls)
+    .set({ personId })
+    .where(and(eq(souls.id, soulId), eq(souls.churchId, churchId)));
+}
+
+// ─── CUIDADO PASTORAL ─────────────────────────────────────────────────────────
+
+export async function getCurrentCareAssignment(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(careAssignments)
+    .where(
+      and(
+        eq(careAssignments.personId, personId),
+        eq(careAssignments.churchId, churchId),
+        eq(careAssignments.active, true)
+      )
+    )
+    .orderBy(desc(careAssignments.startedAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCareHistoryByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(careAssignments)
+    .where(and(eq(careAssignments.personId, personId), eq(careAssignments.churchId, churchId)))
+    .orderBy(desc(careAssignments.startedAt));
+}
+
+/** Retorna a fila objetiva de pessoas que demandam uma ação pastoral. */
+export async function getCareAttentionByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [persons, churchSouls, churchConsolidations, activeAssignments, activeMemberships] = await Promise.all([
+    getPeopleByChurch(churchId),
+    getSoulsByChurch(churchId),
+    getConsolidationsByChurch(churchId),
+    db.select().from(careAssignments).where(and(eq(careAssignments.churchId, churchId), eq(careAssignments.active, true))),
+    db
+      .select({ personId: cellMembers.personId, cellId: cells.id, cellName: cells.name })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cells.churchId, churchId), eq(cells.active, true), eq(cellMembers.active, true))),
+  ]);
+
+  const soulByPerson = new Map(churchSouls.filter((soul) => soul.personId).map((soul) => [soul.personId!, soul]));
+  const consolidationBySoul = new Map(churchConsolidations.map((item) => [item.soulId, item]));
+  const careByPerson = new Map(activeAssignments.map((item) => [item.personId, item]));
+  const cellByPerson = new Map(activeMemberships.map((item) => [item.personId, item]));
+
+  return persons.map((person) => {
+    const soul = soulByPerson.get(person.id);
+    const consolidation = soul ? consolidationBySoul.get(soul.id) : undefined;
+    const careAssignment = careByPerson.get(person.id);
+    const cell = cellByPerson.get(person.id);
+    const reasons: string[] = [];
+    let nextStep = "Acompanhamento em dia";
+    let priority: "alta" | "media" | "normal" = "normal";
+
+    if (!careAssignment) {
+      reasons.push("Sem responsável pelo cuidado");
+      nextStep = "Definir responsável";
+      priority = "alta";
+    }
+    if (soul && !consolidation) {
+      reasons.push("Consolidação não iniciada");
+      nextStep = "Iniciar consolidação";
+      priority = "alta";
+    } else if (consolidation && !consolidation.callMade) {
+      reasons.push("Sem primeiro contato registrado");
+      nextStep = "Registrar primeiro contato";
+      priority = "alta";
+    } else if (soul?.status === "consolidado" && !cell) {
+      reasons.push("Sem célula ativa");
+      nextStep = "Enviar para célula";
+      priority = priority === "alta" ? "alta" : "media";
+    }
+
+    return {
+      person,
+      soul: soul ?? null,
+      consolidation: consolidation ?? null,
+      careAssignment: careAssignment ?? null,
+      cell: cell ?? null,
+      nextStep,
+      priority,
+      reasons,
+    };
+  });
+}
+
+/** Encerra o responsável anterior e define exatamente um responsável atual. */
+export async function setCurrentCareAssignment(data: {
+  churchId: number;
+  personId: number;
+  responsiblePersonId: number;
+  role: "quem_ganhou" | "consolidador" | "lider_celula" | "discipulador" | "pastor";
+  notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const now = new Date();
+  await db
+    .update(careAssignments)
+    .set({ active: false, endedAt: now })
+    .where(
+      and(
+        eq(careAssignments.personId, data.personId),
+        eq(careAssignments.churchId, data.churchId),
+        eq(careAssignments.active, true)
+      )
+    );
+  const result = await db.insert(careAssignments).values({ ...data, active: true, startedAt: now });
+  const assignmentId = (result[0] as { insertId?: number }).insertId;
+  if (!assignmentId) throw new Error("Failed to set care assignment");
+  const rows = await db.select().from(careAssignments).where(eq(careAssignments.id, assignmentId)).limit(1);
+  return rows[0] ?? null;
 }
 
 // ─── CONSOLIDATIONS ───────────────────────────────────────────────────────────
@@ -276,6 +446,17 @@ export async function getConsolidationsByChurch(churchId: number) {
     .from(consolidations)
     .where(eq(consolidations.churchId, churchId))
     .orderBy(desc(consolidations.createdAt));
+}
+
+export async function getConsolidationById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(consolidations)
+    .where(and(eq(consolidations.id, id), eq(consolidations.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function createConsolidation(data: typeof consolidations.$inferInsert) {
@@ -335,6 +516,68 @@ export async function getCellMembersCount(churchId: number) {
     .groupBy(cellMembers.cellId);
 }
 
+export async function getActiveCellMembership(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({
+      id: cellMembers.id,
+      personId: cellMembers.personId,
+      cellId: cells.id,
+      cellName: cells.name,
+      joinedAt: cellMembers.joinedAt,
+    })
+    .from(cellMembers)
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .where(and(eq(cellMembers.personId, personId), eq(cellMembers.active, true), eq(cells.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCellMembershipHistory(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: cellMembers.id,
+      cellId: cells.id,
+      cellName: cells.name,
+      joinedAt: cellMembers.joinedAt,
+      leftAt: cellMembers.leftAt,
+      active: cellMembers.active,
+    })
+    .from(cellMembers)
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .where(and(eq(cellMembers.personId, personId), eq(cells.churchId, churchId)))
+    .orderBy(desc(cellMembers.joinedAt));
+}
+
+/** Encerra qualquer vínculo ativo antes de inserir a nova Célula da Pessoa. */
+export async function assignPersonToCell(data: { churchId: number; personId: number; cellId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const now = new Date();
+  const activeMemberships = await db
+    .select({ membershipId: cellMembers.id })
+    .from(cellMembers)
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .where(
+      and(
+        eq(cellMembers.personId, data.personId),
+        eq(cellMembers.active, true),
+        eq(cells.churchId, data.churchId)
+      )
+    );
+  for (const membership of activeMemberships) {
+    await db.update(cellMembers).set({ active: false, leftAt: now }).where(eq(cellMembers.id, membership.membershipId));
+  }
+  const result = await db.insert(cellMembers).values({ cellId: data.cellId, personId: data.personId, active: true, joinedAt: now });
+  const membershipId = (result[0] as { insertId?: number }).insertId;
+  if (!membershipId) throw new Error("Failed to assign person to cell");
+  const rows = await db.select().from(cellMembers).where(eq(cellMembers.id, membershipId)).limit(1);
+  return rows[0] ?? null;
+}
+
 // ─── EVENTS ───────────────────────────────────────────────────────────────────
 
 export async function getEventsByChurch(churchId: number) {
@@ -364,6 +607,57 @@ export async function getMinistriesByChurch(churchId: number) {
     .from(ministries)
     .where(and(eq(ministries.churchId, churchId), eq(ministries.active, true)))
     .orderBy(ministries.name);
+}
+
+export async function getMinistryMembers(ministryId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ membership: ministryMembers, person: people })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .innerJoin(people, eq(people.id, ministryMembers.personId))
+    .where(and(eq(ministryMembers.ministryId, ministryId), eq(ministries.churchId, churchId), eq(ministryMembers.active, true)))
+    .orderBy(people.fullName);
+}
+
+export async function getMinistryMemberCounts(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ ministryId: ministryMembers.ministryId, count: sql<number>`COUNT(*)` })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .where(and(eq(ministries.churchId, churchId), eq(ministryMembers.active, true)))
+    .groupBy(ministryMembers.ministryId);
+}
+
+export async function isActiveMinistryMember(ministryId: number, personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: ministryMembers.id })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .innerJoin(people, eq(people.id, ministryMembers.personId))
+    .where(
+      and(
+        eq(ministryMembers.ministryId, ministryId),
+        eq(ministryMembers.personId, personId),
+        eq(ministryMembers.active, true),
+        eq(ministries.churchId, churchId),
+        eq(people.churchId, churchId)
+      )
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function assignPersonToMinistry(data: { ministryId: number; personId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(ministryMembers).values({ ...data, active: true });
+  return result[0];
 }
 
 // ─── ANNOUNCEMENTS (MURAL) ────────────────────────────────────────────────────

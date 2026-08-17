@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Music, Users, Plus, Search, Star } from "lucide-react";
@@ -25,10 +26,17 @@ export default function Ministerios() {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", description: "" });
+  const [selectedMinistry, setSelectedMinistry] = useState<any>(null);
+  const [selectedPersonId, setSelectedPersonId] = useState("");
 
   const { data: ministries, isLoading, refetch } = trpc.ministries.list.useQuery(
     { churchId: churchId! },
     { enabled: !!churchId }
+  );
+  const { data: people } = trpc.people.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const ministryMembers = trpc.ministries.members.useQuery(
+    { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0 },
+    { enabled: Boolean(churchId && selectedMinistry?.id) }
   );
 
   const createMutation = trpc.ministries.create.useMutation({
@@ -40,11 +48,27 @@ export default function Ministerios() {
     },
     onError: (err: { message: string }) => toast.error(err.message),
   });
+  const assignPerson = trpc.ministries.assignPerson.useMutation({
+    onSuccess: async (result) => {
+      toast.success(result.alreadyMember ? "Esta pessoa já participa do ministério." : "Pessoa adicionada ao ministério.");
+      setSelectedPersonId("");
+      await Promise.all([refetch(), ministryMembers.refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível adicionar a pessoa."),
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return toast.error("Nome do ministério é obrigatório");
     createMutation.mutate({ churchId: churchId!, name: form.name, description: form.description });
+  };
+
+  const addSelectedPerson = () => {
+    if (!selectedMinistry || !selectedPersonId) {
+      toast.error("Selecione uma Pessoa para adicionar à equipe.");
+      return;
+    }
+    assignPerson.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: Number(selectedPersonId) });
   };
 
   const filtered = ministries?.filter((m: { name: string }) =>
@@ -151,7 +175,13 @@ export default function Ministerios() {
               const key = ministry.name.toLowerCase().replace(/\s+/g, "");
               const icon = Object.keys(MINISTRY_ICONS).find((k) => key.includes(k)) ?? "default";
               return (
-                <div key={ministry.id} className="card-sacred p-5 hover:border-gold/30 transition-all cursor-pointer group">
+                <button
+                  key={ministry.id}
+                  type="button"
+                  onClick={() => { setSelectedMinistry(ministry); setSelectedPersonId(""); }}
+                  className="card-sacred group w-full p-5 text-left transition-all hover:border-gold/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+                  aria-label={`Gerenciar participantes de ${ministry.name}`}
+                >
                   <div className="text-3xl mb-3">{MINISTRY_ICONS[icon]}</div>
                   <h3 className="font-semibold text-navy text-sm mb-1">{ministry.name}</h3>
                   {ministry.description && (
@@ -163,11 +193,37 @@ export default function Ministerios() {
                       {ministry.memberCount ?? 0} membros
                     </Badge>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
         )}
+
+        <Dialog open={Boolean(selectedMinistry)} onOpenChange={(nextOpen) => !nextOpen && setSelectedMinistry(null)}>
+          <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="font-display text-navy">Equipe: {selectedMinistry?.name}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">Adicione Pessoas à equipe. Somente participantes ativos deste Ministério poderão ser incluídos em escalas.</p>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Select value={selectedPersonId} onValueChange={setSelectedPersonId}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Selecione uma Pessoa" /></SelectTrigger>
+                  <SelectContent>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                </Select>
+                <Button type="button" onClick={addSelectedPerson} disabled={assignPerson.isPending} className="bg-navy text-white hover:bg-navy-light">
+                  {assignPerson.isPending ? "Adicionando…" : "Adicionar"}
+                </Button>
+              </div>
+              <div className="rounded-xl border border-border">
+                <div className="border-b border-border px-4 py-3 text-sm font-semibold text-navy">Participantes ativos ({ministryMembers.data?.length ?? 0})</div>
+                {ministryMembers.isLoading ? <div className="p-4 text-sm text-muted-foreground">Carregando equipe…</div> : (ministryMembers.data ?? []).length === 0 ? <div className="p-4 text-sm text-muted-foreground">Nenhuma Pessoa adicionada ainda.</div> : (
+                  <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-center gap-3 px-4 py-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><span className="text-sm font-medium text-navy">{item.person.fullName}</span></div>)}</div>
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
   );
 }

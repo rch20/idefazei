@@ -255,6 +255,29 @@ export const consolidations = mysqlTable("consolidations", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+// ─── RESPONSABILIDADE DE CUIDADO ───────────────────────────────────────────────
+
+/**
+ * Mantém quem responde pelo cuidado de uma Pessoa em cada momento da jornada.
+ * Somente um vínculo ativo deve existir por Pessoa; os anteriores são encerrados,
+ * preservando o histórico de transições pastorais.
+ */
+export const careAssignments = mysqlTable("care_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  personId: int("personId").notNull(),
+  responsiblePersonId: int("responsiblePersonId").notNull(),
+  role: mysqlEnum("role", ["quem_ganhou", "consolidador", "lider_celula", "discipulador", "pastor"])
+    .notNull(),
+  notes: text("notes"),
+  startedAt: timestamp("startedAt").defaultNow().notNull(),
+  endedAt: timestamp("endedAt"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CareAssignment = typeof careAssignments.$inferSelect;
+
 // ─── CÉLULAS ──────────────────────────────────────────────────────────────────
 
 export const cells = mysqlTable("cells", {
@@ -291,6 +314,7 @@ export const cellMembers = mysqlTable("cell_members", {
   cellId: int("cellId").notNull(),
   personId: int("personId").notNull(),
   joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+  leftAt: timestamp("leftAt"),
   active: boolean("active").default(true).notNull(),
 });
 

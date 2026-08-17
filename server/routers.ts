@@ -13,32 +13,49 @@ import {
 import {
   createAnnouncement,
   createCell,
+  assignPersonToCell,
   createChurch,
   createConsolidation,
   createEvent,
   createPerson,
   createPrayerRequest,
   createSoul,
+  findPossiblePeopleByIdentity,
   getAnnouncementsByChurch,
   getCellsByChurch,
+  getCellById,
+  getActiveCellMembership,
+  getCellMembershipHistory,
   getChurchById,
   getChurchBySlug,
   getChurchMemberByUserId,
   getActiveChurchUserById,
   getChurchMembersByChurch,
   getConsolidationsByChurch,
+  getConsolidationsBySoul,
+  getConsolidationById,
+  getCareAttentionByChurch,
   getDashboardStats,
   getDiscipleshipFunnel,
   getDiscipleshipTree,
   getEventsByChurch,
   getMinistriesByChurch,
+  getMinistryMembers,
+  getMinistryMemberCounts,
+  isActiveMinistryMember,
+  assignPersonToMinistry,
   getPeopleByChurch,
   getPersonById,
   getPrayerRequestsByChurch,
+  getCareHistoryByPerson,
+  getCurrentCareAssignment,
   getRadarEspiritual,
+  getSoulById,
   getSoulsByChurch,
   updateChurch,
   updateConsolidation,
+  linkSoulToPerson,
+  setCurrentCareAssignment,
   updatePerson,
   updateSoul,
   getAllChurches,
@@ -195,6 +212,19 @@ const peopleRouter = router({
       return getPeopleByChurch(input.churchId, input.search);
     }),
 
+  findPossibleMatches: protectedProcedure
+    .input(
+      z.object({
+        churchId: z.number(),
+        fullName: z.string().min(2),
+        phone: z.string().optional(),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return findPossiblePeopleByIdentity(input.churchId, input);
+    }),
+
   getById: protectedProcedure
     .input(z.object({ id: z.number(), churchId: z.number() }))
     .query(async ({ input, ctx }) => {
@@ -313,6 +343,7 @@ const soulsRouter = router({
         reconciliation: z.boolean().default(false),
         firstVisit: z.boolean().default(false),
         wonById: z.number(),
+        existingPersonId: z.number().optional(),
         notes: z.string().optional(),
       })
     )
@@ -322,7 +353,56 @@ const soulsRouter = router({
       if (!winner) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma pessoa válida da sua igreja." });
       }
-      return createSoul(input as any);
+
+      let person = input.existingPersonId
+        ? await getPersonById(input.existingPersonId, input.churchId)
+        : null;
+      if (input.existingPersonId && !person) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja." });
+      }
+
+      if (!person) {
+        const possibleMatches = await findPossiblePeopleByIdentity(input.churchId, {
+          fullName: input.name,
+          phone: input.phone,
+        });
+        const phoneMatch = input.phone?.trim()
+          ? possibleMatches.find((candidate) => candidate.phone === input.phone?.trim() || candidate.whatsapp === input.phone?.trim())
+          : undefined;
+        if (phoneMatch) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `Já existe uma Pessoa com este telefone: ${phoneMatch.fullName}. Selecione-a para evitar duplicidade.`,
+          });
+        }
+        person = await createPerson({
+          churchId: input.churchId,
+          fullName: input.name.trim(),
+          phone: input.phone?.trim() || null,
+          whatsapp: input.phone?.trim() || null,
+          conversionDate: new Date(`${input.decisionDate}T12:00:00.000Z`),
+          discipleshipStage: "nova_alma",
+          wonById: input.wonById,
+        });
+      }
+      if (!person) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível criar a ficha da Pessoa." });
+      }
+
+      const { existingPersonId: _existingPersonId, ...soulInput } = input;
+      const soul = await createSoul({ ...soulInput, personId: person.id } as any);
+      if (!soul) {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível registrar a Nova Alma." });
+      }
+      await linkSoulToPerson(soul.id, input.churchId, person.id);
+      const careAssignment = await setCurrentCareAssignment({
+        churchId: input.churchId,
+        personId: person.id,
+        responsiblePersonId: input.wonById,
+        role: "quem_ganhou",
+        notes: "Responsável inicial definido no registro da Nova Alma.",
+      });
+      return { soul, person, careAssignment, createdPerson: !input.existingPersonId };
     }),
 
   updateStatus: protectedProcedure
@@ -357,7 +437,31 @@ const consolidationRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
-      return createConsolidation(input);
+      const [soul, consolidator, existing] = await Promise.all([
+        getSoulById(input.soulId, input.churchId),
+        getPersonById(input.consolidatorId, input.churchId),
+        getConsolidationsBySoul(input.soulId, input.churchId),
+      ]);
+      if (!soul) throw new TRPCError({ code: "NOT_FOUND", message: "Nova Alma não encontrada." });
+      if (!consolidator) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um consolidador válido da sua igreja." });
+      }
+      if (existing.length > 0) {
+        throw new TRPCError({ code: "CONFLICT", message: "Esta Nova Alma já possui uma consolidação em andamento." });
+      }
+      const consolidation = await createConsolidation(input);
+      await updateSoul(soul.id, input.churchId, { status: "em_consolidacao" });
+      if (soul.personId) {
+        await updatePerson(soul.personId, input.churchId, { discipleshipStage: "consolidacao" });
+        await setCurrentCareAssignment({
+          churchId: input.churchId,
+          personId: soul.personId,
+          responsiblePersonId: input.consolidatorId,
+          role: "consolidador",
+          notes: "Responsável atualizado ao iniciar a consolidação.",
+        });
+      }
+      return consolidation;
     }),
 
   updateChecklist: protectedProcedure
@@ -379,7 +483,70 @@ const consolidationRouter = router({
     .mutation(async ({ input, ctx }) => {
       const { id, churchId, ...data } = input;
       await requireChurchMember(ctx.user.id, churchId);
-      return updateConsolidation(id, churchId, data as any);
+      const consolidation = await getConsolidationById(id, churchId);
+      if (!consolidation) throw new TRPCError({ code: "NOT_FOUND", message: "Consolidação não encontrada." });
+      const timestampFields = {
+        callMade: "callDate",
+        messageSent: "messageDate",
+        visitMade: "visitDate",
+        bibleDelivered: "bibleDate",
+        whatsappGroupAdded: "whatsappDate",
+        prayerMade: "prayerDate",
+        addedToCell: "cellDate",
+      } as const;
+      const updateData: Record<string, unknown> = { ...data };
+      for (const [field, timestampField] of Object.entries(timestampFields)) {
+        const value = updateData[field];
+        if (typeof value === "boolean") updateData[timestampField] = value ? new Date() : null;
+      }
+      await updateConsolidation(id, churchId, updateData as any);
+      if (data.status === "consolidado") {
+        const soul = await getSoulById(consolidation.soulId, churchId);
+        if (soul) await updateSoul(soul.id, churchId, { status: "consolidado" });
+      }
+      return getConsolidationById(id, churchId);
+    }),
+});
+
+const careRouter = router({
+  getCurrent: protectedProcedure
+    .input(z.object({ churchId: z.number(), personId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
+      return getCurrentCareAssignment(input.personId, input.churchId);
+    }),
+
+  history: protectedProcedure
+    .input(z.object({ churchId: z.number(), personId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
+      return getCareHistoryByPerson(input.personId, input.churchId);
+    }),
+
+  assign: protectedProcedure
+    .input(
+      z.object({
+        churchId: z.number(),
+        personId: z.number(),
+        responsiblePersonId: z.number(),
+        role: z.enum(["quem_ganhou", "consolidador", "lider_celula", "discipulador", "pastor"]),
+        notes: z.string().max(1000).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const [person, responsible] = await Promise.all([
+        getPersonById(input.personId, input.churchId),
+        getPersonById(input.responsiblePersonId, input.churchId),
+      ]);
+      if (!person || !responsible) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou responsável inválido para esta igreja." });
+      }
+      return setCurrentCareAssignment(input);
     }),
 });
 
@@ -389,6 +556,51 @@ const cellsRouter = router({
     .query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
       return getCellsByChurch(input.churchId);
+    }),
+
+  personMembership: protectedProcedure
+    .input(z.object({ churchId: z.number(), personId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
+      return getActiveCellMembership(input.personId, input.churchId);
+    }),
+
+  membershipHistory: protectedProcedure
+    .input(z.object({ churchId: z.number(), personId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
+      return getCellMembershipHistory(input.personId, input.churchId);
+    }),
+
+  assignPerson: protectedProcedure
+    .input(z.object({ churchId: z.number(), personId: z.number(), cellId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const [person, cell, previousMembership] = await Promise.all([
+        getPersonById(input.personId, input.churchId),
+        getCellById(input.cellId, input.churchId),
+        getActiveCellMembership(input.personId, input.churchId),
+      ]);
+      if (!person || !cell || !cell.active) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou Célula inválida para esta igreja." });
+      }
+      if (previousMembership?.cellId === input.cellId) {
+        return { membership: previousMembership, transferred: false };
+      }
+      const membership = await assignPersonToCell(input);
+      await updatePerson(person.id, input.churchId, { discipleshipStage: "celula" });
+      await setCurrentCareAssignment({
+        churchId: input.churchId,
+        personId: person.id,
+        responsiblePersonId: cell.leaderId,
+        role: "lider_celula",
+        notes: previousMembership ? `Transferida de ${previousMembership.cellName} para ${cell.name}.` : `Integrada à célula ${cell.name}.`,
+      });
+      return { membership, transferred: Boolean(previousMembership) };
     }),
 
   create: protectedProcedure
@@ -412,6 +624,8 @@ const cellsRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
+      const leader = await getPersonById(input.leaderId, input.churchId);
+      if (!leader) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um líder válido da sua igreja." });
       return createCell(input as any);
     }),
 });
@@ -531,12 +745,41 @@ const ministriesRouter = router({
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
-      const rows = await getMinistriesByChurch(input.churchId);
+      const [rows, counts] = await Promise.all([
+        getMinistriesByChurch(input.churchId),
+        getMinistryMemberCounts(input.churchId),
+      ]);
+      const countByMinistry = new Map(counts.map((item) => [item.ministryId, Number(item.count)]));
       return rows.map((m) => ({
         ...m,
-        memberCount: 0,
+        memberCount: countByMinistry.get(m.id) ?? 0,
         leaderName: null as string | null,
       }));
+    }),
+  members: protectedProcedure
+    .input(z.object({ churchId: z.number(), ministryId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
+      if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado." });
+      return getMinistryMembers(input.ministryId, input.churchId);
+    }),
+  assignPerson: protectedProcedure
+    .input(z.object({ churchId: z.number(), ministryId: z.number(), personId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const [ministry, person] = await Promise.all([
+        getMinistriesByChurch(input.churchId).then((items) => items.find((item) => item.id === input.ministryId)),
+        getPersonById(input.personId, input.churchId),
+      ]);
+      if (!ministry || !person) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou Ministério inválido para esta igreja." });
+      }
+      if (await isActiveMinistryMember(input.ministryId, input.personId, input.churchId)) {
+        return { success: true, alreadyMember: true };
+      }
+      await assignPersonToMinistry({ ministryId: input.ministryId, personId: input.personId });
+      return { success: true, alreadyMember: false };
     }),
   create: protectedProcedure
     .input(z.object({
@@ -592,6 +835,16 @@ const schedulesRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
+      const [person, eligible] = await Promise.all([
+        getPersonById(input.personId, input.churchId),
+        isActiveMinistryMember(input.ministryId, input.personId, input.churchId),
+      ]);
+      if (!person || !eligible) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A pessoa precisa ser participante ativa deste Ministério antes de entrar na escala.",
+        });
+      }
       const db = await import("./db").then((m) => m.getDb());
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const { scheduleItems } = await import("../drizzle/schema");
@@ -720,6 +973,13 @@ const dashboardRouter = router({
     .query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
       return getDiscipleshipTree(input.churchId);
+    }),
+
+  careAttention: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getCareAttentionByChurch(input.churchId);
     }),
 });
 
@@ -1588,6 +1848,7 @@ export const appRouter = router({
   people: peopleRouter,
   souls: soulsRouter,
   consolidation: consolidationRouter,
+  care: careRouter,
   cells: cellsRouter,
   events: eventsRouter,
   ministries: ministriesRouter,

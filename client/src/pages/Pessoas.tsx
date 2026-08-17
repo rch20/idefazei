@@ -1,13 +1,14 @@
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { Plus, Search, User, Users } from "lucide-react";
+import { Clock3, HeartHandshake, Plus, Search, ShieldCheck, User, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -33,6 +34,14 @@ const STAGE_BADGE: Record<string, string> = {
   escola_de_lideres: "badge-escola",
   lideranca: "badge-lideranca",
   multiplicador: "badge-multiplicador",
+};
+
+const CARE_ROLE_LABELS: Record<string, string> = {
+  quem_ganhou: "Quem ganhou",
+  consolidador: "Consolidador",
+  lider_celula: "Líder de célula",
+  discipulador: "Discipulador",
+  pastor: "Pastor",
 };
 
 const defaultForm = {
@@ -65,8 +74,30 @@ export default function Pessoas() {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(defaultForm);
+  const [selectedPerson, setSelectedPerson] = useState<any>(null);
+  const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "" });
+  const [selectedCellId, setSelectedCellId] = useState("");
+  const utils = trpc.useUtils();
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId, search: search || undefined });
+  const careAttention = trpc.dashboard.careAttention.useQuery({ churchId });
+  const currentCare = trpc.care.getCurrent.useQuery(
+    { churchId, personId: selectedPerson?.id ?? 0 },
+    { enabled: Boolean(selectedPerson?.id) }
+  );
+  const careHistory = trpc.care.history.useQuery(
+    { churchId, personId: selectedPerson?.id ?? 0 },
+    { enabled: Boolean(selectedPerson?.id) }
+  );
+  const cellsQuery = trpc.cells.list.useQuery({ churchId });
+  const currentCell = trpc.cells.personMembership.useQuery(
+    { churchId, personId: selectedPerson?.id ?? 0 },
+    { enabled: Boolean(selectedPerson?.id) }
+  );
+  const cellHistory = trpc.cells.membershipHistory.useQuery(
+    { churchId, personId: selectedPerson?.id ?? 0 },
+    { enabled: Boolean(selectedPerson?.id) }
+  );
   const createPerson = trpc.people.create.useMutation({
     onSuccess: () => {
       toast.success("Pessoa cadastrada com sucesso!");
@@ -76,6 +107,34 @@ export default function Pessoas() {
     },
     onError: () => toast.error("Erro ao cadastrar pessoa"),
   });
+  const assignCare = trpc.care.assign.useMutation({
+    onSuccess: async () => {
+      toast.success("Responsável pelo cuidado atualizado.");
+      setCareForm((current) => ({ ...current, notes: "" }));
+      await Promise.all([currentCare.refetch(), careHistory.refetch(), careAttention.refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar o responsável."),
+  });
+  const startConsolidation = trpc.consolidation.create.useMutation({
+    onSuccess: async () => {
+      toast.success("Consolidação iniciada e responsável atualizado.");
+      await Promise.all([
+        currentCare.refetch(),
+        careHistory.refetch(),
+        careAttention.refetch(),
+        utils.souls.list.invalidate({ churchId }),
+      ]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível iniciar a consolidação."),
+  });
+  const assignCell = trpc.cells.assignPerson.useMutation({
+    onSuccess: async (result) => {
+      toast.success(result.transferred ? "Pessoa transferida de célula com histórico preservado." : "Pessoa integrada à célula.");
+      setSelectedCellId("");
+      await Promise.all([currentCell.refetch(), cellHistory.refetch(), currentCare.refetch(), careAttention.refetch(), refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível integrar a pessoa à célula."),
+  });
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -84,6 +143,50 @@ export default function Pessoas() {
       if (data[k] === "") data[k] = undefined;
     });
     createPerson.mutate(data);
+  }
+
+  const selectedAttention = (careAttention.data ?? []).find((item) => item.person.id === selectedPerson?.id);
+  const currentResponsible = (people ?? []).find((person) => person.id === currentCare.data?.responsiblePersonId);
+
+  function openPersonJourney(person: any) {
+    setSelectedPerson(person);
+    setCareForm({ responsiblePersonId: "", role: "consolidador", notes: "" });
+    setSelectedCellId("");
+  }
+
+  function saveCareAssignment() {
+    if (!selectedPerson || !careForm.responsiblePersonId) {
+      toast.error("Selecione a pessoa responsável pelo cuidado.");
+      return;
+    }
+    assignCare.mutate({
+      churchId,
+      personId: selectedPerson.id,
+      responsiblePersonId: Number(careForm.responsiblePersonId),
+      role: careForm.role as "quem_ganhou" | "consolidador" | "lider_celula" | "discipulador" | "pastor",
+      notes: careForm.notes.trim() || undefined,
+    });
+  }
+
+  function handleStartConsolidation() {
+    const consolidatorId = Number(careForm.responsiblePersonId) || currentCare.data?.responsiblePersonId;
+    if (!selectedAttention?.soul) {
+      toast.error("Esta pessoa não possui uma Nova Alma pendente de consolidação.");
+      return;
+    }
+    if (!consolidatorId) {
+      toast.error("Defina primeiro o consolidador responsável.");
+      return;
+    }
+    startConsolidation.mutate({ churchId, soulId: selectedAttention.soul.id, consolidatorId });
+  }
+
+  function handleCellAssignment() {
+    if (!selectedPerson || !selectedCellId) {
+      toast.error("Selecione uma célula ativa.");
+      return;
+    }
+    assignCell.mutate({ churchId, personId: selectedPerson.id, cellId: Number(selectedCellId) });
   }
 
   return (
@@ -145,7 +248,13 @@ export default function Pessoas() {
       ) : (
         <div className="space-y-2 animate-stagger">
           {(people ?? []).map((person) => (
-            <div key={person.id} className="card-sacred p-4 flex items-center gap-4 hover:border-gold/30 transition-colors cursor-pointer">
+            <button
+              key={person.id}
+              type="button"
+              onClick={() => openPersonJourney(person)}
+              className="card-sacred flex w-full items-center gap-4 p-4 text-left transition-colors hover:border-gold/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+              aria-label={`Abrir jornada de cuidado de ${person.fullName}`}
+            >
               <div className="w-10 h-10 rounded-full bg-cream-dark flex items-center justify-center flex-shrink-0">
                 {person.photoUrl ? (
                   <img src={person.photoUrl} alt={person.fullName} className="w-10 h-10 rounded-full object-cover" />
@@ -164,7 +273,7 @@ export default function Pessoas() {
               <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-shrink-0 ${STAGE_BADGE[person.discipleshipStage ?? "nova_alma"]}`}>
                 {STAGES_LABELS[person.discipleshipStage ?? "nova_alma"]}
               </span>
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -326,6 +435,99 @@ export default function Pessoas() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(selectedPerson)} onOpenChange={(nextOpen) => !nextOpen && setSelectedPerson(null)}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 font-display text-navy"><HeartHandshake className="h-5 w-5 text-rose-600" />Jornada de cuidado</DialogTitle>
+            <DialogDescription>{selectedPerson?.fullName} · {STAGES_LABELS[selectedPerson?.discipleshipStage ?? "nova_alma"]}</DialogDescription>
+          </DialogHeader>
+
+          {selectedAttention && (
+            <div className={`rounded-xl border p-4 ${selectedAttention.priority === "alta" ? "border-rose-200 bg-rose-50/60" : selectedAttention.priority === "media" ? "border-amber-200 bg-amber-50/60" : "border-green-200 bg-green-50/60"}`}>
+              <div className="flex items-start gap-3">
+                <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${selectedAttention.priority === "alta" ? "text-rose-600" : selectedAttention.priority === "media" ? "text-amber-600" : "text-green-600"}`} />
+                <div>
+                  <p className="text-sm font-semibold text-navy">Próximo passo: {selectedAttention.nextStep}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{selectedAttention.reasons.length > 0 ? selectedAttention.reasons.join(" · ") : "Não há pendências críticas no momento."}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <section className="rounded-xl border border-border p-4">
+              <h3 className="text-sm font-semibold text-navy">Responsável atual</h3>
+              {currentCare.isLoading ? <p className="mt-2 text-sm text-muted-foreground">Carregando…</p> : currentCare.data ? (
+                <div className="mt-3 space-y-1">
+                  <p className="font-medium text-navy">{currentResponsible?.fullName ?? "Pessoa vinculada"}</p>
+                  <Badge variant="outline" className="text-xs">{CARE_ROLE_LABELS[currentCare.data.role] ?? currentCare.data.role}</Badge>
+                </div>
+              ) : <p className="mt-2 text-sm text-rose-700">Nenhum responsável definido.</p>}
+            </section>
+            <section className="rounded-xl border border-border p-4">
+              <h3 className="text-sm font-semibold text-navy">Histórico de cuidado</h3>
+              <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground"><Clock3 className="h-4 w-4" />{careHistory.data?.length ?? 0} atribuição(ões) registrada(s)</p>
+            </section>
+          </div>
+
+          <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
+            <h3 className="text-sm font-semibold text-navy">Definir responsável pelo cuidado</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Ao atualizar, o responsável anterior é preservado no histórico e deixa de ficar ativo.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="care-responsible">Responsável *</Label>
+                <Select value={careForm.responsiblePersonId} onValueChange={(value) => setCareForm((current) => ({ ...current, responsiblePersonId: value }))}>
+                  <SelectTrigger id="care-responsible" className="mt-1 bg-background"><SelectValue placeholder="Selecione uma pessoa" /></SelectTrigger>
+                  <SelectContent>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="care-role">Função no cuidado *</Label>
+                <Select value={careForm.role} onValueChange={(value) => setCareForm((current) => ({ ...current, role: value }))}>
+                  <SelectTrigger id="care-role" className="mt-1 bg-background"><SelectValue /></SelectTrigger>
+                  <SelectContent>{Object.entries(CARE_ROLE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="mt-3">
+              <Label htmlFor="care-notes">Observação</Label>
+              <Textarea id="care-notes" className="mt-1 bg-background" rows={2} value={careForm.notes} onChange={(event) => setCareForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Ex.: responsável definido após primeiro contato" />
+            </div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+              {selectedAttention?.nextStep === "Iniciar consolidação" && <Button type="button" variant="outline" onClick={handleStartConsolidation} disabled={startConsolidation.isPending}>Iniciar consolidação</Button>}
+              <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={saveCareAssignment} disabled={assignCare.isPending}>{assignCare.isPending ? "Salvando…" : "Atualizar responsável"}</Button>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
+            <h3 className="text-sm font-semibold text-navy">Integração em Célula</h3>
+            {currentCell.isLoading ? (
+              <p className="mt-2 text-sm text-muted-foreground">Carregando vínculo de célula…</p>
+            ) : currentCell.data ? (
+              <div className="mt-2 rounded-lg border border-indigo-100 bg-background/80 p-3">
+                <p className="text-sm font-medium text-navy">Célula ativa: {currentCell.data.cellName}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Desde {new Date(currentCell.data.joinedAt).toLocaleDateString("pt-BR")}. Escolher outra célula fará uma transferência, sem apagar o histórico.</p>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-amber-800">Esta pessoa ainda não possui uma célula ativa.</p>
+            )}
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="flex-1">
+                <Label htmlFor="journey-cell">Célula de destino</Label>
+                <Select value={selectedCellId} onValueChange={setSelectedCellId}>
+                  <SelectTrigger id="journey-cell" className="mt-1 bg-background"><SelectValue placeholder="Selecione uma célula ativa" /></SelectTrigger>
+                  <SelectContent>{(cellsQuery.data ?? []).map((cell) => <SelectItem key={cell.id} value={String(cell.id)}>{cell.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <Button type="button" variant="outline" onClick={handleCellAssignment} disabled={assignCell.isPending || (cellsQuery.data ?? []).length === 0}>
+                {assignCell.isPending ? "Atualizando…" : currentCell.data ? "Transferir" : "Integrar à célula"}
+              </Button>
+            </div>
+            {cellHistory.data && cellHistory.data.length > 1 && <p className="mt-3 text-xs text-muted-foreground">{cellHistory.data.length - 1} vínculo(s) anterior(es) preservado(s) no histórico.</p>}
+          </section>
         </DialogContent>
       </Dialog>
     </div>

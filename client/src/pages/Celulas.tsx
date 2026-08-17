@@ -24,7 +24,7 @@ const DAYS = [
 
 const defaultForm = {
   name: "",
-  leaderId: 1,
+  leaderId: "",
   address: "",
   city: "",
   neighborhood: "",
@@ -42,6 +42,7 @@ export default function Celulas() {
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
 
   const { data: cells, isLoading, refetch } = trpc.cells.list.useQuery({ churchId });
+  const { data: people } = trpc.people.list.useQuery({ churchId });
   const createCell = trpc.cells.create.useMutation({
     onSuccess: () => {
       toast.success("Célula criada com sucesso!");
@@ -92,19 +93,23 @@ export default function Celulas() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    createCell.mutate({ churchId, ...form });
+    if (!form.leaderId) {
+      toast.error("Selecione uma Pessoa como líder da célula.");
+      return;
+    }
+    createCell.mutate({ churchId, ...form, leaderId: Number(form.leaderId) });
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold font-display text-navy">Células</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Gerencie os grupos de célula da sua igreja
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ReportButton
             label="Exportar"
             onFetch={() => utils.reports.cells.fetch({ churchId })}
@@ -117,7 +122,7 @@ export default function Celulas() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="metric-card">
           <Globe className="w-5 h-5 text-indigo-600" />
           <p className="text-2xl font-bold font-display text-navy">{(cells ?? []).length}</p>
@@ -234,6 +239,13 @@ export default function Celulas() {
               <div className="col-span-2">
                 <Label>Nome da Célula *</Label>
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="cell-leader">Líder da Célula *</Label>
+                <Select value={form.leaderId} onValueChange={(value) => setForm({ ...form, leaderId: value })}>
+                  <SelectTrigger id="cell-leader"><SelectValue placeholder="Selecione uma Pessoa" /></SelectTrigger>
+                  <SelectContent>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                </Select>
               </div>
               <div className="col-span-2">
                 <Label>Endereço</Label>

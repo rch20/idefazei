@@ -39,6 +39,7 @@ function createInitialForm() {
     reconciliation: false,
     firstVisit: false,
     wonById: "",
+    existingPersonId: "new",
     notes: "",
   };
 }
@@ -58,6 +59,17 @@ export default function GanharAlmas() {
     { churchId: churchId! },
     { enabled: Boolean(churchId) }
   );
+  const possibleMatchInput = useMemo(
+    () => ({
+      churchId: churchId ?? 0,
+      fullName: form.name.trim(),
+      phone: form.phone.trim() || undefined,
+    }),
+    [churchId, form.name, form.phone]
+  );
+  const possibleMatchesQuery = trpc.people.findPossibleMatches.useQuery(possibleMatchInput, {
+    enabled: Boolean(churchId && possibleMatchInput.fullName.length >= 2),
+  });
 
   const souls = soulsQuery.data ?? [];
   const people = peopleQuery.data ?? [];
@@ -70,12 +82,17 @@ export default function GanharAlmas() {
   }, [search, souls]);
 
   const createSoul = trpc.souls.create.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       setOpen(false);
       setForm(createInitialForm());
       setFormError("");
       await soulsQuery.refetch();
-      toast.success("Nova alma registrada e pronta para consolidação.");
+      await peopleQuery.refetch();
+      toast.success(
+        result.createdPerson
+          ? "Nova alma registrada e ficha da Pessoa criada."
+          : "Nova alma vinculada à ficha da Pessoa selecionada."
+      );
     },
     onError: (error) => setFormError(error.message || "Não foi possível registrar a nova alma."),
   });
@@ -126,6 +143,7 @@ export default function GanharAlmas() {
       reconciliation: form.reconciliation,
       firstVisit: form.firstVisit,
       wonById: Number(form.wonById),
+      existingPersonId: form.existingPersonId === "new" ? undefined : Number(form.existingPersonId),
       notes: form.notes.trim() || undefined,
     });
   }
@@ -202,7 +220,10 @@ export default function GanharAlmas() {
               <article key={soul.id} className="card-sacred flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-50"><Flame className="h-5 w-5 text-amber-500" aria-hidden="true" /></div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold text-navy">{soul.name}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate font-semibold text-navy">{soul.name}</p>
+                    {soul.personId && <Badge variant="outline" className="border-navy/15 bg-navy/5 text-[10px] text-navy">Ficha vinculada</Badge>}
+                  </div>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     {soul.phone && <span>{soul.phone}</span>}
                     <span>{origin}</span>
@@ -247,6 +268,23 @@ export default function GanharAlmas() {
                 <div>
                   <Label htmlFor="soul-phone">Telefone</Label>
                   <Input id="soul-phone" inputMode="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="(00) 00000-0000" className="mt-1" />
+                </div>
+                <div className="sm:col-span-2 rounded-lg border border-gold/25 bg-gold/5 p-3">
+                  <Label htmlFor="soul-existing-person" className="text-navy">Ficha central da Pessoa</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">Uma ficha será criada automaticamente. Se esta pessoa já estiver cadastrada, selecione-a para preservar o histórico em um só lugar.</p>
+                  <Select value={form.existingPersonId} onValueChange={(value) => setForm({ ...form, existingPersonId: value })}>
+                    <SelectTrigger id="soul-existing-person" className="mt-3 bg-background"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="new">Criar nova ficha de Pessoa</SelectItem>
+                      {people.map((person) => <SelectItem key={person.id} value={String(person.id)}>Usar: {person.fullName}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  {form.existingPersonId === "new" && possibleMatchesQuery.data && possibleMatchesQuery.data.length > 0 && (
+                    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950" role="status">
+                      <strong>Possível ficha já cadastrada:</strong>{" "}
+                      {possibleMatchesQuery.data.map((person) => person.fullName).join(", ")}. Se for a mesma pessoa, escolha-a acima para evitar duplicidade.
+                    </div>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="soul-decision-date">Data da decisão *</Label>

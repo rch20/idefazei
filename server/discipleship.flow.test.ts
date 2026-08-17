@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { getPersonById } from "./db";
+import { assignPersonToCell, findPossiblePeopleByIdentity, getPersonById, isActiveMinistryMember, setCurrentCareAssignment, updateConsolidation } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -45,12 +45,20 @@ vi.mock("./db", () => ({
     certSignatureLabel: "Pastor(a) Presidente",
   }),
   getSoulsByChurch: vi.fn().mockResolvedValue([]),
+  getSoulById: vi.fn().mockResolvedValue({ id: 1, churchId: 100, personId: 1, status: "nova_alma" }),
   createSoul: vi.fn().mockResolvedValue({ id: 1, name: "Maria Silva", churchId: 100 }),
+  linkSoulToPerson: vi.fn().mockResolvedValue(undefined),
   updateSoul: vi.fn().mockResolvedValue({ id: 1, status: "em_consolidacao" }),
   getConsolidationsByChurch: vi.fn().mockResolvedValue([]),
+  getConsolidationsBySoul: vi.fn().mockResolvedValue([]),
+  getConsolidationById: vi.fn().mockResolvedValue({ id: 1, churchId: 100, soulId: 1, status: "em_consolidacao" }),
   createConsolidation: vi.fn().mockResolvedValue({ id: 1, soulId: 1, churchId: 100 }),
   updateConsolidation: vi.fn().mockResolvedValue({ id: 1, callMade: true, status: "consolidado" }),
   getCellsByChurch: vi.fn().mockResolvedValue([]),
+  getCellById: vi.fn().mockResolvedValue({ id: 2, churchId: 100, name: "Célula Vida", leaderId: 10, active: true }),
+  getActiveCellMembership: vi.fn().mockResolvedValue(null),
+  getCellMembershipHistory: vi.fn().mockResolvedValue([]),
+  assignPersonToCell: vi.fn().mockResolvedValue({ id: 3, cellId: 2, personId: 10, active: true }),
   createCell: vi.fn().mockResolvedValue({ id: 1, name: "Célula Esperança", churchId: 100 }),
   getBaptismClassesByChurch: vi.fn().mockResolvedValue([]),
   getBaptismEnrollments: vi.fn().mockResolvedValue([]),
@@ -70,12 +78,20 @@ vi.mock("./db", () => ({
   getChurchBySlug: vi.fn().mockResolvedValue(null),
   createChurch: vi.fn().mockResolvedValue({ id: 100 }),
   getPeopleByChurch: vi.fn().mockResolvedValue([]),
+  findPossiblePeopleByIdentity: vi.fn().mockResolvedValue([]),
   getPersonById: vi.fn().mockResolvedValue({ id: 10, churchId: 100, fullName: "Líder Teste" }),
   createPerson: vi.fn().mockResolvedValue({ id: 1 }),
   updatePerson: vi.fn().mockResolvedValue({ id: 1 }),
+  getCurrentCareAssignment: vi.fn().mockResolvedValue(null),
+  getCareHistoryByPerson: vi.fn().mockResolvedValue([]),
+  setCurrentCareAssignment: vi.fn().mockResolvedValue({ id: 1, personId: 1, responsiblePersonId: 10 }),
   getEventsByChurch: vi.fn().mockResolvedValue([]),
   createEvent: vi.fn().mockResolvedValue({ id: 1 }),
   getMinistries: vi.fn().mockResolvedValue([]),
+  getMinistryMembers: vi.fn().mockResolvedValue([]),
+  getMinistryMemberCounts: vi.fn().mockResolvedValue([]),
+  isActiveMinistryMember: vi.fn().mockResolvedValue(true),
+  assignPersonToMinistry: vi.fn().mockResolvedValue({ id: 1 }),
   createMinistry: vi.fn().mockResolvedValue({ id: 1 }),
   getAnnouncements: vi.fn().mockResolvedValue([]),
   createAnnouncement: vi.fn().mockResolvedValue({ id: 1 }),
@@ -193,8 +209,12 @@ describe("Fluxo completo de discipulado", () => {
       });
 
       expect(result).toBeDefined();
-      expect(result.name).toBe("Maria Silva");
-      expect(result.churchId).toBe(CHURCH_ID);
+      expect(result.soul.name).toBe("Maria Silva");
+      expect(result.soul.churchId).toBe(CHURCH_ID);
+      expect(result.person.id).toBe(1);
+      expect(setCurrentCareAssignment).toHaveBeenCalledWith(
+        expect.objectContaining({ personId: 1, responsiblePersonId: 10, role: "quem_ganhou" })
+      );
     });
 
     it("rejeita nome muito curto", async () => {
@@ -232,6 +252,27 @@ describe("Fluxo completo de discipulado", () => {
         })
       ).rejects.toThrow("Selecione uma pessoa válida da sua igreja.");
     });
+
+    it("evita duplicidade quando o telefone já pertence a outra ficha", async () => {
+      (findPossiblePeopleByIdentity as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { id: 55, churchId: CHURCH_ID, fullName: "Maria Já Cadastrada", phone: "11999999999", whatsapp: null },
+      ]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(
+        caller.souls.create({
+          churchId: CHURCH_ID,
+          name: "Maria Silva",
+          phone: "11999999999",
+          decisionDate: "2026-06-15",
+          origin: "culto",
+          acceptedJesus: true,
+          reconciliation: false,
+          firstVisit: false,
+          wonById: 10,
+        })
+      ).rejects.toThrow("Já existe uma Pessoa com este telefone");
+    });
   });
 
   // ── Etapa 2: Consolidação ────────────────────────────────────────────────────
@@ -265,8 +306,56 @@ describe("Fluxo completo de discipulado", () => {
       });
 
       expect(result).toBeDefined();
-      expect(result.callMade).toBe(true);
-      expect(result.status).toBe("consolidado");
+      expect(updateConsolidation).toHaveBeenCalledWith(
+        1,
+        CHURCH_ID,
+        expect.objectContaining({
+          callMade: true,
+          visitMade: true,
+          bibleDelivered: true,
+          status: "consolidado",
+          callDate: expect.any(Date),
+          visitDate: expect.any(Date),
+          bibleDate: expect.any(Date),
+        })
+      );
+    });
+  });
+
+  // ── Etapa 2.5: Integração em Célula ─────────────────────────────────────────
+  describe("Etapa 2.5 — Integração em Célula", () => {
+    it("integra a Pessoa em uma única célula e atualiza o responsável pelo cuidado", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const result = await caller.cells.assignPerson({
+        churchId: CHURCH_ID,
+        personId: 10,
+        cellId: 2,
+      });
+
+      expect(result.transferred).toBe(false);
+      expect(assignPersonToCell).toHaveBeenCalledWith({ churchId: CHURCH_ID, personId: 10, cellId: 2 });
+      expect(setCurrentCareAssignment).toHaveBeenCalledWith(
+        expect.objectContaining({ personId: 10, responsiblePersonId: 10, role: "lider_celula" })
+      );
+    });
+  });
+
+  // ── Etapa 2.6: Serviço em Ministério ───────────────────────────────────────
+  describe("Etapa 2.6 — Serviço em Ministério", () => {
+    it("bloqueia uma escala quando a Pessoa não pertence ao Ministério", async () => {
+      (isActiveMinistryMember as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(
+        caller.schedules.create({
+          churchId: CHURCH_ID,
+          ministryId: 7,
+          personId: 10,
+          scheduledDate: "2026-06-28",
+          role: "Recepção",
+        })
+      ).rejects.toThrow("precisa ser participante ativa deste Ministério");
     });
   });
 

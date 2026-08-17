@@ -273,3 +273,13 @@
 - [x] Ajustar responsividade, acessibilidade e fluxo mobile da página Ganhar Almas
 - [x] Validar com testes, screenshots e checkpoint
 - [x] Corrigir a rota direta `/app/ganhar-almas` para evitar página 404
+
+## FASE 15 – Jornada Única da Pessoa
+
+- [x] Criar ou vincular a Pessoa automaticamente ao registrar uma Nova Alma, com detecção segura de duplicidade
+- [x] Registrar responsável atual pelo cuidado e preservar o histórico de mudanças
+- [x] Mostrar próximos passos e pendências de cuidado na ficha da Pessoa
+- [x] Permitir somente uma Célula ativa por Pessoa, com transferência e histórico preservados
+- [x] Restringir escalas a Pessoas participantes ativas do Ministério correspondente
+- [x] Criar visão de liderança para pessoas sem responsável, sem célula e sem acompanhamento recente
+- [x] Cobrir a jornada com testes de integração e validar em desktop e mobile
