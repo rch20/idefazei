@@ -349,3 +349,10 @@
 - [x] Criar orientação clara para contas sem Pessoa vinculada e completar os testes de escopo
 - [x] Fazer o App do Líder usar apenas a célula, consolidações, novas almas e membros do líder autenticado
 - [x] Substituir botões sem ação no App do Líder por rotas e ações operacionais reais
+
+## FASE 24 – Nova Alma por Visita Espontânea
+
+- [x] Permitir cadastrar Nova Alma sem “quem ganhou” quando a origem for visita espontânea
+- [x] Mostrar uma opção clara de chegada espontânea e orientar a atribuição posterior de consolidador
+- [x] Preservar o responsável inicial para casos em que uma Pessoa realmente ganhou a Nova Alma
+- [x] Cobrir os dois fluxos com testes e salvar checkpoint

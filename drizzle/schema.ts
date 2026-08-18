@@ -210,11 +210,12 @@ export const souls = mysqlTable("souls", {
     "evento",
     "redes_sociais",
     "indicacao",
+    "visita_espontanea",
   ]).notNull(),
   acceptedJesus: boolean("acceptedJesus").default(false),
   reconciliation: boolean("reconciliation").default(false),
   firstVisit: boolean("firstVisit").default(false),
-  wonById: int("wonById").notNull(), // quem ganhou
+  wonById: int("wonById"), // quem ganhou; opcional para visita espontânea
   notes: text("notes"),
   status: mysqlEnum("status", ["nova_alma", "em_consolidacao", "consolidado"])
     .default("nova_alma")

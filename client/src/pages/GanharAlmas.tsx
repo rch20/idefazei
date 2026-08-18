@@ -18,6 +18,7 @@ const ORIGINS = [
   { value: "evento", label: "Evento" },
   { value: "redes_sociais", label: "Redes sociais" },
   { value: "indicacao", label: "Indicação" },
+  { value: "visita_espontanea", label: "Visita espontânea" },
 ] as const;
 
 type Origin = (typeof ORIGINS)[number]["value"];
@@ -89,9 +90,11 @@ export default function GanharAlmas() {
       await soulsQuery.refetch();
       await peopleQuery.refetch();
       toast.success(
-        result.createdPerson
-          ? "Nova alma registrada e ficha da Pessoa criada."
-          : "Nova alma vinculada à ficha da Pessoa selecionada."
+        result.needsConsolidator
+          ? "Visitante registrado. Defina um consolidador para iniciar o cuidado."
+          : result.createdPerson
+            ? "Nova alma registrada e ficha da Pessoa criada."
+            : "Nova alma vinculada à ficha da Pessoa selecionada."
       );
     },
     onError: (error) => setFormError(error.message || "Não foi possível registrar a nova alma."),
@@ -127,7 +130,7 @@ export default function GanharAlmas() {
       setFormError("A data da decisão não pode estar no futuro.");
       return;
     }
-    if (!form.wonById) {
+    if (form.origin !== "visita_espontanea" && !form.wonById) {
       setFormError("Selecione quem ganhou esta alma para Cristo.");
       return;
     }
@@ -142,7 +145,7 @@ export default function GanharAlmas() {
       acceptedJesus: form.acceptedJesus,
       reconciliation: form.reconciliation,
       firstVisit: form.firstVisit,
-      wonById: Number(form.wonById),
+      wonById: form.wonById ? Number(form.wonById) : undefined,
       existingPersonId: form.existingPersonId === "new" ? undefined : Number(form.existingPersonId),
       notes: form.notes.trim() || undefined,
     });
@@ -251,12 +254,6 @@ export default function GanharAlmas() {
             <div className="py-8 text-center text-sm text-muted-foreground">Carregando pessoas da igreja…</div>
           ) : peopleQuery.isError ? (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Não foi possível carregar as pessoas da igreja. Feche e tente novamente.</div>
-          ) : people.length === 0 ? (
-            <div className="rounded-lg border border-gold/30 bg-gold/5 p-4 text-sm text-muted-foreground">
-              <div className="mb-1 flex items-center gap-2 font-medium text-navy"><Users className="h-4 w-4" aria-hidden="true" />Cadastre uma pessoa antes</div>
-              A nova alma precisa ser vinculada à pessoa que a ganhou. Cadastre essa pessoa no módulo Pessoas e retorne aqui.
-              <a href="/app/pessoas" className="mt-3 inline-flex font-medium text-navy underline underline-offset-4">Ir para Pessoas</a>
-            </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5" noValidate>
               {formError && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</div>}
@@ -292,18 +289,24 @@ export default function GanharAlmas() {
                 </div>
                 <div>
                   <Label htmlFor="soul-origin">Origem *</Label>
-                  <Select value={form.origin} onValueChange={(value) => setForm({ ...form, origin: value as Origin })}>
+                  <Select value={form.origin} onValueChange={(value) => setForm({ ...form, origin: value as Origin, wonById: value === "visita_espontanea" ? "" : form.wonById })}>
                     <SelectTrigger id="soul-origin" className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>{ORIGINS.map((origin) => <SelectItem key={origin.value} value={origin.value}>{origin.label}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label htmlFor="soul-winner">Quem ganhou? *</Label>
-                  <Select value={form.wonById} onValueChange={(value) => setForm({ ...form, wonById: value })}>
-                    <SelectTrigger id="soul-winner" className="mt-1"><SelectValue placeholder="Selecione uma pessoa" /></SelectTrigger>
-                    <SelectContent>{people.map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
+                {form.origin === "visita_espontanea" ? (
+                  <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+                    <strong>Chegou por conta própria.</strong> Registre o visitante agora; depois, um pastor ou líder poderá definir o consolidador responsável pelo primeiro contato.
+                  </div>
+                ) : (
+                  <div>
+                    <Label htmlFor="soul-winner">Quem ganhou? *</Label>
+                    <Select value={form.wonById} onValueChange={(value) => setForm({ ...form, wonById: value })}>
+                      <SelectTrigger id="soul-winner" className="mt-1"><SelectValue placeholder="Selecione uma pessoa" /></SelectTrigger>
+                      <SelectContent>{people.map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="sm:col-span-2">
                   <Label htmlFor="soul-address">Endereço</Label>
                   <Input id="soul-address" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="Rua, número e bairro" className="mt-1" />

@@ -405,19 +405,24 @@ const soulsRouter = router({
           "evento",
           "redes_sociais",
           "indicacao",
+          "visita_espontanea",
         ]),
         acceptedJesus: z.boolean().default(false),
         reconciliation: z.boolean().default(false),
         firstVisit: z.boolean().default(false),
-        wonById: z.number(),
+        wonById: z.number().nullable().optional(),
         existingPersonId: z.number().optional(),
         notes: z.string().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
-      const winner = await getPersonById(input.wonById, input.churchId);
-      if (!winner) {
+      const isSpontaneousVisit = input.origin === "visita_espontanea";
+      if (!isSpontaneousVisit && !input.wonById) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Informe quem ganhou a Nova Alma ou selecione visita espontânea." });
+      }
+      const winner = input.wonById ? await getPersonById(input.wonById, input.churchId) : null;
+      if (input.wonById && !winner) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma pessoa válida da sua igreja." });
       }
 
@@ -449,7 +454,7 @@ const soulsRouter = router({
           whatsapp: input.phone?.trim() || null,
           conversionDate: new Date(`${input.decisionDate}T12:00:00.000Z`),
           discipleshipStage: "nova_alma",
-          wonById: input.wonById,
+          wonById: input.wonById ?? null,
         });
       }
       if (!person) {
@@ -457,19 +462,21 @@ const soulsRouter = router({
       }
 
       const { existingPersonId: _existingPersonId, ...soulInput } = input;
-      const soul = await createSoul({ ...soulInput, personId: person.id } as any);
+      const soul = await createSoul({ ...soulInput, wonById: input.wonById ?? null, personId: person.id } as any);
       if (!soul) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível registrar a Nova Alma." });
       }
       await linkSoulToPerson(soul.id, input.churchId, person.id);
-      const careAssignment = await setCurrentCareAssignment({
-        churchId: input.churchId,
-        personId: person.id,
-        responsiblePersonId: input.wonById,
-        role: "quem_ganhou",
-        notes: "Responsável inicial definido no registro da Nova Alma.",
-      });
-      return { soul, person, careAssignment, createdPerson: !input.existingPersonId };
+      const careAssignment = winner
+        ? await setCurrentCareAssignment({
+            churchId: input.churchId,
+            personId: person.id,
+            responsiblePersonId: winner.id,
+            role: "quem_ganhou",
+            notes: "Responsável inicial definido no registro da Nova Alma.",
+          })
+        : null;
+      return { soul, person, careAssignment, createdPerson: !input.existingPersonId, needsConsolidator: !winner };
     }),
 
   updateStatus: protectedProcedure

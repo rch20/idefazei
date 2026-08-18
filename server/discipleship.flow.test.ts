@@ -226,6 +226,24 @@ describe("Fluxo completo de discipulado", () => {
       );
     });
 
+    it("permite registrar visita espontânea sem exigir quem ganhou", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const result = await caller.souls.create({
+        churchId: CHURCH_ID,
+        name: "Visitante Espontânea",
+        decisionDate: "2026-06-15",
+        origin: "visita_espontanea",
+        acceptedJesus: false,
+        reconciliation: false,
+        firstVisit: true,
+      });
+
+      expect(result.person.id).toBe(1);
+      expect(result.needsConsolidator).toBe(true);
+      expect(setCurrentCareAssignment).not.toHaveBeenCalled();
+    });
+
     it("rejeita nome muito curto", async () => {
       const ctx = createMemberContext();
       const caller = appRouter.createCaller(ctx);
