@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, findPossiblePeopleByIdentity, getActiveMembersByCell, getCareAttentionByChurch, getCellsByChurch, getPeopleByChurch, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, createCellMeetingWithAttendance, findPossiblePeopleByIdentity, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingSummaries, getCellsByChurch, getPeopleByChurch, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -56,8 +56,12 @@ vi.mock("./db", () => ({
   createConsolidation: vi.fn().mockResolvedValue({ id: 1, soulId: 1, churchId: 100 }),
   updateConsolidation: vi.fn().mockResolvedValue({ id: 1, callMade: true, status: "consolidado" }),
   getCellsByChurch: vi.fn().mockResolvedValue([]),
+  getCellMembersCount: vi.fn().mockResolvedValue([]),
   getActiveMembersByCell: vi.fn().mockResolvedValue([]),
   getCellById: vi.fn().mockResolvedValue({ id: 2, churchId: 100, name: "Célula Vida", leaderId: 10, active: true }),
+  getCellMeetingSummaries: vi.fn().mockResolvedValue([]),
+  getCellMeetingByDate: vi.fn().mockResolvedValue(null),
+  createCellMeetingWithAttendance: vi.fn().mockResolvedValue({ id: 9, cellId: 2, churchId: 100, meetingDate: "2026-08-18" }),
   getActiveCellMembership: vi.fn().mockResolvedValue(null),
   getCellMembershipHistory: vi.fn().mockResolvedValue([]),
   assignPersonToCell: vi.fn().mockResolvedValue({ id: 3, cellId: 2, personId: 10, active: true }),
@@ -400,6 +404,74 @@ describe("Fluxo completo de discipulado", () => {
       expect(members).toHaveLength(1);
       expect(members[0].person.fullName).toBe("Ana Silva");
       expect(getActiveMembersByCell).toHaveBeenCalledWith(2, CHURCH_ID);
+    });
+
+    it("calcula o total real de Pessoas com vínculo ativo em Células", async () => {
+      (getCellMembersCount as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { cellId: 2, count: 8 },
+        { cellId: 3, count: 6 },
+      ]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const counts = await caller.cells.memberCounts({ churchId: CHURCH_ID });
+
+      expect(counts).toEqual([{ cellId: 2, count: 8 }, { cellId: 3, count: 6 }]);
+      expect(getCellMembersCount).toHaveBeenCalledWith(CHURCH_ID);
+    });
+
+    it("permite que o líder registre um encontro com toda a lista de presença", async () => {
+      (getActiveMembersByCell as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { membership: { id: 8, cellId: 2, personId: 10, active: true }, person: { id: 10, fullName: "Ana Silva" } },
+        { membership: { id: 9, cellId: 2, personId: 11, active: true }, person: { id: 11, fullName: "Bruno Lima" } },
+      ]);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      const result = await caller.cells.recordMeeting({
+        churchId: CHURCH_ID,
+        cellId: 2,
+        meetingDate: "2026-08-18",
+        topic: "Comunhão e oração",
+        attendance: [
+          { personId: 10, status: "presente" },
+          { personId: 11, status: "ausente" },
+        ],
+      });
+
+      expect(result).toMatchObject({ cellId: 2, meetingDate: "2026-08-18" });
+      expect(createCellMeetingWithAttendance).toHaveBeenCalledWith(expect.objectContaining({
+        cellId: 2,
+        churchId: CHURCH_ID,
+        attendance: [
+          { personId: 10, status: "presente" },
+          { personId: 11, status: "ausente" },
+        ],
+      }));
+    });
+
+    it("rejeita presença de Pessoa que não pertence à Célula", async () => {
+      (getActiveMembersByCell as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { membership: { id: 8, cellId: 2, personId: 10, active: true }, person: { id: 10, fullName: "Ana Silva" } },
+      ]);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await expect(caller.cells.recordMeeting({
+        churchId: CHURCH_ID,
+        cellId: 2,
+        meetingDate: "2026-08-19",
+        attendance: [{ personId: 999, status: "presente" }],
+      })).rejects.toThrow("Registre a presença de todas as Pessoas atualmente vinculadas à Célula");
+    });
+
+    it("consulta o histórico resumido de encontros da Célula", async () => {
+      (getCellMeetingSummaries as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { meeting: { id: 9, meetingDate: "2026-08-18" }, present: 7, absent: 1, total: 8 },
+      ]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const history = await caller.cells.meetingHistory({ churchId: CHURCH_ID, cellId: 2 });
+
+      expect(history[0]).toMatchObject({ present: 7, absent: 1, total: 8 });
+      expect(getCellMeetingSummaries).toHaveBeenCalledWith(2, CHURCH_ID);
     });
 
     it("integra a Nova Alma em uma Célula real e atualiza o cuidado", async () => {

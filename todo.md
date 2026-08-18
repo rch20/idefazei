@@ -378,3 +378,17 @@
 - [x] Registrar histórico cronológico de cuidado na ficha da Pessoa
 - [x] Restringir a fila e as ações ao escopo pastoral da conta autenticada
 - [x] Validar desktop/mobile, testes e checkpoint
+
+## FASE 28 – Priorização de Abas
+
+- [x] Mapear as lacunas de operação e experiência nas abas remanescentes
+- [x] Classificar melhorias por impacto, esforço, dependência e risco de regressão
+- [x] Documentar a recomendação de próxima aba a ser melhorada
+
+## FASE 29 – Células: Encontros e Presença
+
+- [x] Revisar o schema e as rotas atuais de Células e presença para preservar isolamento por tenant e permissões por escopo
+- [x] Exibir o total real de Pessoas com vínculo ativo em Células
+- [x] Permitir o registro de encontro e presença somente por responsável autorizado pela Célula
+- [x] Exibir último encontro e resumo de presença na experiência responsiva da Célula
+- [x] Cobrir o fluxo com testes, validar desktop/mobile e salvar checkpoint

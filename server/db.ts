@@ -695,6 +695,83 @@ export async function getCellMembersCount(churchId: number) {
     .groupBy(cellMembers.cellId);
 }
 
+/** Retorna as reuniões recentes de uma Célula com o resumo de presença já calculado. */
+export async function getCellMeetingSummaries(cellId: number, churchId: number, limit = 6) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      meeting: cellMeetings,
+      total: sql<number>`COUNT(${cellAttendance.id})`,
+      present: sql<number>`COALESCE(SUM(CASE WHEN ${cellAttendance.status} = 'presente' THEN 1 ELSE 0 END), 0)`,
+      absent: sql<number>`COALESCE(SUM(CASE WHEN ${cellAttendance.status} = 'ausente' THEN 1 ELSE 0 END), 0)`,
+    })
+    .from(cellMeetings)
+    .leftJoin(cellAttendance, eq(cellAttendance.meetingId, cellMeetings.id))
+    .innerJoin(cells, eq(cells.id, cellMeetings.cellId))
+    .where(and(eq(cellMeetings.cellId, cellId), eq(cellMeetings.churchId, churchId), eq(cells.churchId, churchId)))
+    .groupBy(cellMeetings.id)
+    .orderBy(desc(cellMeetings.meetingDate))
+    .limit(limit);
+}
+
+export async function getCellMeetingByDate(cellId: number, churchId: number, meetingDate: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const normalizedMeetingDate = new Date(`${meetingDate}T12:00:00.000Z`);
+  const rows = await db
+    .select()
+    .from(cellMeetings)
+    .where(
+      and(
+        eq(cellMeetings.cellId, cellId),
+        eq(cellMeetings.churchId, churchId),
+        eq(cellMeetings.meetingDate, normalizedMeetingDate)
+      )
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Cria um único encontro e sua lista completa de presença na mesma transação. */
+export async function createCellMeetingWithAttendance(data: {
+  cellId: number;
+  churchId: number;
+  meetingDate: string;
+  topic?: string | null;
+  notes?: string | null;
+  attendance: Array<{ personId: number; status: "presente" | "ausente" }>;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const normalizedMeetingDate = new Date(`${data.meetingDate}T12:00:00.000Z`);
+
+  return db.transaction(async (tx) => {
+    const result = await tx.insert(cellMeetings).values({
+      cellId: data.cellId,
+      churchId: data.churchId,
+      meetingDate: normalizedMeetingDate,
+      topic: data.topic ?? null,
+      notes: data.notes ?? null,
+    });
+    const meetingId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!meetingId) throw new Error("Failed to create cell meeting");
+
+    if (data.attendance.length > 0) {
+      await tx.insert(cellAttendance).values(
+        data.attendance.map((entry) => ({
+          meetingId,
+          personId: entry.personId,
+          status: entry.status,
+        }))
+      );
+    }
+
+    const rows = await tx.select().from(cellMeetings).where(eq(cellMeetings.id, meetingId)).limit(1);
+    return rows[0] ?? null;
+  });
+}
+
 export async function getActiveMembersByCell(cellId: number, churchId: number) {
   const db = await getDb();
   if (!db) return [];

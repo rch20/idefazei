@@ -23,8 +23,12 @@ import {
   findPossiblePeopleByIdentity,
   getAnnouncementsByChurch,
   getCellsByChurch,
+  getCellMembersCount,
   getActiveMembersByCell,
   getCellById,
+  getCellMeetingByDate,
+  getCellMeetingSummaries,
+  createCellMeetingWithAttendance,
   getActiveCellMembership,
   getCellMembershipHistory,
   getChurchById,
@@ -176,6 +180,31 @@ async function requireJourneyStagePermission(userId: number, churchId: number, t
     });
   }
   return actor;
+}
+
+async function getCellMeetingAuthorization(userId: number, churchId: number, cellId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const cell = await getCellById(cellId, churchId);
+  if (!cell || !cell.active) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada." });
+  }
+  const actorRoles = await getEffectiveChurchRoles(userId, churchId, actor);
+  const hasPastoralOversight = actorRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+  const isCellResponsible = Boolean(
+    actor.personId && (cell.leaderId === actor.personId || cell.supervisorId === actor.personId)
+  );
+  return { cell, canRecord: hasPastoralOversight || isCellResponsible };
+}
+
+async function requireCellMeetingAuthorization(userId: number, churchId: number, cellId: number) {
+  const authorization = await getCellMeetingAuthorization(userId, churchId, cellId);
+  if (!authorization.canRecord) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Somente o líder, supervisor ou pastor responsável por esta Célula pode registrar o encontro.",
+    });
+  }
+  return authorization.cell;
 }
 
 // ─── ROUTERS ──────────────────────────────────────────────────────────────────
@@ -719,6 +748,69 @@ const cellsRouter = router({
       const cell = await getCellById(input.cellId, input.churchId);
       if (!cell) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada." });
       return getActiveMembersByCell(input.cellId, input.churchId);
+    }),
+
+  memberCounts: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getCellMembersCount(input.churchId);
+    }),
+
+  meetingHistory: protectedProcedure
+    .input(z.object({ churchId: z.number(), cellId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const cell = await getCellById(input.cellId, input.churchId);
+      if (!cell) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada." });
+      return getCellMeetingSummaries(input.cellId, input.churchId);
+    }),
+
+  meetingAccess: protectedProcedure
+    .input(z.object({ churchId: z.number(), cellId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const authorization = await getCellMeetingAuthorization(ctx.user.id, input.churchId, input.cellId);
+      return { canRecord: authorization.canRecord };
+    }),
+
+  recordMeeting: protectedProcedure
+    .input(
+      z.object({
+        churchId: z.number(),
+        cellId: z.number(),
+        meetingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida."),
+        topic: z.string().trim().max(255).optional(),
+        notes: z.string().trim().max(3000).optional(),
+        attendance: z.array(z.object({ personId: z.number().int().positive(), status: z.enum(["presente", "ausente"]) })),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      await requireCellMeetingAuthorization(ctx.user.id, input.churchId, input.cellId);
+      const [members, existingMeeting] = await Promise.all([
+        getActiveMembersByCell(input.cellId, input.churchId),
+        getCellMeetingByDate(input.cellId, input.churchId, input.meetingDate),
+      ]);
+      if (existingMeeting) {
+        throw new TRPCError({ code: "CONFLICT", message: "Já existe um encontro registrado para esta data." });
+      }
+      const activePersonIds = new Set(members.map((item) => item.person.id));
+      const submittedPersonIds = input.attendance.map((item) => item.personId);
+      const uniquePersonIds = new Set(submittedPersonIds);
+      const hasInvalidPerson = submittedPersonIds.some((personId) => !activePersonIds.has(personId));
+      if (hasInvalidPerson || uniquePersonIds.size !== submittedPersonIds.length || uniquePersonIds.size !== activePersonIds.size) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Registre a presença de todas as Pessoas atualmente vinculadas à Célula.",
+        });
+      }
+      return createCellMeetingWithAttendance({
+        cellId: input.cellId,
+        churchId: input.churchId,
+        meetingDate: input.meetingDate,
+        topic: input.topic || null,
+        notes: input.notes || null,
+        attendance: input.attendance,
+      });
     }),
 
   personMembership: protectedProcedure
