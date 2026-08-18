@@ -70,17 +70,17 @@ const navItems = [
   { icon: Droplets, label: "Batismo nas Águas", path: "/app/batismo", group: "discipulado" },
   { icon: Heart, label: "Encontro com Deus", path: "/app/encontro-com-deus", group: "discipulado" },
   { icon: GraduationCap, label: "Escola de Líderes", path: "/app/escola-lideres", group: "lideranca" },
-  { icon: Crown, label: "Gestão de Liderança", path: "/app/gestao-lideranca", group: "lideranca" },
-  { icon: Shield, label: "Aconselhamento", path: "/app/aconselhamento", group: "lideranca" },
+  { icon: Crown, label: "Gestão de Liderança", path: "/app/gestao-lideranca", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
+  { icon: Shield, label: "Aconselhamento", path: "/app/aconselhamento", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
   { icon: MessageCircle, label: "Pedidos de Oração", path: "/app/oracao", group: "comunicacao" },
   { icon: BookOpen, label: "Mural", path: "/app/mural", group: "comunicacao" },
-  { icon: MessageSquare, label: "Comunicação", path: "/app/comunicacao", group: "comunicacao" },
+  { icon: MessageSquare, label: "Comunicação", path: "/app/comunicacao", group: "comunicacao", roles: ["pastor_presidente", "pastor_local", "secretario"] },
   { icon: Shield, label: "Biblioteca", path: "/app/biblioteca", group: "comunicacao" },
-  { icon: Building2, label: "Configurações", path: "/app/configuracoes", group: "admin" },
-  { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin" },
-  { icon: CreditCard, label: "Faturamento", path: "/app/faturamento", group: "admin" },
+  { icon: Building2, label: "Configurações", path: "/app/configuracoes", group: "admin", roles: ["pastor_presidente", "pastor_local", "secretario"] },
+  { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin", roles: ["pastor_presidente", "pastor_local", "secretario"] },
+  { icon: CreditCard, label: "Faturamento", path: "/app/faturamento", group: "admin", roles: ["pastor_presidente", "pastor_local"] },
   { icon: Users, label: "Área do Membro", path: "/app/membro", group: "membros" },
-  { icon: Star, label: "App do Líder", path: "/app/lider", group: "membros" },
+  { icon: Star, label: "App do Líder", path: "/app/lider", group: "membros", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"] },
 ];
 
 const groups = [
@@ -100,6 +100,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [location, navigate] = useLocation();
   const { user, logout } = useChurchAuth();
   const { churchName, logoUrl } = useChurch();
+  const currentRole = user?.role ?? "membro";
 
   return (
     <>
@@ -145,7 +146,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
           {groups.map((group) => {
-            const items = navItems.filter((i) => i.group === group.key);
+            const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.includes(currentRole)));
             if (!items.length) return null;
             return (
               <div key={group.key}>

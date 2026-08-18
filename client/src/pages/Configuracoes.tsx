@@ -428,6 +428,12 @@ export default function Configuracoes() {
               <h2 className="mb-2 border-b border-border pb-2 text-base font-semibold text-navy">Atribuição de Pessoas e Funções</h2>
               <p className="mb-4 text-sm text-muted-foreground">Selecione a Pessoa e defina a função que ela exercerá no sistema. A função e o vínculo determinam o escopo de atuação no Funil de Discipulado.</p>
 
+              {(churchUsers ?? []).some((churchUser) => !churchUser.personId) && (
+                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  <strong>Contas aguardando vínculo.</strong> Selecione a ficha de Pessoa de cada conta antes de atribuir funções. Sem esse vínculo, a conta não terá um escopo pastoral definido no Funil.
+                </div>
+              )}
+
               {!canManageAccounts ? (
                 <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Somente Pastores e Secretários podem administrar vínculos de contas.</p>
               ) : churchUsers?.length === 0 ? (
@@ -484,7 +490,7 @@ export default function Configuracoes() {
                       <fieldset className="min-w-0" disabled={!canManageRoles || !churchUser.personId || updateComplementaryRolesMutation.isPending}>
                         <legend className="mb-1 text-[11px] font-medium text-muted-foreground">Funções complementares</legend>
                         <div className="flex flex-wrap gap-x-3 gap-y-1.5">
-                          {COMPLEMENTARY_ROLES.map((role) => {
+                          {COMPLEMENTARY_ROLES.filter((role) => role.value !== churchUser.role).map((role) => {
                             const selected = churchUser.complementaryRoles.includes(role.value);
                             return (
                               <label key={role.value} className="flex cursor-pointer items-center gap-1.5 text-xs text-navy disabled:cursor-not-allowed disabled:opacity-60">

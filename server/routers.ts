@@ -552,6 +552,10 @@ const consolidationRouter = router({
       await requireChurchMember(ctx.user.id, churchId);
       const consolidation = await getConsolidationById(id, churchId);
       if (!consolidation) throw new TRPCError({ code: "NOT_FOUND", message: "Consolidação não encontrada." });
+      const soulForPermission = await getSoulById(consolidation.soulId, churchId);
+      if (soulForPermission?.personId) {
+        await requireJourneyStagePermission(ctx.user.id, churchId, soulForPermission.personId);
+      }
       const timestampFields = {
         callMade: "callDate",
         messageSent: "messageDate",
@@ -572,6 +576,35 @@ const consolidationRouter = router({
         if (soul) await updateSoul(soul.id, churchId, { status: "consolidado" });
       }
       return getConsolidationById(id, churchId);
+    }),
+
+  integrateIntoCell: protectedProcedure
+    .input(z.object({ churchId: z.number(), consolidationId: z.number(), cellId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const [consolidation, cell] = await Promise.all([
+        getConsolidationById(input.consolidationId, input.churchId),
+        getCellById(input.cellId, input.churchId),
+      ]);
+      if (!consolidation) throw new TRPCError({ code: "NOT_FOUND", message: "Consolidação não encontrada." });
+      if (!cell) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma Célula válida desta igreja." });
+      const soul = await getSoulById(consolidation.soulId, input.churchId);
+      if (!soul?.personId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Esta Nova Alma ainda não possui uma ficha de Pessoa vinculada." });
+      }
+      await requireJourneyStagePermission(ctx.user.id, input.churchId, soul.personId);
+      const membership = await assignPersonToCell({ churchId: input.churchId, personId: soul.personId, cellId: cell.id });
+      await updateConsolidation(input.consolidationId, input.churchId, { addedToCell: true, cellDate: new Date() } as any);
+      if (cell.leaderId) {
+        await setCurrentCareAssignment({
+          churchId: input.churchId,
+          personId: soul.personId,
+          responsiblePersonId: cell.leaderId,
+          role: "lider_celula",
+          notes: `Integração na ${cell.name}: cuidado transferido ao líder da Célula.`,
+        });
+      }
+      return { membership, consolidation: await getConsolidationById(input.consolidationId, input.churchId) };
     }),
 });
 
@@ -1147,7 +1180,8 @@ const churchAuthRouter = router({
       if (!churchUser || churchUser.churchId !== input.churchId) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Usuário da igreja não encontrado." });
       }
-      const roles = await setComplementaryRolesForChurchUser(input.userId, input.churchId, input.roles);
+      const complementaryRoles = input.roles.filter((role) => role !== churchUser.role);
+      const roles = await setComplementaryRolesForChurchUser(input.userId, input.churchId, complementaryRoles);
       return { userId: input.userId, roles };
     }),
 });
@@ -1974,6 +2008,51 @@ const stripeRouter = router({
     }),
 });
 
+// ─── APP DO LÍDER ─────────────────────────────────────────────────────────────
+const leaderRouter = router({
+  overview: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Sua conta ainda não está vinculada a uma Pessoa. Peça ao Pastor para concluir o vínculo em Configurações.",
+        });
+      }
+      const actorRoles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const canManageAll = actorRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      const [allCells, allSouls, allConsolidations, allPeople] = await Promise.all([
+        getCellsByChurch(input.churchId),
+        getSoulsByChurch(input.churchId),
+        getConsolidationsByChurch(input.churchId),
+        getPeopleByChurch(input.churchId),
+      ]);
+      const managedIds = canManageAll
+        ? allPeople.map((person) => person.id)
+        : await getJourneyManagedPersonIds({ churchId: input.churchId, actorPersonId: actor.personId, actorRoles });
+      const managedIdSet = new Set(managedIds);
+      const cells = canManageAll
+        ? allCells
+        : allCells.filter((cell) =>
+            (actorRoles.includes("lider") && cell.leaderId === actor.personId) ||
+            (actorRoles.includes("supervisor") && cell.supervisorId === actor.personId)
+          );
+      const cellMembers = await Promise.all(cells.map((cell) => getActiveMembersByCell(cell.id, input.churchId)));
+      cellMembers.flat().forEach((item) => managedIdSet.add(item.person.id));
+      const managedPeople = allPeople.filter((person) => managedIdSet.has(person.id));
+      const managedSouls = allSouls.filter((soul) => soul.personId && managedIdSet.has(soul.personId));
+      const managedSoulIds = new Set(managedSouls.map((soul) => soul.id));
+
+      return {
+        cells: cells.map((cell, index) => ({ ...cell, members: cellMembers[index] ?? [] })),
+        people: managedPeople,
+        souls: managedSouls,
+        consolidations: allConsolidations.filter((consolidation) => managedSoulIds.has(consolidation.soulId)),
+      };
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -1995,6 +2074,7 @@ export const appRouter = router({
   announcements: announcementsRouter,
   prayer: prayerRouter,
   dashboard: dashboardRouter,
+  leader: leaderRouter,
     families: familiesRouter,
   schedules: schedulesRouter,
   library: libraryRouter,

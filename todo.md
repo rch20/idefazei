@@ -331,3 +331,21 @@
 - [x] Aplicar funções complementares apenas aos módulos correspondentes, sem ampliar o Funil indevidamente
 - [x] Atualizar Configurações com seleção clara de múltiplas funções complementares
 - [x] Cobrir regras de persistência e autorização com testes e salvar checkpoint
+
+## FASE 23 – Revisão Primordial da Plataforma
+
+- [x] Mapear jornadas críticas: cadastro, login, onboarding, nova alma, consolidação, célula e serviço
+- [x] Verificar regras de negócio, estados, permissões e isolamento de tenant nos fluxos críticos
+- [x] Revisar navegação, formulários, feedbacks, vazios, erros e responsividade mobile
+- [x] Corrigir as falhas primordiais de operação e simplificar os fluxos confusos
+- [x] Ampliar testes de integração e validar as jornadas revisadas antes do checkpoint
+
+### Achados primordiais priorizados
+
+- [x] Transformar “Inserido em célula” da Consolidação em vínculo real de Pessoa com Célula
+- [x] Tornar o App do Líder baseado na conta e célula do líder, não na primeira célula da igreja
+- [x] Adequar a navegação lateral ao perfil para reduzir módulos irrelevantes e ações bloqueadas
+- [x] Impedir que uma função complementar replique a função principal da conta
+- [x] Criar orientação clara para contas sem Pessoa vinculada e completar os testes de escopo
+- [x] Fazer o App do Líder usar apenas a célula, consolidações, novas almas e membros do líder autenticado
+- [x] Substituir botões sem ação no App do Líder por rotas e ações operacionais reais

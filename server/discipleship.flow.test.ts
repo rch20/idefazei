@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, findPossiblePeopleByIdentity, getActiveMembersByCell, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, findPossiblePeopleByIdentity, getActiveMembersByCell, getCellsByChurch, getPeopleByChurch, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -382,6 +382,26 @@ describe("Fluxo completo de discipulado", () => {
       expect(members[0].person.fullName).toBe("Ana Silva");
       expect(getActiveMembersByCell).toHaveBeenCalledWith(2, CHURCH_ID);
     });
+
+    it("integra a Nova Alma em uma Célula real e atualiza o cuidado", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const result = await caller.consolidation.integrateIntoCell({
+        churchId: CHURCH_ID,
+        consolidationId: 1,
+        cellId: 2,
+      });
+
+      expect(assignPersonToCell).toHaveBeenCalledWith({ churchId: CHURCH_ID, personId: 1, cellId: 2 });
+      expect(updateConsolidation).toHaveBeenCalledWith(1, CHURCH_ID, expect.objectContaining({ addedToCell: true }));
+      expect(setCurrentCareAssignment).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        personId: 1,
+        responsiblePersonId: 10,
+        role: "lider_celula",
+      }));
+      expect(result.membership).toMatchObject({ cellId: 2 });
+    });
   });
 
   // ── Etapa 2.6: Serviço em Ministério ───────────────────────────────────────
@@ -580,6 +600,39 @@ describe("Fluxo completo de discipulado", () => {
 
       expect(result).toEqual({ userId: 2, roles: ["diacono", "levita"] });
       expect(setComplementaryRolesForChurchUser).toHaveBeenCalledWith(2, CHURCH_ID, ["diacono", "levita"]);
+    });
+  });
+
+  describe("App do Líder — escopo real", () => {
+    it("exibe somente a Célula liderada e as Pessoas vinculadas à conta do líder", async () => {
+      (getCellsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { id: 1, churchId: CHURCH_ID, name: "Célula Esperança", leaderId: 10, supervisorId: 20 },
+        { id: 2, churchId: CHURCH_ID, name: "Célula Vida", leaderId: 30, supervisorId: 20 },
+      ]);
+      (getActiveMembersByCell as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { person: { id: 10, fullName: "Líder Teste" }, membership: { id: 1, cellId: 1, personId: 10 } },
+      ]);
+      (getPeopleByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { id: 10, churchId: CHURCH_ID, fullName: "Líder Teste" },
+        { id: 30, churchId: CHURCH_ID, fullName: "Pessoa de outra célula" },
+      ]);
+
+      const caller = appRouter.createCaller(createMemberContext(-2));
+      const overview = await caller.leader.overview({ churchId: CHURCH_ID });
+
+      expect(overview.cells).toHaveLength(1);
+      expect(overview.cells[0].name).toBe("Célula Esperança");
+      expect(overview.people.map((person) => person.id)).toEqual([10]);
+    });
+
+    it("bloqueia a atualização de Consolidação fora da responsabilidade da conta", async () => {
+      (canChurchUserManageJourney as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await expect(
+        caller.consolidation.updateChecklist({ id: 1, churchId: CHURCH_ID, callMade: true })
+      ).rejects.toThrow("Você só pode movimentar pessoas que estão sob sua responsabilidade pastoral.");
+      expect(updateConsolidation).not.toHaveBeenCalled();
     });
   });
 

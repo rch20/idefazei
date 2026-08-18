@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { Link } from "wouter";
 import {
   Users, Heart, Star, CheckCircle2, Clock, AlertCircle,
   Phone, MapPin, TrendingUp, UserPlus, BookOpen
@@ -28,19 +29,31 @@ export default function AppLider() {
   const { churchId } = useChurch();
   const [activeTab, setActiveTab] = useState("celula");
 
-  const { data: cells, isLoading: loadingCells } = trpc.cells.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
-  const { data: souls, isLoading: loadingSouls } = trpc.souls.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
-  const { data: consolidations, isLoading: loadingConsolidations } = trpc.consolidation.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
-  const { data: people, isLoading: loadingPeople } = trpc.people.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const { data: overview, isLoading: loadingOverview, refetch: refetchOverview } = trpc.leader.overview.useQuery(
+    { churchId: churchId! },
+    { enabled: !!churchId }
+  );
+  const cells = overview?.cells ?? [];
+  const souls = overview?.souls ?? [];
+  const consolidations = overview?.consolidations ?? [];
+  const people = overview?.people ?? [];
+  const loadingCells = loadingOverview;
+  const loadingSouls = loadingOverview;
+  const loadingConsolidations = loadingOverview;
+  const loadingPeople = loadingOverview;
 
   // Estatísticas rápidas do líder
-  const myCell = cells?.[0];
-  const pendingConsolidations = consolidations?.filter((c: { status?: string | null }) => c.status !== "completed") ?? [];
-  const recentSouls = souls?.slice(0, 5) ?? [];
+  const myCells = cells;
+  const membersInCells = myCells.reduce((total, cell) => total + cell.members.length, 0);
+  const pendingConsolidations = consolidations.filter((c: { status?: string | null }) => c.status !== "consolidado") ?? [];
+  const recentSouls = souls.slice(0, 5);
 
   const updateConsolidation = trpc.consolidation.updateChecklist.useMutation({
-    onSuccess: () => toast.success("Consolidação atualizada!"),
-    onError: () => toast.error("Erro ao atualizar."),
+    onSuccess: () => {
+      refetchOverview();
+      toast.success("Consolidação atualizada!");
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
   });
 
   return (
@@ -65,7 +78,7 @@ export default function AppLider() {
           {/* KPIs rápidos */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: "Membros na Célula", value: loadingCells ? "—" : (myCell ? "—" : "0"), icon: Users },
+              { label: "Membros na Célula", value: loadingCells ? "—" : membersInCells, icon: Users },
               { label: "Consolidações Pendentes", value: loadingConsolidations ? "—" : pendingConsolidations.length, icon: Clock },
               { label: "Novas Almas", value: loadingSouls ? "—" : recentSouls.length, icon: Heart },
             ].map(({ label, value, icon: Icon }) => (
@@ -103,34 +116,37 @@ export default function AppLider() {
         <TabsContent value="celula" className="mt-4">
           {loadingCells ? (
             <Skeleton className="h-48 w-full rounded-2xl" />
-          ) : myCell ? (
-            <Card className="border-[#1e3a5f]/10">
-              <CardHeader>
-                <CardTitle className="text-[#1e3a5f] font-serif flex items-center gap-2">
-                  <Users className="w-5 h-5 text-[#c9a84c]" />
-                  {(myCell as { name: string }).name}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {[
-                  { icon: MapPin, label: "Endereço", value: (myCell as { address?: string | null }).address ?? "—" },
-                  { icon: Clock, label: "Horário", value: (myCell as { meetingDay?: string | null; meetingTime?: string | null }).meetingDay ? `${(myCell as { meetingDay?: string | null }).meetingDay} às ${(myCell as { meetingTime?: string | null }).meetingTime ?? "—"}` : "—" },
-                  { icon: TrendingUp, label: "Capacidade", value: `${(myCell as { currentMembers?: number | null }).currentMembers ?? 0} / ${(myCell as { maxCapacity?: number | null }).maxCapacity ?? "—"} membros` },
-                ].map(({ icon: Icon, label, value }) => (
-                  <div key={label} className="flex items-center gap-3 p-3 rounded-xl bg-[#f5f0e8]/50">
-                    <Icon className="w-4 h-4 text-[#c9a84c] shrink-0" />
-                    <div>
-                      <p className="text-[10px] text-[#1e3a5f]/40 uppercase tracking-wider">{label}</p>
-                      <p className="text-[#1e3a5f] text-sm font-medium">{value}</p>
-                    </div>
-                  </div>
-                ))}
-                <Button className="w-full bg-[#1e3a5f] hover:bg-[#162d4a] text-white mt-2">
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Registrar Presença
-                </Button>
-              </CardContent>
-            </Card>
+          ) : myCells.length > 0 ? (
+            <div className="space-y-3">
+              {myCells.map((myCell) => (
+                <Card key={myCell.id} className="border-[#1e3a5f]/10">
+                  <CardHeader>
+                    <CardTitle className="text-[#1e3a5f] font-serif flex items-center gap-2">
+                      <Users className="w-5 h-5 text-[#c9a84c]" />
+                      {myCell.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {[
+                      { icon: MapPin, label: "Endereço", value: myCell.address ?? "—" },
+                      { icon: Clock, label: "Horário", value: myCell.meetingDay ? `${myCell.meetingDay} às ${myCell.meetingTime ?? "—"}` : "—" },
+                      { icon: TrendingUp, label: "Membros ativos", value: `${myCell.members.length} membro${myCell.members.length === 1 ? "" : "s"}` },
+                    ].map(({ icon: Icon, label, value }) => (
+                      <div key={label} className="flex items-center gap-3 p-3 rounded-xl bg-[#f5f0e8]/50">
+                        <Icon className="w-4 h-4 text-[#c9a84c] shrink-0" />
+                        <div>
+                          <p className="text-[10px] text-[#1e3a5f]/40 uppercase tracking-wider">{label}</p>
+                          <p className="text-[#1e3a5f] text-sm font-medium">{value}</p>
+                        </div>
+                      </div>
+                    ))}
+                    <Button asChild className="mt-2 w-full bg-[#1e3a5f] text-white hover:bg-[#162d4a]">
+                      <Link href="/app/celulas"><CheckCircle2 className="mr-2 h-4 w-4" />Ver Célula e registrar presença</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           ) : (
             <div className="text-center py-16">
               <Users className="w-12 h-12 text-[#1e3a5f]/20 mx-auto mb-3" />
@@ -170,7 +186,6 @@ export default function AppLider() {
                           { key: "phoneCalled", label: "Ligação", done: c.phoneCalled },
                           { key: "visited", label: "Visita", done: c.visited },
                           { key: "bibleGiven", label: "Bíblia", done: c.bibleGiven },
-                          { key: "cellInvited", label: "Célula", done: c.cellInvited },
                         ].map(({ key, label, done }) => (
                           <button
                             key={key}
@@ -186,6 +201,11 @@ export default function AppLider() {
                           </button>
                         ))}
                       </div>
+                      {!c.cellInvited && (
+                        <Link href="/app/consolidacao" className="mt-3 inline-flex text-xs font-medium text-navy underline decoration-gold/70 underline-offset-4">
+                          Integrar em Célula pela tela de Consolidação
+                        </Link>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -236,9 +256,8 @@ export default function AppLider() {
                 <div className="text-center py-12">
                   <Heart className="w-10 h-10 text-[#1e3a5f]/20 mx-auto mb-3" />
                   <p className="text-[#1e3a5f]/40 text-sm">Nenhuma nova alma registrada</p>
-                  <Button size="sm" className="mt-4 bg-[#c9a84c] hover:bg-[#b8963e] text-white">
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    Registrar Nova Alma
+                  <Button asChild size="sm" className="mt-4 bg-[#c9a84c] text-white hover:bg-[#b8963e]">
+                    <Link href="/app/almas"><UserPlus className="mr-2 h-4 w-4" />Registrar Nova Alma</Link>
                   </Button>
                 </div>
               )}

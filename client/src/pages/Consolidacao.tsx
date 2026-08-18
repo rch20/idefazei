@@ -1,4 +1,5 @@
 import { useChurch } from "@/components/ChurchLayout";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { CheckCircle2, Circle, Heart, Phone, MessageSquare, Home, BookOpen, Users, HandHeart, Church } from "lucide-react";
@@ -22,10 +23,19 @@ export default function Consolidacao() {
   const utils = trpc.useUtils();
   const { data: consolidations, isLoading, refetch } = trpc.consolidation.list.useQuery({ churchId });
   const { data: souls } = trpc.souls.list.useQuery({ churchId });
+  const { data: cells = [] } = trpc.cells.list.useQuery({ churchId });
+  const [selectedCellByConsolidation, setSelectedCellByConsolidation] = useState<Record<number, string>>({});
 
   const updateChecklist = trpc.consolidation.updateChecklist.useMutation({
     onSuccess: () => refetch(),
     onError: () => toast.error("Erro ao atualizar checklist"),
+  });
+  const integrateIntoCell = trpc.consolidation.integrateIntoCell.useMutation({
+    onSuccess: () => {
+      refetch();
+      toast.success("Pessoa integrada à Célula e cuidado transferido ao líder.");
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
   });
 
   const soulsMap = new Map((souls ?? []).map((s) => [s.id, s]));
@@ -133,6 +143,38 @@ export default function Consolidacao() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {CHECKLIST_ITEMS.map((item) => {
                     const checked = (c as any)[item.key] as boolean;
+                    if (item.key === "addedToCell" && !checked && !isComplete) {
+                      const selectedCellId = selectedCellByConsolidation[c.id] ?? "";
+                      return (
+                        <div key={item.key} className="rounded-lg border border-gold/40 bg-gold/5 p-2.5 sm:col-span-2">
+                          <div className="mb-2 flex items-center gap-2 text-xs font-medium text-navy">
+                            <Church className="h-4 w-4 text-gold" />
+                            Integrar em Célula
+                          </div>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <label className="sr-only" htmlFor={`cell-${c.id}`}>Selecione a Célula para {soul?.name ?? "esta pessoa"}</label>
+                            <select
+                              id={`cell-${c.id}`}
+                              value={selectedCellId}
+                              onChange={(event) => setSelectedCellByConsolidation((current) => ({ ...current, [c.id]: event.target.value }))}
+                              className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+                            >
+                              <option value="">Selecione uma Célula ativa</option>
+                              {cells.map((cell) => <option key={cell.id} value={cell.id}>{cell.name}</option>)}
+                            </select>
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="bg-navy text-white hover:bg-navy-light"
+                              disabled={!selectedCellId || integrateIntoCell.isPending}
+                              onClick={() => integrateIntoCell.mutate({ churchId, consolidationId: c.id, cellId: Number(selectedCellId) })}
+                            >
+                              {integrateIntoCell.isPending ? "Integrando…" : "Integrar"}
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    }
                     return (
                       <button
                         key={item.key}
