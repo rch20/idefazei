@@ -192,6 +192,20 @@ export async function linkChurchUserToPerson(userId: number, churchId: number, p
   return getActiveChurchUserById(userId);
 }
 
+export async function updateChurchUserAssignment(
+  userId: number,
+  churchId: number,
+  data: { personId: number; role: typeof churchUsers.$inferInsert["role"] }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(churchUsers)
+    .set(data)
+    .where(and(eq(churchUsers.id, userId), eq(churchUsers.churchId, churchId)));
+  return getActiveChurchUserById(userId);
+}
+
 /** Determina se uma conta pode movimentar a jornada espiritual de uma Pessoa. */
 export async function canChurchUserManageJourney(input: {
   churchId: number;

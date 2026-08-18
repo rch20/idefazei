@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, findPossiblePeopleByIdentity, getActiveMembersByCell, getPersonById, isActiveMinistryMember, setCurrentCareAssignment, updateConsolidation, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, findPossiblePeopleByIdentity, getActiveMembersByCell, getPersonById, isActiveMinistryMember, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ vi.mock("./db", () => ({
     id: 1,
     userId: 10,
     churchId: 100,
-    role: "pastor",
+    role: "pastor_presidente",
     active: true,
   }),
   getChurchById: vi.fn().mockResolvedValue({
@@ -90,6 +90,7 @@ vi.mock("./db", () => ({
   getJourneyManagedPersonIds: vi.fn().mockResolvedValue([]),
   getChurchUsersByChurch: vi.fn().mockResolvedValue([]),
   linkChurchUserToPerson: vi.fn().mockResolvedValue({ id: 1, personId: 10 }),
+  updateChurchUserAssignment: vi.fn().mockResolvedValue({ id: 2, personId: 10, role: "lider" }),
   getEventsByChurch: vi.fn().mockResolvedValue([]),
   createEvent: vi.fn().mockResolvedValue({ id: 1 }),
   getMinistries: vi.fn().mockResolvedValue([]),
@@ -547,6 +548,22 @@ describe("Fluxo completo de discipulado", () => {
 
       expect(result.url).toContain("/manus-storage/");
       expect(result.fileName).toContain("lideres");
+    });
+  });
+
+  describe("Permissões — Atribuição de conta e função", () => {
+    it("permite que um Pastor vincule uma Pessoa e defina a função operacional", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const result = await caller.churchAuth.updateAssignment({
+        churchId: CHURCH_ID,
+        userId: 2,
+        personId: 10,
+        role: "lider",
+      });
+
+      expect(result).toMatchObject({ id: 2, personId: 10, role: "lider" });
+      expect(updateChurchUserAssignment).toHaveBeenCalledWith(2, CHURCH_ID, { personId: 10, role: "lider" });
     });
   });
 

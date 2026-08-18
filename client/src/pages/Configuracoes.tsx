@@ -26,6 +26,7 @@ export default function Configuracoes() {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
   const canManageAccounts = ["pastor_presidente", "pastor_local", "secretario"].includes(user?.role ?? "");
+  const canManageRoles = ["pastor_presidente", "pastor_local"].includes(user?.role ?? "");
   const { data: church, isLoading, refetch } = trpc.churches.getById.useQuery(
     { id: churchId! },
     { enabled: !!churchId }
@@ -83,6 +84,13 @@ export default function Configuracoes() {
     onSuccess: () => {
       refetchChurchUsers();
       toast.success("Conta vinculada à Pessoa com sucesso.");
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
+  });
+  const updateAssignmentMutation = trpc.churchAuth.updateAssignment.useMutation({
+    onSuccess: () => {
+      refetchChurchUsers();
+      toast.success("Pessoa e função atualizadas com sucesso.");
     },
     onError: (error: { message: string }) => toast.error(error.message),
   });
@@ -403,8 +411,8 @@ export default function Configuracoes() {
             </div>
 
             <div className="card-sacred mt-5 p-6">
-              <h2 className="mb-2 border-b border-border pb-2 text-base font-semibold text-navy">Vínculo de Contas e Pessoas</h2>
-              <p className="mb-4 text-sm text-muted-foreground">Vincule a conta de cada líder à sua ficha de Pessoa. Esse vínculo define quais pessoas ele pode movimentar no Funil de Discipulado.</p>
+              <h2 className="mb-2 border-b border-border pb-2 text-base font-semibold text-navy">Atribuição de Pessoas e Funções</h2>
+              <p className="mb-4 text-sm text-muted-foreground">Selecione a Pessoa e defina a função que ela exercerá no sistema. A função e o vínculo determinam o escopo de atuação no Funil de Discipulado.</p>
 
               {!canManageAccounts ? (
                 <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Somente Pastores e Secretários podem administrar vínculos de contas.</p>
@@ -413,7 +421,7 @@ export default function Configuracoes() {
               ) : (
                 <div className="space-y-3">
                   {churchUsers?.map((churchUser) => (
-                    <div key={churchUser.id} className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)] sm:items-center">
+                    <div key={churchUser.id} className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(190px,0.8fr)_minmax(150px,0.55fr)] sm:items-center">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-navy">{churchUser.name}</p>
                         <p className="truncate text-xs text-muted-foreground">{churchUser.email} · {ROLES.find((role) => role.value === churchUser.role)?.label ?? churchUser.role}</p>
@@ -425,14 +433,38 @@ export default function Configuracoes() {
                           onChange={(event) => {
                             const personId = Number(event.target.value);
                             if (Number.isFinite(personId) && personId > 0) {
-                              linkPersonMutation.mutate({ churchId, userId: churchUser.id, personId });
+                              if (canManageRoles) {
+                                updateAssignmentMutation.mutate({ churchId, userId: churchUser.id, personId, role: churchUser.role });
+                              } else {
+                                linkPersonMutation.mutate({ churchId, userId: churchUser.id, personId });
+                              }
                             }
                           }}
-                          disabled={linkPersonMutation.isPending}
+                          disabled={linkPersonMutation.isPending || updateAssignmentMutation.isPending}
                           className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
                         >
                           <option value="unlinked">Selecionar ficha de Pessoa</option>
                           {people.map((person) => <option key={person.id} value={person.id}>{person.fullName}</option>)}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="sr-only">Função de {churchUser.name}</span>
+                        <select
+                          value={churchUser.role}
+                          onChange={(event) => {
+                            if (churchUser.personId) {
+                              updateAssignmentMutation.mutate({
+                                churchId,
+                                userId: churchUser.id,
+                                personId: churchUser.personId,
+                                role: event.target.value as typeof churchUser.role,
+                              });
+                            }
+                          }}
+                          disabled={!canManageRoles || !churchUser.personId || updateAssignmentMutation.isPending}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
                         </select>
                       </label>
                     </div>

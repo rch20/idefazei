@@ -316,3 +316,10 @@
 - [x] Limitar o escopo por célula, supervisão ou carteira de consolidação
 - [x] Ocultar ou desabilitar ações não autorizadas na interface do Funil
 - [x] Cobrir regras de permissão por perfil e tenant com testes de integração
+
+## FASE 21 – Atribuição de Pessoas e Funções
+
+- [x] Permitir alterar o perfil operacional da conta vinculada à Pessoa
+- [x] Unificar a seleção de Pessoa e função em uma gestão clara e responsiva
+- [x] Preservar as permissões da Jornada ao alterar a função
+- [x] Cobrir a alteração com testes e salvar checkpoint

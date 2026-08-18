@@ -34,6 +34,7 @@ import {
   getChurchMembersByChurch,
   getChurchUsersByChurch,
   linkChurchUserToPerson,
+  updateChurchUserAssignment,
   canChurchUserManageJourney,
   getJourneyManagedPersonIds,
   getConsolidationsByChurch,
@@ -133,11 +134,20 @@ return member;
 }
 
 const CHURCH_ADMIN_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario"]);
+const CHURCH_ROLE_MANAGER_ROLES = new Set(["pastor_presidente", "pastor_local"]);
 
 async function requireChurchAdministrator(userId: number, churchId: number) {
   const member = await requireChurchMember(userId, churchId);
   if (!CHURCH_ADMIN_ROLES.has(member.role)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Seu perfil não tem permissão para esta ação" });
+  }
+  return member;
+}
+
+async function requireChurchRoleManager(userId: number, churchId: number) {
+  const member = await requireChurchMember(userId, churchId);
+  if (!CHURCH_ROLE_MANAGER_ROLES.has(member.role)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem definir funções de acesso." });
   }
   return member;
 }
@@ -1088,6 +1098,25 @@ const churchAuthRouter = router({
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja." });
       const user = await linkChurchUserToPerson(input.userId, input.churchId, input.personId);
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário da igreja não encontrado." });
+      return user;
+    }),
+
+  updateAssignment: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      userId: z.number(),
+      personId: z.number(),
+      role: z.enum(["pastor_presidente","pastor_local","supervisor","lider","consolidador","diacono","secretario","tesoureiro","membro"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const manager = await requireChurchRoleManager(ctx.user.id, input.churchId);
+      if (ctx.user.id < 0 && Math.abs(ctx.user.id) === input.userId && manager.role !== input.role) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Não altere a própria função. Peça a outro Pastor para realizar essa mudança." });
+      }
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja." });
+      const user = await updateChurchUserAssignment(input.userId, input.churchId, { personId: input.personId, role: input.role });
       if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário da igreja não encontrado." });
       return user;
     }),
