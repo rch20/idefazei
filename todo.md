@@ -295,3 +295,10 @@
 - [x] Converter o Kanban do Funil de Discipulado em sequência vertical em telas mobile
 - [x] Preservar a organização horizontal e as interações do Kanban em desktop
 - [ ] Validar os layouts autenticados em desktop e mobile, salvar checkpoint
+
+## FASE 18 – Funil de Discipulado Desktop
+
+- [x] Substituir o Kanban horizontal no desktop por navegação de etapas sem rolagem lateral
+- [x] Manter cartões, avanço de etapa e leitura de progresso em uma única tela
+- [x] Preservar a sequência vertical existente no mobile
+- [ ] Validar os layouts autenticados em desktop e mobile, salvar checkpoint

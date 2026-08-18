@@ -20,6 +20,7 @@ type StageKey = (typeof STAGES)[number]["key"];
 export default function FunilDiscipulado() {
   const { churchId } = useChurch();
   const [selectedPerson, setSelectedPerson] = useState<number | null>(null);
+  const [activeDesktopStage, setActiveDesktopStage] = useState<StageKey>("nova_alma");
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId });
   const updatePerson = trpc.people.update.useMutation({
@@ -30,6 +31,7 @@ export default function FunilDiscipulado() {
     ...stage,
     people: (people ?? []).filter((p) => p.discipleshipStage === stage.key),
   }));
+  const selectedStage = grouped.find((stage) => stage.key === activeDesktopStage) ?? grouped[0];
 
   function handleMoveForward(personId: number, currentStage: StageKey) {
     const idx = STAGES.findIndex((s) => s.key === currentStage);
@@ -49,26 +51,32 @@ export default function FunilDiscipulado() {
       </div>
 
       {/* Pipeline arrow */}
-      <div className="hidden items-center gap-1 overflow-x-auto pb-2 text-xs md:flex">
-        {STAGES.map((stage, i) => (
-          <div key={stage.key} className="flex items-center gap-1 flex-shrink-0">
-            <span className={`px-2 py-1 rounded-full border font-medium ${stage.bg} ${stage.border} ${stage.text}`}>
-              {stage.label}
-            </span>
-            {i < STAGES.length - 1 && (
-              <ChevronRight className="w-3 h-3 text-muted-foreground" />
-            )}
-          </div>
-        ))}
+      <div className="hidden rounded-2xl border border-border bg-card p-2 md:grid md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
+        {grouped.map((stage, index) => {
+          const isActive = stage.key === activeDesktopStage;
+          return (
+            <button
+              key={stage.key}
+              type="button"
+              onClick={() => setActiveDesktopStage(stage.key)}
+              aria-pressed={isActive}
+              className={`relative flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 ${isActive ? `${stage.bg} ${stage.border} border shadow-sm` : "hover:bg-cream-dark"}`}
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: stage.color }}>{index + 1}</span>
+              <span className={`min-w-0 flex-1 truncate text-xs font-semibold ${isActive ? stage.text : "text-navy"}`}>{stage.label}</span>
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${stage.bg} ${stage.text}`}>{stage.people.length}</span>
+            </button>
+          );
+        })}
       </div>
 
       <p className="text-xs text-muted-foreground md:hidden">Acompanhe cada etapa em sequência. Toque em uma Pessoa para visualizar seus dados e avance somente quando o próximo passo estiver concluído.</p>
 
       {/* Kanban Board */}
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-3 md:flex md:gap-4 md:overflow-x-auto md:pb-4">
+        <div className="grid grid-cols-1 gap-3 md:hidden">
           {STAGES.map((s) => (
-            <div key={s.key} className="kanban-column min-h-0 border-l-2 border-muted pl-3 md:flex-shrink-0 md:border-l-0 md:pl-0">
+            <div key={s.key} className="kanban-column min-h-0 border-l-2 border-muted pl-3">
               <div className="h-6 w-24 bg-muted rounded animate-pulse mb-3" />
               {[1, 2].map((i) => (
                 <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
@@ -77,11 +85,11 @@ export default function FunilDiscipulado() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:flex md:gap-4 md:overflow-x-auto md:pb-4">
+        <div className="grid grid-cols-1 gap-3 md:hidden">
           {grouped.map((stage) => (
             <section
               key={stage.key}
-              className="kanban-column min-h-0 w-full border-l-2 pl-3 md:w-52 md:flex-shrink-0 md:border-l-0 md:pl-0"
+              className="kanban-column min-h-0 w-full border-l-2 pl-3"
               style={{ borderColor: stage.color }}
               aria-labelledby={`stage-${stage.key}`}
             >
@@ -149,6 +157,43 @@ export default function FunilDiscipulado() {
             </section>
           ))}
         </div>
+      )}
+
+      {!isLoading && selectedStage && (
+        <section className="hidden rounded-2xl border border-border bg-card p-5 md:block" aria-labelledby={`desktop-stage-${selectedStage.key}`}>
+          <div className="mb-5 flex items-center justify-between border-b border-border pb-4">
+            <div className="flex items-center gap-3">
+              <span className="h-3 w-3 rounded-full" style={{ backgroundColor: selectedStage.color }} />
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Etapa selecionada</p>
+                <h2 id={`desktop-stage-${selectedStage.key}`} className="font-display text-xl font-bold text-navy">{selectedStage.label}</h2>
+              </div>
+            </div>
+            <span className={`rounded-full px-3 py-1 text-sm font-bold ${selectedStage.bg} ${selectedStage.text}`}>{selectedStage.people.length} {selectedStage.people.length === 1 ? "pessoa" : "pessoas"}</span>
+          </div>
+
+          {selectedStage.people.length === 0 ? (
+            <div className="flex min-h-40 items-center justify-center rounded-xl border-2 border-dashed border-muted text-sm text-muted-foreground">Nenhuma pessoa nesta etapa.</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
+              {selectedStage.people.map((person) => (
+                <div key={person.id} className="kanban-card group">
+                  <div className="flex items-start gap-2">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">
+                      {person.photoUrl ? <img src={person.photoUrl} alt={person.fullName} className="h-8 w-8 rounded-full object-cover" /> : person.fullName.charAt(0)}
+                    </div>
+                    <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-navy">{person.fullName}</p>{person.phone && <p className="truncate text-[10px] text-muted-foreground">{person.phone}</p>}</div>
+                  </div>
+                  {selectedStage.key !== "multiplicador" && (
+                    <button onClick={() => handleMoveForward(person.id, selectedStage.key)} className="mt-2 flex w-full items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy">
+                      Avançar etapa <ChevronRight className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
     </div>
   );
