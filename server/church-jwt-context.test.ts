@@ -101,6 +101,25 @@ describe("contexto de autenticação da igreja", () => {
     expect(context.tenantChurchId).toBe(23);
   });
 
+  it("mantém o tenant da sessão quando o subdomínio pertence à mesma igreja", async () => {
+    (verifyToken as ReturnType<typeof vi.fn>).mockResolvedValue({
+      sub: "7",
+      churchId: 23,
+      role: "pastor_presidente",
+      type: "church",
+    });
+    (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValue(activeChurchUser);
+    (getChurchBySlug as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 23, slug: "igreja-viver" });
+
+    const context = await createContext(
+      makeRequest({ authorization: "Bearer jwt-valido", host: "igreja-viver.ide28.com.br" })
+    );
+
+    expect(context.user?.churchId).toBe(23);
+    expect(context.tenantChurchId).toBe(23);
+    expect(context.tenantSlug).toBe("igreja-viver");
+  });
+
   it("aceita somente um Super Admin ativo para rotas administrativas", async () => {
     (verifyToken as ReturnType<typeof vi.fn>).mockResolvedValue({
       sub: "3",

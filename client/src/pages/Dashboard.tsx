@@ -3,6 +3,7 @@ import { useChurch } from "@/components/ChurchLayout";
 import { ReportButton } from "@/components/ReportButton";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { buildDashboardMetricValues } from "./dashboardMetrics";
 import {
   AlertTriangle,
   BookOpen,
@@ -503,52 +504,53 @@ function CareAttentionPanel({ churchId }: { churchId: number }) {
 export default function Dashboard() {
   const { churchId } = useChurch();
   const utils = trpc.useUtils();
-  const { data: stats, isLoading } = trpc.dashboard.stats.useQuery({ churchId });
+  const { data: stats, isLoading, isError } = trpc.dashboard.stats.useQuery({ churchId });
+  const metricValues = buildDashboardMetricValues(stats);
 
-  const metrics = [
+  const metrics = metricValues ? [
     {
       icon: Users,
       label: "Membros Ativos",
-      value: stats?.totalMembers ?? 0,
+      value: metricValues.totalMembers,
       color: "#1e3a5f",
       sub: "Total de pessoas ativas",
     },
     {
       icon: Flame,
       label: "Novas Almas",
-      value: stats?.newSouls ?? 0,
+      value: metricValues.newSouls,
       color: "#f59e0b",
       sub: "Aguardando consolidação",
     },
     {
       icon: Heart,
       label: "Consolidados",
-      value: stats?.consolidated ?? 0,
+      value: metricValues.consolidated,
       color: "#22c55e",
       sub: "Processo concluído",
     },
     {
       icon: Globe,
       label: "Células Ativas",
-      value: stats?.totalCells ?? 0,
+      value: metricValues.totalCells,
       color: "#6366f1",
       sub: "Grupos em funcionamento",
     },
     {
       icon: Users,
       label: "Líderes",
-      value: stats?.totalLeaders ?? 0,
+      value: metricValues.totalLeaders,
       color: "#c9a84c",
       sub: "Pastores, supervisores e líderes",
     },
     {
       icon: Music,
       label: "Ministérios",
-      value: stats?.totalMinistries ?? 0,
+      value: metricValues.totalMinistries,
       color: "#f43f5e",
       sub: "Ministérios ativos",
     },
-  ];
+  ] : [];
 
   return (
     <div className="space-y-6">
@@ -577,11 +579,21 @@ export default function Dashboard() {
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 animate-stagger">
-        {metrics.map((m) => (
-          <MetricCard key={m.label} {...m} />
-        ))}
-      </div>
+      {isLoading ? (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6" aria-label="Carregando métricas do Dashboard">
+          {[1, 2, 3, 4, 5, 6].map((item) => <div key={item} className="h-36 animate-pulse rounded-xl bg-muted" />)}
+        </div>
+      ) : isError || !metricValues ? (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          Não foi possível carregar as métricas do Dashboard. Atualize a página para tentar novamente.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4 animate-stagger md:grid-cols-3 lg:grid-cols-6">
+          {metrics.map((m) => (
+            <MetricCard key={m.label} {...m} />
+          ))}
+        </div>
+      )}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

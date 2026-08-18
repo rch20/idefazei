@@ -239,7 +239,7 @@
 
 - [x] Diagnosticar e corrigir o fluxo de cadastro, login e redirecionamento ao Dashboard do tenant
 - [x] Validar acesso ao Dashboard com sessão JWT, redirecionamento ao login e preservação do isolamento multi-tenant
-- [ ] Validar no navegador o fluxo completo: login de igreja → Dashboard carregado sem erros → queries protegidas autenticadas por JWT
+- [x] Validar no navegador o fluxo completo: login de igreja → Dashboard carregado sem erros → queries protegidas autenticadas por JWT
 - [x] Adicionar teste de integração de churchAuth.login seguido de chamada protegida com o JWT do tenant
 
 ## FASE 13 – Auditoria Integral de Qualidade e Experiência
@@ -288,26 +288,26 @@
 
 - [x] Exibir ao líder as Pessoas ativas vinculadas a cada Célula
 - [x] Permitir abrir os detalhes da Célula sem perder a lista principal
-- [ ] Validar com uma sessão autenticada a experiência em desktop e mobile, salvar checkpoint
+- [x] Validar com uma sessão autenticada a experiência em desktop e mobile, salvar checkpoint
 
 ## FASE 17 – Funil de Discipulado Mobile
 
 - [x] Converter o Kanban do Funil de Discipulado em sequência vertical em telas mobile
 - [x] Preservar a organização horizontal e as interações do Kanban em desktop
-- [ ] Validar os layouts autenticados em desktop e mobile, salvar checkpoint
+- [x] Validar os layouts autenticados em desktop e mobile, salvar checkpoint
 
 ## FASE 18 – Funil de Discipulado Desktop
 
 - [x] Substituir o Kanban horizontal no desktop por navegação de etapas sem rolagem lateral
 - [x] Manter cartões, avanço de etapa e leitura de progresso em uma única tela
 - [x] Preservar a sequência vertical existente no mobile
-- [ ] Validar os layouts autenticados em desktop e mobile, salvar checkpoint
+- [x] Validar os layouts autenticados em desktop e mobile, salvar checkpoint
 
 ## FASE 19 – Retorno de Etapa no Funil
 
 - [x] Permitir retornar uma Pessoa para a etapa anterior de forma explícita e controlada
 - [x] Manter o avanço e retorno acessíveis em desktop e mobile
-- [ ] Validar os layouts autenticados, com testes e checkpoint
+- [x] Validar os layouts autenticados, com testes e checkpoint
 
 ## FASE 20 – Permissões da Jornada de Discipulado
 
@@ -392,3 +392,29 @@
 - [x] Permitir o registro de encontro e presença somente por responsável autorizado pela Célula
 - [x] Exibir último encontro e resumo de presença na experiência responsiva da Célula
 - [x] Cobrir o fluxo com testes, validar desktop/mobile e salvar checkpoint
+
+## FASE 30 – Validação Real Autenticada do Tenant
+
+- [x] Preparar uma sessão real de validação sem alterar os dados operacionais existentes
+- [x] Confirmar login, redirecionamento ao Dashboard e chamadas protegidas por JWT
+- [x] Validar Células, Funil de Discipulado e layouts autenticados em desktop e mobile
+- [x] Registrar os resultados, concluir os itens de validação correlatos e salvar checkpoint
+
+## FASE 31 – Sincronização de Tenant na Sessão Autenticada
+
+- [x] Diagnosticar a aparente divergência de tenant: o `churchId` da sessão JWT já era aplicado corretamente; a inconsistência era visual durante o carregamento
+- [x] Preservar a resolução segura existente, que não permite que um subdomínio diferente substitua o tenant do JWT
+- [x] Ampliar a cobertura da precedência entre sessão JWT e subdomínio com testes de integração
+- [x] Retestar o Dashboard e os módulos autenticados em uma sessão real, com os dados do tenant correto
+
+## FASE 33 – Primeiro Carregamento Após Login
+
+- [x] Reproduzir e corrigir o Dashboard com métricas inconsistentes logo após o redirecionamento de login
+- [x] Manter o Dashboard em estado de carregamento até a sessão e os dados protegidos estarem prontos
+- [x] Comprovar o fluxo por teste e sessão autenticada real
+
+## FASE 32 – Unicidade de Encontro da Célula
+
+- [x] Corrigir a comparação de data que permitiu dois encontros da mesma Célula no mesmo dia
+- [x] Cobrir o bloqueio de duplicidade com teste de integração
+- [x] Retestar no navegador a tentativa de registro repetido

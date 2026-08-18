@@ -718,7 +718,6 @@ export async function getCellMeetingSummaries(cellId: number, churchId: number, 
 export async function getCellMeetingByDate(cellId: number, churchId: number, meetingDate: string) {
   const db = await getDb();
   if (!db) return null;
-  const normalizedMeetingDate = new Date(`${meetingDate}T12:00:00.000Z`);
   const rows = await db
     .select()
     .from(cellMeetings)
@@ -726,7 +725,7 @@ export async function getCellMeetingByDate(cellId: number, churchId: number, mee
       and(
         eq(cellMeetings.cellId, cellId),
         eq(cellMeetings.churchId, churchId),
-        eq(cellMeetings.meetingDate, normalizedMeetingDate)
+        sql`${cellMeetings.meetingDate} = DATE(${meetingDate})`
       )
     )
     .limit(1);

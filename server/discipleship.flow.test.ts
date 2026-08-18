@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, createCellMeetingWithAttendance, findPossiblePeopleByIdentity, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingSummaries, getCellsByChurch, getPeopleByChurch, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, createCellMeetingWithAttendance, findPossiblePeopleByIdentity, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getPeopleByChurch, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -460,6 +460,19 @@ describe("Fluxo completo de discipulado", () => {
         meetingDate: "2026-08-19",
         attendance: [{ personId: 999, status: "presente" }],
       })).rejects.toThrow("Registre a presença de todas as Pessoas atualmente vinculadas à Célula");
+    });
+
+    it("bloqueia outro encontro da mesma Célula na mesma data", async () => {
+      (getCellMeetingByDate as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 9, cellId: 2, meetingDate: new Date("2026-08-18T00:00:00.000Z") });
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await expect(caller.cells.recordMeeting({
+        churchId: CHURCH_ID,
+        cellId: 2,
+        meetingDate: "2026-08-18",
+        attendance: [],
+      })).rejects.toThrow("Já existe um encontro registrado para esta data");
+      expect(createCellMeetingWithAttendance).not.toHaveBeenCalled();
     });
 
     it("consulta o histórico resumido de encontros da Célula", async () => {
