@@ -289,3 +289,9 @@
 - [x] Exibir ao líder as Pessoas ativas vinculadas a cada Célula
 - [x] Permitir abrir os detalhes da Célula sem perder a lista principal
 - [ ] Validar com uma sessão autenticada a experiência em desktop e mobile, salvar checkpoint
+
+## FASE 17 – Funil de Discipulado Mobile
+
+- [x] Converter o Kanban do Funil de Discipulado em sequência vertical em telas mobile
+- [x] Preservar a organização horizontal e as interações do Kanban em desktop
+- [ ] Validar os layouts autenticados em desktop e mobile, salvar checkpoint

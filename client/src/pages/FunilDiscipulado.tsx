@@ -49,7 +49,7 @@ export default function FunilDiscipulado() {
       </div>
 
       {/* Pipeline arrow */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-2 text-xs">
+      <div className="hidden items-center gap-1 overflow-x-auto pb-2 text-xs md:flex">
         {STAGES.map((stage, i) => (
           <div key={stage.key} className="flex items-center gap-1 flex-shrink-0">
             <span className={`px-2 py-1 rounded-full border font-medium ${stage.bg} ${stage.border} ${stage.text}`}>
@@ -62,11 +62,13 @@ export default function FunilDiscipulado() {
         ))}
       </div>
 
+      <p className="text-xs text-muted-foreground md:hidden">Acompanhe cada etapa em sequência. Toque em uma Pessoa para visualizar seus dados e avance somente quando o próximo passo estiver concluído.</p>
+
       {/* Kanban Board */}
       {isLoading ? (
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="grid grid-cols-1 gap-3 md:flex md:gap-4 md:overflow-x-auto md:pb-4">
           {STAGES.map((s) => (
-            <div key={s.key} className="kanban-column flex-shrink-0">
+            <div key={s.key} className="kanban-column min-h-0 border-l-2 border-muted pl-3 md:flex-shrink-0 md:border-l-0 md:pl-0">
               <div className="h-6 w-24 bg-muted rounded animate-pulse mb-3" />
               {[1, 2].map((i) => (
                 <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
@@ -75,9 +77,14 @@ export default function FunilDiscipulado() {
           ))}
         </div>
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="grid grid-cols-1 gap-3 md:flex md:gap-4 md:overflow-x-auto md:pb-4">
           {grouped.map((stage) => (
-            <div key={stage.key} className="kanban-column flex-shrink-0 w-52">
+            <section
+              key={stage.key}
+              className="kanban-column min-h-0 w-full border-l-2 pl-3 md:w-52 md:flex-shrink-0 md:border-l-0 md:pl-0"
+              style={{ borderColor: stage.color }}
+              aria-labelledby={`stage-${stage.key}`}
+            >
               {/* Column header */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
@@ -85,7 +92,7 @@ export default function FunilDiscipulado() {
                     className="w-2.5 h-2.5 rounded-full"
                     style={{ background: stage.color }}
                   />
-                  <span className="text-xs font-semibold text-navy">{stage.label}</span>
+                  <span id={`stage-${stage.key}`} className="text-xs font-semibold text-navy">{stage.label}</span>
                 </div>
                 <span
                   className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${stage.bg} ${stage.text}`}
@@ -130,7 +137,7 @@ export default function FunilDiscipulado() {
                       {stage.key !== "multiplicador" && (
                         <button
                           onClick={() => handleMoveForward(person.id, stage.key)}
-                          className="mt-2 w-full text-[10px] font-medium text-muted-foreground hover:text-navy flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="mt-2 flex w-full items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-opacity hover:text-navy md:opacity-0 md:group-hover:opacity-100"
                         >
                           Avançar etapa <ChevronRight className="w-3 h-3" />
                         </button>
@@ -139,7 +146,7 @@ export default function FunilDiscipulado() {
                   ))
                 )}
               </div>
-            </div>
+            </section>
           ))}
         </div>
       )}
