@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, findPossiblePeopleByIdentity, getActiveMembersByCell, getPersonById, isActiveMinistryMember, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, findPossiblePeopleByIdentity, getActiveMembersByCell, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -33,6 +33,7 @@ vi.mock("./db", () => ({
     role: "pastor_presidente",
     active: true,
   }),
+  getActiveChurchUserById: vi.fn().mockResolvedValue({ id: 2, churchId: 100, personId: 10, role: "lider", active: true }),
   getChurchById: vi.fn().mockResolvedValue({
     id: 100,
     name: "Igreja Teste",
@@ -91,6 +92,8 @@ vi.mock("./db", () => ({
   getChurchUsersByChurch: vi.fn().mockResolvedValue([]),
   linkChurchUserToPerson: vi.fn().mockResolvedValue({ id: 1, personId: 10 }),
   updateChurchUserAssignment: vi.fn().mockResolvedValue({ id: 2, personId: 10, role: "lider" }),
+  getComplementaryRolesByChurchUser: vi.fn().mockResolvedValue([]),
+  setComplementaryRolesForChurchUser: vi.fn().mockResolvedValue(["diacono", "levita"]),
   getEventsByChurch: vi.fn().mockResolvedValue([]),
   createEvent: vi.fn().mockResolvedValue({ id: 1 }),
   getMinistries: vi.fn().mockResolvedValue([]),
@@ -564,6 +567,19 @@ describe("Fluxo completo de discipulado", () => {
 
       expect(result).toMatchObject({ id: 2, personId: 10, role: "lider" });
       expect(updateChurchUserAssignment).toHaveBeenCalledWith(2, CHURCH_ID, { personId: 10, role: "lider" });
+    });
+
+    it("permite que um Pastor defina funções complementares sem mudar a função principal", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const result = await caller.churchAuth.updateComplementaryRoles({
+        churchId: CHURCH_ID,
+        userId: 2,
+        roles: ["diacono", "levita"],
+      });
+
+      expect(result).toEqual({ userId: 2, roles: ["diacono", "levita"] });
+      expect(setComplementaryRolesForChurchUser).toHaveBeenCalledWith(2, CHURCH_ID, ["diacono", "levita"]);
     });
   });
 

@@ -35,6 +35,8 @@ import {
   getChurchUsersByChurch,
   linkChurchUserToPerson,
   updateChurchUserAssignment,
+  getComplementaryRolesByChurchUser,
+  setComplementaryRolesForChurchUser,
   canChurchUserManageJourney,
   getJourneyManagedPersonIds,
   getConsolidationsByChurch,
@@ -152,12 +154,19 @@ async function requireChurchRoleManager(userId: number, churchId: number) {
   return member;
 }
 
+async function getEffectiveChurchRoles(userId: number, churchId: number, actor: { role: string }) {
+  if (userId >= 0) return [actor.role];
+  const complementary = await getComplementaryRolesByChurchUser(Math.abs(userId), churchId);
+  return Array.from(new Set([actor.role, ...complementary]));
+}
+
 async function requireJourneyStagePermission(userId: number, churchId: number, targetPersonId: number) {
   const actor = await requireChurchMember(userId, churchId);
+  const actorRoles = await getEffectiveChurchRoles(userId, churchId, actor);
   const allowed = await canChurchUserManageJourney({
     churchId,
     actorPersonId: actor.personId ?? null,
-    actorRole: actor.role,
+    actorRoles,
     targetPersonId,
   });
   if (!allowed) {
@@ -354,17 +363,19 @@ const peopleRouter = router({
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
       const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      const canManageAll = ["pastor_presidente", "pastor_local"].includes(actor.role);
+      const actorRoles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const canManageAll = actorRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
       const personIds = canManageAll
         ? []
         : await getJourneyManagedPersonIds({
             churchId: input.churchId,
             actorPersonId: actor.personId ?? null,
-            actorRole: actor.role,
+            actorRoles,
           });
       return {
         canManageAll,
         actorRole: actor.role,
+        actorRoles,
         linkedPersonId: actor.personId ?? null,
         personIds,
       };
@@ -1119,6 +1130,25 @@ const churchAuthRouter = router({
       const user = await updateChurchUserAssignment(input.userId, input.churchId, { personId: input.personId, role: input.role });
       if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário da igreja não encontrado." });
       return user;
+    }),
+
+  updateComplementaryRoles: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      userId: z.number(),
+      roles: z.array(z.enum(["consolidador", "diacono", "tesoureiro", "levita"])),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchRoleManager(ctx.user.id, input.churchId);
+      if (ctx.user.id < 0 && Math.abs(ctx.user.id) === input.userId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Peça a outro Pastor para alterar suas próprias funções complementares." });
+      }
+      const churchUser = await getActiveChurchUserById(input.userId);
+      if (!churchUser || churchUser.churchId !== input.churchId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Usuário da igreja não encontrado." });
+      }
+      const roles = await setComplementaryRolesForChurchUser(input.userId, input.churchId, input.roles);
+      return { userId: input.userId, roles };
     }),
 });
 

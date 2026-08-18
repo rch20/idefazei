@@ -22,6 +22,13 @@ const ROLES = [
   { value: "membro", label: "Membro" },
 ];
 
+const COMPLEMENTARY_ROLES = [
+  { value: "consolidador", label: "Consolidador" },
+  { value: "diacono", label: "Diácono" },
+  { value: "tesoureiro", label: "Tesoureiro" },
+  { value: "levita", label: "Levita" },
+] as const;
+
 export default function Configuracoes() {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
@@ -91,6 +98,13 @@ export default function Configuracoes() {
     onSuccess: () => {
       refetchChurchUsers();
       toast.success("Pessoa e função atualizadas com sucesso.");
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
+  });
+  const updateComplementaryRolesMutation = trpc.churchAuth.updateComplementaryRoles.useMutation({
+    onSuccess: () => {
+      refetchChurchUsers();
+      toast.success("Funções complementares atualizadas.");
     },
     onError: (error: { message: string }) => toast.error(error.message),
   });
@@ -421,7 +435,7 @@ export default function Configuracoes() {
               ) : (
                 <div className="space-y-3">
                   {churchUsers?.map((churchUser) => (
-                    <div key={churchUser.id} className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(190px,0.8fr)_minmax(150px,0.55fr)] sm:items-center">
+                    <div key={churchUser.id} className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-3 lg:grid-cols-[minmax(0,1fr)_minmax(180px,0.75fr)_minmax(150px,0.55fr)_minmax(235px,0.9fr)] lg:items-center">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-navy">{churchUser.name}</p>
                         <p className="truncate text-xs text-muted-foreground">{churchUser.email} · {ROLES.find((role) => role.value === churchUser.role)?.label ?? churchUser.role}</p>
@@ -440,7 +454,7 @@ export default function Configuracoes() {
                               }
                             }
                           }}
-                          disabled={linkPersonMutation.isPending || updateAssignmentMutation.isPending}
+                          disabled={linkPersonMutation.isPending || updateAssignmentMutation.isPending || updateComplementaryRolesMutation.isPending}
                           className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
                         >
                           <option value="unlinked">Selecionar ficha de Pessoa</option>
@@ -461,12 +475,36 @@ export default function Configuracoes() {
                               });
                             }
                           }}
-                          disabled={!canManageRoles || !churchUser.personId || updateAssignmentMutation.isPending}
+                          disabled={!canManageRoles || !churchUser.personId || updateAssignmentMutation.isPending || updateComplementaryRolesMutation.isPending}
                           className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           {ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
                         </select>
                       </label>
+                      <fieldset className="min-w-0" disabled={!canManageRoles || !churchUser.personId || updateComplementaryRolesMutation.isPending}>
+                        <legend className="mb-1 text-[11px] font-medium text-muted-foreground">Funções complementares</legend>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+                          {COMPLEMENTARY_ROLES.map((role) => {
+                            const selected = churchUser.complementaryRoles.includes(role.value);
+                            return (
+                              <label key={role.value} className="flex cursor-pointer items-center gap-1.5 text-xs text-navy disabled:cursor-not-allowed disabled:opacity-60">
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  onChange={() => {
+                                    const roles = selected
+                                      ? churchUser.complementaryRoles.filter((item) => item !== role.value)
+                                      : [...churchUser.complementaryRoles, role.value];
+                                    updateComplementaryRolesMutation.mutate({ churchId, userId: churchUser.id, roles });
+                                  }}
+                                  className="h-3.5 w-3.5 rounded border-input text-navy focus-visible:ring-gold"
+                                />
+                                {role.label}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </fieldset>
                     </div>
                   ))}
                 </div>

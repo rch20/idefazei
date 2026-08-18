@@ -323,3 +323,11 @@
 - [x] Unificar a seleção de Pessoa e função em uma gestão clara e responsiva
 - [x] Preservar as permissões da Jornada ao alterar a função
 - [x] Cobrir a alteração com testes e salvar checkpoint
+
+## FASE 22 – Funções Complementares
+
+- [x] Criar estrutura para funções complementares de conta sem alterar a função principal
+- [x] Permitir Diácono, Tesoureiro, Levita e Consolidador como atribuições acumuláveis
+- [x] Aplicar funções complementares apenas aos módulos correspondentes, sem ampliar o Funil indevidamente
+- [x] Atualizar Configurações com seleção clara de múltiplas funções complementares
+- [x] Cobrir regras de persistência e autorização com testes e salvar checkpoint

@@ -546,6 +546,24 @@ export const churchUsers = mysqlTable("church_users", {
 export type ChurchUser = typeof churchUsers.$inferSelect;
 export type InsertChurchUser = typeof churchUsers.$inferInsert;
 
+/** Atribuições adicionais de serviço; não substituem a função principal de hierarquia. */
+export const churchUserComplementaryRoleEnum = mysqlEnum("churchUserComplementaryRole", [
+  "consolidador",
+  "diacono",
+  "tesoureiro",
+  "levita",
+]);
+
+export const churchUserComplementaryRoles = mysqlTable("church_user_complementary_roles", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  churchUserId: int("churchUserId").notNull(),
+  role: churchUserComplementaryRoleEnum.notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ChurchUserComplementaryRole = typeof churchUserComplementaryRoles.$inferSelect;
+
 /** Super Admins da plataforma SaaS */
 export const superAdmins = mysqlTable("super_admins", {
   id: int("id").autoincrement().primaryKey(),

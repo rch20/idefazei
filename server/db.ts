@@ -11,6 +11,7 @@ import {
   cells,
   churchMembers,
   churchRegistrations,
+  churchUserComplementaryRoles,
   churchUsers,
   churches,
   communicationLogs,
@@ -167,7 +168,7 @@ export async function getActiveChurchUserById(userId: number) {
 export async function getChurchUsersByChurch(churchId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db
+  const accounts = await db
     .select({
       id: churchUsers.id,
       name: churchUsers.name,
@@ -180,6 +181,14 @@ export async function getChurchUsersByChurch(churchId: number) {
     .from(churchUsers)
     .where(eq(churchUsers.churchId, churchId))
     .orderBy(churchUsers.name);
+  const complementary = await db
+    .select({ churchUserId: churchUserComplementaryRoles.churchUserId, role: churchUserComplementaryRoles.role })
+    .from(churchUserComplementaryRoles)
+    .where(eq(churchUserComplementaryRoles.churchId, churchId));
+  return accounts.map((account) => ({
+    ...account,
+    complementaryRoles: complementary.filter((item) => item.churchUserId === account.id).map((item) => item.role),
+  }));
 }
 
 export async function linkChurchUserToPerson(userId: number, churchId: number, personId: number) {
@@ -206,41 +215,80 @@ export async function updateChurchUserAssignment(
   return getActiveChurchUserById(userId);
 }
 
+export async function getComplementaryRolesByChurchUser(churchUserId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ role: churchUserComplementaryRoles.role })
+    .from(churchUserComplementaryRoles)
+    .where(
+      and(
+        eq(churchUserComplementaryRoles.churchUserId, churchUserId),
+        eq(churchUserComplementaryRoles.churchId, churchId)
+      )
+    );
+  return rows.map((row) => row.role);
+}
+
+export async function setComplementaryRolesForChurchUser(
+  churchUserId: number,
+  churchId: number,
+  roles: Array<"consolidador" | "diacono" | "tesoureiro" | "levita">
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .delete(churchUserComplementaryRoles)
+    .where(
+      and(
+        eq(churchUserComplementaryRoles.churchUserId, churchUserId),
+        eq(churchUserComplementaryRoles.churchId, churchId)
+      )
+    );
+  const uniqueRoles = Array.from(new Set(roles));
+  if (uniqueRoles.length > 0) {
+    await db.insert(churchUserComplementaryRoles).values(
+      uniqueRoles.map((role) => ({ churchId, churchUserId, role }))
+    );
+  }
+  return getComplementaryRolesByChurchUser(churchUserId, churchId);
+}
+
 /** Determina se uma conta pode movimentar a jornada espiritual de uma Pessoa. */
 export async function canChurchUserManageJourney(input: {
   churchId: number;
   actorPersonId: number | null;
-  actorRole: string;
+  actorRoles: string[];
   targetPersonId: number;
 }) {
-  if (["pastor_presidente", "pastor_local"].includes(input.actorRole)) return true;
+  if (input.actorRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role))) return true;
   if (!input.actorPersonId) return false;
 
   const db = await getDb();
   if (!db) return false;
 
-  if (input.actorRole === "consolidador") {
+  if (input.actorRoles.includes("consolidador")) {
     const assignment = await getCurrentCareAssignment(input.targetPersonId, input.churchId);
-    return assignment?.responsiblePersonId === input.actorPersonId && assignment.role === "consolidador";
+    if (assignment?.responsiblePersonId === input.actorPersonId && assignment.role === "consolidador") return true;
   }
 
-  if (input.actorRole === "lider" || input.actorRole === "supervisor") {
+  if (input.actorRoles.includes("lider") || input.actorRoles.includes("supervisor")) {
     const matches = await db
-      .select({ cellId: cells.id })
+      .select({ leaderId: cells.leaderId, supervisorId: cells.supervisorId })
       .from(cellMembers)
       .innerJoin(cells, eq(cells.id, cellMembers.cellId))
       .where(
         and(
           eq(cellMembers.personId, input.targetPersonId),
           eq(cellMembers.active, true),
-          eq(cells.churchId, input.churchId),
-          input.actorRole === "lider"
-            ? eq(cells.leaderId, input.actorPersonId)
-            : eq(cells.supervisorId, input.actorPersonId)
+          eq(cells.churchId, input.churchId)
         )
       )
       .limit(1);
-    return matches.length > 0;
+    return matches.some((cell) =>
+      (input.actorRoles.includes("lider") && cell.leaderId === input.actorPersonId) ||
+      (input.actorRoles.includes("supervisor") && cell.supervisorId === input.actorPersonId)
+    );
   }
 
   return false;
@@ -250,13 +298,15 @@ export async function canChurchUserManageJourney(input: {
 export async function getJourneyManagedPersonIds(input: {
   churchId: number;
   actorPersonId: number | null;
-  actorRole: string;
+  actorRoles: string[];
 }) {
   if (!input.actorPersonId) return [];
   const db = await getDb();
   if (!db) return [];
 
-  if (input.actorRole === "consolidador") {
+  const personIds = new Set<number>();
+
+  if (input.actorRoles.includes("consolidador")) {
     const rows = await db
       .select({ personId: careAssignments.personId })
       .from(careAssignments)
@@ -268,27 +318,29 @@ export async function getJourneyManagedPersonIds(input: {
           eq(careAssignments.active, true)
         )
       );
-    return rows.map((row) => row.personId);
+    rows.forEach((row) => personIds.add(row.personId));
   }
 
-  if (input.actorRole === "lider" || input.actorRole === "supervisor") {
+  if (input.actorRoles.includes("lider") || input.actorRoles.includes("supervisor")) {
     const rows = await db
-      .select({ personId: cellMembers.personId })
+      .select({ personId: cellMembers.personId, leaderId: cells.leaderId, supervisorId: cells.supervisorId })
       .from(cellMembers)
       .innerJoin(cells, eq(cells.id, cellMembers.cellId))
       .where(
         and(
           eq(cellMembers.active, true),
-          eq(cells.churchId, input.churchId),
-          input.actorRole === "lider"
-            ? eq(cells.leaderId, input.actorPersonId)
-            : eq(cells.supervisorId, input.actorPersonId)
+          eq(cells.churchId, input.churchId)
         )
       );
-    return rows.map((row) => row.personId);
+    rows
+      .filter((cell) =>
+        (input.actorRoles.includes("lider") && cell.leaderId === input.actorPersonId) ||
+        (input.actorRoles.includes("supervisor") && cell.supervisorId === input.actorPersonId)
+      )
+      .forEach((cell) => personIds.add(cell.personId));
   }
 
-  return [];
+  return Array.from(personIds);
 }
 
 /** Retorna somente um Super Admin que continua ativo. */
