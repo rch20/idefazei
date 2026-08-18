@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, findPossiblePeopleByIdentity, getActiveMembersByCell, getPersonById, isActiveMinistryMember, setCurrentCareAssignment, updateConsolidation } from "./db";
+import { assignPersonToCell, findPossiblePeopleByIdentity, getActiveMembersByCell, getPersonById, isActiveMinistryMember, setCurrentCareAssignment, updateConsolidation, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -278,6 +278,18 @@ describe("Fluxo completo de discipulado", () => {
 
   // ── Etapa 2: Consolidação ────────────────────────────────────────────────────
   describe("Etapa 2 — Consolidação", () => {
+    it("permite corrigir uma etapa retornando a Pessoa para o ponto anterior", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await caller.people.update({
+        id: 10,
+        churchId: CHURCH_ID,
+        discipleshipStage: "consolidacao",
+      });
+
+      expect(updatePerson).toHaveBeenCalledWith(10, CHURCH_ID, { discipleshipStage: "consolidacao" });
+    });
+
     it("abre processo de consolidação para a nova alma", async () => {
       const ctx = createMemberContext();
       const caller = appRouter.createCaller(ctx);

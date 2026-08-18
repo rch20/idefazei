@@ -302,3 +302,9 @@
 - [x] Manter cartões, avanço de etapa e leitura de progresso em uma única tela
 - [x] Preservar a sequência vertical existente no mobile
 - [ ] Validar os layouts autenticados em desktop e mobile, salvar checkpoint
+
+## FASE 19 – Retorno de Etapa no Funil
+
+- [x] Permitir retornar uma Pessoa para a etapa anterior de forma explícita e controlada
+- [x] Manter o avanço e retorno acessíveis em desktop e mobile
+- [ ] Validar os layouts autenticados, com testes e checkpoint

@@ -1,6 +1,6 @@
 import { useChurch } from "@/components/ChurchLayout";
 import { trpc } from "@/lib/trpc";
-import { ChevronRight, User } from "lucide-react";
+import { ChevronLeft, ChevronRight, User } from "lucide-react";
 import { useState } from "react";
 
 const STAGES = [
@@ -38,6 +38,14 @@ export default function FunilDiscipulado() {
     if (idx < STAGES.length - 1) {
       const nextStage = STAGES[idx + 1].key;
       updatePerson.mutate({ id: personId, churchId, discipleshipStage: nextStage });
+    }
+  }
+
+  function handleMoveBackward(personId: number, currentStage: StageKey) {
+    const idx = STAGES.findIndex((s) => s.key === currentStage);
+    if (idx > 0) {
+      const previousStage = STAGES[idx - 1].key;
+      updatePerson.mutate({ id: personId, churchId, discipleshipStage: previousStage });
     }
   }
 
@@ -142,14 +150,18 @@ export default function FunilDiscipulado() {
                         </div>
                       </div>
                       {/* Advance button */}
-                      {stage.key !== "multiplicador" && (
-                        <button
-                          onClick={() => handleMoveForward(person.id, stage.key)}
-                          className="mt-2 flex w-full items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-opacity hover:text-navy md:opacity-0 md:group-hover:opacity-100"
-                        >
-                          Avançar etapa <ChevronRight className="w-3 h-3" />
-                        </button>
-                      )}
+                      <div className="mt-2 flex gap-2">
+                        {stage.key !== "nova_alma" && (
+                          <button onClick={() => handleMoveBackward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy" aria-label={`Retornar ${person.fullName} para a etapa anterior`}>
+                            <ChevronLeft className="h-3 w-3" /> Retornar
+                          </button>
+                        )}
+                        {stage.key !== "multiplicador" && (
+                          <button onClick={() => handleMoveForward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy" aria-label={`Avançar ${person.fullName} para a próxima etapa`}>
+                            Avançar <ChevronRight className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))
                 )}
@@ -184,11 +196,18 @@ export default function FunilDiscipulado() {
                     </div>
                     <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-navy">{person.fullName}</p>{person.phone && <p className="truncate text-[10px] text-muted-foreground">{person.phone}</p>}</div>
                   </div>
-                  {selectedStage.key !== "multiplicador" && (
-                    <button onClick={() => handleMoveForward(person.id, selectedStage.key)} className="mt-2 flex w-full items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy">
-                      Avançar etapa <ChevronRight className="h-3 w-3" />
-                    </button>
-                  )}
+                  <div className="mt-2 flex gap-2 border-t border-border pt-2">
+                    {selectedStage.key !== "nova_alma" && (
+                      <button onClick={() => handleMoveBackward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy" aria-label={`Retornar ${person.fullName} para a etapa anterior`}>
+                        <ChevronLeft className="h-3 w-3" /> Retornar
+                      </button>
+                    )}
+                    {selectedStage.key !== "multiplicador" && (
+                      <button onClick={() => handleMoveForward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy" aria-label={`Avançar ${person.fullName} para a próxima etapa`}>
+                        Avançar <ChevronRight className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
