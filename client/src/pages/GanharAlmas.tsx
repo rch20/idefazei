@@ -5,9 +5,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { CalendarDays, Flame, Plus, Search, Users } from "lucide-react";
+import { CalendarDays, Check, ChevronsUpDown, Flame, Plus, Search, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -51,6 +53,7 @@ export default function GanharAlmas() {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(createInitialForm);
   const [formError, setFormError] = useState("");
+  const [winnerSearchOpen, setWinnerSearchOpen] = useState(false);
 
   const soulsQuery = trpc.souls.list.useQuery(
     { churchId: churchId! },
@@ -74,6 +77,7 @@ export default function GanharAlmas() {
 
   const souls = soulsQuery.data ?? [];
   const people = peopleQuery.data ?? [];
+  const selectedWinner = people.find((person) => String(person.id) === form.wonById);
   const filteredSouls = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
     if (!query) return souls;
@@ -300,11 +304,51 @@ export default function GanharAlmas() {
                   </div>
                 ) : (
                   <div>
-                    <Label htmlFor="soul-winner">Quem ganhou? *</Label>
-                    <Select value={form.wonById} onValueChange={(value) => setForm({ ...form, wonById: value })}>
-                      <SelectTrigger id="soul-winner" className="mt-1"><SelectValue placeholder="Selecione uma pessoa" /></SelectTrigger>
-                      <SelectContent>{people.map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <Label htmlFor="soul-winner-search">Quem ganhou? *</Label>
+                    <Popover open={winnerSearchOpen} onOpenChange={setWinnerSearchOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          id="soul-winner-search"
+                          type="button"
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={winnerSearchOpen}
+                          className="mt-1 w-full justify-between font-normal"
+                        >
+                          {selectedWinner ? selectedWinner.fullName : "Buscar por nome ou telefone"}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" aria-hidden="true" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[min(28rem,calc(100vw-3rem))] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="Digite nome ou telefone…" />
+                          <CommandList className="max-h-64">
+                            <CommandEmpty>Nenhuma pessoa encontrada.</CommandEmpty>
+                            <CommandGroup heading="Pessoas da igreja">
+                              {people.map((person) => (
+                                <CommandItem
+                                  key={person.id}
+                                  value={`${person.fullName} ${person.phone ?? ""} ${person.whatsapp ?? ""}`}
+                                  onSelect={() => {
+                                    setForm({ ...form, wonById: String(person.id) });
+                                    setWinnerSearchOpen(false);
+                                  }}
+                                >
+                                  <Check className={`mr-2 h-4 w-4 ${selectedWinner?.id === person.id ? "opacity-100" : "opacity-0"}`} aria-hidden="true" />
+                                  <span className="min-w-0 flex-1 truncate">{person.fullName}</span>
+                                  {(person.phone ?? person.whatsapp) && <span className="ml-2 shrink-0 text-xs text-muted-foreground">{person.phone ?? person.whatsapp}</span>}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    {selectedWinner && (
+                      <Button type="button" variant="ghost" size="sm" className="mt-1 h-auto px-0 text-xs text-muted-foreground hover:text-navy" onClick={() => setForm({ ...form, wonById: "" })}>
+                        <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />Trocar pessoa selecionada
+                      </Button>
+                    )}
                   </div>
                 )}
                 <div className="sm:col-span-2">

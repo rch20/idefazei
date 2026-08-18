@@ -356,3 +356,10 @@
 - [x] Mostrar uma opção clara de chegada espontânea e orientar a atribuição posterior de consolidador
 - [x] Preservar o responsável inicial para casos em que uma Pessoa realmente ganhou a Nova Alma
 - [x] Cobrir os dois fluxos com testes e salvar checkpoint
+
+## FASE 25 – Busca de Quem Ganhou
+
+- [x] Substituir a lista extensa de “Quem ganhou?” por busca por nome ou telefone
+- [x] Exibir resultado selecionado e permitir limpar ou trocar a Pessoa escolhida
+- [x] Garantir navegação por teclado e uso confortável no mobile
+- [x] Validar, testar e salvar checkpoint
