@@ -164,6 +164,119 @@ export async function getActiveChurchUserById(userId: number) {
   return result[0] ?? null;
 }
 
+export async function getChurchUsersByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: churchUsers.id,
+      name: churchUsers.name,
+      email: churchUsers.email,
+      role: churchUsers.role,
+      personId: churchUsers.personId,
+      active: churchUsers.active,
+      lastLoginAt: churchUsers.lastLoginAt,
+    })
+    .from(churchUsers)
+    .where(eq(churchUsers.churchId, churchId))
+    .orderBy(churchUsers.name);
+}
+
+export async function linkChurchUserToPerson(userId: number, churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(churchUsers)
+    .set({ personId })
+    .where(and(eq(churchUsers.id, userId), eq(churchUsers.churchId, churchId)));
+  return getActiveChurchUserById(userId);
+}
+
+/** Determina se uma conta pode movimentar a jornada espiritual de uma Pessoa. */
+export async function canChurchUserManageJourney(input: {
+  churchId: number;
+  actorPersonId: number | null;
+  actorRole: string;
+  targetPersonId: number;
+}) {
+  if (["pastor_presidente", "pastor_local"].includes(input.actorRole)) return true;
+  if (!input.actorPersonId) return false;
+
+  const db = await getDb();
+  if (!db) return false;
+
+  if (input.actorRole === "consolidador") {
+    const assignment = await getCurrentCareAssignment(input.targetPersonId, input.churchId);
+    return assignment?.responsiblePersonId === input.actorPersonId && assignment.role === "consolidador";
+  }
+
+  if (input.actorRole === "lider" || input.actorRole === "supervisor") {
+    const matches = await db
+      .select({ cellId: cells.id })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(
+        and(
+          eq(cellMembers.personId, input.targetPersonId),
+          eq(cellMembers.active, true),
+          eq(cells.churchId, input.churchId),
+          input.actorRole === "lider"
+            ? eq(cells.leaderId, input.actorPersonId)
+            : eq(cells.supervisorId, input.actorPersonId)
+        )
+      )
+      .limit(1);
+    return matches.length > 0;
+  }
+
+  return false;
+}
+
+/** Lista as Pessoas que um perfil não pastoral pode movimentar no Funil. */
+export async function getJourneyManagedPersonIds(input: {
+  churchId: number;
+  actorPersonId: number | null;
+  actorRole: string;
+}) {
+  if (!input.actorPersonId) return [];
+  const db = await getDb();
+  if (!db) return [];
+
+  if (input.actorRole === "consolidador") {
+    const rows = await db
+      .select({ personId: careAssignments.personId })
+      .from(careAssignments)
+      .where(
+        and(
+          eq(careAssignments.churchId, input.churchId),
+          eq(careAssignments.responsiblePersonId, input.actorPersonId),
+          eq(careAssignments.role, "consolidador"),
+          eq(careAssignments.active, true)
+        )
+      );
+    return rows.map((row) => row.personId);
+  }
+
+  if (input.actorRole === "lider" || input.actorRole === "supervisor") {
+    const rows = await db
+      .select({ personId: cellMembers.personId })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(
+        and(
+          eq(cellMembers.active, true),
+          eq(cells.churchId, input.churchId),
+          input.actorRole === "lider"
+            ? eq(cells.leaderId, input.actorPersonId)
+            : eq(cells.supervisorId, input.actorPersonId)
+        )
+      );
+    return rows.map((row) => row.personId);
+  }
+
+  return [];
+}
+
 /** Retorna somente um Super Admin que continua ativo. */
 export async function getActiveSuperAdminById(adminId: number) {
   const db = await getDb();

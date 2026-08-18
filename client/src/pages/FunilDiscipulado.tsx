@@ -19,10 +19,10 @@ type StageKey = (typeof STAGES)[number]["key"];
 
 export default function FunilDiscipulado() {
   const { churchId } = useChurch();
-  const [selectedPerson, setSelectedPerson] = useState<number | null>(null);
   const [activeDesktopStage, setActiveDesktopStage] = useState<StageKey>("nova_alma");
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId });
+  const { data: journeyScope } = trpc.people.journeyScope.useQuery({ churchId });
   const updatePerson = trpc.people.update.useMutation({
     onSuccess: () => refetch(),
   });
@@ -32,6 +32,7 @@ export default function FunilDiscipulado() {
     people: (people ?? []).filter((p) => p.discipleshipStage === stage.key),
   }));
   const selectedStage = grouped.find((stage) => stage.key === activeDesktopStage) ?? grouped[0];
+  const canMovePerson = (personId: number) => Boolean(journeyScope?.canManageAll || journeyScope?.personIds.includes(personId));
 
   function handleMoveForward(personId: number, currentStage: StageKey) {
     const idx = STAGES.findIndex((s) => s.key === currentStage);
@@ -57,6 +58,12 @@ export default function FunilDiscipulado() {
           Acompanhe a jornada espiritual de cada pessoa
         </p>
       </div>
+
+      {!journeyScope?.canManageAll && !journeyScope?.linkedPersonId && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Seu acesso está em modo de leitura. Peça ao administrador para vincular sua conta à sua ficha de Pessoa em <strong>Configurações → Perfis e Hierarquia</strong>.
+        </div>
+      )}
 
       {/* Pipeline arrow */}
       <div className="hidden rounded-2xl border border-border bg-card p-2 md:grid md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
@@ -149,7 +156,7 @@ export default function FunilDiscipulado() {
                           )}
                         </div>
                       </div>
-                      {/* Advance button */}
+                      {canMovePerson(person.id) ? (
                       <div className="mt-2 flex gap-2">
                         {stage.key !== "nova_alma" && (
                           <button onClick={() => handleMoveBackward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy" aria-label={`Retornar ${person.fullName} para a etapa anterior`}>
@@ -162,6 +169,9 @@ export default function FunilDiscipulado() {
                           </button>
                         )}
                       </div>
+                      ) : (
+                        <p className="mt-2 border-t border-border pt-2 text-[10px] text-muted-foreground">Acompanhamento sob responsabilidade de outro líder.</p>
+                      )}
                     </div>
                   ))
                 )}
@@ -196,6 +206,7 @@ export default function FunilDiscipulado() {
                     </div>
                     <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-navy">{person.fullName}</p>{person.phone && <p className="truncate text-[10px] text-muted-foreground">{person.phone}</p>}</div>
                   </div>
+                  {canMovePerson(person.id) ? (
                   <div className="mt-2 flex gap-2 border-t border-border pt-2">
                     {selectedStage.key !== "nova_alma" && (
                       <button onClick={() => handleMoveBackward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy" aria-label={`Retornar ${person.fullName} para a etapa anterior`}>
@@ -208,6 +219,9 @@ export default function FunilDiscipulado() {
                       </button>
                     )}
                   </div>
+                  ) : (
+                    <p className="mt-2 border-t border-border pt-2 text-[10px] text-muted-foreground">Acompanhamento sob responsabilidade de outro líder.</p>
+                  )}
                 </div>
               ))}
             </div>

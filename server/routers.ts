@@ -32,6 +32,10 @@ import {
   getChurchMemberByUserId,
   getActiveChurchUserById,
   getChurchMembersByChurch,
+  getChurchUsersByChurch,
+  linkChurchUserToPerson,
+  canChurchUserManageJourney,
+  getJourneyManagedPersonIds,
   getConsolidationsByChurch,
   getConsolidationsBySoul,
   getConsolidationById,
@@ -136,6 +140,23 @@ async function requireChurchAdministrator(userId: number, churchId: number) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Seu perfil não tem permissão para esta ação" });
   }
   return member;
+}
+
+async function requireJourneyStagePermission(userId: number, churchId: number, targetPersonId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const allowed = await canChurchUserManageJourney({
+    churchId,
+    actorPersonId: actor.personId ?? null,
+    actorRole: actor.role,
+    targetPersonId,
+  });
+  if (!allowed) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Você só pode movimentar pessoas que estão sob sua responsabilidade pastoral.",
+    });
+  }
+  return actor;
 }
 
 // ─── ROUTERS ──────────────────────────────────────────────────────────────────
@@ -311,8 +332,32 @@ const peopleRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const { id, churchId, ...data } = input;
-      await requireChurchMember(ctx.user.id, churchId);
+      if (data.discipleshipStage !== undefined) {
+        await requireJourneyStagePermission(ctx.user.id, churchId, id);
+      } else {
+        await requireChurchMember(ctx.user.id, churchId);
+      }
       return updatePerson(id, churchId, data as any);
+    }),
+
+  journeyScope: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const canManageAll = ["pastor_presidente", "pastor_local"].includes(actor.role);
+      const personIds = canManageAll
+        ? []
+        : await getJourneyManagedPersonIds({
+            churchId: input.churchId,
+            actorPersonId: actor.personId ?? null,
+            actorRole: actor.role,
+          });
+      return {
+        canManageAll,
+        actorRole: actor.role,
+        linkedPersonId: actor.personId ?? null,
+        personIds,
+      };
     }),
 });
 
@@ -1011,17 +1056,40 @@ const churchAuthRouter = router({
       email: z.string().email(),
       password: z.string().min(6),
       role: z.enum(["pastor_presidente","pastor_local","supervisor","lider","consolidador","diacono","secretario","tesoureiro","membro"]).optional(),
+      personId: z.number().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
+      if (input.personId && !(await getPersonById(input.personId, input.churchId))) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja." });
+      }
       const user = await createChurchUser({
         churchId: input.churchId,
         name: input.name,
         email: input.email,
         password: input.password,
         role: input.role ?? "membro",
+        personId: input.personId,
       });
       return { success: true, userId: user?.id };
+    }),
+
+  listUsers: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      return getChurchUsersByChurch(input.churchId);
+    }),
+
+  linkPerson: protectedProcedure
+    .input(z.object({ churchId: z.number(), userId: z.number(), personId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja." });
+      const user = await linkChurchUserToPerson(input.userId, input.churchId, input.personId);
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário da igreja não encontrado." });
+      return user;
     }),
 });
 
@@ -1136,12 +1204,15 @@ const registerRouter = router({
 // ─── INVITE ROUTER ───────────────────────────────────────────────────────────
 const inviteRouter = router({
   create: protectedProcedure
-    .input(z.object({ churchId: z.number(), email: z.string().email(), name: z.string().min(1), role: z.enum(["pastor_presidente","pastor_local","supervisor","lider","consolidador","diacono","secretario","tesoureiro","membro"]) }))
+    .input(z.object({ churchId: z.number(), email: z.string().email(), name: z.string().min(1), role: z.enum(["pastor_presidente","pastor_local","supervisor","lider","consolidador","diacono","secretario","tesoureiro","membro"]), personId: z.number().optional() }))
     .mutation(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
+      if (input.personId && !(await getPersonById(input.personId, input.churchId))) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja." });
+      }
       const tempPassword = Math.random().toString(36).slice(-8);
       const { createChurchUser } = await import("./auth");
-      const user = await createChurchUser({ churchId: input.churchId, name: input.name, email: input.email, password: tempPassword, role: input.role });
+      const user = await createChurchUser({ churchId: input.churchId, name: input.name, email: input.email, password: tempPassword, role: input.role, personId: input.personId });
             const { notifyOwner } = await import("./_core/notification");
       await notifyOwner({ title: `Novo convite: ${input.name}`, content: `Usuário ${input.name} (${input.email}) foi convidado para a igreja ${input.churchId} com o perfil ${input.role}. Senha temporária: ${tempPassword}` });
       return { success: true, userId: user.id, tempPassword };

@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, findPossiblePeopleByIdentity, getActiveMembersByCell, getPersonById, isActiveMinistryMember, setCurrentCareAssignment, updateConsolidation, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, findPossiblePeopleByIdentity, getActiveMembersByCell, getPersonById, isActiveMinistryMember, setCurrentCareAssignment, updateConsolidation, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -86,6 +86,10 @@ vi.mock("./db", () => ({
   getCurrentCareAssignment: vi.fn().mockResolvedValue(null),
   getCareHistoryByPerson: vi.fn().mockResolvedValue([]),
   setCurrentCareAssignment: vi.fn().mockResolvedValue({ id: 1, personId: 1, responsiblePersonId: 10 }),
+  canChurchUserManageJourney: vi.fn().mockResolvedValue(true),
+  getJourneyManagedPersonIds: vi.fn().mockResolvedValue([]),
+  getChurchUsersByChurch: vi.fn().mockResolvedValue([]),
+  linkChurchUserToPerson: vi.fn().mockResolvedValue({ id: 1, personId: 10 }),
   getEventsByChurch: vi.fn().mockResolvedValue([]),
   createEvent: vi.fn().mockResolvedValue({ id: 1 }),
   getMinistries: vi.fn().mockResolvedValue([]),
@@ -288,6 +292,15 @@ describe("Fluxo completo de discipulado", () => {
       });
 
       expect(updatePerson).toHaveBeenCalledWith(10, CHURCH_ID, { discipleshipStage: "consolidacao" });
+    });
+
+    it("bloqueia movimentação de etapa fora da responsabilidade do usuário", async () => {
+      (canChurchUserManageJourney as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(
+        caller.people.update({ id: 10, churchId: CHURCH_ID, discipleshipStage: "fundamentos" })
+      ).rejects.toThrow("sob sua responsabilidade pastoral");
     });
 
     it("abre processo de consolidação para a nova alma", async () => {

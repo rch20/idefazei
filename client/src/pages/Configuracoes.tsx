@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Building2, Palette, Users, Globe, Save, Upload } from "lucide-react";
-import { getChurchToken } from "@/hooks/useChurchAuth";
+import { getChurchToken, useChurchAuth } from "@/hooks/useChurchAuth";
 
 const ROLES = [
   { value: "pastor_presidente", label: "Pastor Presidente" },
@@ -24,6 +24,8 @@ const ROLES = [
 
 export default function Configuracoes() {
   const { churchId } = useChurch();
+  const { user } = useChurchAuth();
+  const canManageAccounts = ["pastor_presidente", "pastor_local", "secretario"].includes(user?.role ?? "");
   const { data: church, isLoading, refetch } = trpc.churches.getById.useQuery(
     { id: churchId! },
     { enabled: !!churchId }
@@ -71,6 +73,18 @@ export default function Configuracoes() {
   const updateMutation = trpc.churches.update.useMutation({
     onSuccess: () => toast.success("Configurações salvas com sucesso!"),
     onError: (err: { message: string }) => toast.error(err.message),
+  });
+  const { data: churchUsers, refetch: refetchChurchUsers } = trpc.churchAuth.listUsers.useQuery(
+    { churchId },
+    { enabled: Boolean(churchId && canManageAccounts) }
+  );
+  const { data: people = [] } = trpc.people.list.useQuery({ churchId }, { enabled: !!churchId });
+  const linkPersonMutation = trpc.churchAuth.linkPerson.useMutation({
+    onSuccess: () => {
+      refetchChurchUsers();
+      toast.success("Conta vinculada à Pessoa com sucesso.");
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
   });
 
   const handleSave = () => {
@@ -386,6 +400,45 @@ export default function Configuracoes() {
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="card-sacred mt-5 p-6">
+              <h2 className="mb-2 border-b border-border pb-2 text-base font-semibold text-navy">Vínculo de Contas e Pessoas</h2>
+              <p className="mb-4 text-sm text-muted-foreground">Vincule a conta de cada líder à sua ficha de Pessoa. Esse vínculo define quais pessoas ele pode movimentar no Funil de Discipulado.</p>
+
+              {!canManageAccounts ? (
+                <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Somente Pastores e Secretários podem administrar vínculos de contas.</p>
+              ) : churchUsers?.length === 0 ? (
+                <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Nenhuma conta de acesso foi criada nesta igreja.</p>
+              ) : (
+                <div className="space-y-3">
+                  {churchUsers?.map((churchUser) => (
+                    <div key={churchUser.id} className="grid gap-3 rounded-xl border border-border/70 bg-muted/20 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)] sm:items-center">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-navy">{churchUser.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{churchUser.email} · {ROLES.find((role) => role.value === churchUser.role)?.label ?? churchUser.role}</p>
+                      </div>
+                      <label className="block">
+                        <span className="sr-only">Pessoa vinculada à conta de {churchUser.name}</span>
+                        <select
+                          value={churchUser.personId ? String(churchUser.personId) : "unlinked"}
+                          onChange={(event) => {
+                            const personId = Number(event.target.value);
+                            if (Number.isFinite(personId) && personId > 0) {
+                              linkPersonMutation.mutate({ churchId, userId: churchUser.id, personId });
+                            }
+                          }}
+                          disabled={linkPersonMutation.isPending}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+                        >
+                          <option value="unlinked">Selecionar ficha de Pessoa</option>
+                          {people.map((person) => <option key={person.id} value={person.id}>{person.fullName}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </TabsContent>
 

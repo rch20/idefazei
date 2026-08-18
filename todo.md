@@ -308,3 +308,11 @@
 - [x] Permitir retornar uma Pessoa para a etapa anterior de forma explícita e controlada
 - [x] Manter o avanço e retorno acessíveis em desktop e mobile
 - [ ] Validar os layouts autenticados, com testes e checkpoint
+
+## FASE 20 – Permissões da Jornada de Discipulado
+
+- [x] Associar com segurança cada conta de igreja à Pessoa correspondente
+- [x] Restringir mudanças de etapa aos Pastores, Supervisores, Líderes e Consolidadores responsáveis
+- [x] Limitar o escopo por célula, supervisão ou carteira de consolidação
+- [x] Ocultar ou desabilitar ações não autorizadas na interface do Funil
+- [x] Cobrir regras de permissão por perfil e tenant com testes de integração

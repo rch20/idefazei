@@ -87,6 +87,7 @@ export async function createChurchUser(data: {
   email: string;
   password: string;
   role: typeof churchUsers.$inferInsert["role"];
+  personId?: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -98,6 +99,7 @@ export async function createChurchUser(data: {
     email: data.email.toLowerCase(),
     passwordHash,
     role: data.role ?? "membro",
+    personId: data.personId ?? null,
   });
 
   const rows = await db.select().from(churchUsers).where(eq(churchUsers.email, data.email.toLowerCase())).limit(1);
