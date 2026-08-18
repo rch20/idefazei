@@ -176,9 +176,9 @@ export default function GanharAlmas() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4" aria-label="Resumo das novas almas">
         {stats.map(({ status, count, label, class: className }) => (
-          <div key={status} className="metric-card flex items-center justify-between gap-3 sm:block">
-            <p className="text-2xl font-bold font-display text-navy">{count}</p>
-            <Badge variant="outline" className={`font-medium ${className}`}>{label}</Badge>
+          <div key={status} className="metric-card flex min-h-12 items-center justify-between gap-2 px-3 py-2 sm:block sm:min-h-0 sm:p-5">
+            <p className="text-xl font-bold font-display text-navy sm:text-2xl">{count}</p>
+            <Badge variant="outline" className={`text-[11px] font-medium sm:text-xs ${className}`}>{label}</Badge>
           </div>
         ))}
       </div>

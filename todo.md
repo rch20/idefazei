@@ -363,3 +363,9 @@
 - [x] Exibir resultado selecionado e permitir limpar ou trocar a Pessoa escolhida
 - [x] Garantir navegação por teclado e uso confortável no mobile
 - [x] Validar, testar e salvar checkpoint
+
+## FASE 26 – Cards de Ganhar Almas no Mobile
+
+- [x] Compactar os três cards de resumo em telas mobile
+- [x] Preservar legibilidade, hierarquia e layout desktop
+- [x] Validar visualmente, testar e salvar checkpoint
