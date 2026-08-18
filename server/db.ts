@@ -1387,6 +1387,19 @@ export async function getCourseEnrollments(courseId: number, churchId: number) {
   .where(and(eq(courseEnrollments.courseId, courseId), eq(people.churchId, churchId)));
 }
 
+export async function getCourseEnrollmentById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ enrollment: courseEnrollments })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .where(and(eq(courseEnrollments.id, id), eq(courses.churchId, churchId), eq(people.churchId, churchId)))
+    .limit(1);
+  return rows[0]?.enrollment ?? null;
+}
+
 export async function enrollInCourse(data: { courseId: number; personId: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -1440,13 +1453,13 @@ export async function enrollInBaptism(data: { baptismClassId: number; personId: 
   await db.insert(baptismEnrollments).values({ ...data, status: "inscrito" } as typeof baptismEnrollments.$inferInsert);
 }
 
-export async function updateBaptismEnrollment(id: number, data: { status?: string; completedAt?: Date | null }) {
+export async function updateBaptismEnrollment(id: number, churchId: number, data: { status?: string; completedAt?: Date | null }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const update: Record<string, unknown> = {};
   if (data.status !== undefined) update.status = data.status;
   if (data.completedAt !== undefined) update.completedAt = data.completedAt;
-  await db.update(baptismEnrollments).set(update).where(eq(baptismEnrollments.id, id));
+  await db.update(baptismEnrollments).set(update).where(and(eq(baptismEnrollments.id, id), eq(baptismEnrollments.churchId, churchId)));
 }
 
 // ─── ENCONTRO COM DEUS ────────────────────────────────────────────────────────
@@ -1483,13 +1496,13 @@ export async function enrollInEncounter(data: { encounterEventId: number; person
   await db.insert(encounterEnrollments).values({ ...data, status: "inscrito" } as typeof encounterEnrollments.$inferInsert);
 }
 
-export async function updateEncounterEnrollment(id: number, data: { status?: string; completedAt?: Date | null }) {
+export async function updateEncounterEnrollment(id: number, churchId: number, data: { status?: string; completedAt?: Date | null }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const update: Record<string, unknown> = {};
   if (data.status !== undefined) update.status = data.status;
   if (data.completedAt !== undefined) update.completedAt = data.completedAt;
-  await db.update(encounterEnrollments).set(update).where(eq(encounterEnrollments.id, id));
+  await db.update(encounterEnrollments).set(update).where(and(eq(encounterEnrollments.id, id), eq(encounterEnrollments.churchId, churchId)));
 }
 
 // ─── ESCOLA DE LÍDERES ────────────────────────────────────────────────────────
@@ -1526,7 +1539,7 @@ export async function enrollInLeadershipSchool(data: { classId: number; personId
   await db.insert(leadershipSchoolEnrollments).values({ ...data, status: "matriculado" } as typeof leadershipSchoolEnrollments.$inferInsert);
 }
 
-export async function updateLeadershipEnrollment(id: number, data: { status?: string; grade?: number; attendance?: number; completedAt?: Date | null }) {
+export async function updateLeadershipEnrollment(id: number, churchId: number, data: { status?: string; grade?: number; attendance?: number; completedAt?: Date | null }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const update: Record<string, unknown> = {};
@@ -1534,7 +1547,7 @@ export async function updateLeadershipEnrollment(id: number, data: { status?: st
   if (data.grade !== undefined) update.grade = data.grade;
   if (data.attendance !== undefined) update.attendance = data.attendance;
   if (data.completedAt !== undefined) update.completedAt = data.completedAt;
-  await db.update(leadershipSchoolEnrollments).set(update).where(eq(leadershipSchoolEnrollments.id, id));
+  await db.update(leadershipSchoolEnrollments).set(update).where(and(eq(leadershipSchoolEnrollments.id, id), eq(leadershipSchoolEnrollments.churchId, churchId)));
 }
 
 // ─── HISTÓRICO DE LIDERANÇA ───────────────────────────────────────────────────
@@ -1570,7 +1583,7 @@ export async function addLeadershipHistory(data: {
 
 // ─── ACONSELHAMENTO PASTORAL ──────────────────────────────────────────────────
 
-export async function getCounselingSessionsByChurch(churchId: number) {
+export async function getCounselingSessionsByChurch(churchId: number, counselorId?: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select({
@@ -1579,8 +1592,19 @@ export async function getCounselingSessionsByChurch(churchId: number) {
   })
   .from(counselingSessions)
   .innerJoin(people, eq(counselingSessions.personId, people.id))
-  .where(eq(counselingSessions.churchId, churchId))
+  .where(counselorId ? and(eq(counselingSessions.churchId, churchId), eq(counselingSessions.counselorId, counselorId)) : eq(counselingSessions.churchId, churchId))
   .orderBy(desc(counselingSessions.scheduledAt));
+}
+
+export async function getCounselingSessionById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(counselingSessions)
+    .where(and(eq(counselingSessions.id, id), eq(counselingSessions.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function createCounselingSession(data: {
@@ -1591,13 +1615,13 @@ export async function createCounselingSession(data: {
   await db.insert(counselingSessions).values(data as typeof counselingSessions.$inferInsert);
 }
 
-export async function updateCounselingSession(id: number, data: { status?: string; notes?: string }) {
+export async function updateCounselingSession(id: number, churchId: number, data: { status?: string; notes?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const update: Record<string, unknown> = {};
   if (data.status !== undefined) update.status = data.status;
   if (data.notes !== undefined) update.notes = data.notes;
-  await db.update(counselingSessions).set(update).where(eq(counselingSessions.id, id));
+  await db.update(counselingSessions).set(update).where(and(eq(counselingSessions.id, id), eq(counselingSessions.churchId, churchId)));
 }
 
 export async function getCounselingNotes(sessionId: number, churchId: number) {

@@ -418,3 +418,22 @@
 - [x] Corrigir a comparação de data que permitiu dois encontros da mesma Célula no mesmo dia
 - [x] Cobrir o bloqueio de duplicidade com teste de integração
 - [x] Retestar no navegador a tentativa de registro repetido
+
+## FASE 34 – Auditoria de Isolamento e Hierarquia
+
+- [x] Mapear a aplicação de churchId, sessão JWT, perfis e escopo pastoral nos routers e helpers
+- [x] Auditar operações de leitura e escrita contra acesso entre tenants e elevação de privilégio
+- [x] Verificar ações sensíveis da Jornada, Células, cuidado, administração e faturamento
+- [x] Corrigir falhas comprovadas, ampliar testes de isolamento e documentar o resultado
+- [x] Validar a suíte completa e salvar checkpoint
+
+### Achados de segurança corrigidos
+
+- [x] Restringir a leitura de configuração de igreja por ID ao tenant autenticado
+- [x] Vincular QR Code de Evento, inscrições e atualizações de matrícula ao churchId da entidade relacionada
+- [x] Restringir leitura e alteração de cuidado e aconselhamento ao escopo pastoral autorizado
+- [x] Restringir alterações estruturais de Células a perfis de liderança autorizados
+- [x] Validar os vínculos de curso, turma, evento e Pessoa antes de criar qualquer matrícula
+- [x] Restringir relatórios, comunicação, diretórios e demais dados sensíveis conforme o perfil autorizado
+- [x] Revisar as procedures públicas para assegurar que exponham somente dados intencionalmente públicos
+- [x] Cobrir tentativas de IDOR, mudança de tenant e elevação de privilégio em testes de regressão

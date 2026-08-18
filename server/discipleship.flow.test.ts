@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, createCellMeetingWithAttendance, findPossiblePeopleByIdentity, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getPeopleByChurch, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, createCellMeetingWithAttendance, findPossiblePeopleByIdentity, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getCounselingSessionById, getPeopleByChurch, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -66,7 +66,7 @@ vi.mock("./db", () => ({
   getCellMembershipHistory: vi.fn().mockResolvedValue([]),
   assignPersonToCell: vi.fn().mockResolvedValue({ id: 3, cellId: 2, personId: 10, active: true }),
   createCell: vi.fn().mockResolvedValue({ id: 1, name: "Célula Esperança", churchId: 100 }),
-  getBaptismClassesByChurch: vi.fn().mockResolvedValue([]),
+  getBaptismClassesByChurch: vi.fn().mockResolvedValue([{ id: 1, churchId: 100, name: "Turma Batismo Junho" }]),
   getBaptismEnrollments: vi.fn().mockResolvedValue([]),
   createBaptismClass: vi.fn().mockResolvedValue({ id: 1, name: "Turma Batismo Junho", churchId: 100 }),
   enrollInBaptism: vi.fn().mockResolvedValue({ id: 1, baptismClassId: 1, personId: 1 }),
@@ -140,6 +140,8 @@ vi.mock("./db", () => ({
   createLeadershipHistory: vi.fn().mockResolvedValue({ id: 1 }),
   updateLeadershipHistory: vi.fn().mockResolvedValue({ id: 1 }),
   getCounselingSessions: vi.fn().mockResolvedValue([]),
+  getCounselingSessionsByChurch: vi.fn().mockResolvedValue([]),
+  getCounselingSessionById: vi.fn().mockResolvedValue({ id: 20, churchId: 100, counselorId: 10 }),
   createCounselingSession: vi.fn().mockResolvedValue({ id: 1 }),
   updateCounselingSession: vi.fn().mockResolvedValue({ id: 1 }),
   getCounselingNotes: vi.fn().mockResolvedValue([]),
@@ -821,6 +823,55 @@ describe("Fluxo completo de discipulado", () => {
       const result = await caller.souls.list({ churchId: CHURCH_ID });
 
       expect(Array.isArray(result)).toBe(true);
+    });
+
+    it("bloqueia a leitura de configuração de uma igreja que não pertence à sessão", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.churches.getById({ id: 999 })).rejects.toThrow("Acesso negado a esta igreja");
+    });
+
+    it("bloqueia o histórico de cuidado fora do escopo pastoral", async () => {
+      (canChurchUserManageJourney as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await expect(caller.care.history({ churchId: CHURCH_ID, personId: 99 })).rejects.toThrow("sob sua responsabilidade pastoral");
+    });
+
+    it("bloqueia a criação de Célula por membro sem responsabilidade de liderança", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 3,
+        userId: 10,
+        churchId: CHURCH_ID,
+        role: "membro",
+        personId: 10,
+        active: true,
+      });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(
+        caller.cells.create({ churchId: CHURCH_ID, name: "Célula sem autorização", leaderId: 11 })
+      ).rejects.toThrow("Somente Pastores, Supervisores ou o próprio Líder");
+    });
+
+    it("bloqueia um Supervisor de ler notas de aconselhamento que não são suas", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 4,
+        userId: 10,
+        churchId: CHURCH_ID,
+        role: "supervisor",
+        personId: 10,
+        active: true,
+      });
+      (getCounselingSessionById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 20,
+        churchId: CHURCH_ID,
+        counselorId: 99,
+      });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.aconselhamento.getNotes({ churchId: CHURCH_ID, sessionId: 20 })).rejects.toThrow("sob sua responsabilidade");
     });
   });
 });
