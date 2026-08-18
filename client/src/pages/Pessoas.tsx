@@ -9,8 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { Clock3, HeartHandshake, Plus, Search, ShieldCheck, User, Users } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { useLocation } from "wouter";
 
 const STAGES_LABELS: Record<string, string> = {
   nova_alma: "Nova Alma",
@@ -71,6 +72,7 @@ const defaultForm = {
 
 export default function Pessoas() {
   const { churchId } = useChurch();
+  const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(defaultForm);
@@ -147,6 +149,44 @@ export default function Pessoas() {
 
   const selectedAttention = (careAttention.data ?? []).find((item) => item.person.id === selectedPerson?.id);
   const currentResponsible = (people ?? []).find((person) => person.id === currentCare.data?.responsiblePersonId);
+
+  useEffect(() => {
+    const personId = Number(new URLSearchParams(location.split("?")[1] ?? "").get("personId"));
+    const person = (people ?? []).find((candidate) => candidate.id === personId);
+    if (person && selectedPerson?.id !== person.id) openPersonJourney(person);
+  }, [location, people, selectedPerson?.id]);
+
+  const careTimeline = selectedPerson
+    ? [
+        ...(selectedAttention?.soul
+          ? [{ date: selectedAttention.soul.decisionDate, title: "Nova Alma registrada", detail: "Decisão e origem espiritual registradas." }]
+          : []),
+        ...(careHistory.data ?? []).map((item) => ({
+          date: item.startedAt,
+          title: "Responsável pelo cuidado definido",
+          detail: `${CARE_ROLE_LABELS[item.role] ?? item.role}${item.notes ? ` · ${item.notes}` : ""}`,
+        })),
+        ...(selectedAttention?.consolidation?.callDate
+          ? [{ date: selectedAttention.consolidation.callDate, title: "Primeiro contato realizado", detail: "Contato de consolidação registrado." }]
+          : []),
+        ...(selectedAttention?.consolidation?.messageDate
+          ? [{ date: selectedAttention.consolidation.messageDate, title: "Mensagem enviada", detail: "Ação de consolidação registrada." }]
+          : []),
+        ...(selectedAttention?.consolidation?.visitDate
+          ? [{ date: selectedAttention.consolidation.visitDate, title: "Visita realizada", detail: "Ação de consolidação registrada." }]
+          : []),
+        ...(selectedAttention?.consolidation?.prayerDate
+          ? [{ date: selectedAttention.consolidation.prayerDate, title: "Oração realizada", detail: "Ação de consolidação registrada." }]
+          : []),
+        ...(cellHistory.data ?? []).map((membership) => ({
+          date: membership.joinedAt,
+          title: membership.active ? "Integrada à Célula" : "Histórico de Célula",
+          detail: membership.active ? `Célula atual: ${membership.cellName}` : `Participou da Célula ${membership.cellName}`,
+        })),
+      ]
+        .filter((item) => item.date)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    : [];
 
   function openPersonJourney(person: any) {
     setSelectedPerson(person);
@@ -472,6 +512,24 @@ export default function Pessoas() {
               <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground"><Clock3 className="h-4 w-4" />{careHistory.data?.length ?? 0} atribuição(ões) registrada(s)</p>
             </section>
           </div>
+
+          <section className="rounded-xl border border-border p-4">
+            <h3 className="text-sm font-semibold text-navy">Linha do tempo de acompanhamento</h3>
+            {careTimeline.length === 0 ? (
+              <p className="mt-2 text-sm text-muted-foreground">Ainda não há ações de cuidado registradas.</p>
+            ) : (
+              <div className="mt-4 space-y-4 border-l border-gold/30 pl-4">
+                {careTimeline.slice(0, 10).map((event, index) => (
+                  <div key={`${event.title}-${index}`} className="relative">
+                    <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-gold" />
+                    <p className="text-sm font-medium text-navy">{event.title}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{event.detail}</p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">{new Date(event.date).toLocaleDateString("pt-BR")}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
 
           <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
             <h3 className="text-sm font-semibold text-navy">Definir responsável pelo cuidado</h3>

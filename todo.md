@@ -369,3 +369,12 @@
 - [x] Compactar os três cards de resumo em telas mobile
 - [x] Preservar legibilidade, hierarquia e layout desktop
 - [x] Validar visualmente, testar e salvar checkpoint
+
+## FASE 27 – Central de Cuidado
+
+- [x] Definir prioridade de cuidado por responsável e motivo de atenção
+- [x] Criar fila pessoal acionável para Pastores, Supervisores, Líderes e Consolidadores
+- [x] Adicionar ações rápidas de contato, consolidação, célula e atribuição de responsável
+- [x] Registrar histórico cronológico de cuidado na ficha da Pessoa
+- [x] Restringir a fila e as ações ao escopo pastoral da conta autenticada
+- [x] Validar desktop/mobile, testes e checkpoint

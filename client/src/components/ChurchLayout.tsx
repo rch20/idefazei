@@ -54,6 +54,7 @@ export const useChurch = () => useContext(ChurchContext);
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/app/dashboard", group: "principal" },
+  { icon: Heart, label: "Central de Cuidado", path: "/app/cuidado", group: "principal", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"] },
   { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "principal" },
   { icon: TreePine, label: "Árvore de Discipulado", path: "/app/arvore", group: "principal" },
   { icon: Flame, label: "Ganhar Almas", path: "/app/almas", group: "discipulado" },

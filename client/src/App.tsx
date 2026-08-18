@@ -47,6 +47,7 @@ import Aconselhamento from "./pages/Aconselhamento";
 import Comunicacao from "./pages/Comunicacao";
 import ConfiguracoesCertificados from "./pages/ConfiguracoesCertificados";
 import Faturamento from "./pages/Faturamento";
+import CentralCuidado from "./pages/CentralCuidado";
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
 
@@ -83,6 +84,12 @@ function Router() {
       <Route path="/app/dashboard">
         <AppPage title="Dashboard">
           <Dashboard />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/cuidado">
+        <AppPage title="Central de Cuidado">
+          <CentralCuidado />
         </AppPage>
       </Route>
 

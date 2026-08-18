@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, findPossiblePeopleByIdentity, getActiveMembersByCell, getCellsByChurch, getPeopleByChurch, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, findPossiblePeopleByIdentity, getActiveMembersByCell, getCareAttentionByChurch, getCellsByChurch, getPeopleByChurch, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -86,6 +86,7 @@ vi.mock("./db", () => ({
   updatePerson: vi.fn().mockResolvedValue({ id: 1 }),
   getCurrentCareAssignment: vi.fn().mockResolvedValue(null),
   getCareHistoryByPerson: vi.fn().mockResolvedValue([]),
+  getCareAttentionByChurch: vi.fn().mockResolvedValue([]),
   setCurrentCareAssignment: vi.fn().mockResolvedValue({ id: 1, personId: 1, responsiblePersonId: 10 }),
   canChurchUserManageJourney: vi.fn().mockResolvedValue(true),
   getJourneyManagedPersonIds: vi.fn().mockResolvedValue([]),
@@ -651,6 +652,65 @@ describe("Fluxo completo de discipulado", () => {
         caller.consolidation.updateChecklist({ id: 1, churchId: CHURCH_ID, callMade: true })
       ).rejects.toThrow("Você só pode movimentar pessoas que estão sob sua responsabilidade pastoral.");
       expect(updateConsolidation).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Central de Cuidado — fila pessoal", () => {
+    it("mostra ao líder somente pendências da sua carteira de cuidado", async () => {
+      (getCareAttentionByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        {
+          person: { id: 10, fullName: "Ana sob cuidado" },
+          careAssignment: { responsiblePersonId: 10, role: "consolidador" },
+          consolidation: null,
+          cell: null,
+          nextStep: "Iniciar consolidação",
+          priority: "alta",
+          reasons: ["Consolidação não iniciada"],
+        },
+        {
+          person: { id: 11, fullName: "Pessoa de outro responsável" },
+          careAssignment: { responsiblePersonId: 99, role: "consolidador" },
+          consolidation: null,
+          cell: null,
+          nextStep: "Iniciar consolidação",
+          priority: "alta",
+          reasons: ["Consolidação não iniciada"],
+        },
+      ]);
+
+      const caller = appRouter.createCaller(createMemberContext(-2));
+      const queue = await caller.care.myQueue({ churchId: CHURCH_ID });
+
+      expect(queue).toHaveLength(1);
+      expect(queue[0].person.fullName).toBe("Ana sob cuidado");
+    });
+
+    it("permite registrar primeiro contato apenas para pessoa no escopo pastoral", async () => {
+      (getCareAttentionByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        {
+          person: { id: 10, fullName: "Ana" },
+          careAssignment: { responsiblePersonId: 10, role: "consolidador" },
+          consolidation: { id: 31, soulId: 1 },
+          cell: null,
+          nextStep: "Registrar primeiro contato",
+          priority: "alta",
+          reasons: ["Sem primeiro contato registrado"],
+        },
+      ]);
+
+      const caller = appRouter.createCaller(createMemberContext(-2));
+      await caller.care.registerFirstContact({ churchId: CHURCH_ID, personId: 10 });
+
+      expect(updateConsolidation).toHaveBeenCalledWith(31, CHURCH_ID, expect.objectContaining({ callMade: true }));
+    });
+
+    it("bloqueia a troca de responsável fora do escopo pastoral", async () => {
+      (canChurchUserManageJourney as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await expect(
+        caller.care.assign({ churchId: CHURCH_ID, personId: 10, responsiblePersonId: 11, role: "consolidador" })
+      ).rejects.toThrow("sob sua responsabilidade pastoral");
     });
   });
 

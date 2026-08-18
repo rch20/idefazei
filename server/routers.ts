@@ -510,13 +510,16 @@ const consolidationRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
       const [soul, consolidator, existing] = await Promise.all([
         getSoulById(input.soulId, input.churchId),
         getPersonById(input.consolidatorId, input.churchId),
         getConsolidationsBySoul(input.soulId, input.churchId),
       ]);
       if (!soul) throw new TRPCError({ code: "NOT_FOUND", message: "Nova Alma não encontrada." });
+      if (!soul.personId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Esta Nova Alma precisa estar vinculada a uma Pessoa antes da consolidação." });
+      }
+      await requireJourneyStagePermission(ctx.user.id, input.churchId, soul.personId);
       if (!consolidator) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um consolidador válido da sua igreja." });
       }
@@ -616,6 +619,50 @@ const consolidationRouter = router({
 });
 
 const careRouter = router({
+  myQueue: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const actorRoles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const canManageAll = actorRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      const managedPersonIds = canManageAll
+        ? new Set<number>()
+        : new Set(
+            await getJourneyManagedPersonIds({
+              churchId: input.churchId,
+              actorPersonId: actor.personId ?? null,
+              actorRoles,
+            })
+          );
+      const priorityOrder = { alta: 0, media: 1, normal: 2 } as const;
+      const queue = await getCareAttentionByChurch(input.churchId);
+
+      return queue
+        .filter((item) => item.reasons.length > 0)
+        .filter(
+          (item) =>
+            canManageAll ||
+            managedPersonIds.has(item.person.id) ||
+            item.careAssignment?.responsiblePersonId === actor.personId
+        )
+        .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+    }),
+
+  registerFirstContact: protectedProcedure
+    .input(z.object({ churchId: z.number(), personId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireJourneyStagePermission(ctx.user.id, input.churchId, input.personId);
+      const queue = await getCareAttentionByChurch(input.churchId);
+      const item = queue.find((candidate) => candidate.person.id === input.personId);
+      if (!item?.consolidation) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Esta pessoa não possui uma consolidação pendente de contato." });
+      }
+      return updateConsolidation(item.consolidation.id, input.churchId, {
+        callMade: true,
+        callDate: new Date(),
+      });
+    }),
+
   getCurrent: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))
     .query(async ({ input, ctx }) => {
@@ -645,7 +692,7 @@ const careRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireJourneyStagePermission(ctx.user.id, input.churchId, input.personId);
       const [person, responsible] = await Promise.all([
         getPersonById(input.personId, input.churchId),
         getPersonById(input.responsiblePersonId, input.churchId),
