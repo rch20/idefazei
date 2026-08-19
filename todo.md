@@ -437,3 +437,23 @@
 - [x] Restringir relatórios, comunicação, diretórios e demais dados sensíveis conforme o perfil autorizado
 - [x] Revisar as procedures públicas para assegurar que exponham somente dados intencionalmente públicos
 - [x] Cobrir tentativas de IDOR, mudança de tenant e elevação de privilégio em testes de regressão
+
+## FASE 36 – Planejamento da Tesouraria
+
+- [x] Definir perfis de acesso e separação entre Tesouraria da igreja e Faturamento da Lampas
+- [x] Modelar entradas, saídas, categorias, contas e lançamentos manuais por tenant
+- [x] Definir cálculos automáticos, fechamento mensal, relatórios e impressão
+- [x] Definir trilha de auditoria, estornos e regras de alteração de lançamentos
+- [x] Apresentar o plano de implementação da aba Tesouraria antes de iniciar o desenvolvimento
+
+## FASE 37 – Tesouraria da Igreja
+
+- [x] Criar schema multi-tenant de contas, categorias, lançamentos, períodos fechados e auditoria financeira
+- [x] Aplicar migração SQL e implementar guards de Pastor e Tesoureiro no backend
+- [x] Implementar contas iniciais, categorias padrão e categorias financeiras personalizadas
+- [x] Implementar entradas, saídas, rascunhos, confirmação, estorno e cálculo automático de saldo
+- [x] Criar relatório mensal, livro-caixa filtrável e impressão otimizada
+- [x] Construir a página Tesouraria responsiva e incluí-la na navegação por perfil
+- [x] Cobrir cálculos, auditoria, isolamento de tenant e permissões com testes
+- [x] Validar em desktop e mobile, revisar o backlog e salvar checkpoint
+- [x] Desabilitar visualmente novos lançamentos quando o período financeiro selecionado estiver fechado

@@ -25,6 +25,7 @@ import {
   Star,
   TreePine,
   Users,
+  WalletCards,
   X,
   Zap,
 } from "lucide-react";
@@ -79,6 +80,7 @@ const navItems = [
   { icon: Shield, label: "Biblioteca", path: "/app/biblioteca", group: "comunicacao" },
   { icon: Building2, label: "Configurações", path: "/app/configuracoes", group: "admin", roles: ["pastor_presidente", "pastor_local", "secretario"] },
   { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin", roles: ["pastor_presidente", "pastor_local", "secretario"] },
+  { icon: WalletCards, label: "Tesouraria", path: "/app/tesouraria", group: "admin", roles: ["pastor_presidente", "pastor_local", "tesoureiro"] },
   { icon: CreditCard, label: "Faturamento", path: "/app/faturamento", group: "admin", roles: ["pastor_presidente", "pastor_local"] },
   { icon: Users, label: "Área do Membro", path: "/app/membro", group: "membros" },
   { icon: Star, label: "App do Líder", path: "/app/lider", group: "membros", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"] },

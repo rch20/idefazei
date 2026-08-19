@@ -8,6 +8,7 @@ import {
   mysqlTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 
@@ -820,3 +821,105 @@ export const communicationLogs = mysqlTable("communication_logs", {
 });
 
 export type CommunicationLog = typeof communicationLogs.$inferSelect;
+
+// ─── TESOURARIA DA IGREJA ──────────────────────────────────────────────────────
+
+/** Contas operacionais da igreja, como Caixa e Banco principal. */
+export const financialAccounts = mysqlTable(
+  "financial_accounts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    name: varchar("name", { length: 120 }).notNull(),
+    type: mysqlEnum("type", ["caixa", "banco", "outro"]).notNull(),
+    openingBalanceCents: int("openingBalanceCents").default(0).notNull(),
+    active: boolean("active").default(true).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [uniqueIndex("financial_accounts_church_name_unique").on(table.churchId, table.name)]
+);
+
+export type FinancialAccount = typeof financialAccounts.$inferSelect;
+
+/** Categorias de entrada e saída, com suporte a itens padrão e personalizados. */
+export const financialCategories = mysqlTable(
+  "financial_categories",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    type: mysqlEnum("type", ["entrada", "saida"]).notNull(),
+    key: varchar("key", { length: 80 }).notNull(),
+    name: varchar("name", { length: 120 }).notNull(),
+    isSystem: boolean("isSystem").default(false).notNull(),
+    active: boolean("active").default(true).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [uniqueIndex("financial_categories_church_type_key_unique").on(table.churchId, table.type, table.key)]
+);
+
+export type FinancialCategory = typeof financialCategories.$inferSelect;
+
+/** Livro-caixa por regime de caixa. Valores são sempre gravados em centavos. */
+export const financialTransactions = mysqlTable("financial_transactions", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  accountId: int("accountId").notNull(),
+  categoryId: int("categoryId").notNull(),
+  type: mysqlEnum("type", ["entrada", "saida"]).notNull(),
+  amountCents: int("amountCents").notNull(),
+  transactionDate: date("transactionDate").notNull(),
+  paymentMethod: mysqlEnum("paymentMethod", ["dinheiro", "pix", "transferencia", "cartao", "cheque", "outro"])
+    .default("dinheiro")
+    .notNull(),
+  description: text("description"),
+  reference: varchar("reference", { length: 160 }),
+  status: mysqlEnum("status", ["rascunho", "confirmado", "estornado"]).default("rascunho").notNull(),
+  createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  confirmedByChurchUserId: int("confirmedByChurchUserId"),
+  confirmedAt: timestamp("confirmedAt"),
+  reversedByChurchUserId: int("reversedByChurchUserId"),
+  reversedAt: timestamp("reversedAt"),
+  reversalReason: text("reversalReason"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type FinancialTransaction = typeof financialTransactions.$inferSelect;
+
+/** Fechamento mensal opcional; preserva a referência do período e quem o bloqueou. */
+export const financialPeriodClosures = mysqlTable(
+  "financial_period_closures",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    periodStart: date("periodStart").notNull(),
+    periodEnd: date("periodEnd").notNull(),
+    status: mysqlEnum("status", ["fechado", "reaberto"]).default("fechado").notNull(),
+    closedByChurchUserId: int("closedByChurchUserId").notNull(),
+    closedAt: timestamp("closedAt").defaultNow().notNull(),
+    reopenedByChurchUserId: int("reopenedByChurchUserId"),
+    reopenedAt: timestamp("reopenedAt"),
+    reopeningReason: text("reopeningReason"),
+  },
+  (table) => [uniqueIndex("financial_period_closures_church_period_unique").on(table.churchId, table.periodStart)]
+);
+
+export type FinancialPeriodClosure = typeof financialPeriodClosures.$inferSelect;
+
+/** Histórico imutável de ações financeiras relevantes. */
+export const financialAuditLogs = mysqlTable("financial_audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  transactionId: int("transactionId"),
+  actorChurchUserId: int("actorChurchUserId").notNull(),
+  action: mysqlEnum("action", ["criado", "atualizado", "confirmado", "estornado", "periodo_fechado", "periodo_reaberto"])
+    .notNull(),
+  beforeData: json("beforeData"),
+  afterData: json("afterData"),
+  note: text("note"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type FinancialAuditLog = typeof financialAuditLogs.$inferSelect;

@@ -26,6 +26,11 @@ import {
   events,
   families,
   familyMembers,
+  financialAccounts,
+  financialAuditLogs,
+  financialCategories,
+  financialPeriodClosures,
+  financialTransactions,
   InsertUser,
   leadershipHistory,
   leadershipSchoolClasses,
@@ -1663,4 +1668,304 @@ export async function logCommunication(data: {
   const db = await getDb();
   if (!db) return;
   await db.insert(communicationLogs).values(data as typeof communicationLogs.$inferInsert);
+}
+
+// ─── TESOURARIA ────────────────────────────────────────────────────────────────
+
+const DEFAULT_FINANCIAL_ACCOUNTS = [
+  { name: "Caixa", type: "caixa" as const },
+  { name: "Banco principal", type: "banco" as const },
+];
+
+const DEFAULT_FINANCIAL_CATEGORIES = [
+  { type: "entrada" as const, key: "dizimo", name: "Dízimo" },
+  { type: "entrada" as const, key: "oferta", name: "Oferta" },
+  { type: "entrada" as const, key: "voto", name: "Voto" },
+  { type: "entrada" as const, key: "primicias", name: "Primícias" },
+  { type: "entrada" as const, key: "missoes", name: "Missões" },
+  { type: "entrada" as const, key: "acao_social", name: "Ação social" },
+  { type: "entrada" as const, key: "doacao", name: "Doação" },
+  { type: "entrada" as const, key: "outra_entrada", name: "Outra entrada" },
+  { type: "saida" as const, key: "aluguel", name: "Aluguel" },
+  { type: "saida" as const, key: "agua", name: "Água" },
+  { type: "saida" as const, key: "luz", name: "Luz" },
+  { type: "saida" as const, key: "internet", name: "Internet" },
+  { type: "saida" as const, key: "manutencao", name: "Manutenção" },
+  { type: "saida" as const, key: "ministerios", name: "Ministérios" },
+  { type: "saida" as const, key: "acao_social", name: "Ação social" },
+  { type: "saida" as const, key: "administracao", name: "Administração" },
+  { type: "saida" as const, key: "outra_saida", name: "Outra saída" },
+];
+
+function financialDate(value: string) {
+  return new Date(`${value}T12:00:00.000Z`);
+}
+
+export async function ensureTreasuryDefaults(churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [existingAccounts, existingCategories] = await Promise.all([
+    db.select({ name: financialAccounts.name }).from(financialAccounts).where(eq(financialAccounts.churchId, churchId)),
+    db.select({ key: financialCategories.key, type: financialCategories.type }).from(financialCategories).where(eq(financialCategories.churchId, churchId)),
+  ]);
+  const accountNames = new Set(existingAccounts.map((account) => account.name));
+  const categoryKeys = new Set(existingCategories.map((category) => `${category.type}:${category.key}`));
+  const missingAccounts = DEFAULT_FINANCIAL_ACCOUNTS.filter((account) => !accountNames.has(account.name));
+  const missingCategories = DEFAULT_FINANCIAL_CATEGORIES.filter((category) => !categoryKeys.has(`${category.type}:${category.key}`));
+
+  if (missingAccounts.length > 0) {
+    await db.insert(financialAccounts).values(missingAccounts.map((account) => ({ churchId, ...account, openingBalanceCents: 0, active: true })));
+  }
+  if (missingCategories.length > 0) {
+    await db.insert(financialCategories).values(missingCategories.map((category) => ({ churchId, ...category, isSystem: true, active: true })));
+  }
+}
+
+export async function getFinancialAccountsByChurch(churchId: number) {
+  await ensureTreasuryDefaults(churchId);
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(financialAccounts).where(and(eq(financialAccounts.churchId, churchId), eq(financialAccounts.active, true))).orderBy(financialAccounts.name);
+}
+
+export async function getFinancialAccountById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(financialAccounts).where(and(eq(financialAccounts.id, id), eq(financialAccounts.churchId, churchId), eq(financialAccounts.active, true))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createFinancialAccount(data: { churchId: number; name: string; type: "caixa" | "banco" | "outro"; openingBalanceCents: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(financialAccounts).values({ ...data, active: true });
+  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+  const rows = await db.select().from(financialAccounts).where(eq(financialAccounts.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFinancialCategoriesByChurch(churchId: number, type?: "entrada" | "saida") {
+  await ensureTreasuryDefaults(churchId);
+  const db = await getDb();
+  if (!db) return [];
+  const filters = [eq(financialCategories.churchId, churchId), eq(financialCategories.active, true)];
+  if (type) filters.push(eq(financialCategories.type, type));
+  return db.select().from(financialCategories).where(and(...filters)).orderBy(financialCategories.type, financialCategories.name);
+}
+
+export async function getFinancialCategoryById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(financialCategories).where(and(eq(financialCategories.id, id), eq(financialCategories.churchId, churchId), eq(financialCategories.active, true))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createFinancialCategory(data: { churchId: number; type: "entrada" | "saida"; key: string; name: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(financialCategories).values({ ...data, isSystem: false, active: true });
+  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+  const rows = await db.select().from(financialCategories).where(eq(financialCategories.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFinancialTransactionById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(financialTransactions).where(and(eq(financialTransactions.id, id), eq(financialTransactions.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function isFinancialPeriodClosed(churchId: number, transactionDate: string) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db.select().from(financialPeriodClosures)
+    .where(and(eq(financialPeriodClosures.churchId, churchId), eq(financialPeriodClosures.status, "fechado"), sql`DATE(${financialPeriodClosures.periodStart}) <= DATE(${transactionDate})`, sql`DATE(${financialPeriodClosures.periodEnd}) >= DATE(${transactionDate})`))
+    .limit(1);
+  return rows.length > 0;
+}
+
+type FinancialTransactionFilters = {
+  churchId: number;
+  startDate?: string;
+  endDate?: string;
+  accountId?: number;
+  categoryId?: number;
+  type?: "entrada" | "saida";
+  includeDrafts?: boolean;
+};
+
+export async function getFinancialTransactions(filters: FinancialTransactionFilters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(financialTransactions.churchId, filters.churchId)];
+  if (filters.startDate) conditions.push(sql`DATE(${financialTransactions.transactionDate}) >= DATE(${filters.startDate})`);
+  if (filters.endDate) conditions.push(sql`DATE(${financialTransactions.transactionDate}) <= DATE(${filters.endDate})`);
+  if (filters.accountId) conditions.push(eq(financialTransactions.accountId, filters.accountId));
+  if (filters.categoryId) conditions.push(eq(financialTransactions.categoryId, filters.categoryId));
+  if (filters.type) conditions.push(eq(financialTransactions.type, filters.type));
+  if (!filters.includeDrafts) conditions.push(sql`${financialTransactions.status} <> 'rascunho'`);
+  return db.select({ transaction: financialTransactions, account: financialAccounts, category: financialCategories })
+    .from(financialTransactions)
+    .innerJoin(financialAccounts, and(eq(financialAccounts.id, financialTransactions.accountId), eq(financialAccounts.churchId, filters.churchId)))
+    .innerJoin(financialCategories, and(eq(financialCategories.id, financialTransactions.categoryId), eq(financialCategories.churchId, filters.churchId)))
+    .where(and(...conditions))
+    .orderBy(desc(financialTransactions.transactionDate), desc(financialTransactions.createdAt));
+}
+
+export async function getTreasuryOverview(data: { churchId: number; startDate: string; endDate: string; accountId?: number }) {
+  const [accounts, periodRows, allRows] = await Promise.all([
+    getFinancialAccountsByChurch(data.churchId),
+    getFinancialTransactions({ churchId: data.churchId, startDate: data.startDate, endDate: data.endDate, accountId: data.accountId, includeDrafts: true }),
+    getFinancialTransactions({ churchId: data.churchId, accountId: data.accountId }),
+  ]);
+  const confirmedPeriodRows = periodRows.filter((row) => row.transaction.status === "confirmado");
+  const sumByType = (type: "entrada" | "saida", rows: typeof confirmedPeriodRows) => rows.filter((row) => row.transaction.type === type).reduce((total, row) => total + row.transaction.amountCents, 0);
+  const entriesCents = sumByType("entrada", confirmedPeriodRows);
+  const expensesCents = sumByType("saida", confirmedPeriodRows);
+  const balances = accounts.map((account) => {
+    const movement = allRows.filter((row) => row.transaction.status === "confirmado" && row.transaction.accountId === account.id)
+      .reduce((total, row) => total + (row.transaction.type === "entrada" ? row.transaction.amountCents : -row.transaction.amountCents), 0);
+    return { account, balanceCents: account.openingBalanceCents + movement };
+  });
+  const categoryTotals = confirmedPeriodRows.reduce<Record<string, { categoryId: number; categoryName: string; type: "entrada" | "saida"; amountCents: number }>>((groups, row) => {
+    const key = `${row.transaction.type}:${row.category.id}`;
+    groups[key] ??= { categoryId: row.category.id, categoryName: row.category.name, type: row.transaction.type, amountCents: 0 };
+    groups[key].amountCents += row.transaction.amountCents;
+    return groups;
+  }, {});
+  return {
+    accounts,
+    transactions: periodRows,
+    entriesCents,
+    expensesCents,
+    resultCents: entriesCents - expensesCents,
+    balanceCents: balances.reduce((total, item) => total + item.balanceCents, 0),
+    accountBalances: balances,
+    categories: Object.values(categoryTotals).sort((a, b) => b.amountCents - a.amountCents),
+  };
+}
+
+async function writeFinancialAuditLog(data: {
+  churchId: number;
+  transactionId?: number;
+  actorChurchUserId: number;
+  action: "criado" | "atualizado" | "confirmado" | "estornado" | "periodo_fechado" | "periodo_reaberto";
+  beforeData?: unknown;
+  afterData?: unknown;
+  note?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(financialAuditLogs).values(data);
+}
+
+export async function createFinancialTransaction(data: {
+  churchId: number; accountId: number; categoryId: number; type: "entrada" | "saida"; amountCents: number; transactionDate: string;
+  paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; description?: string; reference?: string; status: "rascunho" | "confirmado"; actorChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.transaction(async (tx) => {
+    const now = new Date();
+    const insert = await tx.insert(financialTransactions).values({
+      churchId: data.churchId, accountId: data.accountId, categoryId: data.categoryId, type: data.type, amountCents: data.amountCents,
+      transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, description: data.description ?? null, reference: data.reference ?? null,
+      status: data.status, createdByChurchUserId: data.actorChurchUserId,
+      confirmedByChurchUserId: data.status === "confirmado" ? data.actorChurchUserId : null,
+      confirmedAt: data.status === "confirmado" ? now : null,
+    });
+    const id = Number((insert[0] as { insertId?: number })?.insertId ?? 0);
+    const rows = await tx.select().from(financialTransactions).where(eq(financialTransactions.id, id)).limit(1);
+    const transaction = rows[0];
+    if (!transaction) throw new Error("Falha ao criar lançamento financeiro");
+    await tx.insert(financialAuditLogs).values({ churchId: data.churchId, transactionId: id, actorChurchUserId: data.actorChurchUserId, action: data.status === "confirmado" ? "confirmado" : "criado", afterData: transaction });
+    return transaction;
+  });
+  return result;
+}
+
+export async function updateFinancialDraft(data: {
+  id: number; churchId: number; accountId: number; categoryId: number; type: "entrada" | "saida"; amountCents: number; transactionDate: string;
+  paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; description?: string; reference?: string; actorChurchUserId: number;
+}) {
+  const previous = await getFinancialTransactionById(data.id, data.churchId);
+  if (!previous) return null;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(financialTransactions).set({ accountId: data.accountId, categoryId: data.categoryId, type: data.type, amountCents: data.amountCents, transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, description: data.description ?? null, reference: data.reference ?? null })
+    .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")));
+  const updated = await getFinancialTransactionById(data.id, data.churchId);
+  if (!updated) return null;
+  await writeFinancialAuditLog({ churchId: data.churchId, transactionId: data.id, actorChurchUserId: data.actorChurchUserId, action: "atualizado", beforeData: previous, afterData: updated });
+  return updated;
+}
+
+export async function confirmFinancialTransaction(data: { id: number; churchId: number; actorChurchUserId: number }) {
+  const previous = await getFinancialTransactionById(data.id, data.churchId);
+  if (!previous) return null;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(financialTransactions).set({ status: "confirmado", confirmedByChurchUserId: data.actorChurchUserId, confirmedAt: new Date() })
+    .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")));
+  const updated = await getFinancialTransactionById(data.id, data.churchId);
+  if (!updated || updated.status !== "confirmado") return null;
+  await writeFinancialAuditLog({ churchId: data.churchId, transactionId: data.id, actorChurchUserId: data.actorChurchUserId, action: "confirmado", beforeData: previous, afterData: updated });
+  return updated;
+}
+
+export async function reverseFinancialTransaction(data: { id: number; churchId: number; actorChurchUserId: number; reason: string }) {
+  const previous = await getFinancialTransactionById(data.id, data.churchId);
+  if (!previous || previous.status !== "confirmado") return null;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(financialTransactions).set({ status: "estornado", reversedByChurchUserId: data.actorChurchUserId, reversedAt: new Date(), reversalReason: data.reason })
+    .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "confirmado")));
+  const updated = await getFinancialTransactionById(data.id, data.churchId);
+  if (!updated || updated.status !== "estornado") return null;
+  await writeFinancialAuditLog({ churchId: data.churchId, transactionId: data.id, actorChurchUserId: data.actorChurchUserId, action: "estornado", beforeData: previous, afterData: updated, note: data.reason });
+  return updated;
+}
+
+export async function getFinancialPeriodClosure(churchId: number, periodStart: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(financialPeriodClosures).where(and(eq(financialPeriodClosures.churchId, churchId), sql`DATE(${financialPeriodClosures.periodStart}) = DATE(${periodStart})`)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function closeFinancialPeriod(data: { churchId: number; periodStart: string; periodEnd: string; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await getFinancialPeriodClosure(data.churchId, data.periodStart);
+  if (existing) {
+    await db.update(financialPeriodClosures).set({
+      periodEnd: financialDate(data.periodEnd),
+      status: "fechado",
+      closedByChurchUserId: data.actorChurchUserId,
+      closedAt: new Date(),
+    }).where(and(eq(financialPeriodClosures.id, existing.id), eq(financialPeriodClosures.churchId, data.churchId), eq(financialPeriodClosures.status, "reaberto")));
+    const closedAgain = await getFinancialPeriodClosure(data.churchId, data.periodStart);
+    if (!closedAgain || closedAgain.status !== "fechado") return null;
+    await writeFinancialAuditLog({ churchId: data.churchId, actorChurchUserId: data.actorChurchUserId, action: "periodo_fechado", beforeData: existing, afterData: closedAgain, note: "Período fechado novamente após reabertura." });
+    return closedAgain;
+  }
+  const result = await db.insert(financialPeriodClosures).values({ churchId: data.churchId, periodStart: financialDate(data.periodStart), periodEnd: financialDate(data.periodEnd), status: "fechado", closedByChurchUserId: data.actorChurchUserId });
+  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+  await writeFinancialAuditLog({ churchId: data.churchId, actorChurchUserId: data.actorChurchUserId, action: "periodo_fechado", afterData: { periodStart: data.periodStart, periodEnd: data.periodEnd } });
+  const rows = await db.select().from(financialPeriodClosures).where(eq(financialPeriodClosures.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function reopenFinancialPeriod(data: { churchId: number; periodStart: string; actorChurchUserId: number; reason: string }) {
+  const closure = await getFinancialPeriodClosure(data.churchId, data.periodStart);
+  if (!closure) return null;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(financialPeriodClosures).set({ status: "reaberto", reopenedByChurchUserId: data.actorChurchUserId, reopenedAt: new Date(), reopeningReason: data.reason }).where(and(eq(financialPeriodClosures.id, closure.id), eq(financialPeriodClosures.churchId, data.churchId), eq(financialPeriodClosures.status, "fechado")));
+  const updated = await getFinancialPeriodClosure(data.churchId, data.periodStart);
+  if (!updated) return null;
+  await writeFinancialAuditLog({ churchId: data.churchId, actorChurchUserId: data.actorChurchUserId, action: "periodo_reaberto", beforeData: closure, afterData: updated, note: data.reason });
+  return updated;
 }

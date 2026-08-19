@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, createCellMeetingWithAttendance, findPossiblePeopleByIdentity, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getCounselingSessionById, getPeopleByChurch, getPersonById, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getPeopleByChurch, getPersonById, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -101,6 +101,22 @@ vi.mock("./db", () => ({
   setComplementaryRolesForChurchUser: vi.fn().mockResolvedValue(["diacono", "levita"]),
   getEventsByChurch: vi.fn().mockResolvedValue([]),
   createEvent: vi.fn().mockResolvedValue({ id: 1 }),
+  getFinancialAccountsByChurch: vi.fn().mockResolvedValue([{ id: 91, churchId: 100, name: "Caixa", type: "caixa", openingBalanceCents: 0 }]),
+  getFinancialAccountById: vi.fn().mockResolvedValue({ id: 91, churchId: 100, name: "Caixa", type: "caixa", openingBalanceCents: 0, active: true }),
+  getFinancialCategoriesByChurch: vi.fn().mockResolvedValue([{ id: 81, churchId: 100, type: "entrada", key: "dizimo", name: "Dízimo", active: true }]),
+  getFinancialCategoryById: vi.fn().mockResolvedValue({ id: 81, churchId: 100, type: "entrada", key: "dizimo", name: "Dízimo", active: true }),
+  getFinancialPeriodClosure: vi.fn().mockResolvedValue(null),
+  getFinancialTransactionById: vi.fn().mockResolvedValue({ id: 71, churchId: 100, status: "confirmado", transactionDate: new Date("2026-08-01T12:00:00.000Z") }),
+  getTreasuryOverview: vi.fn().mockResolvedValue({ accounts: [], transactions: [], entriesCents: 0, expensesCents: 0, resultCents: 0, balanceCents: 0, accountBalances: [], categories: [] }),
+  isFinancialPeriodClosed: vi.fn().mockResolvedValue(false),
+  createFinancialAccount: vi.fn().mockResolvedValue({ id: 91, churchId: 100, name: "Caixa" }),
+  createFinancialCategory: vi.fn().mockResolvedValue({ id: 81, churchId: 100, name: "Dízimo" }),
+  createFinancialTransaction: vi.fn().mockResolvedValue({ id: 71, churchId: 100, status: "confirmado" }),
+  updateFinancialDraft: vi.fn().mockResolvedValue({ id: 71, churchId: 100, status: "rascunho" }),
+  confirmFinancialTransaction: vi.fn().mockResolvedValue({ id: 71, churchId: 100, status: "confirmado" }),
+  reverseFinancialTransaction: vi.fn().mockResolvedValue({ id: 71, churchId: 100, status: "estornado" }),
+  closeFinancialPeriod: vi.fn().mockResolvedValue({ id: 1, churchId: 100, status: "fechado" }),
+  reopenFinancialPeriod: vi.fn().mockResolvedValue({ id: 1, churchId: 100, status: "reaberto" }),
   getMinistries: vi.fn().mockResolvedValue([]),
   getMinistryMembers: vi.fn().mockResolvedValue([]),
   getMinistryMemberCounts: vi.fn().mockResolvedValue([]),
@@ -802,7 +818,7 @@ describe("Fluxo completo de discipulado", () => {
   });
 
   // ── Segurança: Acesso negado a igreja diferente ──────────────────────────────
-  describe("Segurança — Isolamento por tenant", () => {
+  describe("Segurança — isolamento e escopo pastoral", () => {
     it("bloqueia acesso a igreja diferente da do usuário", async () => {
       // Sobrescreve o mock para simular usuário sem acesso à igreja 999
       const { getChurchMemberByUserId } = await import("./db");
@@ -872,6 +888,71 @@ describe("Fluxo completo de discipulado", () => {
       const caller = appRouter.createCaller(createMemberContext());
 
       await expect(caller.aconselhamento.getNotes({ churchId: CHURCH_ID, sessionId: 20 })).rejects.toThrow("sob sua responsabilidade");
+    });
+  });
+
+  describe("Tesouraria — segurança e cálculos", () => {
+    const validEntry = {
+      churchId: CHURCH_ID,
+      accountId: 91,
+      categoryId: 81,
+      type: "entrada" as const,
+      amountCents: 125000,
+      transactionDate: "2026-08-18",
+      paymentMethod: "pix" as const,
+      description: "Dízimos do culto",
+      status: "confirmado" as const,
+    };
+
+    it("entrega o resumo apenas ao perfil com permissão de Tesouraria", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      await caller.treasury.overview({ churchId: CHURCH_ID, startDate: "2026-08-01", endDate: "2026-08-31" });
+      expect(getTreasuryOverview).toHaveBeenCalledWith({ churchId: CHURCH_ID, startDate: "2026-08-01", endDate: "2026-08-31" });
+    });
+
+    it("permite que a função complementar de Tesoureiro acesse a Tesouraria", async () => {
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "lider", active: true });
+      (getComplementaryRolesByChurchUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["tesoureiro"]);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+      await expect(caller.treasury.accounts({ churchId: CHURCH_ID })).resolves.toHaveLength(1);
+    });
+
+    it("bloqueia um membro comum de consultar dados financeiros", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 1, userId: 10, churchId: CHURCH_ID, role: "membro", active: true });
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.treasury.overview({ churchId: CHURCH_ID, startDate: "2026-08-01", endDate: "2026-08-31" })).rejects.toThrow("Tesouraria é restrita");
+    });
+
+    it("rejeita lançamento com conta de outra igreja", async () => {
+      (getFinancialAccountById as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.treasury.createTransaction(validEntry)).rejects.toThrow("Conta ou categoria financeira não encontrada");
+      expect(createFinancialTransaction).not.toHaveBeenCalled();
+    });
+
+    it("rejeita categoria de natureza diferente do lançamento", async () => {
+      (getFinancialCategoryById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 81, churchId: CHURCH_ID, type: "saida", key: "aluguel", name: "Aluguel", active: true });
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.treasury.createTransaction(validEntry)).rejects.toThrow("mesmo tipo do lançamento");
+    });
+
+    it("registra valores em centavos e associa o lançamento ao usuário de igreja", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      await caller.treasury.createTransaction(validEntry);
+      expect(createFinancialTransaction).toHaveBeenCalledWith(expect.objectContaining({ amountCents: 125000, actorChurchUserId: 1, churchId: CHURCH_ID }));
+    });
+
+    it("impede que Tesoureiro estorne lançamento confirmado sem supervisão pastoral", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 1, userId: 10, churchId: CHURCH_ID, role: "tesoureiro", active: true });
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.treasury.reverseTransaction({ churchId: CHURCH_ID, id: 71, reason: "Registro duplicado" })).rejects.toThrow("Somente Pastores podem estornar");
+    });
+
+    it("permite fechar novamente um período que foi reaberto", async () => {
+      (getFinancialPeriodClosure as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 5, churchId: CHURCH_ID, periodStart: new Date("2026-08-01"), status: "reaberto" });
+      const caller = appRouter.createCaller(createMemberContext());
+      await caller.treasury.closePeriod({ churchId: CHURCH_ID, periodStart: "2026-08-01", periodEnd: "2026-08-31" });
+      expect(closeFinancialPeriod).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, periodStart: "2026-08-01", periodEnd: "2026-08-31", actorChurchUserId: 1 }));
     });
   });
 });

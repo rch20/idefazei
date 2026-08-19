@@ -51,6 +51,22 @@ import {
   getDiscipleshipFunnel,
   getDiscipleshipTree,
   getEventsByChurch,
+  createFinancialAccount,
+  createFinancialCategory,
+  createFinancialTransaction,
+  getFinancialAccountById,
+  getFinancialAccountsByChurch,
+  getFinancialCategoriesByChurch,
+  getFinancialCategoryById,
+  getFinancialPeriodClosure,
+  getFinancialTransactionById,
+  getTreasuryOverview,
+  isFinancialPeriodClosed,
+  updateFinancialDraft,
+  confirmFinancialTransaction,
+  reverseFinancialTransaction,
+  closeFinancialPeriod,
+  reopenFinancialPeriod,
   getMinistriesByChurch,
   getMinistryMembers,
   getMinistryMemberCounts,
@@ -145,6 +161,7 @@ const CHURCH_ADMIN_ROLES = new Set(["pastor_presidente", "pastor_local", "secret
 const CHURCH_ROLE_MANAGER_ROLES = new Set(["pastor_presidente", "pastor_local"]);
 const COUNSELING_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor"]);
 const PASTORAL_ACTION_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"]);
+const TREASURY_ROLES = new Set(["pastor_presidente", "pastor_local", "tesoureiro"]);
 
 async function requireChurchAdministrator(userId: number, churchId: number) {
   const member = await requireChurchMember(userId, churchId);
@@ -152,6 +169,20 @@ async function requireChurchAdministrator(userId: number, churchId: number) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Seu perfil não tem permissão para esta ação" });
   }
   return member;
+}
+
+async function requireTreasuryAccess(userId: number, churchId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, actor);
+  if (!roles.some((role) => TREASURY_ROLES.has(role))) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Tesouraria é restrita a Pastores e Tesoureiros autorizados." });
+  }
+  return {
+    actor,
+    roles,
+    canManageStructure: roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role)),
+    canClosePeriod: roles.includes("pastor_presidente"),
+  };
 }
 
 async function requirePastoralAction(userId: number, churchId: number) {
@@ -2211,6 +2242,162 @@ const certificatesRouter = router({
     }),
 });
 
+// ─── TESOURARIA ────────────────────────────────────────────────────────────────
+const financialDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida.");
+const financialTransactionInput = z.object({
+  churchId: z.number().int().positive(),
+  accountId: z.number().int().positive(),
+  categoryId: z.number().int().positive(),
+  type: z.enum(["entrada", "saida"]),
+  amountCents: z.number().int().positive("O valor deve ser maior que zero."),
+  transactionDate: financialDateInput,
+  paymentMethod: z.enum(["dinheiro", "pix", "transferencia", "cartao", "cheque", "outro"]),
+  description: z.string().trim().max(2000).optional(),
+  reference: z.string().trim().max(160).optional(),
+});
+
+async function validateFinancialReferences(input: z.infer<typeof financialTransactionInput>) {
+  const [account, category] = await Promise.all([
+    getFinancialAccountById(input.accountId, input.churchId),
+    getFinancialCategoryById(input.categoryId, input.churchId),
+  ]);
+  if (!account || !category) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Conta ou categoria financeira não encontrada." });
+  }
+  if (category.type !== input.type) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "A categoria precisa ter o mesmo tipo do lançamento." });
+  }
+  if (["outra_entrada", "outra_saida"].includes(category.key) && !input.description?.trim()) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Descreva o lançamento usando uma categoria manual." });
+  }
+  if (await isFinancialPeriodClosed(input.churchId, input.transactionDate)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "O período financeiro desta data está fechado." });
+  }
+  return { account, category };
+}
+
+const treasuryRouter = router({
+  overview: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), startDate: financialDateInput, endDate: financialDateInput, accountId: z.number().int().positive().optional() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      return getTreasuryOverview(input);
+    }),
+
+  accounts: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      return getFinancialAccountsByChurch(input.churchId);
+    }),
+
+  categories: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), type: z.enum(["entrada", "saida"]).optional() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      return getFinancialCategoriesByChurch(input.churchId, input.type);
+    }),
+
+  periodClosure: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), periodStart: financialDateInput }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      return getFinancialPeriodClosure(input.churchId, input.periodStart);
+    }),
+
+  createAccount: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), name: z.string().trim().min(2).max(120), type: z.enum(["caixa", "banco", "outro"]), openingBalanceCents: z.number().int().min(0).default(0) }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem criar contas financeiras." });
+      return createFinancialAccount(input);
+    }),
+
+  createCategory: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), type: z.enum(["entrada", "saida"]), name: z.string().trim().min(2).max(120) }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem criar categorias financeiras." });
+      const key = `custom_${input.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`;
+      return createFinancialCategory({ ...input, key });
+    }),
+
+  createTransaction: protectedProcedure
+    .input(financialTransactionInput.extend({ status: z.enum(["rascunho", "confirmado"]).default("confirmado") }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      await validateFinancialReferences(input);
+      return createFinancialTransaction({ ...input, actorChurchUserId: access.actor.id });
+    }),
+
+  updateDraft: protectedProcedure
+    .input(financialTransactionInput.extend({ id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const existing = await getFinancialTransactionById(input.id, input.churchId);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Lançamento não encontrado." });
+      if (existing.status !== "rascunho") throw new TRPCError({ code: "BAD_REQUEST", message: "Apenas lançamentos em rascunho podem ser alterados." });
+      await validateFinancialReferences(input);
+      return updateFinancialDraft({ ...input, actorChurchUserId: access.actor.id });
+    }),
+
+  confirmTransaction: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const existing = await getFinancialTransactionById(input.id, input.churchId);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Lançamento não encontrado." });
+      const date = new Date(existing.transactionDate).toISOString().slice(0, 10);
+      if (await isFinancialPeriodClosed(input.churchId, date)) throw new TRPCError({ code: "FORBIDDEN", message: "O período financeiro deste lançamento está fechado." });
+      const transaction = await confirmFinancialTransaction({ ...input, actorChurchUserId: access.actor.id });
+      if (!transaction) throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível confirmar este lançamento." });
+      return transaction;
+    }),
+
+  reverseTransaction: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive(), reason: z.string().trim().min(5).max(500) }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem estornar lançamentos confirmados." });
+      const existing = await getFinancialTransactionById(input.id, input.churchId);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Lançamento não encontrado." });
+      const date = new Date(existing.transactionDate).toISOString().slice(0, 10);
+      if (await isFinancialPeriodClosed(input.churchId, date)) throw new TRPCError({ code: "FORBIDDEN", message: "Reabra o período antes de estornar este lançamento." });
+      const transaction = await reverseFinancialTransaction({ ...input, actorChurchUserId: access.actor.id });
+      if (!transaction) throw new TRPCError({ code: "BAD_REQUEST", message: "Apenas lançamentos confirmados podem ser estornados." });
+      return transaction;
+    }),
+
+  closePeriod: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), periodStart: financialDateInput, periodEnd: financialDateInput }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canClosePeriod) throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor Presidente pode fechar um período financeiro." });
+      if (input.periodEnd < input.periodStart) throw new TRPCError({ code: "BAD_REQUEST", message: "O término do período deve ser posterior ao início." });
+      const existing = await getFinancialPeriodClosure(input.churchId, input.periodStart);
+      if (existing?.status === "fechado") throw new TRPCError({ code: "CONFLICT", message: "Este período já está fechado." });
+      const overview = await getTreasuryOverview({
+        churchId: input.churchId,
+        startDate: input.periodStart,
+        endDate: input.periodEnd,
+      });
+      if (overview.transactions.some((row) => row.transaction.status === "rascunho")) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Confirme ou ajuste os rascunhos antes de fechar o período." });
+      }
+      return closeFinancialPeriod({ ...input, actorChurchUserId: access.actor.id });
+    }),
+
+  reopenPeriod: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), periodStart: financialDateInput, reason: z.string().trim().min(5).max(500) }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canClosePeriod) throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor Presidente pode reabrir um período financeiro." });
+      const closure = await reopenFinancialPeriod({ ...input, actorChurchUserId: access.actor.id });
+      if (!closure) throw new TRPCError({ code: "NOT_FOUND", message: "Fechamento financeiro não encontrado." });
+      return closure;
+    }),
+});
+
 // ─── STRIPE ROUTER ────────────────────────────────────────────────────────────
 const stripeRouter = router({
   // Retorna o status da assinatura da igreja
@@ -2394,6 +2581,7 @@ export const appRouter = router({
   aconselhamento: aconselhamentoRouter,
   comunicacao: comunicacaoRouter,
   certificates: certificatesRouter,
+  treasury: treasuryRouter,
   stripe: stripeRouter,
   contact: router({
     send: publicProcedure

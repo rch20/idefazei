@@ -48,6 +48,7 @@ import Comunicacao from "./pages/Comunicacao";
 import ConfiguracoesCertificados from "./pages/ConfiguracoesCertificados";
 import Faturamento from "./pages/Faturamento";
 import CentralCuidado from "./pages/CentralCuidado";
+import Tesouraria from "./pages/Tesouraria";
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
 
@@ -253,6 +254,12 @@ function Router() {
       <Route path="/app/faturamento">
         <AppPage title="Faturamento">
           <Faturamento />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/tesouraria">
+        <AppPage title="Tesouraria">
+          <Tesouraria />
         </AppPage>
       </Route>
 
