@@ -687,14 +687,19 @@ const consolidationRouter = router({
       const visible = canViewAll
         ? referrals
         : referrals.filter((referral) => referral.referredByPersonId === actor.personId || referral.preferredConsolidatorId === actor.personId || referral.acceptedByPersonId === actor.personId || managedIds.has(referral.personId));
-      const names = new Map(churchPeople.map((person) => [person.id, person.fullName]));
-      return visible.map((referral) => ({
-        ...referral,
-        personName: names.get(referral.personId) ?? "Pessoa vinculada",
-        referredByName: names.get(referral.referredByPersonId) ?? "Liderança",
-        preferredConsolidatorName: referral.preferredConsolidatorId ? names.get(referral.preferredConsolidatorId) ?? "Consolidador indicado" : null,
-        acceptedByName: referral.acceptedByPersonId ? names.get(referral.acceptedByPersonId) ?? "Consolidador" : null,
-      }));
+      const peopleById = new Map(churchPeople.map((person) => [person.id, person]));
+      return visible.map((referral) => {
+        const person = peopleById.get(referral.personId);
+        const canViewContact = canViewAll || (referral.acceptedByPersonId === actor.personId && referral.status !== "pendente");
+        return {
+          ...referral,
+          personName: person?.fullName ?? "Pessoa vinculada",
+          contactNumber: canViewContact ? (person?.whatsapp || person?.phone || null) : null,
+          referredByName: peopleById.get(referral.referredByPersonId)?.fullName ?? "Liderança",
+          preferredConsolidatorName: referral.preferredConsolidatorId ? peopleById.get(referral.preferredConsolidatorId)?.fullName ?? "Consolidador indicado" : null,
+          acceptedByName: referral.acceptedByPersonId ? peopleById.get(referral.acceptedByPersonId)?.fullName ?? "Consolidador" : null,
+        };
+      });
     }),
 
   createReferral: protectedProcedure

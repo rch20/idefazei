@@ -499,3 +499,9 @@
 - [x] Permitir encaminhar para Consolidação com motivo diretamente nessa ficha
 - [x] Manter dados administrativos protegidos e restringir o fluxo à própria Célula e escopo pastoral
 - [x] Validar a experiência responsiva e o fluxo completo antes do checkpoint
+
+## FASE 43 – Contato do Consolidador
+
+- [x] Exibir telefone ou WhatsApp do discípulo somente após o aceite do encaminhamento
+- [x] Adicionar atalho seguro de WhatsApp com mensagem inicial contextualizada
+- [x] Preservar a privacidade do contato antes do aceite e validar responsividade e regressões

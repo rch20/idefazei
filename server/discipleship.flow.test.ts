@@ -888,6 +888,26 @@ describe("Fluxo completo de discipulado", () => {
         closeNotes: "Contato retomado e retorno combinado com o Líder.",
       }));
     });
+
+    it("expõe o contato apenas depois que o Consolidador assume o encaminhamento", async () => {
+      const { getConsolidationReferralsByChurch, getPeopleByChurch } = await import("./db");
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
+      vi.mocked(getConsolidationReferralsByChurch).mockResolvedValueOnce([
+        { id: 51, churchId: CHURCH_ID, personId: 1, referredByPersonId: 20, preferredConsolidatorId: 10, acceptedByPersonId: null, status: "pendente" },
+        { id: 52, churchId: CHURCH_ID, personId: 1, referredByPersonId: 20, preferredConsolidatorId: 10, acceptedByPersonId: 10, status: "aceito" },
+      ] as any);
+      vi.mocked(getPeopleByChurch).mockResolvedValueOnce([
+        { id: 1, churchId: CHURCH_ID, fullName: "Discípulo Teste", phone: "11999990000", whatsapp: "11999990000" },
+        { id: 10, churchId: CHURCH_ID, fullName: "Consolidador Teste" },
+        { id: 20, churchId: CHURCH_ID, fullName: "Líder Teste" },
+      ] as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      const referrals = await caller.consolidation.referrals({ churchId: CHURCH_ID });
+
+      expect(referrals.find((item) => item.id === 51)?.contactNumber).toBeNull();
+      expect(referrals.find((item) => item.id === 52)?.contactNumber).toBe("11999990000");
+    });
   });
 
   describe("Central de Cuidado — fila pessoal", () => {

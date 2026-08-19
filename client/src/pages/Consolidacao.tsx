@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { CheckCircle2, Circle, Heart, Phone, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
+import { CheckCircle2, Circle, Heart, Phone, MessageCircle, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { toast } from "sonner";
 
@@ -19,6 +19,13 @@ const CHECKLIST_ITEMS = [
 ] as const;
 
 type ChecklistKey = (typeof CHECKLIST_ITEMS)[number]["key"];
+
+function getWhatsAppLink(contact: string, personName: string) {
+  const number = contact.replace(/\D/g, "");
+  const internationalNumber = number.length >= 10 && !number.startsWith("55") ? `55${number}` : number;
+  const message = encodeURIComponent(`Olá, ${personName}. Tudo bem? Sou da equipe de cuidado da igreja e gostaria de conversar com você.`);
+  return `https://wa.me/${internationalNumber}?text=${message}`;
+}
 
 export default function Consolidacao() {
   const { churchId } = useChurch();
@@ -140,6 +147,14 @@ export default function Consolidacao() {
                       {referral.acceptedByName && <p className="text-center text-[11px] text-muted-foreground">Responsável: {referral.acceptedByName}</p>}
                     </div>
                   </div>
+                  {referral.contactNumber && (
+                    <div className="mt-3 flex flex-col gap-2 rounded-lg border border-green-200 bg-green-50/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="flex items-center gap-2 text-sm text-green-800"><Phone className="h-4 w-4" />{referral.contactNumber}</p>
+                      <a href={getWhatsAppLink(referral.contactNumber, referral.personName)} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center rounded-md bg-[#25D366] px-3 text-sm font-medium text-white transition-colors hover:bg-[#1fb65a]">
+                        <MessageCircle className="mr-2 h-4 w-4" />Conversar no WhatsApp
+                      </a>
+                    </div>
+                  )}
                   {closingReferralId === referral.id && (
                     <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
                       <label htmlFor={`close-referral-${referral.id}`} className="text-xs font-medium text-navy">Resultado do acompanhamento *</label>
