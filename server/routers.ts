@@ -17,6 +17,7 @@ import {
   createChurch,
   createConsolidation,
   createConsolidationReferral,
+  createConsolidationFollowUp,
   createEvent,
   createPerson,
   createPrayerRequest,
@@ -49,6 +50,7 @@ import {
   getConsolidationById,
   getConsolidationReferralById,
   getConsolidationReferralsByChurch,
+  getConsolidationFollowUpsByReferral,
   getCareAttentionByChurch,
   getDashboardStats,
   getDiscipleshipFunnel,
@@ -771,6 +773,65 @@ const consolidationRouter = router({
         status: "em_acompanhamento",
         firstContactAt: referral.firstContactAt ?? new Date(),
       });
+    }),
+
+  followUps: protectedProcedure
+    .input(z.object({ churchId: z.number(), referralId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const referral = await getConsolidationReferralById(input.referralId, input.churchId);
+      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Encaminhamento não encontrado." });
+      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      const isResponsible = referral.acceptedByPersonId === actor.personId;
+      if (!canOverride && !isResponsible) {
+        await requireJourneyStagePermission(ctx.user.id, input.churchId, referral.personId);
+      }
+      const [followUps, churchPeople] = await Promise.all([
+        getConsolidationFollowUpsByReferral(input.referralId, input.churchId),
+        getPeopleByChurch(input.churchId),
+      ]);
+      const names = new Map(churchPeople.map((person) => [person.id, person.fullName]));
+      return followUps.map((followUp) => ({ ...followUp, recordedByName: names.get(followUp.recordedByPersonId) ?? "Responsável de cuidado" }));
+    }),
+
+  recordFollowUp: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      referralId: z.number(),
+      contactChannel: z.enum(["whatsapp", "ligacao", "mensagem", "visita", "presencial", "outro"]),
+      outcome: z.enum(["conversou", "sem_resposta", "retornar", "agendou_visita", "visitou", "recusou_contato", "outro"]),
+      notes: z.string().trim().min(3).max(3000),
+      nextAction: z.string().trim().max(255).optional(),
+      nextActionAt: z.string().datetime().optional(),
+      visitStatus: z.enum(["nao_necessaria", "solicitada", "agendada", "realizada", "cancelada"]).default("nao_necessaria"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Vincule sua conta a uma Pessoa antes de registrar acompanhamento." });
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const referral = await getConsolidationReferralById(input.referralId, input.churchId);
+      if (!referral || !referral.acceptedByPersonId) throw new TRPCError({ code: "BAD_REQUEST", message: "O encaminhamento precisa ser assumido antes do acompanhamento." });
+      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      if (!canOverride && referral.acceptedByPersonId !== actor.personId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável pode registrar este acompanhamento." });
+      }
+      const followUp = await createConsolidationFollowUp({
+        churchId: input.churchId,
+        referralId: input.referralId,
+        recordedByPersonId: actor.personId,
+        contactChannel: input.contactChannel,
+        outcome: input.outcome,
+        notes: input.notes,
+        nextAction: input.nextAction || null,
+        nextActionAt: input.nextActionAt ? new Date(input.nextActionAt) : null,
+        visitStatus: input.visitStatus,
+      });
+      await updateConsolidationReferral(input.referralId, input.churchId, {
+        status: "em_acompanhamento",
+        firstContactAt: referral.firstContactAt ?? new Date(),
+      });
+      return followUp;
     }),
 
   closeReferral: protectedProcedure

@@ -505,3 +505,12 @@
 - [x] Exibir telefone ou WhatsApp do discípulo somente após o aceite do encaminhamento
 - [x] Adicionar atalho seguro de WhatsApp com mensagem inicial contextualizada
 - [x] Preservar a privacidade do contato antes do aceite e validar responsividade e regressões
+
+## FASE 44 – Acompanhamento Completo da Consolidação
+
+- [x] Registrar cada contato com data, canal, resultado e observação do Consolidador
+- [x] Permitir definir a próxima ação e a data de retorno do caso
+- [x] Permitir marcar necessidade de visita, com motivo e situação de atendimento
+- [x] Exibir linha do tempo completa do caso ao Consolidador e à liderança autorizada
+- [x] Proteger registros por tenant, responsável assumido e escopo pastoral
+- [x] Validar o painel completo com testes e experiência responsiva antes do checkpoint

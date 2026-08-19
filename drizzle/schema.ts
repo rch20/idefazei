@@ -642,6 +642,23 @@ export const consolidationReferrals = mysqlTable("consolidation_referrals", {
 
 export type ConsolidationReferral = typeof consolidationReferrals.$inferSelect;
 
+/** Histórico imutável de contatos e ações executadas durante um encaminhamento de resgate. */
+export const consolidationFollowUps = mysqlTable("consolidation_follow_ups", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  referralId: int("referralId").notNull(),
+  recordedByPersonId: int("recordedByPersonId").notNull(),
+  contactChannel: mysqlEnum("contactChannel", ["whatsapp", "ligacao", "mensagem", "visita", "presencial", "outro"]).notNull(),
+  outcome: mysqlEnum("outcome", ["conversou", "sem_resposta", "retornar", "agendou_visita", "visitou", "recusou_contato", "outro"]).notNull(),
+  notes: text("notes").notNull(),
+  nextAction: varchar("nextAction", { length: 255 }),
+  nextActionAt: timestamp("nextActionAt"),
+  visitStatus: mysqlEnum("visitStatus", ["nao_necessaria", "solicitada", "agendada", "realizada", "cancelada"]).default("nao_necessaria").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ConsolidationFollowUp = typeof consolidationFollowUps.$inferSelect;
+
 // ─── STATUS DE APROVAÇÃO DA IGREJA ───────────────────────────────────────────
 
 /** Estende a tabela churches com campos de aprovação */

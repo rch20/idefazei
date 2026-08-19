@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getPeopleByChurch, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getPeopleByChurch, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -59,6 +59,8 @@ vi.mock("./db", () => ({
   getConsolidationReferralById: vi.fn().mockResolvedValue({ id: 51, churchId: 100, personId: 1, referredByPersonId: 10, status: "pendente" }),
   createConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "pendente" }),
   updateConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "aceito" }),
+  getConsolidationFollowUpsByReferral: vi.fn().mockResolvedValue([]),
+  createConsolidationFollowUp: vi.fn().mockResolvedValue({ id: 91, churchId: 100, referralId: 51 }),
   getCellsByChurch: vi.fn().mockResolvedValue([]),
   getCellMembersCount: vi.fn().mockResolvedValue([]),
   getActiveMembersByCell: vi.fn().mockResolvedValue([]),
@@ -907,6 +909,56 @@ describe("Fluxo completo de discipulado", () => {
 
       expect(referrals.find((item) => item.id === 51)?.contactNumber).toBeNull();
       expect(referrals.find((item) => item.id === 52)?.contactNumber).toBe("11999990000");
+    });
+
+    it("registra contato, próxima ação e solicitação de visita somente para o Consolidador responsável", async () => {
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
+      vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({
+        id: 51,
+        churchId: CHURCH_ID,
+        personId: 1,
+        acceptedByPersonId: 10,
+        firstContactAt: null,
+        status: "aceito",
+      } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.consolidation.recordFollowUp({
+        churchId: CHURCH_ID,
+        referralId: 51,
+        contactChannel: "whatsapp",
+        outcome: "agendou_visita",
+        notes: "A pessoa respondeu e pediu uma visita esta semana.",
+        nextAction: "Confirmar horário da visita",
+        nextActionAt: "2026-08-21T14:00:00.000Z",
+        visitStatus: "solicitada",
+      });
+
+      expect(createConsolidationFollowUp).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        referralId: 51,
+        recordedByPersonId: 10,
+        contactChannel: "whatsapp",
+        visitStatus: "solicitada",
+      }));
+      expect(updateConsolidationReferral).toHaveBeenCalledWith(51, CHURCH_ID, expect.objectContaining({
+        status: "em_acompanhamento",
+      }));
+    });
+
+    it("bloqueia o registro de acompanhamento por Consolidador que não assumiu o caso", async () => {
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
+      vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({ id: 51, churchId: CHURCH_ID, personId: 1, acceptedByPersonId: 99, status: "aceito" } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await expect(caller.consolidation.recordFollowUp({
+        churchId: CHURCH_ID,
+        referralId: 51,
+        contactChannel: "ligacao",
+        outcome: "sem_resposta",
+        notes: "Tentativa de ligação sem retorno.",
+        visitStatus: "nao_necessaria",
+      })).rejects.toThrow("Somente o Consolidador responsável");
     });
   });
 

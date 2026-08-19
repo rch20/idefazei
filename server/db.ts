@@ -16,6 +16,7 @@ import {
   churches,
   communicationLogs,
   consolidations,
+  consolidationFollowUps,
   consolidationReferrals,
   counselingNotes,
   counselingSessions,
@@ -702,6 +703,23 @@ export async function updateConsolidationReferral(
     .set(data)
     .where(and(eq(consolidationReferrals.id, id), eq(consolidationReferrals.churchId, churchId)));
   return getConsolidationReferralById(id, churchId);
+}
+
+export async function getConsolidationFollowUpsByReferral(referralId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(consolidationFollowUps)
+    .where(and(eq(consolidationFollowUps.referralId, referralId), eq(consolidationFollowUps.churchId, churchId)))
+    .orderBy(desc(consolidationFollowUps.createdAt));
+}
+
+export async function createConsolidationFollowUp(data: typeof consolidationFollowUps.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(consolidationFollowUps).values(data);
+  return result[0];
 }
 
 // ─── CELLS ────────────────────────────────────────────────────────────────────

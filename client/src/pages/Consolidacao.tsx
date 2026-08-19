@@ -2,9 +2,12 @@ import { useChurch } from "@/components/ChurchLayout";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { CheckCircle2, Circle, Heart, Phone, MessageCircle, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
+import { CalendarClock, CheckCircle2, Circle, ClipboardCheck, Heart, MapPinned, Phone, MessageCircle, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { toast } from "sonner";
 
@@ -27,6 +30,15 @@ function getWhatsAppLink(contact: string, personName: string) {
   return `https://wa.me/${internationalNumber}?text=${message}`;
 }
 
+const initialFollowUpForm = {
+  contactChannel: "whatsapp" as const,
+  outcome: "conversou" as const,
+  notes: "",
+  nextAction: "",
+  nextActionAt: "",
+  visitStatus: "nao_necessaria" as const,
+};
+
 export default function Consolidacao() {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
@@ -42,6 +54,12 @@ export default function Consolidacao() {
   const [selectedCellByConsolidation, setSelectedCellByConsolidation] = useState<Record<number, string>>({});
   const [closingReferralId, setClosingReferralId] = useState<number | null>(null);
   const [closeReferralNotes, setCloseReferralNotes] = useState("");
+  const [trackingReferralId, setTrackingReferralId] = useState<number | null>(null);
+  const [followUpForm, setFollowUpForm] = useState(initialFollowUpForm);
+  const followUpsQuery = trpc.consolidation.followUps.useQuery(
+    { churchId, referralId: trackingReferralId ?? 0 },
+    { enabled: Boolean(trackingReferralId) }
+  );
   const hasFullOverview = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
 
   const updateChecklist = trpc.consolidation.updateChecklist.useMutation({
@@ -62,12 +80,13 @@ export default function Consolidacao() {
     },
     onError: (error: { message: string }) => toast.error(error.message),
   });
-  const registerReferralContact = trpc.consolidation.registerReferralContact.useMutation({
-    onSuccess: () => {
-      toast.success("Primeiro contato registrado no encaminhamento.");
-      referralsQuery.refetch();
+  const recordFollowUp = trpc.consolidation.recordFollowUp.useMutation({
+    onSuccess: async () => {
+      toast.success("Acompanhamento registrado no histórico do caso.");
+      setFollowUpForm(initialFollowUpForm);
+      await Promise.all([followUpsQuery.refetch(), referralsQuery.refetch()]);
     },
-    onError: (error: { message: string }) => toast.error(error.message),
+    onError: (error: { message: string }) => toast.error(error.message || "Não foi possível registrar o acompanhamento."),
   });
   const closeReferral = trpc.consolidation.closeReferral.useMutation({
     onSuccess: () => {
@@ -93,6 +112,28 @@ export default function Consolidacao() {
     const items = CHECKLIST_ITEMS.map((i) => (c as any)[i.key] as boolean);
     const done = items.filter(Boolean).length;
     return { done, total: items.length, pct: Math.round((done / items.length) * 100) };
+  }
+
+  function openTracking(referralId: number) {
+    setTrackingReferralId((current) => current === referralId ? null : referralId);
+    setFollowUpForm(initialFollowUpForm);
+  }
+
+  function submitFollowUp(referralId: number) {
+    if (followUpForm.notes.trim().length < 3) {
+      toast.error("Descreva como foi o contato antes de salvar.");
+      return;
+    }
+    recordFollowUp.mutate({
+      churchId,
+      referralId,
+      contactChannel: followUpForm.contactChannel,
+      outcome: followUpForm.outcome,
+      notes: followUpForm.notes.trim(),
+      nextAction: followUpForm.nextAction.trim() || undefined,
+      nextActionAt: followUpForm.nextActionAt ? new Date(followUpForm.nextActionAt).toISOString() : undefined,
+      visitStatus: followUpForm.visitStatus,
+    });
   }
 
   return (
@@ -142,7 +183,7 @@ export default function Consolidacao() {
                     </div>
                     <div className="flex shrink-0 flex-col gap-2 sm:w-44">
                       {isPending && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
-                      {isAccepted && <Button size="sm" variant="outline" disabled={registerReferralContact.isPending} onClick={() => registerReferralContact.mutate({ churchId, id: referral.id })}><Phone className="mr-2 h-4 w-4" />Registrar contato</Button>}
+                      {!isPending && referral.status !== "encerrado" && <Button size="sm" variant="outline" onClick={() => openTracking(referral.id)}><ClipboardCheck className="mr-2 h-4 w-4" />{trackingReferralId === referral.id ? "Fechar painel" : "Acompanhar caso"}</Button>}
                       {isInFollowUp && <Button size="sm" variant="outline" onClick={() => setClosingReferralId(referral.id)}>Encerrar cuidado</Button>}
                       {referral.acceptedByName && <p className="text-center text-[11px] text-muted-foreground">Responsável: {referral.acceptedByName}</p>}
                     </div>
@@ -153,6 +194,66 @@ export default function Consolidacao() {
                       <a href={getWhatsAppLink(referral.contactNumber, referral.personName)} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center rounded-md bg-[#25D366] px-3 text-sm font-medium text-white transition-colors hover:bg-[#1fb65a]">
                         <MessageCircle className="mr-2 h-4 w-4" />Conversar no WhatsApp
                       </a>
+                    </div>
+                  )}
+                  {trackingReferralId === referral.id && (
+                    <div className="mt-4 rounded-xl border border-navy/15 bg-navy/[0.025] p-4">
+                      <div className="flex items-start gap-3">
+                        <ClipboardCheck className="mt-0.5 h-5 w-5 shrink-0 text-navy" />
+                        <div>
+                          <h3 className="font-semibold text-navy">Acompanhamento do caso</h3>
+                          <p className="mt-0.5 text-xs text-muted-foreground">Registre como foi o contato, programe a próxima ação e sinalize se há necessidade de visita.</p>
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label>Canal do contato</Label>
+                          <Select value={followUpForm.contactChannel} onValueChange={(value) => setFollowUpForm((current) => ({ ...current, contactChannel: value as typeof current.contactChannel }))}>
+                            <SelectTrigger className="mt-1 bg-background"><SelectValue /></SelectTrigger>
+                            <SelectContent><SelectItem value="whatsapp">WhatsApp</SelectItem><SelectItem value="ligacao">Ligação</SelectItem><SelectItem value="mensagem">Mensagem</SelectItem><SelectItem value="visita">Visita</SelectItem><SelectItem value="presencial">Presencial</SelectItem><SelectItem value="outro">Outro</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Resultado</Label>
+                          <Select value={followUpForm.outcome} onValueChange={(value) => setFollowUpForm((current) => ({ ...current, outcome: value as typeof current.outcome }))}>
+                            <SelectTrigger className="mt-1 bg-background"><SelectValue /></SelectTrigger>
+                            <SelectContent><SelectItem value="conversou">Conversou</SelectItem><SelectItem value="sem_resposta">Sem resposta</SelectItem><SelectItem value="retornar">Precisa retornar</SelectItem><SelectItem value="agendou_visita">Visita agendada</SelectItem><SelectItem value="visitou">Visita realizada</SelectItem><SelectItem value="recusou_contato">Recusou contato</SelectItem><SelectItem value="outro">Outro</SelectItem></SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        <Label htmlFor={`followup-notes-${referral.id}`}>Como foi o contato? *</Label>
+                        <Textarea id={`followup-notes-${referral.id}`} rows={3} className="mt-1 bg-background" value={followUpForm.notes} onChange={(event) => setFollowUpForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Ex.: conversou, relatou dificuldade e aceitou receber uma visita esta semana." />
+                      </div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div>
+                          <Label htmlFor={`next-action-${referral.id}`}>Próxima ação</Label>
+                          <Input id={`next-action-${referral.id}`} className="mt-1 bg-background" value={followUpForm.nextAction} onChange={(event) => setFollowUpForm((current) => ({ ...current, nextAction: event.target.value }))} placeholder="Ex.: ligar novamente" />
+                        </div>
+                        <div>
+                          <Label htmlFor={`next-action-at-${referral.id}`}>Data de retorno</Label>
+                          <Input id={`next-action-at-${referral.id}`} className="mt-1 bg-background" type="datetime-local" value={followUpForm.nextActionAt} onChange={(event) => setFollowUpForm((current) => ({ ...current, nextActionAt: event.target.value }))} />
+                        </div>
+                      </div>
+                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+                        <Label className="flex items-center gap-2 text-amber-900"><MapPinned className="h-4 w-4" />Necessidade de visita</Label>
+                        <Select value={followUpForm.visitStatus} onValueChange={(value) => setFollowUpForm((current) => ({ ...current, visitStatus: value as typeof current.visitStatus }))}>
+                          <SelectTrigger className="mt-2 bg-background"><SelectValue /></SelectTrigger>
+                          <SelectContent><SelectItem value="nao_necessaria">Não é necessária</SelectItem><SelectItem value="solicitada">Solicitar visita</SelectItem><SelectItem value="agendada">Visita agendada</SelectItem><SelectItem value="realizada">Visita realizada</SelectItem><SelectItem value="cancelada">Visita cancelada</SelectItem></SelectContent>
+                        </Select>
+                      </div>
+                      <div className="mt-3 flex justify-end"><Button type="button" className="bg-navy text-white hover:bg-navy-light" disabled={recordFollowUp.isPending || followUpForm.notes.trim().length < 3} onClick={() => submitFollowUp(referral.id)}>{recordFollowUp.isPending ? "Salvando…" : "Salvar acompanhamento"}</Button></div>
+
+                      <div className="mt-5 border-t border-navy/10 pt-4">
+                        <div className="flex items-center gap-2"><CalendarClock className="h-4 w-4 text-gold" /><h4 className="text-sm font-semibold text-navy">Linha do tempo do caso</h4></div>
+                        {followUpsQuery.isLoading ? <p className="mt-3 text-sm text-muted-foreground">Carregando histórico…</p> : (followUpsQuery.data ?? []).length === 0 ? <p className="mt-3 rounded-lg border border-dashed border-border bg-background/60 p-3 text-sm text-muted-foreground">Ainda não há contatos registrados neste caso.</p> : <div className="mt-3 space-y-3">{(followUpsQuery.data ?? []).map((followUp) => (
+                          <div key={followUp.id} className="rounded-lg border border-border bg-background p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium text-navy">{followUp.outcome.replace(/_/g, " ")} · {followUp.contactChannel}</p><span className="text-[11px] text-muted-foreground">{new Date(followUp.createdAt).toLocaleString("pt-BR")}</span></div>
+                            <p className="mt-2 text-sm text-foreground">{followUp.notes}</p>
+                            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>Por {followUp.recordedByName}</span>{followUp.nextAction && <span>Próxima ação: {followUp.nextAction}{followUp.nextActionAt ? ` · ${new Date(followUp.nextActionAt).toLocaleString("pt-BR")}` : ""}</span>}{followUp.visitStatus !== "nao_necessaria" && <span className="font-medium text-amber-800">Visita: {followUp.visitStatus.replace(/_/g, " ")}</span>}</div>
+                          </div>
+                        ))}</div>}
+                      </div>
                     </div>
                   )}
                   {closingReferralId === referral.id && (
