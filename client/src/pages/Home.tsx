@@ -102,7 +102,7 @@ export default function Home() {
               <span className="text-gold font-bold text-lg">✝</span>
             </div>
             <div>
-              <p className="font-display font-bold text-navy text-base leading-none">Igreja SaaS</p>
+              <p className="font-display font-bold text-navy text-base leading-none">Ide Fazei</p>
               <p className="text-[10px] text-gold font-medium tracking-wide">PLATAFORMA DE DISCIPULADO</p>
             </div>
           </div>
@@ -275,7 +275,7 @@ export default function Home() {
         <div className="container flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="text-navy font-bold">✝</span>
-            <span className="text-sm font-display font-semibold text-navy">Igreja SaaS</span>
+            <span className="text-sm font-display font-semibold text-navy">Ide Fazei</span>
             <span className="text-xs text-gold">· Plataforma de Discipulado</span>
           </div>
           <p className="text-xs text-muted-foreground">

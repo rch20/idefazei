@@ -98,7 +98,7 @@ export default function CheckinEvento() {
         </div>
 
         <p className="text-center text-xs text-[#1e3a5f]/40 mt-4">
-          Plataforma Lampas · Sistema de Gestão para Igrejas
+          Ide Fazei · Sistema de Gestão para Igrejas
         </p>
       </div>
     </div>

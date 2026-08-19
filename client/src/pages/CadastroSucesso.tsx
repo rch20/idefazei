@@ -45,7 +45,7 @@ export default function CadastroSucesso() {
             <p className="text-sm font-medium text-navy">Seu subdomínio reservado:</p>
             <div className="flex items-center gap-2 bg-navy/5 rounded-lg px-4 py-3">
               <span className="font-mono text-navy font-semibold text-sm">
-                {slug}.lampas.com.br
+                {slug}.idefazei.com.br
               </span>
             </div>
             <p className="text-xs text-muted-foreground">

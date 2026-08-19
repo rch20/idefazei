@@ -1,5 +1,5 @@
 /**
- * Definição dos planos da plataforma Lampas
+ * Definição dos planos da plataforma Ide Fazei
  *
  * Preços em centavos (BRL):
  * - Básico:     R$ 97/mês  | R$ 970/ano  (2 meses grátis)

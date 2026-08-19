@@ -28,7 +28,7 @@ const STEPS: { id: number; icon: any; title: string; subtitle: string; descripti
       type: "form",
       fields: [
         { label: "Nome da Igreja", value: "Igreja Viver em Cristo" },
-        { label: "Subdomínio", value: "igrejaviver.lampas.com.br" },
+        { label: "Subdomínio", value: "igrejaviver.idefazei.com.br" },
         { label: "Pastor Presidente", value: "Pr. João Silva" },
         { label: "Email", value: "joao@igrejaviver.com.br" },
       ],
@@ -293,9 +293,9 @@ export default function Demo() {
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-[#1e3a5f] flex items-center justify-center">
-              <span className="text-[#c9a84c] font-bold text-sm">L</span>
+              <span className="text-[#c9a84c] font-bold text-sm">I</span>
             </div>
-            <span className="font-bold text-[#1e3a5f] text-lg font-display">Lampas</span>
+            <span className="font-bold text-[#1e3a5f] text-lg font-display">Ide Fazei</span>
           </Link>
           <Link
             href="/cadastro-igreja"
@@ -315,7 +315,7 @@ export default function Demo() {
           Veja a plataforma em ação
         </h1>
         <p className="text-lg text-[#1e3a5f]/60 max-w-xl mx-auto font-serif italic">
-          Explore cada módulo e entenda como a Lampas transforma a gestão ministerial da sua igreja.
+          Explore cada módulo e entenda como a Ide Fazei transforma a gestão ministerial da sua igreja.
         </p>
       </div>
 
@@ -416,7 +416,7 @@ export default function Demo() {
               <div className="w-3 h-3 rounded-full bg-yellow-400" />
               <div className="w-3 h-3 rounded-full bg-green-400" />
               <div className="flex-1 bg-white rounded-lg px-3 py-1 text-xs text-[#1e3a5f]/40 ml-2">
-                app.lampas.com.br
+                app.idefazei.com.br
               </div>
             </div>
 

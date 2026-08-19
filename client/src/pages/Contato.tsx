@@ -41,7 +41,7 @@ export default function Contato() {
                 <span className="text-[#c9a84c] text-sm font-bold">✦</span>
               </div>
               <div>
-                <div className="font-serif font-bold text-[#1e3a5f] text-lg leading-none">Lampas</div>
+                <div className="font-serif font-bold text-[#1e3a5f] text-lg leading-none">Ide Fazei</div>
                 <div className="text-[10px] tracking-[0.2em] text-[#c9a84c] uppercase">Plataforma Ministerial</div>
               </div>
             </div>
@@ -75,7 +75,7 @@ export default function Contato() {
               <h2 className="font-serif text-2xl font-bold text-[#1e3a5f] mb-6">Informações de contato</h2>
               <div className="space-y-4">
                 {[
-                  { icon: Mail, label: "Email", value: "contato@lampas.com.br" },
+                  { icon: Mail, label: "Email", value: "contato@idefazei.com.br" },
                   { icon: Phone, label: "WhatsApp", value: "(11) 99999-9999" },
                   { icon: MapPin, label: "Localização", value: "São Paulo, SP — Brasil" },
                 ].map(({ icon: Icon, label, value }) => (

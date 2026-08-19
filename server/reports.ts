@@ -78,7 +78,7 @@ export function generateReportHTML(data: ReportData): string {
   <!-- Header -->
   <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:32px;padding-bottom:20px;border-bottom:2px solid #c9a84c">
     <div>
-      <div style="font-family:Georgia,serif;font-size:10px;color:#c9a84c;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">LAMPAS — PLATAFORMA MINISTERIAL</div>
+      <div style="font-family:Georgia,serif;font-size:10px;color:#c9a84c;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">IDE FAZEI — PLATAFORMA MINISTERIAL</div>
       <h1 style="font-family:Georgia,serif;font-size:24px;color:#1e3a5f;font-weight:700;margin-bottom:4px">${data.title}</h1>
       ${data.subtitle ? `<p style="font-size:13px;color:#666">${data.subtitle}</p>` : ""}
     </div>
@@ -95,7 +95,7 @@ export function generateReportHTML(data: ReportData): string {
 
   <!-- Footer -->
   <div style="margin-top:40px;padding-top:16px;border-top:1px solid #e8dcc8;display:flex;justify-content:space-between;align-items:center">
-    <div style="font-size:10px;color:#999">Lampas — Plataforma de Crescimento e Discipulado</div>
+    <div style="font-size:10px;color:#999">Ide Fazei — Plataforma de Crescimento e Discipulado</div>
     <div style="font-size:10px;color:#c9a84c;font-style:italic">Ganhar · Consolidar · Discipular · Multiplicar</div>
   </div>
 </body>

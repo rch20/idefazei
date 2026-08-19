@@ -64,7 +64,7 @@ function AdminLogin({ onLogin }: { onLogin: (token: string) => void }) {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@lampas.com.br"
+                  placeholder="admin@idefazei.com.br"
                   className="mt-1 bg-white/10 border-white/20 text-white placeholder:text-white/30 focus:border-[#c9a84c]"
                   {...register("email")}
                 />
@@ -150,7 +150,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             </div>
             <div>
               <p className="text-white font-bold text-sm">Super Admin</p>
-              <p className="text-white/30 text-[10px]">Lampas Platform</p>
+              <p className="text-white/30 text-[10px]">Ide Fazei Platform</p>
             </div>
           </div>
         </div>
@@ -237,7 +237,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                         <div key={church.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
                           <div>
                             <p className="text-white font-medium text-sm">{church.churchName}</p>
-                            <p className="text-white/40 text-xs">{church.churchSlug}.lampas.com.br</p>
+                            <p className="text-white/40 text-xs">{church.churchSlug}.idefazei.com.br</p>
                           </div>
                           <div className="flex gap-2">
                             <Button
@@ -289,7 +289,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                             </div>
                             <div>
                               <p className="text-white font-semibold">{church.name}</p>
-                              <p className="text-white/40 text-sm">{church.slug}.lampas.com.br</p>
+                              <p className="text-white/40 text-sm">{church.slug}.idefazei.com.br</p>
                               {(church.city || church.state) && (
                                 <p className="text-white/30 text-xs">{[church.city, church.state].filter(Boolean).join(", ")}</p>
                               )}
@@ -411,8 +411,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                 <CardContent className="pt-6">
                   <div className="space-y-4">
                     {[
-                      { label: "Nome da Plataforma", value: "Lampas" },
-                      { label: "Domínio Principal", value: "lampas.com.br" },
+                      { label: "Nome da Plataforma", value: "Ide Fazei" },
+                      { label: "Domínio Principal", value: "idefazei.com.br" },
                       { label: "Versão", value: "1.0.0" },
                     ].map((item) => (
                       <div key={item.label} className="flex items-center justify-between py-3 border-b border-white/10 last:border-0">

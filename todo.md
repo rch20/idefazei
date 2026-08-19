@@ -523,3 +523,10 @@
 - [x] Deixar explícitas as áreas de atuação disponíveis para o usuário no login
 - [x] Cobrir cenários de múltiplas funções com testes e validação autenticada
 - [x] Mostrar no menu as funções ativas da conta para deixar os painéis acumulados compreensíveis
+
+## FASE 46 – Identidade Ide Fazei
+
+- [x] Mapear referências públicas de Lampas em títulos, navegação e páginas institucionais
+- [x] Atualizar a marca visível para Ide Fazei sem alterar as referências técnicas internas
+- [x] Atualizar título do aplicativo e metadados de navegação
+- [x] Validar a nova identidade visual, os testes e o checkpoint

@@ -94,7 +94,7 @@ export default function CadastroIgreja() {
             <div className="w-7 h-7 bg-[#c9a84c] rounded flex items-center justify-center">
               <span className="text-[#1e3a5f] font-bold text-xs">✦</span>
             </div>
-            <span className="font-bold text-lg">Lampas</span>
+            <span className="font-bold text-lg">Ide Fazei</span>
           </a>
           <span className="text-white/60 text-sm">Cadastro de Igreja</span>
         </div>
@@ -159,7 +159,7 @@ export default function CadastroIgreja() {
                         {...form1.register("slug")}
                       />
                       <div className="px-3 py-2 bg-[#1e3a5f]/5 border border-l-0 border-[#c9a84c]/30 rounded-r-md text-[#1e3a5f]/50 text-sm whitespace-nowrap">
-                        .lampas.com.br
+                        .idefazei.com.br
                       </div>
                     </div>
                     {form1.formState.errors.slug && (
@@ -273,7 +273,7 @@ export default function CadastroIgreja() {
                     <span className="text-[#1e3a5f]/50">Nome:</span>
                     <span className="text-[#1e3a5f] font-medium">{step1Data.churchName}</span>
                     <span className="text-[#1e3a5f]/50">Subdomínio:</span>
-                    <span className="text-[#c9a84c] font-medium">{step1Data.slug}.lampas.com.br</span>
+                    <span className="text-[#c9a84c] font-medium">{step1Data.slug}.idefazei.com.br</span>
                     {step1Data.city && <><span className="text-[#1e3a5f]/50">Cidade:</span><span className="text-[#1e3a5f]">{step1Data.city}{step1Data.state ? ` - ${step1Data.state}` : ""}</span></>}
                     <span className="text-[#1e3a5f]/50">Email:</span>
                     <span className="text-[#1e3a5f]">{step1Data.email}</span>
@@ -291,7 +291,7 @@ export default function CadastroIgreja() {
                 </div>
 
                 <div className="bg-[#c9a84c]/10 border border-[#c9a84c]/30 rounded-xl p-4 text-sm text-[#1e3a5f]/70">
-                  <p>Após o envio, seu cadastro será analisado pela equipe Lampas. Você receberá um email de confirmação quando a igreja for aprovada.</p>
+                  <p>Após o envio, seu cadastro será analisado pela equipe Ide Fazei. Você receberá um email de confirmação quando a igreja for aprovada.</p>
                 </div>
 
                 <div className="flex gap-3">

@@ -93,7 +93,7 @@ export default function LoginIgreja() {
             <span className="text-[#c9a84c] font-bold text-sm">✦</span>
           </div>
           <div>
-            <span className="font-bold text-[#1e3a5f] text-base tracking-tight">Lampas</span>
+            <span className="font-bold text-[#1e3a5f] text-base tracking-tight">Ide Fazei</span>
             <span className="text-[#c9a84c] text-[10px] block leading-none tracking-widest uppercase">Plataforma Ministerial</span>
           </div>
         </a>

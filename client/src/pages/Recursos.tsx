@@ -101,7 +101,7 @@ export default function Recursos() {
                 <span className="text-[#c9a84c] text-sm font-bold">✦</span>
               </div>
               <div>
-                <div className="font-serif font-bold text-[#1e3a5f] text-lg leading-none">Lampas</div>
+                <div className="font-serif font-bold text-[#1e3a5f] text-lg leading-none">Ide Fazei</div>
                 <div className="text-[10px] tracking-[0.2em] text-[#c9a84c] uppercase">Plataforma Ministerial</div>
               </div>
             </div>

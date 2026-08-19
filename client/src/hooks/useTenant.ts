@@ -2,7 +2,7 @@
  * Hook para resolução de tenant no frontend.
  * Detecta o subdomínio atual e retorna o slug e churchId da igreja.
  *
- * Em produção: igrejaviver.lampas.com.br → slug = "igrejaviver"
+ * Em produção: igrejaviver.idefazei.com.br → slug = "igrejaviver"
  * Em desenvolvimento: localhost:3000 → slug = null (domínio principal)
  *
  * O churchId é lido do localStorage após o login (armazenado pelo LoginIgreja).
@@ -19,8 +19,8 @@ export type TenantInfo = {
 
 /**
  * Extrai o slug do subdomínio do hostname atual.
- * Ex: igrejaviver.lampas.com.br → "igrejaviver"
- * Ex: admin.lampas.com.br → null (admin domain)
+ * Ex: igrejaviver.idefazei.com.br → "igrejaviver"
+ * Ex: admin.idefazei.com.br → null (admin domain)
  * Ex: localhost → null (domínio principal)
  */
 function extractSlugFromHostname(hostname: string): string | null {

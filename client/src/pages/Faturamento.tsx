@@ -109,7 +109,7 @@ export default function Faturamento() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("success") === "1") {
-      toast.success("Assinatura ativada com sucesso! Bem-vindo ao Lampas.");
+      toast.success("Assinatura ativada com sucesso! Bem-vindo à Ide Fazei.");
       navigate("/app/faturamento", { replace: true });
     }
     if (params.get("canceled") === "1") {
@@ -142,7 +142,7 @@ export default function Faturamento() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Faturamento</h1>
-        <p className="text-muted-foreground mt-1">Gerencie sua assinatura e plano da plataforma Lampas</p>
+        <p className="text-muted-foreground mt-1">Gerencie sua assinatura e plano da plataforma Ide Fazei</p>
       </div>
 
       {/* Status da assinatura atual */}

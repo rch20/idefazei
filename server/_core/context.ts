@@ -12,7 +12,7 @@ type AuthenticatedUser = Omit<User, "role"> & {
 
 /**
  * Extrai o slug do subdomínio do host da requisição.
- * Ex: igrejaviver.lampas.com.br -> "igrejaviver"
+ * Ex: igrejaviver.idefazei.com.br -> "igrejaviver"
  * Ex: localhost:3000 -> null (domínio principal)
  */
 function extractTenantSlug(host: string | undefined): string | null {

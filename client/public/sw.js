@@ -1,4 +1,4 @@
-// Service Worker — Lampas Igreja SaaS
+// Service Worker — Ide Fazei
 // Estratégia: Cache-First para assets estáticos, Network-First para API
 
 const CACHE_NAME = "lampas-v3";
@@ -87,7 +87,7 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data.json();
   } catch {
-    data = { title: "Lampas", body: event.data.text() };
+    data = { title: "Ide Fazei", body: event.data.text() };
   }
   const options = {
     body: data.body || "Nova notificação da sua igreja",
@@ -97,7 +97,7 @@ self.addEventListener("push", (event) => {
     vibrate: [100, 50, 100],
   };
   event.waitUntil(
-    self.registration.showNotification(data.title || "Lampas", options)
+    self.registration.showNotification(data.title || "Ide Fazei", options)
   );
 });
 

@@ -1,5 +1,5 @@
 /**
- * Geração de Certificados em PDF — Lampas Igreja SaaS
+ * Geração de Certificados em PDF — Ide Fazei
  *
  * Usa pdf-lib para criar certificados com layout personalizado:
  * fundo pergaminho, bordas douradas, nome em destaque, dados da igreja.
@@ -429,7 +429,7 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Uin
   }
 
   // ── Rodapé (na faixa inferior) ──
-  const footerText = "Lampas • Plataforma de Crescimento e Discipulado";
+  const footerText = "Ide Fazei • Plataforma de Crescimento e Discipulado";
   const footerSize = 8;
   const footerWidth = helvetica.widthOfTextAtSize(footerText, footerSize);
   page.drawText(footerText, {

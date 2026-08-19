@@ -93,7 +93,7 @@ export default function LandingPage() {
                 <span className="text-[#c9a84c] font-bold text-sm">✦</span>
               </div>
               <div>
-                <span className="font-bold text-[#1e3a5f] text-lg tracking-tight">Lampas</span>
+                <span className="font-bold text-[#1e3a5f] text-lg tracking-tight">Ide Fazei</span>
                 <span className="text-[#c9a84c] text-xs block leading-none tracking-widest uppercase">Plataforma Ministerial</span>
               </div>
             </div>
@@ -360,8 +360,8 @@ export default function LandingPage() {
           <h2 className="font-serif text-3xl font-bold text-[#1e3a5f] mb-4">Fale Conosco</h2>
           <p className="text-[#1e3a5f]/60 mb-8">Tem dúvidas? Nossa equipe está pronta para ajudar.</p>
           <div className="flex flex-wrap justify-center gap-6 text-sm text-[#1e3a5f]/70">
-            <a href="mailto:contato@lampas.com.br" className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
-              <span>✉</span> contato@lampas.com.br
+            <a href="mailto:contato@idefazei.com.br" className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
+              <span>✉</span> contato@idefazei.com.br
             </a>
             <a href="https://wa.me/5511999999999" className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
               <Phone size={14} /> WhatsApp
@@ -377,9 +377,9 @@ export default function LandingPage() {
             <div className="w-6 h-6 bg-[#c9a84c] rounded flex items-center justify-center">
               <span className="text-[#1e3a5f] text-xs font-bold">✦</span>
             </div>
-            <span className="text-white font-semibold">Lampas</span>
+            <span className="text-white font-semibold">Ide Fazei</span>
           </div>
-          <p className="text-sm">© 2025 Lampas Plataforma Ministerial. Todos os direitos reservados.</p>
+          <p className="text-sm">© 2026 Ide Fazei Plataforma Ministerial. Todos os direitos reservados.</p>
           <div className="flex gap-4 text-sm">
             <a href="#" className="hover:text-white transition-colors">Privacidade</a>
             <a href="#" className="hover:text-white transition-colors">Termos</a>

@@ -27,7 +27,7 @@ const STEPS = [
   {
     id: 0,
     key: "stepWelcome" as const,
-    title: "Bem-vindo à Lampas!",
+    title: "Bem-vindo à Ide Fazei!",
     subtitle: "Sua plataforma ministerial está pronta",
     icon: Sparkles,
     color: "text-amber-600",
@@ -216,7 +216,7 @@ export default function Onboarding() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
             <Church className="w-8 h-8 text-[#c9a84c]" />
-            <span className="font-serif text-2xl text-[#1e3a5f] font-bold">Lampas</span>
+            <span className="font-serif text-2xl text-[#1e3a5f] font-bold">Ide Fazei</span>
           </div>
           <h1 className="text-3xl font-serif font-bold text-[#1e3a5f] mb-2">
             Configuração Inicial
@@ -292,7 +292,7 @@ export default function Onboarding() {
             {currentStep === 0 && (
               <div className="space-y-4">
                 <p className="text-[#1e3a5f]/80 leading-relaxed">
-                  Sua plataforma Lampas foi criada com sucesso! Nos próximos passos, vamos ajudá-lo a:
+                  Sua plataforma Ide Fazei foi criada com sucesso! Nos próximos passos, vamos ajudá-lo a:
                 </p>
                 <ul className="space-y-3">
                   {[

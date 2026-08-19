@@ -2716,7 +2716,7 @@ const stripeRouter = router({
           price_data: {
             currency: "brl",
             product_data: {
-              name: `Lampas ${planData.name}`,
+              name: `Ide Fazei ${planData.name}`,
               description: planData.description,
             },
             unit_amount: unitAmount,
