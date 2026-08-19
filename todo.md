@@ -491,3 +491,11 @@
 - [x] Abrir formulário direto de encaminhamento com motivo obrigatório
 - [x] Reutilizar a fila protegida de Consolidação sem duplicar dados ou permissões
 - [x] Validar experiência mobile, escopo da Célula e regressões antes do checkpoint
+
+## FASE 42 – Consolidação pela Ficha do Discípulo na Célula
+
+- [x] Tornar cada discípulo da lista de membros clicável no detalhe da Célula
+- [x] Exibir ficha de cuidado limitada a contato, estágio, presença e histórico relevante
+- [x] Permitir encaminhar para Consolidação com motivo diretamente nessa ficha
+- [x] Manter dados administrativos protegidos e restringir o fluxo à própria Célula e escopo pastoral
+- [x] Validar a experiência responsiva e o fluxo completo antes do checkpoint

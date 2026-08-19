@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { MapView } from "@/components/Map";
 import { trpc } from "@/lib/trpc";
-import { CalendarCheck2, CheckCircle2, Globe, MapPin, Plus, Users, UserRound } from "lucide-react";
+import { CalendarCheck2, CheckCircle2, Globe, HeartHandshake, MapPin, Phone, Plus, Send, Users, UserRound } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -54,6 +54,7 @@ export default function Celulas() {
   const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState<any>(null);
+  const [selectedMember, setSelectedMember] = useState<any>(null);
   const [activeTab, setActiveTab] = useState("lista");
   const [form, setForm] = useState(defaultForm);
   const [attendanceOpen, setAttendanceOpen] = useState(false);
@@ -61,6 +62,7 @@ export default function Celulas() {
   const [meetingTopic, setMeetingTopic] = useState("");
   const [meetingNotes, setMeetingNotes] = useState("");
   const [presentByPersonId, setPresentByPersonId] = useState<Record<number, boolean>>({});
+  const [memberReferralReason, setMemberReferralReason] = useState("");
   const [mapReady, setMapReady] = useState(false);
   const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
 
@@ -79,6 +81,10 @@ export default function Celulas() {
     { churchId, cellId: selectedCell?.id ?? 0 },
     { enabled: Boolean(selectedCell?.id) }
   );
+  const currentMemberCare = trpc.care.getCurrent.useQuery(
+    { churchId, personId: selectedMember?.person.id ?? 0 },
+    { enabled: Boolean(selectedMember?.person.id) }
+  );
   const createCell = trpc.cells.create.useMutation({
     onSuccess: () => {
       toast.success("Célula criada com sucesso!");
@@ -95,6 +101,15 @@ export default function Celulas() {
       await meetingHistory.refetch();
     },
     onError: (error) => toast.error(error.message || "Não foi possível registrar o encontro."),
+  });
+  const createReferral = trpc.consolidation.createReferral.useMutation({
+    onSuccess: async () => {
+      toast.success("Discípulo encaminhado para a fila de Consolidação.");
+      setMemberReferralReason("");
+      setSelectedMember(null);
+      await utils.consolidation.referrals.invalidate({ churchId });
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível encaminhar o discípulo."),
   });
 
   const totalCellMembers = (memberCounts.data ?? []).reduce((total, item) => total + Number(item.count), 0);
@@ -175,6 +190,18 @@ export default function Celulas() {
         personId: item.person.id,
         status: presentByPersonId[item.person.id] ? "presente" as const : "ausente" as const,
       })),
+    });
+  }
+
+  function submitMemberReferral() {
+    if (!selectedMember || memberReferralReason.trim().length < 3) {
+      toast.error("Informe o motivo do encaminhamento para Consolidação.");
+      return;
+    }
+    createReferral.mutate({
+      churchId,
+      personId: selectedMember.person.id,
+      reason: memberReferralReason.trim(),
     });
   }
 
@@ -312,6 +339,7 @@ export default function Celulas() {
       <Dialog open={Boolean(selectedCell)} onOpenChange={(nextOpen) => {
         if (!nextOpen) {
           setSelectedCell(null);
+          setSelectedMember(null);
           setAttendanceOpen(false);
         }
       }}>
@@ -362,11 +390,11 @@ export default function Celulas() {
               ) : (
                 <div className="divide-y divide-border">
                   {(cellMembers.data ?? []).map((item) => (
-                    <div key={item.membership.id} className="flex items-center gap-3 px-4 py-3">
+                    <button key={item.membership.id} type="button" onClick={() => { setSelectedMember(item); setMemberReferralReason(""); }} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-cream/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold/70">
                       <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cream-dark text-navy"><UserRound className="h-4 w-4" /></div>
                       <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-navy">{item.person.fullName}</p><p className="text-xs text-muted-foreground">{item.person.phone || item.person.email || "Sem contato informado"}</p></div>
-                      <span className="text-[11px] text-muted-foreground">desde {new Date(item.membership.joinedAt).toLocaleDateString("pt-BR")}</span>
-                    </div>
+                      <span className="text-right text-[11px] text-muted-foreground">Cuidar<br />desde {new Date(item.membership.joinedAt).toLocaleDateString("pt-BR")}</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -385,6 +413,46 @@ export default function Celulas() {
               </div>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(selectedMember)} onOpenChange={(nextOpen) => !nextOpen && setSelectedMember(null)}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 font-display text-navy"><HeartHandshake className="h-5 w-5 text-rose-600" />Ficha de cuidado</DialogTitle>
+          </DialogHeader>
+          {selectedMember && (
+            <div className="space-y-4">
+              <section className="rounded-xl border border-border p-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cream-dark text-navy"><UserRound className="h-5 w-5" /></div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-navy">{selectedMember.person.fullName}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Discípulo da Célula {selectedCell?.name}</p>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-2 text-sm">
+                  <p className="flex items-center gap-2 text-muted-foreground"><Phone className="h-4 w-4 text-gold" />{selectedMember.person.phone || selectedMember.person.whatsapp || selectedMember.person.email || "Sem contato informado"}</p>
+                  <p className="text-xs text-muted-foreground">Vinculado à Célula desde {new Date(selectedMember.membership.joinedAt).toLocaleDateString("pt-BR")}.</p>
+                  {currentMemberCare.isLoading ? <p className="text-xs text-muted-foreground">Carregando responsável de cuidado…</p> : currentMemberCare.data ? <p className="text-xs text-muted-foreground">Responsável de cuidado definido: {currentMemberCare.data.role.replace(/_/g, " ")}.</p> : <p className="text-xs text-amber-800">Ainda não há responsável de cuidado definido.</p>}
+                </div>
+              </section>
+
+              <section className="rounded-xl border border-rose-200 bg-rose-50/45 p-4">
+                <h3 className="text-sm font-semibold text-navy">Enviar para Consolidação</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Encaminhe quando este discípulo precisa de resgate. O Consolidador verá seu nome, o motivo e assumirá o acompanhamento.</p>
+                <div className="mt-3">
+                  <Label htmlFor="member-referral-reason">Motivo *</Label>
+                  <Textarea id="member-referral-reason" rows={3} className="mt-1 bg-background" value={memberReferralReason} onChange={(event) => setMemberReferralReason(event.target.value)} placeholder="Ex.: faltou às últimas reuniões e não atende às mensagens." />
+                </div>
+                {meetingAccess.data?.canRecord ? (
+                  <Button type="button" className="mt-3 w-full bg-rose-600 text-white hover:bg-rose-700" disabled={createReferral.isPending || memberReferralReason.trim().length < 3} onClick={submitMemberReferral}>
+                    <Send className="mr-2 h-4 w-4" />{createReferral.isPending ? "Enviando…" : "Enviar para Consolidação"}
+                  </Button>
+                ) : <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">Somente o Líder, Supervisor ou Pastor responsável por esta Célula pode encaminhar um discípulo.</p>}
+              </section>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
