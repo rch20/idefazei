@@ -55,6 +55,10 @@ vi.mock("./db", () => ({
   getConsolidationById: vi.fn().mockResolvedValue({ id: 1, churchId: 100, soulId: 1, status: "em_consolidacao" }),
   createConsolidation: vi.fn().mockResolvedValue({ id: 1, soulId: 1, churchId: 100 }),
   updateConsolidation: vi.fn().mockResolvedValue({ id: 1, callMade: true, status: "consolidado" }),
+  getConsolidationReferralsByChurch: vi.fn().mockResolvedValue([]),
+  getConsolidationReferralById: vi.fn().mockResolvedValue({ id: 51, churchId: 100, personId: 1, referredByPersonId: 10, status: "pendente" }),
+  createConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "pendente" }),
+  updateConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "aceito" }),
   getCellsByChurch: vi.fn().mockResolvedValue([]),
   getCellMembersCount: vi.fn().mockResolvedValue([]),
   getActiveMembersByCell: vi.fn().mockResolvedValue([]),
@@ -803,6 +807,86 @@ describe("Fluxo completo de discipulado", () => {
       const caller = appRouter.createCaller(createMemberContext());
 
       await expect(caller.consolidation.list({ churchId: CHURCH_ID })).rejects.toThrow("Consolidação é restrita");
+    });
+  });
+
+  describe("Consolidação — encaminhamento de resgate", () => {
+    it("permite que a liderança encaminhe uma Pessoa da sua responsabilidade com motivo", async () => {
+      const { createConsolidationReferral } = await import("./db");
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.consolidation.createReferral({
+        churchId: CHURCH_ID,
+        personId: 1,
+        reason: "Faltou às últimas reuniões e não responde",
+        notes: "Líder tentou contato por WhatsApp.",
+      });
+
+      expect(createConsolidationReferral).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        personId: 1,
+        referredByPersonId: 10,
+        status: "pendente",
+      }));
+    });
+
+    it("permite que um Consolidador assuma o encaminhamento e registre o cuidado", async () => {
+      const { getConsolidationReferralById, setCurrentCareAssignment, updateConsolidationReferral } = await import("./db");
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
+      vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({
+        id: 51,
+        churchId: CHURCH_ID,
+        personId: 1,
+        referredByPersonId: 20,
+        preferredConsolidatorId: null,
+        status: "pendente",
+      } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.consolidation.acceptReferral({ churchId: CHURCH_ID, id: 51 });
+
+      expect(setCurrentCareAssignment).toHaveBeenCalledWith(expect.objectContaining({
+        personId: 1,
+        responsiblePersonId: 10,
+        role: "consolidador",
+      }));
+      expect(updateConsolidationReferral).toHaveBeenCalledWith(51, CHURCH_ID, expect.objectContaining({
+        status: "aceito",
+        acceptedByPersonId: 10,
+      }));
+    });
+
+    it("bloqueia o primeiro contato por Consolidador que não assumiu o encaminhamento", async () => {
+      const { getConsolidationReferralById } = await import("./db");
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
+      vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({
+        id: 51,
+        churchId: CHURCH_ID,
+        acceptedByPersonId: 99,
+        status: "aceito",
+      } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await expect(caller.consolidation.registerReferralContact({ churchId: CHURCH_ID, id: 51 })).rejects.toThrow("Somente o Consolidador responsável");
+    });
+
+    it("preserva o resultado ao encerrar o acompanhamento assumido", async () => {
+      const { getConsolidationReferralById, updateConsolidationReferral } = await import("./db");
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
+      vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({
+        id: 51,
+        churchId: CHURCH_ID,
+        acceptedByPersonId: 10,
+        status: "em_acompanhamento",
+      } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.consolidation.closeReferral({ churchId: CHURCH_ID, id: 51, closeNotes: "Contato retomado e retorno combinado com o Líder." });
+
+      expect(updateConsolidationReferral).toHaveBeenCalledWith(51, CHURCH_ID, expect.objectContaining({
+        status: "encerrado",
+        closeNotes: "Contato retomado e retorno combinado com o Líder.",
+      }));
     });
   });
 

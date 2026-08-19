@@ -16,6 +16,7 @@ import {
   churches,
   communicationLogs,
   consolidations,
+  consolidationReferrals,
   counselingNotes,
   counselingSessions,
   courseEnrollments,
@@ -657,6 +658,50 @@ export async function updateConsolidation(id: number, churchId: number, data: Pa
     .update(consolidations)
     .set(data)
     .where(and(eq(consolidations.id, id), eq(consolidations.churchId, churchId)));
+}
+
+// ─── ENCAMINHAMENTOS PARA CONSOLIDAÇÃO ─────────────────────────────────────────
+
+export async function getConsolidationReferralsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(consolidationReferrals)
+    .where(eq(consolidationReferrals.churchId, churchId))
+    .orderBy(desc(consolidationReferrals.referredAt));
+}
+
+export async function getConsolidationReferralById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(consolidationReferrals)
+    .where(and(eq(consolidationReferrals.id, id), eq(consolidationReferrals.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createConsolidationReferral(data: typeof consolidationReferrals.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(consolidationReferrals).values(data);
+  return result[0];
+}
+
+export async function updateConsolidationReferral(
+  id: number,
+  churchId: number,
+  data: Partial<typeof consolidationReferrals.$inferInsert>
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(consolidationReferrals)
+    .set(data)
+    .where(and(eq(consolidationReferrals.id, id), eq(consolidationReferrals.churchId, churchId)));
+  return getConsolidationReferralById(id, churchId);
 }
 
 // ─── CELLS ────────────────────────────────────────────────────────────────────

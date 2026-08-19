@@ -294,11 +294,16 @@ export default function AppLider() {
                           </p>
                         )}
                       </div>
-                      {person.discipleshipStage && (
-                        <Badge className={`text-[10px] shrink-0 ${STAGE_COLORS[person.discipleshipStage] ?? "bg-gray-100 text-gray-600"}`}>
-                          {person.discipleshipStage}
-                        </Badge>
-                      )}
+                      <div className="flex shrink-0 items-center gap-2">
+                        {person.discipleshipStage && (
+                          <Badge className={`text-[10px] ${STAGE_COLORS[person.discipleshipStage] ?? "bg-gray-100 text-gray-600"}`}>
+                            {person.discipleshipStage}
+                          </Badge>
+                        )}
+                        <Link href={`/app/pessoas?personId=${person.id}`} className="rounded-md border border-[#1e3a5f]/15 px-2 py-1 text-[11px] font-medium text-[#1e3a5f] hover:bg-[#1e3a5f]/5">
+                          Cuidar
+                        </Link>
+                      </div>
                     </div>
                   ))}
                 </div>

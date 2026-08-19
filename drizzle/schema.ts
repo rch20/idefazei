@@ -610,7 +610,37 @@ export const subscriptions = mysqlTable("subscriptions", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
-export type Subscription = typeof subscriptions.$inferSelect;
+export type Consolidation = typeof consolidations.$inferSelect;
+
+// ─── ENCAMINHAMENTOS PARA CONSOLIDAÇÃO ─────────────────────────────────────────
+
+/**
+ * Solicitações de resgate enviadas por Líderes, Supervisores ou Pastores quando
+ * uma Pessoa precisa de acompanhamento adicional. Não substitui a Consolidação
+ * inicial de Nova Alma nem cria uma nova ficha de Pessoa.
+ */
+export const consolidationReferrals = mysqlTable("consolidation_referrals", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  personId: int("personId").notNull(),
+  referredByPersonId: int("referredByPersonId").notNull(),
+  preferredConsolidatorId: int("preferredConsolidatorId"),
+  acceptedByPersonId: int("acceptedByPersonId"),
+  reason: varchar("reason", { length: 255 }).notNull(),
+  notes: text("notes"),
+  status: mysqlEnum("status", ["pendente", "aceito", "em_acompanhamento", "encerrado", "cancelado"])
+    .default("pendente")
+    .notNull(),
+  referredAt: timestamp("referredAt").defaultNow().notNull(),
+  acceptedAt: timestamp("acceptedAt"),
+  firstContactAt: timestamp("firstContactAt"),
+  closedAt: timestamp("closedAt"),
+  closeNotes: text("closeNotes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ConsolidationReferral = typeof consolidationReferrals.$inferSelect;
 
 // ─── STATUS DE APROVAÇÃO DA IGREJA ───────────────────────────────────────────
 

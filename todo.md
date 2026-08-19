@@ -475,3 +475,12 @@
 - [x] Identificar visualmente o responsável e as pendências na aba Consolidação
 - [x] Cobrir atribuição, visibilidade e bloqueio de acesso indevido com testes e validação autenticada
 - [x] Restringir a consulta auxiliar de Novas Almas ao mesmo escopo da fila de Consolidação
+
+## FASE 40 – Encaminhamentos para Consolidação
+
+- [x] Criar fila de encaminhamentos de resgate separada da Consolidação inicial de Nova Alma
+- [x] Permitir que Líder, Supervisor e Pastor enviem uma Pessoa para Consolidação com motivo e observação
+- [x] Permitir indicar um Consolidador ou disponibilizar o encaminhamento para aceite pela equipe autorizada
+- [x] Mostrar ao Consolidador a Pessoa, quem encaminhou, o motivo, a data e a situação do aceite
+- [x] Registrar aceite, primeiro contato e encerramento sem apagar o histórico do encaminhamento
+- [x] Restringir cada ação por tenant, função e escopo pastoral; cobrir o fluxo com testes e validação real

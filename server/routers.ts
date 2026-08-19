@@ -16,6 +16,7 @@ import {
   assignPersonToCell,
   createChurch,
   createConsolidation,
+  createConsolidationReferral,
   createEvent,
   createPerson,
   createPrayerRequest,
@@ -46,6 +47,8 @@ import {
   getConsolidationsByChurch,
   getConsolidationsBySoul,
   getConsolidationById,
+  getConsolidationReferralById,
+  getConsolidationReferralsByChurch,
   getCareAttentionByChurch,
   getDashboardStats,
   getDiscipleshipFunnel,
@@ -82,6 +85,7 @@ import {
   getSoulsByChurch,
   updateChurch,
   updateConsolidation,
+  updateConsolidationReferral,
   linkSoulToPerson,
   setCurrentCareAssignment,
   updatePerson,
@@ -647,6 +651,141 @@ const soulsRouter = router({
 });
 
 const consolidationRouter = router({
+  consolidators: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requirePastoralAction(ctx.user.id, input.churchId);
+      const [accounts, churchPeople] = await Promise.all([
+        getChurchUsersByChurch(input.churchId),
+        getPeopleByChurch(input.churchId),
+      ]);
+      const names = new Map(churchPeople.map((person) => [person.id, person.fullName]));
+      return accounts
+        .filter((account) => account.active && account.personId && (account.role === "consolidador" || account.complementaryRoles.includes("consolidador")))
+        .map((account) => ({ personId: account.personId!, name: names.get(account.personId!) ?? account.name }));
+    }),
+
+  referrals: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const canViewAll = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      const hasPastoralResponsibility = roles.some((role) => PASTORAL_ACTION_ROLES.has(role));
+      if (!hasPastoralResponsibility) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Encaminhamentos de consolidação são restritos a responsáveis pastorais." });
+      }
+
+      const [referrals, managedPersonIds, churchPeople] = await Promise.all([
+        getConsolidationReferralsByChurch(input.churchId),
+        canViewAll
+          ? Promise.resolve<number[]>([])
+          : getJourneyManagedPersonIds({ churchId: input.churchId, actorPersonId: actor.personId ?? null, actorRoles: roles }),
+        getPeopleByChurch(input.churchId),
+      ]);
+      const managedIds = new Set(managedPersonIds);
+      const visible = canViewAll
+        ? referrals
+        : referrals.filter((referral) => referral.referredByPersonId === actor.personId || referral.preferredConsolidatorId === actor.personId || referral.acceptedByPersonId === actor.personId || managedIds.has(referral.personId));
+      const names = new Map(churchPeople.map((person) => [person.id, person.fullName]));
+      return visible.map((referral) => ({
+        ...referral,
+        personName: names.get(referral.personId) ?? "Pessoa vinculada",
+        referredByName: names.get(referral.referredByPersonId) ?? "Liderança",
+        preferredConsolidatorName: referral.preferredConsolidatorId ? names.get(referral.preferredConsolidatorId) ?? "Consolidador indicado" : null,
+        acceptedByName: referral.acceptedByPersonId ? names.get(referral.acceptedByPersonId) ?? "Consolidador" : null,
+      }));
+    }),
+
+  createReferral: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      personId: z.number(),
+      reason: z.string().trim().min(3).max(255),
+      notes: z.string().trim().max(2000).optional(),
+      preferredConsolidatorId: z.number().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireJourneyStagePermission(ctx.user.id, input.churchId, input.personId);
+      if (!actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Vincule sua conta a uma Pessoa antes de encaminhar para consolidação." });
+      if (input.preferredConsolidatorId) {
+        const accounts = await getChurchUsersByChurch(input.churchId);
+        const selected = accounts.find((account) => account.active && account.personId === input.preferredConsolidatorId && (account.role === "consolidador" || account.complementaryRoles.includes("consolidador")));
+        if (!selected) throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa indicada não possui uma função ativa de Consolidador nesta igreja." });
+      }
+      return createConsolidationReferral({
+        churchId: input.churchId,
+        personId: input.personId,
+        referredByPersonId: actor.personId,
+        preferredConsolidatorId: input.preferredConsolidatorId,
+        reason: input.reason,
+        notes: input.notes || null,
+        status: "pendente",
+      });
+    }),
+
+  acceptReferral: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      const canConsolidate = roles.includes("consolidador") || canOverride;
+      if (!canConsolidate || !actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Consolidadores ou Pastores podem assumir este encaminhamento." });
+      const referral = await getConsolidationReferralById(input.id, input.churchId);
+      if (!referral || referral.status !== "pendente") throw new TRPCError({ code: "BAD_REQUEST", message: "Este encaminhamento não está disponível para aceite." });
+      if (referral.preferredConsolidatorId && referral.preferredConsolidatorId !== actor.personId && !canOverride) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Este encaminhamento foi indicado para outro Consolidador." });
+      }
+      await setCurrentCareAssignment({
+        churchId: input.churchId,
+        personId: referral.personId,
+        responsiblePersonId: actor.personId,
+        role: "consolidador",
+        notes: `Encaminhamento de resgate aceito: ${referral.reason}`,
+      });
+      return updateConsolidationReferral(input.id, input.churchId, {
+        status: "aceito",
+        acceptedByPersonId: actor.personId,
+        acceptedAt: new Date(),
+      });
+    }),
+
+  registerReferralContact: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const referral = await getConsolidationReferralById(input.id, input.churchId);
+      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Encaminhamento não encontrado." });
+      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      if (!canOverride && referral.acceptedByPersonId !== actor.personId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável pode registrar este contato." });
+      }
+      return updateConsolidationReferral(input.id, input.churchId, {
+        status: "em_acompanhamento",
+        firstContactAt: referral.firstContactAt ?? new Date(),
+      });
+    }),
+
+  closeReferral: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number(), closeNotes: z.string().trim().min(3).max(2000) }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const referral = await getConsolidationReferralById(input.id, input.churchId);
+      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Encaminhamento não encontrado." });
+      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      if (!canOverride && referral.acceptedByPersonId !== actor.personId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável pode encerrar este acompanhamento." });
+      }
+      return updateConsolidationReferral(input.id, input.churchId, {
+        status: "encerrado",
+        closedAt: new Date(),
+        closeNotes: input.closeNotes,
+      });
+    }),
+
   souls: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {

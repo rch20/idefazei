@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { Clock3, HeartHandshake, Plus, Search, ShieldCheck, User, Users } from "lucide-react";
+import { Clock3, HeartHandshake, Plus, Search, Send, ShieldCheck, User, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -79,6 +79,7 @@ export default function Pessoas() {
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "" });
   const [selectedCellId, setSelectedCellId] = useState("");
+  const [referralForm, setReferralForm] = useState({ reason: "", notes: "", preferredConsolidatorId: "" });
   const utils = trpc.useUtils();
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId, search: search || undefined });
@@ -100,6 +101,7 @@ export default function Pessoas() {
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id) }
   );
+  const consolidatorsQuery = trpc.consolidation.consolidators.useQuery({ churchId });
   const createPerson = trpc.people.create.useMutation({
     onSuccess: () => {
       toast.success("Pessoa cadastrada com sucesso!");
@@ -128,6 +130,14 @@ export default function Pessoas() {
       ]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível iniciar a consolidação."),
+  });
+  const createReferral = trpc.consolidation.createReferral.useMutation({
+    onSuccess: async () => {
+      toast.success("Encaminhamento enviado para a fila de Consolidação.");
+      setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "" });
+      await utils.consolidation.referrals.invalidate({ churchId });
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível enviar o encaminhamento."),
   });
   const assignCell = trpc.cells.assignPerson.useMutation({
     onSuccess: async (result) => {
@@ -192,6 +202,7 @@ export default function Pessoas() {
     setSelectedPerson(person);
     setCareForm({ responsiblePersonId: "", role: "consolidador", notes: "" });
     setSelectedCellId("");
+    setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "" });
   }
 
   function saveCareAssignment() {
@@ -227,6 +238,20 @@ export default function Pessoas() {
       return;
     }
     assignCell.mutate({ churchId, personId: selectedPerson.id, cellId: Number(selectedCellId) });
+  }
+
+  function handleCreateReferral() {
+    if (!selectedPerson || referralForm.reason.trim().length < 3) {
+      toast.error("Informe o motivo do encaminhamento para Consolidação.");
+      return;
+    }
+    createReferral.mutate({
+      churchId,
+      personId: selectedPerson.id,
+      reason: referralForm.reason.trim(),
+      notes: referralForm.notes.trim() || undefined,
+      preferredConsolidatorId: referralForm.preferredConsolidatorId ? Number(referralForm.preferredConsolidatorId) : undefined,
+    });
   }
 
   return (
@@ -557,6 +582,40 @@ export default function Pessoas() {
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
               {selectedAttention?.nextStep === "Iniciar consolidação" && <Button type="button" variant="outline" onClick={handleStartConsolidation} disabled={startConsolidation.isPending}>Iniciar consolidação</Button>}
               <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={saveCareAssignment} disabled={assignCare.isPending}>{assignCare.isPending ? "Salvando…" : "Atualizar responsável"}</Button>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-rose-200 bg-rose-50/45 p-4">
+            <div className="flex items-start gap-3">
+              <Send className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+              <div>
+                <h3 className="text-sm font-semibold text-navy">Enviar para Consolidação</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Use quando esta Pessoa precisa de resgate: faltas recorrentes, ausência de resposta ou outra necessidade de cuidado. O encaminhamento entra na fila da equipe de Consolidação.</p>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="referral-reason">Motivo *</Label>
+                <Input id="referral-reason" className="mt-1 bg-background" value={referralForm.reason} onChange={(event) => setReferralForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Ex.: faltou à célula e não responde" />
+              </div>
+              <div>
+                <Label htmlFor="referral-consolidator">Indicar Consolidador</Label>
+                <Select value={referralForm.preferredConsolidatorId} onValueChange={(value) => setReferralForm((current) => ({ ...current, preferredConsolidatorId: value }))}>
+                  <SelectTrigger id="referral-consolidator" className="mt-1 bg-background"><SelectValue placeholder="Disponibilizar para a equipe" /></SelectTrigger>
+                  <SelectContent>
+                    {(consolidatorsQuery.data ?? []).map((consolidator) => <SelectItem key={consolidator.personId} value={String(consolidator.personId)}>{consolidator.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="mt-3">
+              <Label htmlFor="referral-notes">Observação para o Consolidador</Label>
+              <Textarea id="referral-notes" className="mt-1 bg-background" rows={2} value={referralForm.notes} onChange={(event) => setReferralForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Contexto que ajuda no primeiro contato, sem expor informações desnecessárias." />
+            </div>
+            <div className="mt-4 flex justify-end">
+              <Button type="button" variant="outline" onClick={handleCreateReferral} disabled={createReferral.isPending} className="border-rose-200 text-rose-700 hover:bg-rose-100">
+                <Send className="mr-2 h-4 w-4" />{createReferral.isPending ? "Enviando…" : "Enviar para Consolidação"}
+              </Button>
             </div>
           </section>
 

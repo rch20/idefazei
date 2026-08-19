@@ -2,8 +2,9 @@ import { useChurch } from "@/components/ChurchLayout";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { CheckCircle2, Circle, Heart, Phone, MessageSquare, Home, BookOpen, Users, HandHeart, Church } from "lucide-react";
+import { CheckCircle2, Circle, Heart, Phone, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { toast } from "sonner";
 
@@ -25,12 +26,15 @@ export default function Consolidacao() {
   const utils = trpc.useUtils();
   const { data: consolidations, isLoading, refetch } = trpc.consolidation.list.useQuery({ churchId });
   const { data: souls } = trpc.consolidation.souls.useQuery({ churchId });
+  const referralsQuery = trpc.consolidation.referrals.useQuery({ churchId });
   const { data: cells = [] } = trpc.cells.list.useQuery({ churchId });
   const { data: effectiveRoles = [] } = trpc.churchAuth.effectiveRoles.useQuery(
     { churchId },
     { enabled: Boolean(churchId && user) }
   );
   const [selectedCellByConsolidation, setSelectedCellByConsolidation] = useState<Record<number, string>>({});
+  const [closingReferralId, setClosingReferralId] = useState<number | null>(null);
+  const [closeReferralNotes, setCloseReferralNotes] = useState("");
   const hasFullOverview = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
 
   const updateChecklist = trpc.consolidation.updateChecklist.useMutation({
@@ -41,6 +45,29 @@ export default function Consolidacao() {
     onSuccess: () => {
       refetch();
       toast.success("Pessoa integrada à Célula e cuidado transferido ao líder.");
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
+  });
+  const acceptReferral = trpc.consolidation.acceptReferral.useMutation({
+    onSuccess: () => {
+      toast.success("Encaminhamento assumido. A Pessoa agora está em sua carteira de cuidado.");
+      referralsQuery.refetch();
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
+  });
+  const registerReferralContact = trpc.consolidation.registerReferralContact.useMutation({
+    onSuccess: () => {
+      toast.success("Primeiro contato registrado no encaminhamento.");
+      referralsQuery.refetch();
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
+  });
+  const closeReferral = trpc.consolidation.closeReferral.useMutation({
+    onSuccess: () => {
+      toast.success("Encaminhamento encerrado com histórico preservado.");
+      setClosingReferralId(null);
+      setCloseReferralNotes("");
+      referralsQuery.refetch();
     },
     onError: (error: { message: string }) => toast.error(error.message),
   });
@@ -75,6 +102,60 @@ export default function Consolidacao() {
           onFetch={() => utils.reports.consolidation.fetch({ churchId })}
         />
       </div>
+
+      <section className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100">
+            <Send className="h-5 w-5 text-rose-600" />
+          </div>
+          <div>
+            <h2 className="font-display text-lg font-semibold text-navy">Encaminhamentos para Consolidação</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Pessoas enviadas pela liderança porque precisam de resgate e acompanhamento. Aceite um encaminhamento para iniciar o cuidado.</p>
+          </div>
+        </div>
+        {(referralsQuery.data ?? []).length === 0 ? (
+          <p className="mt-4 rounded-lg border border-dashed border-rose-200 bg-background/70 p-3 text-sm text-muted-foreground">Não há encaminhamentos de resgate na sua fila neste momento.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {(referralsQuery.data ?? []).map((referral) => {
+              const isPending = referral.status === "pendente";
+              const isAccepted = referral.status === "aceito";
+              const isInFollowUp = referral.status === "em_acompanhamento";
+              return (
+                <article key={referral.id} className="rounded-xl border border-rose-100 bg-background p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-navy">{referral.personName}</p>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${referral.status === "encerrado" ? "border-green-200 bg-green-50 text-green-700" : referral.status === "em_acompanhamento" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{referral.status === "pendente" ? "Aguardando aceite" : referral.status === "aceito" ? "Aceito" : referral.status === "em_acompanhamento" ? "Em acompanhamento" : "Encerrado"}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">Encaminhado por {referral.referredByName} em {new Date(referral.referredAt).toLocaleDateString("pt-BR")}{referral.preferredConsolidatorName ? ` · Indicado para ${referral.preferredConsolidatorName}` : ""}</p>
+                      <p className="mt-3 text-sm font-medium text-navy">Motivo: <span className="font-normal text-foreground">{referral.reason}</span></p>
+                      {referral.notes && <p className="mt-1 text-sm text-muted-foreground">{referral.notes}</p>}
+                    </div>
+                    <div className="flex shrink-0 flex-col gap-2 sm:w-44">
+                      {isPending && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
+                      {isAccepted && <Button size="sm" variant="outline" disabled={registerReferralContact.isPending} onClick={() => registerReferralContact.mutate({ churchId, id: referral.id })}><Phone className="mr-2 h-4 w-4" />Registrar contato</Button>}
+                      {isInFollowUp && <Button size="sm" variant="outline" onClick={() => setClosingReferralId(referral.id)}>Encerrar cuidado</Button>}
+                      {referral.acceptedByName && <p className="text-center text-[11px] text-muted-foreground">Responsável: {referral.acceptedByName}</p>}
+                    </div>
+                  </div>
+                  {closingReferralId === referral.id && (
+                    <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
+                      <label htmlFor={`close-referral-${referral.id}`} className="text-xs font-medium text-navy">Resultado do acompanhamento *</label>
+                      <Textarea id={`close-referral-${referral.id}`} className="mt-2 bg-background" rows={2} value={closeReferralNotes} onChange={(event) => setCloseReferralNotes(event.target.value)} placeholder="Ex.: contato retomado e Pessoa voltará à próxima Célula." />
+                      <div className="mt-2 flex justify-end gap-2">
+                        <Button size="sm" type="button" variant="ghost" onClick={() => { setClosingReferralId(null); setCloseReferralNotes(""); }}>Cancelar</Button>
+                        <Button size="sm" type="button" className="bg-green-600 text-white hover:bg-green-700" disabled={closeReferral.isPending || closeReferralNotes.trim().length < 3} onClick={() => closeReferral.mutate({ churchId, id: referral.id, closeNotes: closeReferralNotes.trim() })}>Confirmar encerramento</Button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {isLoading ? (
         <div className="space-y-4">
