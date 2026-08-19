@@ -5,12 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import {
   Users, Heart, Star, CheckCircle2, Clock, AlertCircle,
-  Phone, MapPin, TrendingUp, UserPlus, BookOpen
+  Phone, MapPin, TrendingUp, UserPlus, BookOpen, Send
 } from "lucide-react";
 
 const STAGE_COLORS: Record<string, string> = {
@@ -28,6 +30,7 @@ const STAGE_COLORS: Record<string, string> = {
 export default function AppLider() {
   const { churchId } = useChurch();
   const [activeTab, setActiveTab] = useState("celula");
+  const [referralByCell, setReferralByCell] = useState<Record<number, { personId: string; reason: string }>>({});
 
   const { data: overview, isLoading: loadingOverview, refetch: refetchOverview } = trpc.leader.overview.useQuery(
     { churchId: churchId! },
@@ -54,6 +57,13 @@ export default function AppLider() {
       toast.success("Consolidação atualizada!");
     },
     onError: (error: { message: string }) => toast.error(error.message),
+  });
+  const createReferral = trpc.consolidation.createReferral.useMutation({
+    onSuccess: () => {
+      toast.success("Discípulo encaminhado para a fila de Consolidação.");
+      setReferralByCell({});
+    },
+    onError: (error: { message: string }) => toast.error(error.message || "Não foi possível encaminhar o discípulo."),
   });
 
   return (
@@ -140,6 +150,33 @@ export default function AppLider() {
                         </div>
                       </div>
                     ))}
+                    <div className="rounded-xl border border-rose-200 bg-rose-50/45 p-3">
+                      <div className="flex items-start gap-2">
+                        <Send className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+                        <div>
+                          <p className="text-sm font-semibold text-[#1e3a5f]">Enviar discípulo para Consolidação</p>
+                          <p className="mt-0.5 text-xs text-[#1e3a5f]/55">Escolha um membro desta Célula e registre por que ele precisa de resgate.</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-2">
+                        <Select value={referralByCell[myCell.id]?.personId ?? ""} onValueChange={(personId) => setReferralByCell((current) => ({ ...current, [myCell.id]: { personId, reason: current[myCell.id]?.reason ?? "" } }))}>
+                          <SelectTrigger className="bg-background text-sm"><SelectValue placeholder="Selecione um discípulo" /></SelectTrigger>
+                          <SelectContent>
+                            {myCell.members.map((member: any) => <SelectItem key={member.person.id} value={String(member.person.id)}>{member.person.fullName}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Textarea rows={2} className="resize-none bg-background text-sm" value={referralByCell[myCell.id]?.reason ?? ""} onChange={(event) => setReferralByCell((current) => ({ ...current, [myCell.id]: { personId: current[myCell.id]?.personId ?? "", reason: event.target.value } }))} placeholder="Ex.: faltou às últimas reuniões e não responde às mensagens" />
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-rose-600 text-white hover:bg-rose-700"
+                          disabled={createReferral.isPending || !(referralByCell[myCell.id]?.personId) || (referralByCell[myCell.id]?.reason.trim().length ?? 0) < 3}
+                          onClick={() => createReferral.mutate({ churchId: churchId!, personId: Number(referralByCell[myCell.id].personId), reason: referralByCell[myCell.id].reason.trim() } as any)}
+                        >
+                          <Send className="mr-2 h-3.5 w-3.5" />{createReferral.isPending ? "Enviando…" : "Enviar para Consolidação"}
+                        </Button>
+                      </div>
+                    </div>
                     <Button asChild className="mt-2 w-full bg-[#1e3a5f] text-white hover:bg-[#162d4a]">
                       <Link href="/app/celulas"><CheckCircle2 className="mr-2 h-4 w-4" />Ver Célula e registrar presença</Link>
                     </Button>

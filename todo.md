@@ -484,3 +484,10 @@
 - [x] Mostrar ao Consolidador a Pessoa, quem encaminhou, o motivo, a data e a situação do aceite
 - [x] Registrar aceite, primeiro contato e encerramento sem apagar o histórico do encaminhamento
 - [x] Restringir cada ação por tenant, função e escopo pastoral; cobrir o fluxo com testes e validação real
+
+## FASE 41 – Encaminhamento Direto no Painel da Célula
+
+- [x] Permitir selecionar um discípulo da própria Célula no App do Líder
+- [x] Abrir formulário direto de encaminhamento com motivo obrigatório
+- [x] Reutilizar a fila protegida de Consolidação sem duplicar dados ou permissões
+- [x] Validar experiência mobile, escopo da Célula e regressões antes do checkpoint
