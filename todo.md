@@ -457,3 +457,21 @@
 - [x] Cobrir cálculos, auditoria, isolamento de tenant e permissões com testes
 - [x] Validar em desktop e mobile, revisar o backlog e salvar checkpoint
 - [x] Desabilitar visualmente novos lançamentos quando o período financeiro selecionado estiver fechado
+
+## FASE 38 – Revisão da Consolidação
+
+- [x] Mapear o fluxo atual de acompanhamento, integração em Célula e transferência de cuidado
+- [x] Verificar permissões, responsividade e estados de experiência da aba
+- [x] Identificar lacunas de operação e recomendar a evolução mais útil
+
+### Ajuste prioritário identificado
+
+- [x] Restringir a listagem de Consolidações ao escopo pastoral do usuário e ocultar o módulo para perfis sem responsabilidade de cuidado
+
+## FASE 39 – Fila Pessoal de Consolidação
+
+- [x] Garantir que a atribuição de Consolidador produza uma fila pessoal da Nova Alma atribuída
+- [x] Filtrar leitura e atualização de Consolidações por responsável atual, Pastores e escopo pastoral permitido
+- [x] Identificar visualmente o responsável e as pendências na aba Consolidação
+- [x] Cobrir atribuição, visibilidade e bloqueio de acesso indevido com testes e validação autenticada
+- [x] Restringir a consulta auxiliar de Novas Almas ao mesmo escopo da fila de Consolidação

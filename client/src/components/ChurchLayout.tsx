@@ -59,7 +59,7 @@ const navItems = [
   { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "principal" },
   { icon: TreePine, label: "Árvore de Discipulado", path: "/app/arvore", group: "principal" },
   { icon: Flame, label: "Ganhar Almas", path: "/app/almas", group: "discipulado" },
-  { icon: Heart, label: "Consolidação", path: "/app/consolidacao", group: "discipulado" },
+  { icon: Heart, label: "Consolidação", path: "/app/consolidacao", group: "discipulado", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"] },
   { icon: ChevronRight, label: "Funil de Discipulado", path: "/app/funil", group: "discipulado" },
   { icon: Users, label: "Pessoas", path: "/app/pessoas", group: "membros" },
   { icon: Home, label: "Famílias", path: "/app/familias", group: "membros" },
@@ -104,6 +104,11 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, logout } = useChurchAuth();
   const { churchName, logoUrl } = useChurch();
   const currentRole = user?.role ?? "membro";
+  const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery(
+    { churchId: user?.churchId ?? 0 },
+    { enabled: Boolean(user?.churchId) }
+  );
+  const effectiveRoles = Array.from(new Set([currentRole, ...(effectiveRolesQuery.data ?? [])]));
 
   return (
     <>
@@ -149,7 +154,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
           {groups.map((group) => {
-            const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.includes(currentRole)));
+            const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))));
             if (!items.length) return null;
             return (
               <div key={group.key}>

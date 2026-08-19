@@ -1,4 +1,5 @@
 import { useChurch } from "@/components/ChurchLayout";
+import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
@@ -20,11 +21,17 @@ type ChecklistKey = (typeof CHECKLIST_ITEMS)[number]["key"];
 
 export default function Consolidacao() {
   const { churchId } = useChurch();
+  const { user } = useChurchAuth();
   const utils = trpc.useUtils();
   const { data: consolidations, isLoading, refetch } = trpc.consolidation.list.useQuery({ churchId });
-  const { data: souls } = trpc.souls.list.useQuery({ churchId });
+  const { data: souls } = trpc.consolidation.souls.useQuery({ churchId });
   const { data: cells = [] } = trpc.cells.list.useQuery({ churchId });
+  const { data: effectiveRoles = [] } = trpc.churchAuth.effectiveRoles.useQuery(
+    { churchId },
+    { enabled: Boolean(churchId && user) }
+  );
   const [selectedCellByConsolidation, setSelectedCellByConsolidation] = useState<Record<number, string>>({});
+  const hasFullOverview = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
 
   const updateChecklist = trpc.consolidation.updateChecklist.useMutation({
     onSuccess: () => refetch(),
@@ -60,7 +67,7 @@ export default function Consolidacao() {
         <div>
           <h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Acompanhe o processo de consolidação das novas almas
+            {hasFullOverview ? "Acompanhe a consolidação das Novas Almas da igreja" : "Sua fila de Novas Almas sob responsabilidade de cuidado"}
           </p>
         </div>
         <ReportButton
@@ -82,7 +89,7 @@ export default function Consolidacao() {
           </div>
           <p className="font-semibold text-navy">Nenhuma consolidação em andamento</p>
           <p className="text-sm text-muted-foreground">
-            Atribua consolidadores às novas almas para começar
+            {hasFullOverview ? "Atribua consolidadores às Novas Almas para começar" : "Quando uma Nova Alma for atribuída a você, ela aparecerá nesta fila."}
           </p>
         </div>
       ) : (
@@ -108,6 +115,11 @@ export default function Consolidacao() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {!hasFullOverview && (
+                      <span className="text-xs px-2 py-0.5 rounded-full border font-medium bg-navy/5 text-navy border-navy/15">
+                        Sua responsabilidade
+                      </span>
+                    )}
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
                         isComplete

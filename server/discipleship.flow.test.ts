@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getPeopleByChurch, getPersonById, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getPeopleByChurch, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -755,6 +755,54 @@ describe("Fluxo completo de discipulado", () => {
         caller.consolidation.updateChecklist({ id: 1, churchId: CHURCH_ID, callMade: true })
       ).rejects.toThrow("Você só pode movimentar pessoas que estão sob sua responsabilidade pastoral.");
       expect(updateConsolidation).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Consolidação — fila pessoal", () => {
+    it("mostra ao Consolidador somente as Novas Almas atribuídas à sua responsabilidade", async () => {
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 2,
+        churchId: CHURCH_ID,
+        personId: 10,
+        role: "consolidador",
+        active: true,
+      });
+      (getJourneyManagedPersonIds as ReturnType<typeof vi.fn>).mockResolvedValueOnce([10]);
+      const consolidations = [
+        { id: 41, churchId: CHURCH_ID, soulId: 1, consolidatorId: 10, status: "em_consolidacao" },
+        { id: 42, churchId: CHURCH_ID, soulId: 2, consolidatorId: 99, status: "em_consolidacao" },
+      ];
+      (getConsolidationsByChurch as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(consolidations)
+        .mockResolvedValueOnce(consolidations);
+      const souls = [
+        { id: 1, churchId: CHURCH_ID, personId: 10 },
+        { id: 2, churchId: CHURCH_ID, personId: 99 },
+      ];
+      (getSoulsByChurch as ReturnType<typeof vi.fn>)
+        .mockResolvedValueOnce(souls)
+        .mockResolvedValueOnce(souls);
+
+      const caller = appRouter.createCaller(createMemberContext(-2));
+      const queue = await caller.consolidation.list({ churchId: CHURCH_ID });
+      const visibleSouls = await caller.consolidation.souls({ churchId: CHURCH_ID });
+
+      expect(queue.map((item) => item.id)).toEqual([41]);
+      expect(visibleSouls.map((soul) => soul.id)).toEqual([1]);
+    });
+
+    it("bloqueia a leitura da Consolidação por membro sem responsabilidade pastoral", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 3,
+        userId: 10,
+        churchId: CHURCH_ID,
+        role: "membro",
+        personId: 10,
+        active: true,
+      });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.consolidation.list({ churchId: CHURCH_ID })).rejects.toThrow("Consolidação é restrita");
     });
   });
 

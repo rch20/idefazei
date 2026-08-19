@@ -647,11 +647,68 @@ const soulsRouter = router({
 });
 
 const consolidationRouter = router({
+  souls: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const canViewAll = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      const hasPastoralResponsibility = roles.some((role) => PASTORAL_ACTION_ROLES.has(role));
+      if (!hasPastoralResponsibility) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Consolidação é restrita a responsáveis de cuidado autorizados." });
+      }
+
+      const souls = await getSoulsByChurch(input.churchId);
+      if (canViewAll) return souls;
+
+      const [consolidations, managedPersonIds] = await Promise.all([
+        getConsolidationsByChurch(input.churchId),
+        getJourneyManagedPersonIds({
+          churchId: input.churchId,
+          actorPersonId: actor.personId ?? null,
+          actorRoles: roles,
+        }),
+      ]);
+      const managedIdSet = new Set(managedPersonIds);
+      const accessibleSoulIds = new Set(
+        consolidations
+          .filter((consolidation) => {
+            const soul = souls.find((item) => item.id === consolidation.soulId);
+            return (soul?.personId !== null && soul?.personId !== undefined && managedIdSet.has(soul.personId)) || consolidation.consolidatorId === actor.personId;
+          })
+          .map((consolidation) => consolidation.soulId)
+      );
+      return souls.filter((soul) => accessibleSoulIds.has(soul.id));
+    }),
+
   list: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      return getConsolidationsByChurch(input.churchId);
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const canViewAll = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      const hasPastoralResponsibility = roles.some((role) => PASTORAL_ACTION_ROLES.has(role));
+      if (!hasPastoralResponsibility) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Consolidação é restrita a responsáveis de cuidado autorizados." });
+      }
+
+      const consolidations = await getConsolidationsByChurch(input.churchId);
+      if (canViewAll) return consolidations;
+
+      const managedPersonIds = new Set(
+        await getJourneyManagedPersonIds({
+          churchId: input.churchId,
+          actorPersonId: actor.personId ?? null,
+          actorRoles: roles,
+        })
+      );
+      const souls = await getSoulsByChurch(input.churchId);
+      const soulPersonIds = new Map(souls.map((soul) => [soul.id, soul.personId]));
+
+      return consolidations.filter((consolidation) => {
+        const personId = soulPersonIds.get(consolidation.soulId);
+        return (personId !== null && personId !== undefined && managedPersonIds.has(personId)) || consolidation.consolidatorId === actor.personId;
+      });
     }),
 
   create: protectedProcedure
@@ -1428,6 +1485,13 @@ const churchAuthRouter = router({
     .query(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
       return getChurchUsersByChurch(input.churchId);
+    }),
+
+  effectiveRoles: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      return getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
     }),
 
   linkPerson: protectedProcedure
