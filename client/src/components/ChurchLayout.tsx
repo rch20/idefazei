@@ -97,6 +97,19 @@ const groups = [
   { key: "admin", label: "Administração" },
 ];
 
+const roleLabels: Record<string, string> = {
+  pastor_presidente: "Pastor Presidente",
+  pastor_local: "Pastor Local",
+  supervisor: "Supervisor",
+  lider: "Líder de Célula",
+  consolidador: "Consolidador",
+  diacono: "Diácono",
+  secretario: "Secretário",
+  tesoureiro: "Tesoureiro",
+  levita: "Levita",
+  membro: "Discípulo",
+};
+
 // ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -200,6 +213,16 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
             >
               <LogOut className="w-4 h-4" />
             </button>
+          </div>
+          <div className="mt-2 rounded-lg bg-white/5 px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/35">Suas atuações</p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {effectiveRoles.map((role) => (
+                <span key={role} className="rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-medium text-gold">
+                  {roleLabels[role] ?? role}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </aside>

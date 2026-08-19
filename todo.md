@@ -514,3 +514,12 @@
 - [x] Exibir linha do tempo completa do caso ao Consolidador e à liderança autorizada
 - [x] Proteger registros por tenant, responsável assumido e escopo pastoral
 - [x] Validar o painel completo com testes e experiência responsiva antes do checkpoint
+
+## FASE 45 – Múltiplas Funções por Login
+
+- [x] Mapear acesso de Pastor, Líder, Diácono, Discípulo, Consolidador e Tesoureiro por função principal e complementar
+- [x] Garantir que uma mesma conta reúna as áreas correspondentes a todas as funções que exerce
+- [x] Preservar escopo de Célula, cuidado e finanças mesmo quando a conta acumular papéis
+- [x] Deixar explícitas as áreas de atuação disponíveis para o usuário no login
+- [x] Cobrir cenários de múltiplas funções com testes e validação autenticada
+- [x] Mostrar no menu as funções ativas da conta para deixar os painéis acumulados compreensíveis

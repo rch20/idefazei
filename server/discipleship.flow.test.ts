@@ -227,6 +227,14 @@ const CHURCH_ID = 100;
 describe("Fluxo completo de discipulado", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue({
+      id: 1,
+      userId: 10,
+      churchId: CHURCH_ID,
+      role: "pastor_presidente",
+      active: true,
+    });
+    (getComplementaryRolesByChurchUser as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
   });
 
   // ── Etapa 1: Cadastro de nova alma ──────────────────────────────────────────
@@ -728,6 +736,31 @@ describe("Fluxo completo de discipulado", () => {
 
       expect(result).toEqual({ userId: 2, roles: ["diacono", "levita"] });
       expect(setComplementaryRolesForChurchUser).toHaveBeenCalledWith(2, CHURCH_ID, ["diacono", "levita"]);
+    });
+
+    it("reúne as funções de Líder, Consolidador e Tesoureiro no mesmo login", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 2,
+        userId: 2,
+        churchId: CHURCH_ID,
+        personId: 10,
+        role: "lider",
+        active: true,
+      });
+      (getComplementaryRolesByChurchUser as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["consolidador", "tesoureiro"]);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      const roles = await caller.churchAuth.effectiveRoles({ churchId: CHURCH_ID });
+
+      expect(roles).toEqual(expect.arrayContaining(["lider", "consolidador", "tesoureiro"]));
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 1,
+        userId: 10,
+        churchId: CHURCH_ID,
+        role: "pastor_presidente",
+        active: true,
+      });
+      (getComplementaryRolesByChurchUser as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     });
   });
 
