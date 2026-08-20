@@ -105,6 +105,10 @@ export default function Pessoas() {
     { churchId, ministryId: Number(ministryFunctionForm.ministryId) },
     { enabled: Boolean(ministryFunctionForm.ministryId && canManageMinistryFunctions) }
   );
+  const customFunctionsQuery = trpc.ministries.customFunctions.useQuery(
+    { churchId },
+    { enabled: canManageMinistryFunctions }
+  );
   const currentCell = trpc.cells.personMembership.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id) }
@@ -661,7 +665,7 @@ export default function Pessoas() {
                   <Label htmlFor="person-ministry-role">Função</Label>
                   <Select value={ministryFunctionForm.roleKey} onValueChange={(value) => setMinistryFunctionForm((current) => ({ ...current, roleKey: value }))} disabled={!ministryFunctionForm.ministryId}>
                     <SelectTrigger id="person-ministry-role" className="mt-1 bg-background"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>{(functionCatalogQuery.data ?? []).map((role) => <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>)}</SelectContent>
+                    <SelectContent>{[...(functionCatalogQuery.data ?? []), ...(customFunctionsQuery.data ?? []).filter((role) => !role.ministryId || role.ministryId === Number(ministryFunctionForm.ministryId)).map((role) => ({ key: role.key, label: role.name }))].map((role) => <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <Button type="button" className="self-end bg-navy text-white hover:bg-navy-light" onClick={saveMinistryFunction} disabled={assignMinistryFunction.isPending}>
