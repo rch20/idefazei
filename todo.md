@@ -538,3 +538,10 @@
 - [x] Documentar a estrutura de domínio principal e subdomínios de igrejas
 - [x] Preparar os apontamentos DNS necessários para `idefazei.com.br` e `*.idefazei.com.br`
 - [x] Validar os ativos e apresentar os passos de publicação que dependem do titular do domínio
+
+## FASE 48 – Reflexo de Visitas da Consolidação
+
+- [x] Mapear o registro atual de solicitação de visita no acompanhamento de Consolidação
+- [x] Exibir visitas solicitadas na Central de Cuidado para Pastores, Supervisores e responsáveis autorizados
+- [x] Permitir atualizar a situação da visita sem perder o histórico do caso
+- [x] Cobrir a visibilidade por tenant e escopo pastoral com testes e validação

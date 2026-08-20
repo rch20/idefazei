@@ -715,6 +715,16 @@ export async function getConsolidationFollowUpsByReferral(referralId: number, ch
     .orderBy(desc(consolidationFollowUps.createdAt));
 }
 
+export async function getConsolidationFollowUpsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(consolidationFollowUps)
+    .where(eq(consolidationFollowUps.churchId, churchId))
+    .orderBy(desc(consolidationFollowUps.createdAt));
+}
+
 export async function createConsolidationFollowUp(data: typeof consolidationFollowUps.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");

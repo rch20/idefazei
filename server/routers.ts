@@ -51,6 +51,7 @@ import {
   getConsolidationReferralById,
   getConsolidationReferralsByChurch,
   getConsolidationFollowUpsByReferral,
+  getConsolidationFollowUpsByChurch,
   getCareAttentionByChurch,
   getDashboardStats,
   getDiscipleshipFunnel,
@@ -1034,6 +1035,64 @@ const consolidationRouter = router({
 });
 
 const careRouter = router({
+  visits: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const actorRoles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const canManageAll = actorRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      const hasPastoralResponsibility = actorRoles.some((role) => PASTORAL_ACTION_ROLES.has(role));
+      if (!hasPastoralResponsibility) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "A fila de visitas é restrita à liderança de cuidado." });
+      }
+
+      const [followUps, referrals, people, managedPersonIds] = await Promise.all([
+        getConsolidationFollowUpsByChurch(input.churchId),
+        getConsolidationReferralsByChurch(input.churchId),
+        getPeopleByChurch(input.churchId),
+        canManageAll
+          ? Promise.resolve<number[]>([])
+          : getJourneyManagedPersonIds({
+              churchId: input.churchId,
+              actorPersonId: actor.personId ?? null,
+              actorRoles,
+            }),
+      ]);
+      const referralsById = new Map(referrals.map((referral) => [referral.id, referral]));
+      const peopleById = new Map(people.map((person) => [person.id, person]));
+      const managedIds = new Set(managedPersonIds);
+      const latestVisitByReferral = new Map<number, (typeof followUps)[number]>();
+
+      for (const followUp of followUps) {
+        if (followUp.visitStatus === "nao_necessaria" || latestVisitByReferral.has(followUp.referralId)) continue;
+        latestVisitByReferral.set(followUp.referralId, followUp);
+      }
+
+      return Array.from(latestVisitByReferral.values())
+        .map((followUp) => {
+          const referral = referralsById.get(followUp.referralId);
+          if (!referral || referral.status === "encerrado") return null;
+          const canSee = canManageAll || referral.acceptedByPersonId === actor.personId || referral.referredByPersonId === actor.personId || managedIds.has(referral.personId);
+          if (!canSee) return null;
+          const person = peopleById.get(referral.personId);
+          return {
+            referralId: referral.id,
+            personId: referral.personId,
+            personName: person?.fullName ?? "Pessoa vinculada",
+            contactNumber: canManageAll || referral.acceptedByPersonId === actor.personId ? (person?.whatsapp || person?.phone || null) : null,
+            reason: referral.reason,
+            visitStatus: followUp.visitStatus,
+            notes: followUp.notes,
+            requestedAt: followUp.createdAt,
+            nextAction: followUp.nextAction,
+            nextActionAt: followUp.nextActionAt,
+            consolidatorId: referral.acceptedByPersonId,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+        .sort((a, b) => Number(new Date(a.requestedAt)) - Number(new Date(b.requestedAt)));
+    }),
+
   myQueue: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {

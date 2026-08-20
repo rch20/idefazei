@@ -2,7 +2,7 @@ import { useChurch } from "@/components/ChurchLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, HeartHandshake, PhoneCall, Users } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, HeartHandshake, MapPinned, PhoneCall, Users } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
@@ -17,6 +17,7 @@ export default function CentralCuidado() {
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
   const queue = trpc.care.myQueue.useQuery({ churchId });
+  const visits = trpc.care.visits.useQuery({ churchId });
   const scope = trpc.people.journeyScope.useQuery({ churchId });
   const registerFirstContact = trpc.care.registerFirstContact.useMutation({
     onSuccess: async () => {
@@ -30,6 +31,7 @@ export default function CentralCuidado() {
   });
 
   const items = queue.data ?? [];
+  const visitItems = visits.data ?? [];
   const high = items.filter((item) => item.priority === "alta").length;
   const medium = items.filter((item) => item.priority === "media").length;
 
@@ -77,6 +79,53 @@ export default function CentralCuidado() {
           <p className="text-[11px] font-medium text-muted-foreground sm:text-xs">Na sua fila</p>
         </div>
       </section>
+
+      {visits.isError ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Não foi possível carregar as solicitações de visita agora.
+        </div>
+      ) : visitItems.length > 0 && (
+        <section className="card-sacred overflow-hidden">
+          <div className="flex flex-col gap-3 border-b border-amber-100 bg-amber-50/70 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+                <MapPinned className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="font-display text-lg font-bold text-navy">Visitas solicitadas</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">Pedidos de visita gerados no acompanhamento da Consolidação.</p>
+              </div>
+            </div>
+            <Badge variant="outline" className="w-fit border-amber-200 bg-white text-amber-800">{visitItems.length} {visitItems.length === 1 ? "visita" : "visitas"}</Badge>
+          </div>
+
+          <div className="divide-y divide-border/70">
+            {visitItems.map((visit) => {
+              const statusLabel = {
+                solicitada: "Visita solicitada",
+                agendada: "Visita agendada",
+                realizada: "Visita realizada",
+                cancelada: "Visita cancelada",
+                nao_necessaria: "Sem visita",
+              }[visit.visitStatus];
+              const isOpen = visit.visitStatus === "solicitada" || visit.visitStatus === "agendada";
+              return (
+                <article key={visit.referralId} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold text-navy">{visit.personName}</h3>
+                      <Badge variant="outline" className={isOpen ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-700"}>{statusLabel}</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">Motivo do encaminhamento: {visit.reason}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{visit.notes}{visit.nextAction ? ` · Próxima ação: ${visit.nextAction}` : ""}</p>
+                  </div>
+                  <Button variant="outline" className="w-full gap-2 sm:w-auto" onClick={() => navigate("/app/consolidacao")}>Acompanhar caso <ChevronRight className="h-4 w-4" /></Button>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {queue.isLoading ? (
         <div className="space-y-3">

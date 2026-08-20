@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getPeopleByChurch, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getPeopleByChurch, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -60,6 +60,7 @@ vi.mock("./db", () => ({
   createConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "pendente" }),
   updateConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "aceito" }),
   getConsolidationFollowUpsByReferral: vi.fn().mockResolvedValue([]),
+  getConsolidationFollowUpsByChurch: vi.fn().mockResolvedValue([]),
   createConsolidationFollowUp: vi.fn().mockResolvedValue({ id: 91, churchId: 100, referralId: 51 }),
   getCellsByChurch: vi.fn().mockResolvedValue([]),
   getCellMembersCount: vi.fn().mockResolvedValue([]),
@@ -1051,6 +1052,38 @@ describe("Fluxo completo de discipulado", () => {
       await expect(
         caller.care.assign({ churchId: CHURCH_ID, personId: 10, responsiblePersonId: 11, role: "consolidador" })
       ).rejects.toThrow("sob sua responsabilidade pastoral");
+    });
+
+    it("reflete uma visita solicitada na fila de cuidado com o histórico do encaminhamento", async () => {
+      (getConsolidationFollowUpsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        {
+          id: 91,
+          churchId: CHURCH_ID,
+          referralId: 51,
+          visitStatus: "solicitada",
+          notes: "A família pediu uma visita nesta semana.",
+          nextAction: "Confirmar horário com a família",
+          nextActionAt: new Date("2026-08-22T14:00:00.000Z"),
+          createdAt: new Date("2026-08-20T12:00:00.000Z"),
+        },
+      ]);
+      (getConsolidationReferralsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { id: 51, churchId: CHURCH_ID, personId: 1, referredByPersonId: 10, acceptedByPersonId: 10, reason: "Ausência recorrente na Célula", status: "em_acompanhamento" },
+      ]);
+      (getPeopleByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { id: 1, churchId: CHURCH_ID, fullName: "Discípulo Teste", phone: "11999990000", whatsapp: "11999990000" },
+      ]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const visits = await caller.care.visits({ churchId: CHURCH_ID });
+
+      expect(visits).toHaveLength(1);
+      expect(visits[0]).toEqual(expect.objectContaining({
+        referralId: 51,
+        personName: "Discípulo Teste",
+        visitStatus: "solicitada",
+        nextAction: "Confirmar horário com a família",
+      }));
     });
   });
 
