@@ -565,17 +565,17 @@
 
 ## FASE 51 – Próximas Lacunas Estruturais Priorizadas
 
-- [ ] Criar cadastro público de discípulos por link da igreja com aprovação controlada
-- [ ] Permitir que Pastores criem e administrem funções ministeriais personalizadas por pacote de permissões
-- [ ] Criar visão organizacional de Ministérios, funções e responsáveis da igreja
+- [x] Criar cadastro público de discípulos por link da igreja com aprovação controlada
+- [x] Permitir que Pastores criem e administrem funções ministeriais personalizadas por pacote de permissões
+- [x] Criar visão organizacional de Ministérios, funções e responsáveis da igreja
 
 ## FASE 52 – Estrutura Organizacional Configurável
 
 - [x] Auditar schema, rotas e telas atuais para definir uma migração incremental sem regressões
 - [x] Implementar `subdominio/cadastro` com criação pendente de Pessoa e conta de discípulo
 - [x] Implementar fila de aprovação, rejeição e ativação de novos discípulos por Pastor ou Secretário
-- [ ] Implementar funções ministeriais personalizadas vinculadas a pacotes seguros de permissões
-- [ ] Permitir definir líderes e responsáveis de Ministérios com escopo ministerial real
-- [ ] Criar visão organizacional de Ministérios, funções, responsáveis e participantes
-- [ ] Validar no servidor todos os pacotes de permissões, escopos e transições de aprovação
-- [ ] Produzir relatório de cada etapa, testes, validação e checkpoint final
+- [x] Implementar funções ministeriais personalizadas vinculadas a pacotes seguros de permissões
+- [x] Permitir definir líderes e responsáveis de Ministérios com escopo ministerial real
+- [x] Criar visão organizacional de Ministérios, funções, responsáveis e participantes
+- [x] Validar no servidor todos os pacotes de permissões, escopos e transições de aprovação
+- [x] Produzir relatório de cada etapa, testes, validação e checkpoint final
