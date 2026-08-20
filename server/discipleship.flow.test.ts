@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -124,6 +124,7 @@ vi.mock("./db", () => ({
   getFinancialReconciliation: vi.fn().mockResolvedValue(null),
   getFinancialReconciliationById: vi.fn().mockResolvedValue({ id: 4, churchId: 100, accountId: 91 }),
   getFinancialReconciliationAttachments: vi.fn().mockResolvedValue([{ id: 9, churchId: 100, reconciliationId: 4, fileName: "extrato-agosto.pdf", url: "/manus-storage/churches/100/proof.pdf" }]),
+  removeFinancialReconciliationAttachment: vi.fn().mockResolvedValue(true),
   getBookBalanceAt: vi.fn().mockResolvedValue(125000),
   saveFinancialReconciliation: vi.fn().mockResolvedValue({ id: 4, churchId: 100, status: "com_divergencia", differenceCents: -5000 }),
   getFinancialTransactionById: vi.fn().mockResolvedValue({ id: 71, churchId: 100, status: "confirmado", transactionDate: new Date("2026-08-01T12:00:00.000Z") }),
@@ -1277,6 +1278,12 @@ describe("Fluxo completo de discipulado", () => {
       expect(attachments).toHaveLength(1);
       expect(getFinancialReconciliationById).toHaveBeenCalledWith(4, CHURCH_ID);
       expect(getFinancialReconciliationAttachments).toHaveBeenCalledWith(4, CHURCH_ID);
+    });
+
+    it("remove somente o vínculo do comprovante dentro da conciliação e igreja autenticadas", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.treasury.removeReconciliationAttachment({ churchId: CHURCH_ID, reconciliationId: 4, attachmentId: 9 })).resolves.toEqual({ success: true });
+      expect(removeFinancialReconciliationAttachment).toHaveBeenCalledWith({ id: 9, reconciliationId: 4, churchId: CHURCH_ID });
     });
   });
 

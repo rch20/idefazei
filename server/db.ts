@@ -2270,6 +2270,19 @@ export async function createFinancialReconciliationAttachment(data: {
   return rows[0];
 }
 
+/** Remove apenas o vínculo no banco; o arquivo deixa de ser referenciado pela aplicação. */
+export async function removeFinancialReconciliationAttachment(data: { id: number; reconciliationId: number; churchId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.delete(financialReconciliationAttachments)
+    .where(and(
+      eq(financialReconciliationAttachments.id, data.id),
+      eq(financialReconciliationAttachments.reconciliationId, data.reconciliationId),
+      eq(financialReconciliationAttachments.churchId, data.churchId),
+    ));
+  return Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) > 0;
+}
+
 export async function getBookBalanceAt(data: { churchId: number; accountId: number; endDate: string }) {
   const account = await getFinancialAccountById(data.accountId, data.churchId);
   if (!account) return null;

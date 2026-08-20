@@ -603,3 +603,10 @@
 - [x] Implementar armazenamento seguro e vínculo multi-tenant dos comprovantes
 - [x] Adicionar envio, consulta e abertura de comprovantes na tela de conciliação mensal
 - [x] Validar permissões, formatos, tamanho, isolamento, mobile e regressões antes do checkpoint
+
+## FASE 56 – Correção de Comprovantes Bancários
+
+- [x] Mapear o vínculo atual dos comprovantes e definir remoção ou substituição segura
+- [x] Implementar remoção protegida dos metadados de comprovantes no mesmo tenant
+- [x] Adicionar ações de substituir e remover comprovantes na tela de conciliação mensal
+- [x] Validar permissões, isolamento, mobile e regressões antes do checkpoint

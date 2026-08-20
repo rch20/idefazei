@@ -81,6 +81,7 @@ import {
   updateFinancialDraft,
   confirmFinancialTransaction,
   reverseFinancialTransaction,
+  removeFinancialReconciliationAttachment,
   saveFinancialReconciliation,
   closeFinancialPeriod,
   reopenFinancialPeriod,
@@ -3009,6 +3010,17 @@ const treasuryRouter = router({
       const reconciliation = await getFinancialReconciliationById(input.reconciliationId, input.churchId);
       if (!reconciliation) throw new TRPCError({ code: "NOT_FOUND", message: "Conciliação bancária não encontrada." });
       return getFinancialReconciliationAttachments(input.reconciliationId, input.churchId);
+    }),
+
+  removeReconciliationAttachment: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), reconciliationId: z.number().int().positive(), attachmentId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const reconciliation = await getFinancialReconciliationById(input.reconciliationId, input.churchId);
+      if (!reconciliation) throw new TRPCError({ code: "NOT_FOUND", message: "Conciliação bancária não encontrada." });
+      const removed = await removeFinancialReconciliationAttachment({ id: input.attachmentId, reconciliationId: input.reconciliationId, churchId: input.churchId });
+      if (!removed) throw new TRPCError({ code: "NOT_FOUND", message: "Comprovante não encontrado nesta conciliação." });
+      return { success: true };
     }),
 
   saveReconciliation: protectedProcedure
