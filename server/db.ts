@@ -40,6 +40,7 @@ import {
   libraryItems,
   ministries,
   ministryMembers,
+  ministryRoleAssignments,
   people,
   prayerRequests,
   scheduleItems,
@@ -1003,6 +1004,60 @@ export async function assignPersonToMinistry(data: { ministryId: number; personI
   if (!db) throw new Error("DB not available");
   const result = await db.insert(ministryMembers).values({ ...data, active: true });
   return result[0];
+}
+
+export async function getMinistryRoleAssignmentsByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ assignment: ministryRoleAssignments, ministry: ministries })
+    .from(ministryRoleAssignments)
+    .innerJoin(ministries, eq(ministries.id, ministryRoleAssignments.ministryId))
+    .where(and(
+      eq(ministryRoleAssignments.churchId, churchId),
+      eq(ministryRoleAssignments.personId, personId),
+      eq(ministryRoleAssignments.active, true),
+      eq(ministries.churchId, churchId),
+      eq(ministries.active, true)
+    ))
+    .orderBy(ministries.name, ministryRoleAssignments.roleKey);
+}
+
+export async function getActiveMinistryRoleKeysByPerson(personId: number, churchId: number) {
+  const assignments = await getMinistryRoleAssignmentsByPerson(personId, churchId);
+  return Array.from(new Set(assignments.map(({ assignment }) => assignment.roleKey)));
+}
+
+export async function assignMinistryRole(data: {
+  churchId: number;
+  ministryId: number;
+  personId: number;
+  roleKey: string;
+  assignedByChurchUserId?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const existing = await db
+    .select({ id: ministryRoleAssignments.id })
+    .from(ministryRoleAssignments)
+    .where(and(
+      eq(ministryRoleAssignments.churchId, data.churchId),
+      eq(ministryRoleAssignments.ministryId, data.ministryId),
+      eq(ministryRoleAssignments.personId, data.personId),
+      eq(ministryRoleAssignments.roleKey, data.roleKey),
+      eq(ministryRoleAssignments.active, true)
+    ))
+    .limit(1);
+  if (existing.length) return { id: existing[0].id, alreadyAssigned: true };
+  const result = await db.insert(ministryRoleAssignments).values({ ...data, active: true });
+  return { id: result[0].insertId, alreadyAssigned: false };
+}
+
+export async function deactivateMinistryRole(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(ministryRoleAssignments).set({ active: false, endedAt: new Date() })
+    .where(and(eq(ministryRoleAssignments.id, id), eq(ministryRoleAssignments.churchId, churchId)));
 }
 
 // ─── ANNOUNCEMENTS (MURAL) ────────────────────────────────────────────────────

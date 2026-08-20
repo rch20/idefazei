@@ -406,6 +406,24 @@ export const ministryMembers = mysqlTable("ministry_members", {
   active: boolean("active").default(true).notNull(),
 });
 
+/**
+ * Função que uma Pessoa exerce em um Ministério. A chave é extensível e suas
+ * permissões são resolvidas pelo catálogo central de funções do servidor.
+ */
+export const ministryRoleAssignments = mysqlTable("ministry_role_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  ministryId: int("ministryId").notNull(),
+  personId: int("personId").notNull(),
+  roleKey: varchar("roleKey", { length: 100 }).notNull(),
+  active: boolean("active").default(true).notNull(),
+  assignedByChurchUserId: int("assignedByChurchUserId"),
+  assignedAt: timestamp("assignedAt").defaultNow().notNull(),
+  endedAt: timestamp("endedAt"),
+});
+
+export type MinistryRoleAssignment = typeof ministryRoleAssignments.$inferSelect;
+
 // ─── ESCALAS ──────────────────────────────────────────────────────────────────
 
 export const scheduleItems = mysqlTable("schedule_items", {
@@ -654,6 +672,8 @@ export const consolidationFollowUps = mysqlTable("consolidation_follow_ups", {
   nextAction: varchar("nextAction", { length: 255 }),
   nextActionAt: timestamp("nextActionAt"),
   visitStatus: mysqlEnum("visitStatus", ["nao_necessaria", "solicitada", "agendada", "realizada", "cancelada"]).default("nao_necessaria").notNull(),
+  visitAssigneePersonId: int("visitAssigneePersonId"),
+  visitScheduledAt: timestamp("visitScheduledAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

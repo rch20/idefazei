@@ -1,7 +1,8 @@
 import { useChurch } from "@/components/ChurchLayout";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -37,25 +38,39 @@ const initialFollowUpForm = {
   nextAction: "",
   nextActionAt: "",
   visitStatus: "nao_necessaria" as const,
+  visitAssigneePersonId: "",
+  visitScheduledAt: "",
 };
 
 export default function Consolidacao() {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
   const utils = trpc.useUtils();
-  const { data: consolidations, isLoading, refetch } = trpc.consolidation.list.useQuery({ churchId });
-  const { data: souls } = trpc.consolidation.souls.useQuery({ churchId });
-  const referralsQuery = trpc.consolidation.referrals.useQuery({ churchId });
-  const { data: cells = [] } = trpc.cells.list.useQuery({ churchId });
-  const { data: effectiveRoles = [] } = trpc.churchAuth.effectiveRoles.useQuery(
+  const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery(
     { churchId },
     { enabled: Boolean(churchId && user) }
   );
+  const effectiveRoles = effectiveRolesQuery.data ?? [];
+  const rolesReady = effectiveRolesQuery.isFetched;
+  const isVisitOnly = rolesReady && effectiveRoles.includes("visitador") && !effectiveRoles.some((role) => ["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"].includes(role));
+  const canAccessVisits = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local", "supervisor", "consolidador", "visitador", "supervisor_consolidacao"].includes(role));
+  const { data: consolidations, isLoading, refetch } = trpc.consolidation.list.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
+  const { data: souls } = trpc.consolidation.souls.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
+  const referralsQuery = trpc.consolidation.referrals.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
+  const visitorsQuery = trpc.consolidation.visitors.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
+  const visitsQuery = trpc.consolidation.visits.useQuery({ churchId }, { enabled: rolesReady && canAccessVisits });
+  const { data: cells = [] } = trpc.cells.list.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
   const [selectedCellByConsolidation, setSelectedCellByConsolidation] = useState<Record<number, string>>({});
   const [closingReferralId, setClosingReferralId] = useState<number | null>(null);
   const [closeReferralNotes, setCloseReferralNotes] = useState("");
   const [trackingReferralId, setTrackingReferralId] = useState<number | null>(null);
   const [followUpForm, setFollowUpForm] = useState(initialFollowUpForm);
+  const [activeSection, setActiveSection] = useState<"consolidacao" | "visitas">("consolidacao");
+  const [visitNotesById, setVisitNotesById] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    if (isVisitOnly) setActiveSection("visitas");
+  }, [isVisitOnly]);
   const followUpsQuery = trpc.consolidation.followUps.useQuery(
     { churchId, referralId: trackingReferralId ?? 0 },
     { enabled: Boolean(trackingReferralId) }
@@ -97,6 +112,14 @@ export default function Consolidacao() {
     },
     onError: (error: { message: string }) => toast.error(error.message),
   });
+  const completeVisit = trpc.consolidation.completeVisit.useMutation({
+    onSuccess: async () => {
+      toast.success("Visita registrada no histórico do caso.");
+      setVisitNotesById({});
+      await Promise.all([visitsQuery.refetch(), referralsQuery.refetch()]);
+    },
+    onError: (error: { message: string }) => toast.error(error.message || "Não foi possível registrar a visita."),
+  });
 
   const soulsMap = new Map((souls ?? []).map((s) => [s.id, s]));
 
@@ -133,7 +156,31 @@ export default function Consolidacao() {
       nextAction: followUpForm.nextAction.trim() || undefined,
       nextActionAt: followUpForm.nextActionAt ? new Date(followUpForm.nextActionAt).toISOString() : undefined,
       visitStatus: followUpForm.visitStatus,
+      visitAssigneePersonId: followUpForm.visitAssigneePersonId ? Number(followUpForm.visitAssigneePersonId) : undefined,
+      visitScheduledAt: followUpForm.visitScheduledAt ? new Date(followUpForm.visitScheduledAt).toISOString() : undefined,
     });
+  }
+
+  if (activeSection === "visitas" && canAccessVisits) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div><h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1><p className="mt-1 text-sm text-muted-foreground">Visitas atribuídas à sua função ministerial.</p></div>
+          <div className="inline-flex rounded-lg border border-border bg-background p-1"><Button size="sm" variant="ghost" onClick={() => setActiveSection("consolidacao")}>Consolidação</Button><Button size="sm" className="bg-navy text-white hover:bg-navy-light">Visitas</Button></div>
+        </div>
+        {visitsQuery.isLoading ? <div className="h-44 animate-pulse rounded-xl bg-muted" /> : (visitsQuery.data ?? []).length === 0 ? (
+          <div className="card-sacred p-12 text-center"><MapPinned className="mx-auto h-8 w-8 text-amber-600" /><p className="mt-3 font-semibold text-navy">Nenhuma visita pendente</p><p className="mt-1 text-sm text-muted-foreground">Quando uma visita for atribuída a você, ela aparecerá aqui.</p></div>
+        ) : <div className="space-y-4">{(visitsQuery.data ?? []).map((visit) => (
+          <article key={visit.id} className="card-sacred p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-navy">{visit.personName}</p><p className="mt-1 text-xs text-muted-foreground">Solicitado por {visit.requestedByName} · {visit.status === "agendada" ? "Agendada" : "Solicitada"}</p></div><Badge variant="outline" className="w-fit border-amber-200 bg-amber-50 text-amber-800">{visit.scheduledAt ? new Date(visit.scheduledAt).toLocaleString("pt-BR") : "Aguardando agendamento"}</Badge></div>
+            <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50/50 p-3 text-sm"><p><strong>Motivo:</strong> {visit.reason}</p>{visit.notes && <p className="mt-1 text-muted-foreground">{visit.notes}</p>}</div>
+            {visit.contactNumber && <a href={getWhatsAppLink(visit.contactNumber, visit.personName)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center text-sm font-medium text-green-700 hover:underline"><MessageCircle className="mr-2 h-4 w-4" />Conversar no WhatsApp</a>}
+            {visit.address && <p className="mt-2 flex items-start gap-2 text-sm text-muted-foreground"><MapPinned className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />{visit.address}</p>}
+            <div className="mt-4 border-t border-border pt-3"><Label htmlFor={`visit-notes-${visit.id}`}>Registro da visita *</Label><Textarea id={`visit-notes-${visit.id}`} rows={3} className="mt-1" value={visitNotesById[visit.id] ?? ""} onChange={(event) => setVisitNotesById((current) => ({ ...current, [visit.id]: event.target.value }))} placeholder="Como foi a visita, necessidades identificadas e próximos cuidados." /><div className="mt-2 flex justify-end"><Button type="button" className="bg-green-600 text-white hover:bg-green-700" disabled={completeVisit.isPending || (visitNotesById[visit.id]?.trim().length ?? 0) < 3} onClick={() => completeVisit.mutate({ churchId, referralId: visit.referralId, notes: visitNotesById[visit.id].trim() })}><CheckCircle2 className="mr-2 h-4 w-4" />Registrar visita realizada</Button></div></div>
+          </article>
+        ))}</div>}
+      </div>
+    );
   }
 
   return (
@@ -150,6 +197,8 @@ export default function Consolidacao() {
           onFetch={() => utils.reports.consolidation.fetch({ churchId })}
         />
       </div>
+
+      {canAccessVisits && <div className="inline-flex rounded-lg border border-border bg-background p-1"><Button size="sm" className="bg-navy text-white hover:bg-navy-light">Consolidação</Button><Button size="sm" variant="ghost" onClick={() => setActiveSection("visitas")}><MapPinned className="mr-2 h-4 w-4" />Visitas</Button></div>}
 
       <section className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4 sm:p-5">
         <div className="flex items-start gap-3">
@@ -241,6 +290,21 @@ export default function Consolidacao() {
                           <SelectTrigger className="mt-2 bg-background"><SelectValue /></SelectTrigger>
                           <SelectContent><SelectItem value="nao_necessaria">Não é necessária</SelectItem><SelectItem value="solicitada">Solicitar visita</SelectItem><SelectItem value="agendada">Visita agendada</SelectItem><SelectItem value="realizada">Visita realizada</SelectItem><SelectItem value="cancelada">Visita cancelada</SelectItem></SelectContent>
                         </Select>
+                        {(["solicitada", "agendada"] as string[]).includes(followUpForm.visitStatus) && (
+                          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <Label htmlFor={`visit-assignee-${referral.id}`}>Designar Visitador</Label>
+                              <Select value={followUpForm.visitAssigneePersonId} onValueChange={(value) => setFollowUpForm((current) => ({ ...current, visitAssigneePersonId: value }))}>
+                                <SelectTrigger id={`visit-assignee-${referral.id}`} className="mt-1 bg-background"><SelectValue placeholder="Selecione um Visitador" /></SelectTrigger>
+                                <SelectContent>{(visitorsQuery.data ?? []).map((visitor) => <SelectItem key={visitor.personId} value={String(visitor.personId)}>{visitor.name}</SelectItem>)}</SelectContent>
+                              </Select>
+                            </div>
+                            <div>
+                              <Label htmlFor={`visit-scheduled-${referral.id}`}>Data e horário</Label>
+                              <Input id={`visit-scheduled-${referral.id}`} className="mt-1 bg-background" type="datetime-local" value={followUpForm.visitScheduledAt} onChange={(event) => setFollowUpForm((current) => ({ ...current, visitScheduledAt: event.target.value }))} />
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="mt-3 flex justify-end"><Button type="button" className="bg-navy text-white hover:bg-navy-light" disabled={recordFollowUp.isPending || followUpForm.notes.trim().length < 3} onClick={() => submitFollowUp(referral.id)}>{recordFollowUp.isPending ? "Salvando…" : "Salvar acompanhamento"}</Button></div>
 
@@ -250,7 +314,7 @@ export default function Consolidacao() {
                           <div key={followUp.id} className="rounded-lg border border-border bg-background p-3">
                             <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium text-navy">{followUp.outcome.replace(/_/g, " ")} · {followUp.contactChannel}</p><span className="text-[11px] text-muted-foreground">{new Date(followUp.createdAt).toLocaleString("pt-BR")}</span></div>
                             <p className="mt-2 text-sm text-foreground">{followUp.notes}</p>
-                            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>Por {followUp.recordedByName}</span>{followUp.nextAction && <span>Próxima ação: {followUp.nextAction}{followUp.nextActionAt ? ` · ${new Date(followUp.nextActionAt).toLocaleString("pt-BR")}` : ""}</span>}{followUp.visitStatus !== "nao_necessaria" && <span className="font-medium text-amber-800">Visita: {followUp.visitStatus.replace(/_/g, " ")}</span>}</div>
+                            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>Por {followUp.recordedByName}</span>{followUp.nextAction && <span>Próxima ação: {followUp.nextAction}{followUp.nextActionAt ? ` · ${new Date(followUp.nextActionAt).toLocaleString("pt-BR")}` : ""}</span>}{followUp.visitStatus !== "nao_necessaria" && <span className="font-medium text-amber-800">Visita: {followUp.visitStatus.replace(/_/g, " ")}{followUp.visitAssigneeName ? ` · ${followUp.visitAssigneeName}` : ""}{followUp.visitScheduledAt ? ` · ${new Date(followUp.visitScheduledAt).toLocaleString("pt-BR")}` : ""}</span>}</div>
                           </div>
                         ))}</div>}
                       </div>

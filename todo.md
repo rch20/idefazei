@@ -545,3 +545,13 @@
 - [x] Exibir visitas solicitadas na Central de Cuidado para Pastores, Supervisores e responsáveis autorizados
 - [x] Permitir atualizar a situação da visita sem perder o histórico do caso
 - [x] Cobrir a visibilidade por tenant e escopo pastoral com testes e validação
+
+## FASE 49 – Pessoa, Ministério, Função e Permissões
+
+- [x] Mapear os perfis atuais, funções complementares e participantes de Ministérios para preservar compatibilidade
+- [x] Criar um catálogo extensível de funções ministeriais e permissões derivadas por tenant
+- [x] Permitir atribuir funções ministeriais a uma Pessoa dentro de cada Ministério na sua ficha
+- [x] Somar automaticamente as permissões das funções ministeriais e dos perfis pastorais existentes
+- [x] Criar aba Visitas em Consolidação com atribuição de Visitador, agenda e atualização de situação
+- [x] Limitar Visitas e dados pessoais ao escopo ministerial, pastoral e tenant adequados
+- [x] Cobrir permissões cumulativas, atribuição de visita e bloqueios de acesso com testes e validação

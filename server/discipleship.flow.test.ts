@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getPeopleByChurch, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -105,6 +105,10 @@ vi.mock("./db", () => ({
   linkChurchUserToPerson: vi.fn().mockResolvedValue({ id: 1, personId: 10 }),
   updateChurchUserAssignment: vi.fn().mockResolvedValue({ id: 2, personId: 10, role: "lider" }),
   getComplementaryRolesByChurchUser: vi.fn().mockResolvedValue([]),
+  getActiveMinistryRoleKeysByPerson: vi.fn().mockResolvedValue([]),
+  getMinistryRoleAssignmentsByPerson: vi.fn().mockResolvedValue([]),
+  assignMinistryRole: vi.fn().mockResolvedValue({ id: 1, alreadyAssigned: false }),
+  deactivateMinistryRole: vi.fn().mockResolvedValue(undefined),
   setComplementaryRolesForChurchUser: vi.fn().mockResolvedValue(["diacono", "levita"]),
   getEventsByChurch: vi.fn().mockResolvedValue([]),
   createEvent: vi.fn().mockResolvedValue({ id: 1 }),
@@ -125,6 +129,7 @@ vi.mock("./db", () => ({
   closeFinancialPeriod: vi.fn().mockResolvedValue({ id: 1, churchId: 100, status: "fechado" }),
   reopenFinancialPeriod: vi.fn().mockResolvedValue({ id: 1, churchId: 100, status: "reaberto" }),
   getMinistries: vi.fn().mockResolvedValue([]),
+  getMinistriesByChurch: vi.fn().mockResolvedValue([{ id: 7, churchId: 100, name: "Ministério de Consolidação", type: "outro", active: true }]),
   getMinistryMembers: vi.fn().mockResolvedValue([]),
   getMinistryMemberCounts: vi.fn().mockResolvedValue([]),
   isActiveMinistryMember: vi.fn().mockResolvedValue(true),
@@ -1223,6 +1228,27 @@ describe("Fluxo completo de discipulado", () => {
       const caller = appRouter.createCaller(createMemberContext());
       await caller.treasury.closePeriod({ churchId: CHURCH_ID, periodStart: "2026-08-01", periodEnd: "2026-08-31" });
       expect(closeFinancialPeriod).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, periodStart: "2026-08-01", periodEnd: "2026-08-31", actorChurchUserId: 1 }));
+    });
+  });
+
+  describe("Funções ministeriais e Visitas", () => {
+    it("atribui uma função de Visitador à Pessoa dentro do Ministério de Consolidação", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      await caller.ministries.assignFunction({ churchId: CHURCH_ID, personId: 10, ministryId: 7, roleKey: "visitador" });
+      expect(assignMinistryRole).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, personId: 10, ministryId: 7, roleKey: "visitador" }));
+      expect(getMinistriesByChurch).toHaveBeenCalledWith(CHURCH_ID);
+    });
+
+    it("permite ao Visitador ver somente a visita atribuída à sua função", async () => {
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "membro", active: true });
+      (getActiveMinistryRoleKeysByPerson as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["visitador"]);
+      (getConsolidationFollowUpsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 301, churchId: CHURCH_ID, referralId: 51, recordedByPersonId: 12, visitStatus: "agendada", visitAssigneePersonId: 10, visitScheduledAt: new Date("2026-08-25T19:00:00Z"), notes: "Visita de acolhimento", createdAt: new Date("2026-08-20T12:00:00Z") }]);
+      (getConsolidationReferralsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 51, churchId: CHURCH_ID, personId: 1, acceptedByPersonId: 12, reason: "Ausência recorrente" }]);
+      (getPeopleByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 1, churchId: CHURCH_ID, fullName: "Pessoa Visitada", phone: "11999999999", street: "Rua da Paz", number: "20", neighborhood: "Centro", city: "São Paulo", state: "SP" }, { id: 10, churchId: CHURCH_ID, fullName: "Visitador" }, { id: 12, churchId: CHURCH_ID, fullName: "Consolidador" }]);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+      const visits = await caller.consolidation.visits({ churchId: CHURCH_ID });
+      expect(visits).toHaveLength(1);
+      expect(visits[0]).toMatchObject({ personName: "Pessoa Visitada", assignedToName: "Visitador", status: "agendada" });
     });
   });
 });
