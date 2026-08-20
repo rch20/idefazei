@@ -555,3 +555,27 @@
 - [x] Criar aba Visitas em Consolidação com atribuição de Visitador, agenda e atualização de situação
 - [x] Limitar Visitas e dados pessoais ao escopo ministerial, pastoral e tenant adequados
 - [x] Cobrir permissões cumulativas, atribuição de visita e bloqueios de acesso com testes e validação
+
+## FASE 50 – Validação do Escopo Estrutural
+
+- [x] Comparar cadastro de igreja, subdomínio, pastor administrador e cadastro de membros com o modelo proposto
+- [x] Validar a cobertura de Ministérios, Funções, permissões automáticas e múltiplas responsabilidades
+- [x] Identificar lacunas em cadastro público de discípulos, funções personalizadas e áreas gerais do membro
+- [x] Documentar a matriz de cobertura e recomendar a próxima implementação estrutural
+
+## FASE 51 – Próximas Lacunas Estruturais Priorizadas
+
+- [ ] Criar cadastro público de discípulos por link da igreja com aprovação controlada
+- [ ] Permitir que Pastores criem e administrem funções ministeriais personalizadas por pacote de permissões
+- [ ] Criar visão organizacional de Ministérios, funções e responsáveis da igreja
+
+## FASE 52 – Estrutura Organizacional Configurável
+
+- [x] Auditar schema, rotas e telas atuais para definir uma migração incremental sem regressões
+- [x] Implementar `subdominio/cadastro` com criação pendente de Pessoa e conta de discípulo
+- [x] Implementar fila de aprovação, rejeição e ativação de novos discípulos por Pastor ou Secretário
+- [ ] Implementar funções ministeriais personalizadas vinculadas a pacotes seguros de permissões
+- [ ] Permitir definir líderes e responsáveis de Ministérios com escopo ministerial real
+- [ ] Criar visão organizacional de Ministérios, funções, responsáveis e participantes
+- [ ] Validar no servidor todos os pacotes de permissões, escopos e transições de aprovação
+- [ ] Produzir relatório de cada etapa, testes, validação e checkpoint final

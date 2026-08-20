@@ -39,6 +39,8 @@ import {
   getActiveChurchUserById,
   getChurchMembersByChurch,
   getChurchUsersByChurch,
+  getPendingChurchUsers,
+  resolveChurchUserRegistration,
   linkChurchUserToPerson,
   updateChurchUserAssignment,
   getComplementaryRolesByChurchUser,
@@ -1953,6 +1955,31 @@ const churchAuthRouter = router({
       return getChurchUsersByChurch(input.churchId);
     }),
 
+  pendingRegistrations: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      return getPendingChurchUsers(input.churchId);
+    }),
+
+  resolveRegistration: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      userId: z.number(),
+      approved: z.boolean(),
+      rejectionReason: z.string().min(3).max(500).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      if (!input.approved && !input.rejectionReason) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o motivo da rejeição." });
+      }
+      const actorId = ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id;
+      const user = await resolveChurchUserRegistration(input.userId, input.churchId, actorId, input.approved, input.rejectionReason);
+      if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Cadastro pendente não encontrado." });
+      return user;
+    }),
+
   effectiveRoles: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
@@ -2117,6 +2144,44 @@ const registerRouter = router({
       await createChurchRegistration(church.id);
 
       return { success: true, churchId: church.id, slug: input.slug };
+    }),
+  disciple: publicProcedure
+    .input(z.object({
+      churchSlug: z.string().min(3).max(100),
+      name: z.string().min(2).max(255),
+      email: z.string().email(),
+      password: z.string().min(8),
+      phone: z.string().max(20).optional(),
+      whatsapp: z.string().max(20).optional(),
+    }))
+    .mutation(async ({ input }) => {
+      const church = await getChurchBySlug(input.churchSlug);
+      if (!church?.active) throw new TRPCError({ code: "NOT_FOUND", message: "Igreja não encontrada ou indisponível." });
+      const existingIdentity = await findPossiblePeopleByIdentity(church.id, {
+        fullName: input.name,
+        phone: input.phone || input.whatsapp,
+      });
+      if (existingIdentity.length) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma Pessoa com estes dados nesta igreja. Solicite acesso à liderança." });
+      const person = await createPerson({
+        churchId: church.id,
+        fullName: input.name,
+        email: input.email.toLowerCase(),
+        phone: input.phone || null,
+        whatsapp: input.whatsapp || null,
+        active: true,
+      });
+      if (!person) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível criar a ficha do discípulo." });
+      const user = await createChurchUser({
+        churchId: church.id,
+        name: input.name,
+        email: input.email,
+        password: input.password,
+        role: "membro",
+        personId: person.id,
+        active: false,
+        registrationStatus: "pending",
+      });
+      return { success: true, userId: user.id, message: "Cadastro recebido. Aguarde a aprovação da liderança." };
     }),
 });
 // ─── INVITE ROUTER ───────────────────────────────────────────────────────────

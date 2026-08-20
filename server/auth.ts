@@ -88,6 +88,8 @@ export async function createChurchUser(data: {
   password: string;
   role: typeof churchUsers.$inferInsert["role"];
   personId?: number;
+  active?: boolean;
+  registrationStatus?: "approved" | "pending" | "rejected";
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -100,6 +102,8 @@ export async function createChurchUser(data: {
     passwordHash,
     role: data.role ?? "membro",
     personId: data.personId ?? null,
+    active: data.active ?? true,
+    registrationStatus: data.registrationStatus ?? "approved",
   });
 
   const rows = await db.select().from(churchUsers).where(eq(churchUsers.email, data.email.toLowerCase())).limit(1);

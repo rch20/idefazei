@@ -10,6 +10,7 @@ import ChurchLayout from "./components/ChurchLayout";
 import LandingPage from "./pages/LandingPage";
 import LoginIgreja from "./pages/LoginIgreja";
 import CadastroIgreja from "./pages/CadastroIgreja";
+import CadastroDiscipulo from "./pages/CadastroDiscipulo";
 import PortalVisitante from "./pages/PortalVisitante";
 import AdminPanel from "./pages/AdminPanel";
 import Planos from "./pages/Planos";
@@ -78,6 +79,7 @@ function Router() {
 
       {/* ── Login e Portal da Igreja ── */}
       <Route path="/login" component={LoginIgreja} />
+      <Route path="/cadastro" component={CadastroDiscipulo} />
       <Route path="/visitante" component={PortalVisitante} />
       <Route path="/cadastro-sucesso" component={CadastroSucesso} />
 

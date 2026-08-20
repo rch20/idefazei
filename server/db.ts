@@ -223,6 +223,49 @@ export async function updateChurchUserAssignment(
   return getActiveChurchUserById(userId);
 }
 
+export async function getPendingChurchUsers(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(churchUsers)
+    .where(and(eq(churchUsers.churchId, churchId), eq(churchUsers.registrationStatus, "pending")))
+    .orderBy(churchUsers.createdAt);
+}
+
+export async function resolveChurchUserRegistration(
+  userId: number,
+  churchId: number,
+  approverId: number,
+  approved: boolean,
+  rejectionReason?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(churchUsers)
+    .set({
+      registrationStatus: approved ? "approved" : "rejected",
+      active: approved,
+      approvedAt: approved ? new Date() : null,
+      approvedByChurchUserId: approverId,
+      rejectionReason: approved ? null : rejectionReason || "Cadastro não aprovado",
+    })
+    .where(
+      and(
+        eq(churchUsers.id, userId),
+        eq(churchUsers.churchId, churchId),
+        eq(churchUsers.registrationStatus, "pending")
+      )
+    );
+  const rows = await db
+    .select()
+    .from(churchUsers)
+    .where(and(eq(churchUsers.id, userId), eq(churchUsers.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 export async function getComplementaryRolesByChurchUser(churchUserId: number, churchId: number) {
   const db = await getDb();
   if (!db) return [];

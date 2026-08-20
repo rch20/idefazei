@@ -558,6 +558,10 @@ export const churchUsers = mysqlTable("church_users", {
   ]).default("membro").notNull(),
   personId: int("personId"), // vínculo com tabela people
   active: boolean("active").default(true).notNull(),
+  registrationStatus: mysqlEnum("registrationStatus", ["approved", "pending", "rejected"]).default("approved").notNull(),
+  approvedAt: timestamp("approvedAt"),
+  approvedByChurchUserId: int("approvedByChurchUserId"),
+  rejectionReason: text("rejectionReason"),
   lastLoginAt: timestamp("lastLoginAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
