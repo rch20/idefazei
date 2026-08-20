@@ -187,6 +187,7 @@ export default function Ministerios() {
                   {ministry.description && (
                     <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{ministry.description}</p>
                   )}
+                  <p className="text-xs text-muted-foreground mb-2">Responsável: <span className="font-medium text-navy">{ministry.leaderName ?? "Não definido"}</span></p>
                   <div className="flex items-center gap-2 mt-auto">
                     <Badge variant="outline" className="text-xs">
                       <Users className="w-3 h-3 mr-1" />
