@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { CalendarClock, CheckCircle2, Circle, ClipboardCheck, Heart, MapPinned, Phone, MessageCircle, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
+import { CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Circle, ClipboardCheck, Heart, MapPinned, Phone, MessageCircle, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { toast } from "sonner";
 
@@ -42,6 +42,18 @@ const initialFollowUpForm = {
   visitScheduledAt: "",
 };
 
+function getMonthDays(month: Date) {
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
+  const firstWeekday = firstDay.getDay();
+  const totalDays = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  return Array.from({ length: firstWeekday + totalDays }, (_, index) => index < firstWeekday ? null : new Date(month.getFullYear(), month.getMonth(), index - firstWeekday + 1));
+}
+
+function getLocalDayKey(value: Date | string) {
+  const date = new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 export default function Consolidacao() {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
@@ -67,6 +79,7 @@ export default function Consolidacao() {
   const [followUpForm, setFollowUpForm] = useState(initialFollowUpForm);
   const [activeSection, setActiveSection] = useState<"consolidacao" | "visitas">("consolidacao");
   const [visitNotesById, setVisitNotesById] = useState<Record<number, string>>({});
+  const [visitCalendarMonth, setVisitCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
   useEffect(() => {
     if (isVisitOnly) setActiveSection("visitas");
@@ -162,15 +175,39 @@ export default function Consolidacao() {
   }
 
   if (activeSection === "visitas" && canAccessVisits) {
+    const visits = visitsQuery.data ?? [];
+    const monthDays = getMonthDays(visitCalendarMonth);
+    const scheduledVisitsByDay = new Map<string, typeof visits>();
+    visits.filter((visit) => visit.scheduledAt).forEach((visit) => {
+      const key = getLocalDayKey(visit.scheduledAt!);
+      scheduledVisitsByDay.set(key, [...(scheduledVisitsByDay.get(key) ?? []), visit]);
+    });
+    const monthLabel = visitCalendarMonth.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
     return (
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div><h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1><p className="mt-1 text-sm text-muted-foreground">Visitas atribuídas à sua função ministerial.</p></div>
           <div className="inline-flex rounded-lg border border-border bg-background p-1"><Button size="sm" variant="ghost" onClick={() => setActiveSection("consolidacao")}>Consolidação</Button><Button size="sm" className="bg-navy text-white hover:bg-navy-light">Visitas</Button></div>
         </div>
-        {visitsQuery.isLoading ? <div className="h-44 animate-pulse rounded-xl bg-muted" /> : (visitsQuery.data ?? []).length === 0 ? (
+        {visitsQuery.isLoading ? <div className="h-44 animate-pulse rounded-xl bg-muted" /> : visits.length === 0 ? (
           <div className="card-sacred p-12 text-center"><MapPinned className="mx-auto h-8 w-8 text-amber-600" /><p className="mt-3 font-semibold text-navy">Nenhuma visita pendente</p><p className="mt-1 text-sm text-muted-foreground">Quando uma visita for atribuída a você, ela aparecerá aqui.</p></div>
-        ) : <div className="space-y-4">{(visitsQuery.data ?? []).map((visit) => (
+        ) : <>
+          <section className="card-sacred overflow-hidden">
+            <div className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-gold" /><div><h2 className="font-semibold text-navy">Calendário de visitas</h2><p className="text-xs text-muted-foreground">Apenas visitas com data e horário agendados.</p></div></div>
+              <div className="flex items-center gap-1 rounded-lg bg-muted/50 p-1"><Button type="button" size="icon" variant="ghost" aria-label="Mês anterior" onClick={() => setVisitCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}><ChevronLeft className="h-4 w-4" /></Button><span className="min-w-36 px-2 text-center text-sm font-medium capitalize text-navy">{monthLabel}</span><Button type="button" size="icon" variant="ghost" aria-label="Próximo mês" onClick={() => setVisitCalendarMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4" /></Button></div>
+            </div>
+            <div className="grid grid-cols-7 border-l border-t border-border/70 bg-background">
+              {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => <div key={day} className="border-b border-r border-border/70 bg-muted/40 px-1 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{day}</div>)}
+              {monthDays.map((day, index) => {
+                const key = day ? getLocalDayKey(day) : `blank-${index}`;
+                const dayVisits = day ? scheduledVisitsByDay.get(key) ?? [] : [];
+                const isToday = day && getLocalDayKey(day) === getLocalDayKey(new Date());
+                return <div key={key} className="min-h-18 border-b border-r border-border/70 p-1.5 sm:min-h-24">{day && <><span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium ${isToday ? "bg-navy text-white" : "text-navy"}`}>{day.getDate()}</span><div className="mt-1 space-y-1">{dayVisits.slice(0, 2).map((visit) => <span key={visit.id} title={`${visit.personName} · ${new Date(visit.scheduledAt!).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`} className="block truncate rounded bg-amber-100 px-1 py-0.5 text-[9px] font-medium text-amber-900 sm:text-[10px]">{visit.personName}</span>)}{dayVisits.length > 2 && <span className="block text-[9px] text-muted-foreground">+{dayVisits.length - 2} visita{dayVisits.length - 2 === 1 ? "" : "s"}</span>}</div></>}</div>;
+              })}
+            </div>
+          </section>
+          <div className="space-y-4">{visits.map((visit) => (
           <article key={visit.id} className="card-sacred p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-navy">{visit.personName}</p><p className="mt-1 text-xs text-muted-foreground">Solicitado por {visit.requestedByName} · {visit.status === "agendada" ? "Agendada" : "Solicitada"}</p></div><Badge variant="outline" className="w-fit border-amber-200 bg-amber-50 text-amber-800">{visit.scheduledAt ? new Date(visit.scheduledAt).toLocaleString("pt-BR") : "Aguardando agendamento"}</Badge></div>
             <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50/50 p-3 text-sm"><p><strong>Motivo:</strong> {visit.reason}</p>{visit.notes && <p className="mt-1 text-muted-foreground">{visit.notes}</p>}</div>
@@ -178,7 +215,8 @@ export default function Consolidacao() {
             {visit.address && <p className="mt-2 flex items-start gap-2 text-sm text-muted-foreground"><MapPinned className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />{visit.address}</p>}
             <div className="mt-4 border-t border-border pt-3"><Label htmlFor={`visit-notes-${visit.id}`}>Registro da visita *</Label><Textarea id={`visit-notes-${visit.id}`} rows={3} className="mt-1" value={visitNotesById[visit.id] ?? ""} onChange={(event) => setVisitNotesById((current) => ({ ...current, [visit.id]: event.target.value }))} placeholder="Como foi a visita, necessidades identificadas e próximos cuidados." /><div className="mt-2 flex justify-end"><Button type="button" className="bg-green-600 text-white hover:bg-green-700" disabled={completeVisit.isPending || (visitNotesById[visit.id]?.trim().length ?? 0) < 3} onClick={() => completeVisit.mutate({ churchId, referralId: visit.referralId, notes: visitNotesById[visit.id].trim() })}><CheckCircle2 className="mr-2 h-4 w-4" />Registrar visita realizada</Button></div></div>
           </article>
-        ))}</div>}
+        ))}</div>
+        </>}
       </div>
     );
   }

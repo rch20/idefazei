@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Building2, Palette, Users, Globe, Save, Upload } from "lucide-react";
+import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX } from "lucide-react";
 import { getChurchToken, useChurchAuth } from "@/hooks/useChurchAuth";
 
 const ROLES = [
@@ -86,7 +87,16 @@ export default function Configuracoes() {
     { churchId },
     { enabled: Boolean(churchId && canManageAccounts) }
   );
+  const pendingRegistrationsQuery = trpc.churchAuth.pendingRegistrations.useQuery(
+    { churchId },
+    { enabled: Boolean(churchId && canManageAccounts) }
+  );
   const { data: people = [] } = trpc.people.list.useQuery({ churchId }, { enabled: !!churchId });
+  const { data: ministries = [] } = trpc.ministries.list.useQuery({ churchId }, { enabled: Boolean(churchId && canManageRoles) });
+  const customFunctionsQuery = trpc.ministries.customFunctions.useQuery({ churchId }, { enabled: Boolean(churchId && canManageRoles) });
+  const [rejectionTarget, setRejectionTarget] = useState<{ id: number; name: string } | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [customFunctionForm, setCustomFunctionForm] = useState({ name: "", key: "", ministryId: "all", permissionPackage: "member" as const });
   const linkPersonMutation = trpc.churchAuth.linkPerson.useMutation({
     onSuccess: () => {
       refetchChurchUsers();
@@ -105,6 +115,23 @@ export default function Configuracoes() {
     onSuccess: () => {
       refetchChurchUsers();
       toast.success("Funções complementares atualizadas.");
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
+  });
+  const resolveRegistrationMutation = trpc.churchAuth.resolveRegistration.useMutation({
+    onSuccess: async (_result, variables) => {
+      await Promise.all([pendingRegistrationsQuery.refetch(), refetchChurchUsers()]);
+      setRejectionTarget(null);
+      setRejectionReason("");
+      toast.success(variables.approved ? "Cadastro aprovado e acesso liberado." : "Cadastro rejeitado e acesso bloqueado.");
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
+  });
+  const createCustomFunctionMutation = trpc.ministries.createCustomFunction.useMutation({
+    onSuccess: async () => {
+      await customFunctionsQuery.refetch();
+      setCustomFunctionForm({ name: "", key: "", ministryId: "all", permissionPackage: "member" });
+      toast.success("Função ministerial criada com o pacote de acesso selecionado.");
     },
     onError: (error: { message: string }) => toast.error(error.message),
   });
@@ -516,6 +543,60 @@ export default function Configuracoes() {
                 </div>
               )}
             </div>
+
+            {canManageAccounts && (
+              <div className="card-sacred mt-5 p-6">
+                <div className="flex flex-col gap-2 border-b border-border pb-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2 className="text-base font-semibold text-navy">Cadastros aguardando aprovação</h2>
+                    <p className="mt-1 text-sm text-muted-foreground">Novos discípulos só recebem acesso após a análise de um Pastor ou Secretário.</p>
+                  </div>
+                  <span className="w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">{pendingRegistrationsQuery.data?.length ?? 0} pendente{(pendingRegistrationsQuery.data?.length ?? 0) === 1 ? "" : "s"}</span>
+                </div>
+
+                {pendingRegistrationsQuery.isLoading ? (
+                  <div className="mt-4 h-20 animate-pulse rounded-xl bg-muted" />
+                ) : (pendingRegistrationsQuery.data ?? []).length === 0 ? (
+                  <p className="mt-4 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-sm text-muted-foreground">Não há novos cadastros aguardando análise.</p>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {(pendingRegistrationsQuery.data ?? []).map((registration) => (
+                      <article key={registration.id} className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-navy">{registration.name}</p>
+                          <p className="truncate text-xs text-muted-foreground">{registration.email}</p>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                          <Button size="sm" variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50" disabled={resolveRegistrationMutation.isPending} onClick={() => { setRejectionTarget({ id: registration.id, name: registration.name }); setRejectionReason(""); }}>
+                            <UserX className="mr-1.5 h-4 w-4" />Rejeitar
+                          </Button>
+                          <Button size="sm" className="bg-green-600 text-white hover:bg-green-700" disabled={resolveRegistrationMutation.isPending} onClick={() => resolveRegistrationMutation.mutate({ churchId, userId: registration.id, approved: true })}>
+                            <UserCheck className="mr-1.5 h-4 w-4" />Aprovar
+                          </Button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="card-sacred mt-5 p-6">
+              <h2 className="border-b border-border pb-2 text-base font-semibold text-navy">Funções ministeriais personalizadas</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Crie funções por Ministério e escolha um pacote seguro. A função libera somente os acessos previstos pelo pacote, sem permissões administrativas individuais.</p>
+              {!canManageRoles ? (
+                <p className="mt-4 rounded-lg bg-muted p-3 text-sm text-muted-foreground">Somente Pastores podem criar funções ministeriais personalizadas.</p>
+              ) : <>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div><Label htmlFor="custom-function-name">Nome da função *</Label><Input id="custom-function-name" className="mt-1" value={customFunctionForm.name} onChange={(event) => setCustomFunctionForm((current) => ({ ...current, name: event.target.value, key: current.key || event.target.value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") }))} placeholder="Ex.: Líder de Louvor" /></div>
+                  <div><Label htmlFor="custom-function-key">Código interno *</Label><Input id="custom-function-key" className="mt-1 font-mono" value={customFunctionForm.key} onChange={(event) => setCustomFunctionForm((current) => ({ ...current, key: event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "_") }))} placeholder="lider_louvor" /></div>
+                  <div><Label htmlFor="custom-function-ministry">Ministério</Label><select id="custom-function-ministry" className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={customFunctionForm.ministryId} onChange={(event) => setCustomFunctionForm((current) => ({ ...current, ministryId: event.target.value }))}><option value="all">Disponível em todos os Ministérios</option>{ministries.map((ministry) => <option key={ministry.id} value={ministry.id}>{ministry.name}</option>)}</select></div>
+                  <div><Label htmlFor="custom-function-package">Pacote de acesso</Label><select id="custom-function-package" className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" value={customFunctionForm.permissionPackage} onChange={(event) => setCustomFunctionForm((current) => ({ ...current, permissionPackage: event.target.value as typeof current.permissionPackage }))}><option value="member">Membro — acesso pessoal</option><option value="cell_leader">Liderança de Célula</option><option value="consolidator">Consolidação</option><option value="visitor">Visitação</option><option value="treasurer">Tesouraria</option><option value="ministry_leader">Liderança de Ministério</option><option value="communication_leader">Comunicação</option></select></div>
+                </div>
+                <div className="mt-3 flex justify-end"><Button type="button" className="bg-navy text-white hover:bg-navy-light" disabled={createCustomFunctionMutation.isPending || customFunctionForm.name.trim().length < 2 || customFunctionForm.key.trim().length < 2} onClick={() => createCustomFunctionMutation.mutate({ churchId, name: customFunctionForm.name.trim(), key: customFunctionForm.key.trim(), ministryId: customFunctionForm.ministryId === "all" ? undefined : Number(customFunctionForm.ministryId), permissionPackage: customFunctionForm.permissionPackage })}>{createCustomFunctionMutation.isPending ? "Criando…" : "Criar função"}</Button></div>
+                <div className="mt-5 border-t border-border pt-4"><p className="text-sm font-semibold text-navy">Funções já criadas</p>{customFunctionsQuery.isLoading ? <div className="mt-3 h-14 animate-pulse rounded-lg bg-muted" /> : (customFunctionsQuery.data ?? []).length === 0 ? <p className="mt-3 text-sm text-muted-foreground">Ainda não há funções personalizadas cadastradas.</p> : <div className="mt-3 grid gap-2 sm:grid-cols-2">{(customFunctionsQuery.data ?? []).map((definition) => <div key={definition.id} className="rounded-lg border border-border bg-muted/20 p-3"><p className="text-sm font-medium text-navy">{definition.name}</p><p className="mt-1 text-xs text-muted-foreground">{definition.key} · {definition.permissionPackage.replace(/_/g, " ")}</p></div>)}</div>}</div>
+              </>}
+            </div>
           </TabsContent>
 
           {/* Integração */}
@@ -541,6 +622,25 @@ export default function Configuracoes() {
             </div>
           </TabsContent>
         </Tabs>
+
+        <Dialog open={Boolean(rejectionTarget)} onOpenChange={(open) => { if (!open) { setRejectionTarget(null); setRejectionReason(""); } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Rejeitar cadastro</DialogTitle>
+              <DialogDescription>Informe o motivo para o cadastro de {rejectionTarget?.name ?? ""}. A conta permanecerá sem acesso à igreja.</DialogDescription>
+            </DialogHeader>
+            <div>
+              <Label htmlFor="registration-rejection-reason">Motivo *</Label>
+              <Textarea id="registration-rejection-reason" className="mt-1" rows={3} value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} placeholder="Ex.: dados insuficientes; solicite à pessoa que atualize o cadastro." />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => { setRejectionTarget(null); setRejectionReason(""); }}>Cancelar</Button>
+              <Button type="button" className="bg-rose-600 text-white hover:bg-rose-700" disabled={!rejectionTarget || rejectionReason.trim().length < 3 || resolveRegistrationMutation.isPending} onClick={() => rejectionTarget && resolveRegistrationMutation.mutate({ churchId, userId: rejectionTarget.id, approved: false, rejectionReason: rejectionReason.trim() })}>
+                Confirmar rejeição
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
   );
 }

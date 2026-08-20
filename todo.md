@@ -579,3 +579,11 @@
 - [x] Criar visão organizacional de Ministérios, funções, responsáveis e participantes
 - [x] Validar no servidor todos os pacotes de permissões, escopos e transições de aprovação
 - [x] Produzir relatório de cada etapa, testes, validação e checkpoint final
+
+## FASE 53 – Próximos Aperfeiçoamentos Operacionais
+
+- [x] Mapear os fluxos existentes de cadastro pendente, visitas e funções personalizadas para reutilizar dados e guards seguros
+- [x] Criar alerta operacional de novo cadastro pendente para Pastor e Secretário do mesmo tenant
+- [x] Criar calendário mensal de visitas na aba Visitas da Consolidação, com filtros e detalhes respeitando o escopo
+- [x] Permitir criar e consultar funções ministeriais personalizadas também em Configurações
+- [x] Cobrir novas permissões e fluxos com testes, validar desktop/mobile e salvar checkpoint

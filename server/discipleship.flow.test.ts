@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, resolveChurchUserRegistration, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -102,6 +102,8 @@ vi.mock("./db", () => ({
   canChurchUserManageJourney: vi.fn().mockResolvedValue(true),
   getJourneyManagedPersonIds: vi.fn().mockResolvedValue([]),
   getChurchUsersByChurch: vi.fn().mockResolvedValue([]),
+  getPendingChurchUsers: vi.fn().mockResolvedValue([]),
+  resolveChurchUserRegistration: vi.fn().mockResolvedValue({ id: 77, churchId: 100, active: true, registrationStatus: "approved" }),
   linkChurchUserToPerson: vi.fn().mockResolvedValue({ id: 1, personId: 10 }),
   updateChurchUserAssignment: vi.fn().mockResolvedValue({ id: 2, personId: 10, role: "lider" }),
   getComplementaryRolesByChurchUser: vi.fn().mockResolvedValue([]),
@@ -718,6 +720,19 @@ describe("Fluxo completo de discipulado", () => {
   });
 
   describe("Permissões — Atribuição de conta e função", () => {
+    it("lista e aprova cadastros pendentes somente pelo administrador da própria igreja", async () => {
+      const pendingUser = { id: 77, churchId: CHURCH_ID, name: "Novo Discípulo", email: "novo@igreja.com", active: false, registrationStatus: "pending" };
+      (getPendingChurchUsers as ReturnType<typeof vi.fn>).mockResolvedValueOnce([pendingUser]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const pending = await caller.churchAuth.pendingRegistrations({ churchId: CHURCH_ID });
+      const approved = await caller.churchAuth.resolveRegistration({ churchId: CHURCH_ID, userId: pendingUser.id, approved: true });
+
+      expect(pending).toEqual([pendingUser]);
+      expect(approved).toMatchObject({ id: pendingUser.id, active: true, registrationStatus: "approved" });
+      expect(resolveChurchUserRegistration).toHaveBeenCalledWith(pendingUser.id, CHURCH_ID, 10, true, undefined);
+    });
+
     it("permite que um Pastor vincule uma Pessoa e defina a função operacional", async () => {
       const caller = appRouter.createCaller(createMemberContext());
 

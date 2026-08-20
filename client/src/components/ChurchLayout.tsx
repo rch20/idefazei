@@ -123,6 +123,12 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     { enabled: Boolean(user?.churchId) }
   );
   const effectiveRoles = Array.from(new Set([currentRole, ...(effectiveRolesQuery.data ?? [])]));
+  const canReviewRegistrations = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local", "secretario"].includes(role));
+  const pendingRegistrationsQuery = trpc.churchAuth.pendingRegistrations.useQuery(
+    { churchId: user?.churchId ?? 0 },
+    { enabled: Boolean(user?.churchId && canReviewRegistrations) }
+  );
+  const pendingRegistrationCount = pendingRegistrationsQuery.data?.length ?? 0;
 
   return (
     <>
@@ -186,6 +192,11 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
                       >
                         <item.icon className="w-4 h-4 flex-shrink-0" />
                         <span>{item.label}</span>
+                        {item.path === "/app/configuracoes" && pendingRegistrationCount > 0 && (
+                          <span className="ml-auto min-w-5 rounded-full bg-gold px-1.5 py-0.5 text-center text-[10px] font-bold text-navy" aria-label={`${pendingRegistrationCount} cadastro${pendingRegistrationCount === 1 ? "" : "s"} aguardando aprovação`}>
+                            {pendingRegistrationCount > 9 ? "9+" : pendingRegistrationCount}
+                          </span>
+                        )}
                       </button>
                     );
                   })}
