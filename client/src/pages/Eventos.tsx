@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { CalendarDays, MapPin, Plus, QrCode, Users } from "lucide-react";
+import { BarChart3, CalendarDays, CheckCircle2, MapPin, Plus, Printer, QrCode, UserCheck, UserX, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
@@ -40,6 +40,8 @@ const defaultForm = {
   location: "",
   maxCapacity: "" as any,
 };
+
+const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
 
 export default function Eventos() {
   const { churchId } = useChurch();
@@ -202,7 +204,13 @@ function EventCard({ event }: { event: any }) {
   const typeLabel = EVENT_TYPES.find((t) => t.value === event.type)?.label ?? event.type;
   const colorClass = TYPE_COLORS[event.type] ?? TYPE_COLORS.outro;
   const [qrOpen, setQrOpen] = useState(false);
+  const [attendanceOpen, setAttendanceOpen] = useState(false);
   const [qrValue, setQrValue] = useState<string | null>(event.qrCode ?? null);
+
+  const attendanceReport = trpc.events.attendanceReport.useQuery(
+    { churchId, eventId: event.id },
+    { enabled: attendanceOpen }
+  );
 
   const generateQr = trpc.events.generateQrCode.useMutation({
     onSuccess: (data) => {
@@ -216,6 +224,18 @@ function EventCard({ event }: { event: any }) {
   const checkinUrl = qrValue
     ? `${window.location.origin}/checkin?event=${event.id}&token=${qrValue.split(":")[2]}`
     : null;
+
+  const printAttendanceReport = () => {
+    const report = attendanceReport.data;
+    if (!report) return;
+    const rows = report.registrations.map((registration) => `<tr><td>${escapeHtml(registration.personName)}</td><td>${registration.attendance === "presente" ? "Presente" : "Ausente"}</td><td>${registration.checkedInAt ? new Date(registration.checkedInAt).toLocaleString("pt-BR") : "—"}</td></tr>`).join("");
+    const printWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!printWindow) return;
+    printWindow.document.write(`<!doctype html><html><head><title>Presença — ${escapeHtml(report.event.name)}</title><style>body{font-family:Arial,sans-serif;color:#1e3a5f;padding:32px}h1{margin:0 0 4px}p{color:#556274}.metrics{display:flex;gap:12px;margin:24px 0}.metric{border:1px solid #ded4bd;border-radius:8px;padding:12px;min-width:120px}.metric strong{font-size:24px;display:block}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:10px;border-bottom:1px solid #e4e4e7;text-align:left}th{color:#7b6323;font-size:12px;text-transform:uppercase}</style></head><body><h1>${escapeHtml(report.event.name)}</h1><p>${new Date(report.event.startDate).toLocaleDateString("pt-BR")}${report.event.location ? ` · ${escapeHtml(report.event.location)}` : ""}</p><div class="metrics"><div class="metric"><span>Inscritos</span><strong>${report.summary.registeredCount}</strong></div><div class="metric"><span>Check-ins</span><strong>${report.summary.checkedInCount}</strong></div><div class="metric"><span>Ausentes</span><strong>${report.summary.absentCount}</strong></div></div><table><thead><tr><th>Participante</th><th>Situação</th><th>Check-in</th></tr></thead><tbody>${rows || "<tr><td colspan='3'>Sem inscrições registradas.</td></tr>"}</tbody></table></body></html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
 
   return (
     <>
@@ -264,6 +284,15 @@ function EventCard({ event }: { event: any }) {
           >
             <QrCode className="w-4 h-4" />
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 px-2 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5"
+            onClick={() => setAttendanceOpen(true)}
+            title="Relatório de presença"
+          >
+            <BarChart3 className="w-4 h-4" />
+          </Button>
         </div>
       </div>
 
@@ -301,6 +330,43 @@ function EventCard({ event }: { event: any }) {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={attendanceOpen} onOpenChange={setAttendanceOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-[#c9a84c]" />
+              Presença — {event.name}
+            </DialogTitle>
+          </DialogHeader>
+          {attendanceReport.isLoading ? (
+            <div className="grid grid-cols-3 gap-3 py-4">{[1, 2, 3].map((item) => <div key={item} className="h-20 animate-pulse rounded-xl bg-muted" />)}</div>
+          ) : attendanceReport.error ? (
+            <div className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">Você não tem permissão para consultar este relatório ou o evento não foi encontrado.</div>
+          ) : attendanceReport.data ? (
+            <div className="space-y-5">
+              <p className="text-sm text-muted-foreground">Acompanhe inscrições confirmadas pelo QR Code e participantes sem check-in. A lista não inclui inscrições canceladas.</p>
+              <div className="grid grid-cols-3 gap-3">
+                <AttendanceMetric icon={Users} label="Inscritos" value={attendanceReport.data.summary.registeredCount} tone="navy" />
+                <AttendanceMetric icon={UserCheck} label="Check-ins" value={attendanceReport.data.summary.checkedInCount} tone="green" />
+                <AttendanceMetric icon={UserX} label="Ausentes" value={attendanceReport.data.summary.absentCount} tone="amber" />
+              </div>
+              <div className="overflow-hidden rounded-xl border border-[#1e3a5f]/10">
+                <div className="grid grid-cols-[1fr_auto] gap-3 bg-[#f5f0e8] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#1e3a5f]/70"><span>Participante</span><span>Situação</span></div>
+                <div className="max-h-64 overflow-y-auto divide-y divide-[#1e3a5f]/10">
+                  {attendanceReport.data.registrations.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">Ainda não há inscrições para este evento.</p> : attendanceReport.data.registrations.map((registration) => <div key={registration.id} className="grid grid-cols-[1fr_auto] gap-3 px-4 py-3 text-sm"><div className="min-w-0"><p className="truncate font-medium text-[#1e3a5f]">{registration.personName}</p>{registration.checkedInAt && <p className="mt-0.5 text-xs text-muted-foreground">Check-in em {new Date(registration.checkedInAt).toLocaleString("pt-BR")}</p>}</div><span className={`self-center rounded-full px-2 py-1 text-xs font-medium ${registration.attendance === "presente" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}>{registration.attendance === "presente" ? "Presente" : "Ausente"}</span></div>)}
+                </div>
+              </div>
+              <Button variant="outline" className="w-full gap-2 border-[#1e3a5f]/20 text-[#1e3a5f]" onClick={printAttendanceReport}><Printer className="w-4 h-4" /> Imprimir relatório</Button>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </>
   );
+}
+
+function AttendanceMetric({ icon: Icon, label, value, tone }: { icon: typeof Users; label: string; value: number; tone: "navy" | "green" | "amber" }) {
+  const toneClass = tone === "green" ? "bg-emerald-50 text-emerald-700" : tone === "amber" ? "bg-amber-50 text-amber-700" : "bg-[#1e3a5f]/5 text-[#1e3a5f]";
+  return <div className="rounded-xl border border-[#1e3a5f]/10 bg-white p-3"><div className={`mb-2 flex h-7 w-7 items-center justify-center rounded-lg ${toneClass}`}><Icon className="h-4 w-4" /></div><p className="text-xl font-bold text-[#1e3a5f]">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>;
 }

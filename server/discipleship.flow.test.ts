@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getEventAttendanceReport, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -114,6 +114,11 @@ vi.mock("./db", () => ({
   deactivateMinistryRole: vi.fn().mockResolvedValue(undefined),
   setComplementaryRolesForChurchUser: vi.fn().mockResolvedValue(["diacono", "levita"]),
   getEventsByChurch: vi.fn().mockResolvedValue([]),
+  getEventAttendanceReport: vi.fn().mockResolvedValue({
+    event: { id: 31, churchId: 100, name: "Conferência de Fé", startDate: new Date("2026-08-15") },
+    summary: { registeredCount: 3, checkedInCount: 2, absentCount: 1, cancelledCount: 0 },
+    registrations: [],
+  }),
   createEvent: vi.fn().mockResolvedValue({ id: 1 }),
   getFinancialAccountsByChurch: vi.fn().mockResolvedValue([{ id: 91, churchId: 100, name: "Caixa", type: "caixa", openingBalanceCents: 0 }]),
   getFinancialAccountById: vi.fn().mockResolvedValue({ id: 91, churchId: 100, name: "Caixa", type: "caixa", openingBalanceCents: 0, active: true }),
@@ -1190,6 +1195,15 @@ describe("Fluxo completo de discipulado", () => {
       const caller = appRouter.createCaller(createMemberContext());
 
       await expect(caller.aconselhamento.getNotes({ churchId: CHURCH_ID, sessionId: 20 })).rejects.toThrow("sob sua responsabilidade");
+    });
+  });
+
+  describe("Eventos — relatório de presença", () => {
+    it("consulta inscritos, check-ins e ausentes somente dentro do tenant administrativo", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      const report = await caller.events.attendanceReport({ churchId: CHURCH_ID, eventId: 31 });
+      expect(report.summary).toEqual({ registeredCount: 3, checkedInCount: 2, absentCount: 1, cancelledCount: 0 });
+      expect(getEventAttendanceReport).toHaveBeenCalledWith({ churchId: CHURCH_ID, eventId: 31 });
     });
   });
 

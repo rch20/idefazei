@@ -61,6 +61,7 @@ import {
   getDashboardStats,
   getDiscipleshipFunnel,
   getDiscipleshipTree,
+  getEventAttendanceReport,
   getEventsByChurch,
   createFinancialAccount,
   createFinancialCategory,
@@ -232,7 +233,8 @@ function getMinistryFunctionCatalogFor(ministry: { type: string; name: string })
 
 async function requireChurchAdministrator(userId: number, churchId: number) {
   const member = await requireChurchMember(userId, churchId);
-  if (!CHURCH_ADMIN_ROLES.has(member.role)) {
+  const roles = await getEffectiveChurchRoles(userId, churchId, member);
+  if (!roles.some((role) => CHURCH_ADMIN_ROLES.has(role))) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Seu perfil não tem permissão para esta ação" });
   }
   return member;
@@ -1516,6 +1518,15 @@ const eventsRouter = router({
     .query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
       return getEventsByChurch(input.churchId);
+    }),
+
+  attendanceReport: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), eventId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const report = await getEventAttendanceReport(input);
+      if (!report) throw new TRPCError({ code: "NOT_FOUND", message: "Evento não encontrado nesta igreja." });
+      return report;
     }),
 
     create: protectedProcedure

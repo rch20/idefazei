@@ -1070,6 +1070,44 @@ export async function getEventsByChurch(churchId: number) {
     .orderBy(desc(events.startDate));
 }
 
+export async function getEventAttendanceReport(data: { churchId: number; eventId: number }) {
+  const db = await getDb();
+  if (!db) return null;
+  const eventRows = await db.select().from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  const event = eventRows[0];
+  if (!event) return null;
+
+  const rows = await db.select({
+    id: eventRegistrations.id,
+    personId: eventRegistrations.personId,
+    registeredAt: eventRegistrations.registeredAt,
+    checkedIn: eventRegistrations.checkedIn,
+    checkedInAt: eventRegistrations.checkedInAt,
+    status: eventRegistrations.status,
+    personName: people.fullName,
+  })
+    .from(eventRegistrations)
+    .innerJoin(people, and(eq(people.id, eventRegistrations.personId), eq(people.churchId, data.churchId)))
+    .where(eq(eventRegistrations.eventId, event.id))
+    .orderBy(desc(eventRegistrations.checkedInAt), desc(eventRegistrations.registeredAt));
+
+  const registrations = rows.filter((row) => row.status !== "cancelado");
+  const checkedIn = registrations.filter((row) => row.checkedIn || row.status === "participou");
+  const absent = registrations.filter((row) => !row.checkedIn && row.status !== "participou");
+  return {
+    event,
+    summary: {
+      registeredCount: registrations.length,
+      checkedInCount: checkedIn.length,
+      absentCount: absent.length,
+      cancelledCount: rows.length - registrations.length,
+    },
+    registrations: registrations.map((row) => ({ ...row, attendance: row.checkedIn || row.status === "participou" ? "presente" as const : "ausente" as const })),
+  };
+}
+
 export async function createEvent(data: typeof events.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");

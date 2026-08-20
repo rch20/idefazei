@@ -610,3 +610,17 @@
 - [x] Implementar remoção protegida dos metadados de comprovantes no mesmo tenant
 - [x] Adicionar ações de substituir e remover comprovantes na tela de conciliação mensal
 - [x] Validar permissões, isolamento, mobile e regressões antes do checkpoint
+
+## FASE 57 – Próxima Prioridade Operacional
+
+- [x] Auditar lacunas funcionais pendentes e selecionar a prioridade com maior impacto operacional — relatório de presença por Evento
+- [x] Mapear dados, permissões, escopo e transições do fluxo priorizado
+- [x] Implementar o fluxo priorizado com isolamento por tenant e autorização no servidor
+- [x] Cobrir o fluxo com testes e validar TypeScript, logs, mobile e regressões antes do checkpoint
+
+## FASE 58 – Relatório de Presença por Evento
+
+- [x] Mapear inscrições, check-ins, ausências e permissões do módulo de Eventos
+- [x] Criar resumo protegido de inscritos, check-ins e ausentes por evento no servidor
+- [x] Adicionar relatório visual e impressão na tela de Eventos, com leitura mobile-first
+- [x] Cobrir o relatório com testes de tenant e autorização, validar TypeScript, logs e regressões
