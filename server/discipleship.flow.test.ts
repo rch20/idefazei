@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, resolveChurchUserRegistration, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -120,6 +120,10 @@ vi.mock("./db", () => ({
   getFinancialCategoriesByChurch: vi.fn().mockResolvedValue([{ id: 81, churchId: 100, type: "entrada", key: "dizimo", name: "Dízimo", active: true }]),
   getFinancialCategoryById: vi.fn().mockResolvedValue({ id: 81, churchId: 100, type: "entrada", key: "dizimo", name: "Dízimo", active: true }),
   getFinancialPeriodClosure: vi.fn().mockResolvedValue(null),
+  getFinancialReceiptData: vi.fn().mockResolvedValue({ transaction: { id: 71, churchId: 100, type: "entrada", status: "confirmado", amountCents: 125000, transactionDate: new Date("2026-08-01"), paymentMethod: "pix", contributorPersonId: null, contributorName: "Ana" }, account: { id: 91, churchId: 100, name: "Banco", type: "banco" }, category: { id: 81, churchId: 100, name: "Dízimo", type: "entrada" }, contributor: null }),
+  getFinancialReconciliation: vi.fn().mockResolvedValue(null),
+  getBookBalanceAt: vi.fn().mockResolvedValue(125000),
+  saveFinancialReconciliation: vi.fn().mockResolvedValue({ id: 4, churchId: 100, status: "com_divergencia", differenceCents: -5000 }),
   getFinancialTransactionById: vi.fn().mockResolvedValue({ id: 71, churchId: 100, status: "confirmado", transactionDate: new Date("2026-08-01T12:00:00.000Z") }),
   getTreasuryOverview: vi.fn().mockResolvedValue({ accounts: [], transactions: [], entriesCents: 0, expensesCents: 0, resultCents: 0, balanceCents: 0, accountBalances: [], categories: [] }),
   isFinancialPeriodClosed: vi.fn().mockResolvedValue(false),
@@ -207,6 +211,10 @@ vi.mock("./certificates", () => ({
 // Mock do _core/notification.ts
 vi.mock("./_core/notification", () => ({
   notifyOwner: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("./notifications", () => ({
+  emitInternalNotification: vi.fn().mockResolvedValue({ created: true, eventId: 1, deliveries: 1 }),
 }));
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -1244,6 +1252,21 @@ describe("Fluxo completo de discipulado", () => {
       const caller = appRouter.createCaller(createMemberContext());
       await caller.treasury.closePeriod({ churchId: CHURCH_ID, periodStart: "2026-08-01", periodEnd: "2026-08-31" });
       expect(closeFinancialPeriod).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, periodStart: "2026-08-01", periodEnd: "2026-08-31", actorChurchUserId: 1 }));
+    });
+
+    it("emite recibo somente para uma entrada confirmada da mesma igreja", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      const receipt = await caller.treasury.receipt({ churchId: CHURCH_ID, id: 71 });
+      expect(receipt).toMatchObject({ transaction: { id: 71, type: "entrada", status: "confirmado" }, category: { name: "Dízimo" } });
+      expect(getFinancialReceiptData).toHaveBeenCalledWith(71, CHURCH_ID);
+    });
+
+    it("calcula a divergência com o saldo do livro antes de salvar a conciliação", async () => {
+      (getFinancialAccountById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 91, churchId: CHURCH_ID, name: "Banco", type: "banco", active: true });
+      (getBookBalanceAt as ReturnType<typeof vi.fn>).mockResolvedValueOnce(125000);
+      const caller = appRouter.createCaller(createMemberContext());
+      await caller.treasury.saveReconciliation({ churchId: CHURCH_ID, accountId: 91, periodStart: "2026-08-01", periodEnd: "2026-08-31", bankClosingBalanceCents: 120000, notes: "Tarifa pendente" });
+      expect(saveFinancialReconciliation).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, accountId: 91, bookBalanceCents: 125000, differenceCents: -5000, status: "com_divergencia", actorChurchUserId: 1 }));
     });
   });
 

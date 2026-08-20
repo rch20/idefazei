@@ -26,6 +26,7 @@ const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string }> = [
 
 const toCurrency = (cents: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
 const today = () => new Date().toISOString().slice(0, 10);
+const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
 
 function monthBounds(month: string) {
   const [year, monthNumber] = month.split("-").map(Number);
@@ -49,6 +50,9 @@ export default function Tesouraria() {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [reverseOpen, setReverseOpen] = useState<number | null>(null);
+  const [receiptOpen, setReceiptOpen] = useState<number | null>(null);
+  const [reconciliationOpen, setReconciliationOpen] = useState(false);
+  const [reconciliationForm, setReconciliationForm] = useState({ accountId: "", bankClosingBalance: "", notes: "" });
   const [categoryName, setCategoryName] = useState("");
   const [categoryType, setCategoryType] = useState<TransactionType>("entrada");
   const [newAccount, setNewAccount] = useState({ name: "", type: "caixa" as "caixa" | "banco" | "outro", openingBalance: "0" });
@@ -60,6 +64,8 @@ export default function Tesouraria() {
     amount: "",
     transactionDate: today(),
     paymentMethod: "dinheiro" as PaymentMethod,
+    contributorPersonId: "",
+    contributorName: "",
     description: "",
     reference: "",
     status: "confirmado" as TransactionStatus,
@@ -71,6 +77,11 @@ export default function Tesouraria() {
   const accountsQuery = trpc.treasury.accounts.useQuery({ churchId }, { enabled: Boolean(churchId) });
   const categoriesQuery = trpc.treasury.categories.useQuery({ churchId }, { enabled: Boolean(churchId) });
   const closureQuery = trpc.treasury.periodClosure.useQuery({ churchId, periodStart: startDate }, { enabled: Boolean(churchId) });
+  const peopleQuery = trpc.people.list.useQuery({ churchId }, { enabled: Boolean(churchId) });
+  const receiptQuery = trpc.treasury.receipt.useQuery({ churchId, id: receiptOpen ?? 0 }, { enabled: Boolean(churchId && receiptOpen) });
+  const bankAccounts = (accountsQuery.data ?? []).filter((account) => account.type === "banco");
+  const reconciliationAccountId = Number(reconciliationForm.accountId || bankAccounts[0]?.id || 0);
+  const reconciliationQuery = trpc.treasury.reconciliation.useQuery({ churchId, accountId: reconciliationAccountId, periodStart: startDate, periodEnd: endDate }, { enabled: Boolean(churchId && reconciliationOpen && reconciliationAccountId) });
 
   const periodClosed = closureQuery.data?.status === "fechado";
   const canManageStructure = ["pastor_presidente", "pastor_local"].includes(user?.role ?? "");
@@ -84,6 +95,7 @@ export default function Tesouraria() {
       utils.treasury.accounts.invalidate(),
       utils.treasury.categories.invalidate(),
       utils.treasury.periodClosure.invalidate(),
+      utils.treasury.reconciliation.invalidate(),
     ]);
   };
 
@@ -100,6 +112,7 @@ export default function Tesouraria() {
   const reverseTransaction = trpc.treasury.reverseTransaction.useMutation({ onSuccess: async () => { await invalidateTreasury(); setReverseOpen(null); setReverseReason(""); } });
   const closePeriod = trpc.treasury.closePeriod.useMutation({ onSuccess: invalidateTreasury });
   const reopenPeriod = trpc.treasury.reopenPeriod.useMutation({ onSuccess: invalidateTreasury });
+  const saveReconciliation = trpc.treasury.saveReconciliation.useMutation({ onSuccess: async () => { await invalidateTreasury(); setReconciliationOpen(false); setReconciliationForm({ accountId: "", bankClosingBalance: "", notes: "" }); } });
 
   const openTransaction = (type: TransactionType) => {
     const firstCategory = (categoriesQuery.data ?? []).find((category) => category.type === type);
@@ -110,6 +123,8 @@ export default function Tesouraria() {
       amount: "",
       transactionDate: today(),
       paymentMethod: type === "entrada" ? "dinheiro" : "pix",
+      contributorPersonId: "",
+      contributorName: "",
       description: "",
       reference: "",
       status: "confirmado",
@@ -127,6 +142,8 @@ export default function Tesouraria() {
       amountCents: parseCents(form.amount),
       transactionDate: form.transactionDate,
       paymentMethod: form.paymentMethod,
+      contributorPersonId: form.contributorPersonId ? Number(form.contributorPersonId) : undefined,
+      contributorName: form.contributorPersonId ? undefined : form.contributorName.trim() || undefined,
       description: form.description.trim() || undefined,
       reference: form.reference.trim() || undefined,
       status: form.status,
@@ -135,6 +152,18 @@ export default function Tesouraria() {
 
   const periodLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   const overview = overviewQuery.data;
+  const bankBalanceInput = parseCents(reconciliationForm.bankClosingBalance);
+  const reconciliationDifference = bankBalanceInput - (reconciliationQuery.data?.bookBalanceCents ?? 0);
+
+  const printReceipt = () => {
+    const data = receiptQuery.data;
+    if (!data) return;
+    const contributorName = data.contributor?.fullName || data.transaction.contributorName || "Contribuinte não identificado";
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=720,height=760");
+    if (!printWindow) return;
+    printWindow.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Recibo ${data.transaction.id}</title><style>body{font-family:Arial,sans-serif;color:#1e3a5f;padding:40px;max-width:640px;margin:auto}.top{border-bottom:2px solid #c9a84c;padding-bottom:16px}.eyebrow{color:#a67c24;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.title{font-size:28px;margin:8px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}.box{background:#f8f5ef;border-radius:10px;padding:14px}.amount{font-size:28px;font-weight:700;color:#176b42}.signatures{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:80px;text-align:center}.line{border-top:1px solid #777;padding-top:8px;font-size:12px}@media print{body{padding:0}}</style></head><body><div class="top"><div class="eyebrow">Ide Fazei · Tesouraria</div><h1 class="title">Recibo de contribuição</h1><div>${escapeHtml(churchName)} · Recibo nº ${data.transaction.id}</div></div><div class="grid"><div class="box"><strong>Recebemos de</strong><br>${escapeHtml(contributorName)}</div><div class="box"><strong>Data</strong><br>${new Date(data.transaction.transactionDate).toLocaleDateString("pt-BR")}</div><div class="box"><strong>Referente a</strong><br>${escapeHtml(data.category.name)}</div><div class="box"><strong>Forma de recebimento</strong><br>${escapeHtml(data.transaction.paymentMethod)}</div></div><p>Recebemos a importância de</p><p class="amount">${toCurrency(data.transaction.amountCents)}</p><p>${escapeHtml(data.transaction.description || "Contribuição registrada na Tesouraria da igreja.")}</p><div class="signatures"><div class="line">Tesoureiro(a)</div><div class="line">Contribuinte</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
+    printWindow.document.close();
+  };
 
   if (overviewQuery.error?.data?.code === "FORBIDDEN") {
     return <AccessDenied />;
@@ -151,6 +180,7 @@ export default function Tesouraria() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => window.print()} className="gap-2"><Printer className="w-4 h-4" /> Imprimir</Button>
+          {bankAccounts.length > 0 && <Button variant="outline" onClick={() => setReconciliationOpen(true)} className="gap-2"><BookOpenCheck className="w-4 h-4" /> Conciliar banco</Button>}
           <Button variant="outline" onClick={() => openTransaction("saida")} disabled={periodClosed} title={periodClosed ? "Reabra o período para registrar uma saída." : undefined} className="gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"><ArrowUpCircle className="w-4 h-4" /> Registrar saída</Button>
           <Button onClick={() => openTransaction("entrada")} disabled={periodClosed} title={periodClosed ? "Reabra o período para registrar uma entrada." : undefined} className="gap-2 bg-navy hover:bg-navy/90"><ArrowDownCircle className="w-4 h-4" /> Registrar entrada</Button>
         </div>
@@ -204,6 +234,7 @@ export default function Tesouraria() {
                       <div className="text-right shrink-0"><p className={`font-semibold text-sm ${transaction.type === "entrada" ? "text-emerald-700" : "text-rose-700"}`}>{transaction.type === "entrada" ? "+" : "−"}{toCurrency(transaction.amountCents)}</p><p className="text-[10px] uppercase text-muted-foreground">{transaction.paymentMethod}</p></div>
                       <div className="no-print flex gap-1">
                         {transaction.status === "rascunho" && <Button variant="ghost" size="icon" title="Confirmar" onClick={() => confirmTransaction.mutate({ churchId, id: transaction.id })}><CheckCircle2 className="w-4 h-4 text-emerald-600" /></Button>}
+                        {transaction.status === "confirmado" && transaction.type === "entrada" && <Button variant="ghost" size="icon" title="Emitir recibo" onClick={() => setReceiptOpen(transaction.id)}><ReceiptText className="w-4 h-4 text-navy" /></Button>}
                         {transaction.status === "confirmado" && canManageStructure && <Button variant="ghost" size="icon" title="Estornar" onClick={() => setReverseOpen(transaction.id)}><RotateCcw className="w-4 h-4 text-slate-600" /></Button>}
                       </div>
                     </div>
@@ -231,6 +262,7 @@ export default function Tesouraria() {
         <div className="grid grid-cols-2 gap-3"><label className="grid gap-1.5"><Label>Conta</Label><select required value={form.accountId} onChange={(event) => setForm({ ...form, accountId: event.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">{(accountsQuery.data ?? []).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><label className="grid gap-1.5"><Label>Categoria</Label><select required value={form.categoryId} onChange={(event) => setForm({ ...form, categoryId: event.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">{selectedCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label></div>
         <div className="grid grid-cols-2 gap-3"><label className="grid gap-1.5"><Label>Valor (R$)</Label><Input required inputMode="decimal" placeholder="0,00" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} /></label><label className="grid gap-1.5"><Label>Data</Label><Input required type="date" value={form.transactionDate} onChange={(event) => setForm({ ...form, transactionDate: event.target.value })} /></label></div>
         <label className="grid gap-1.5"><Label>Forma de {form.type === "entrada" ? "recebimento" : "pagamento"}</Label><select value={form.paymentMethod} onChange={(event) => setForm({ ...form, paymentMethod: event.target.value as PaymentMethod })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">{PAYMENT_METHODS.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select></label>
+        {form.type === "entrada" && <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5"><Label>Contribuinte cadastrado</Label><select value={form.contributorPersonId} onChange={(event) => setForm({ ...form, contributorPersonId: event.target.value, contributorName: event.target.value ? "" : form.contributorName })} className="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">Não vincular a uma Pessoa</option>{(peopleQuery.data ?? []).map((person) => <option key={person.id} value={person.id}>{person.fullName}</option>)}</select></label><label className="grid gap-1.5"><Label>Nome para recibo</Label><Input disabled={Boolean(form.contributorPersonId)} value={form.contributorName} onChange={(event) => setForm({ ...form, contributorName: event.target.value })} placeholder="Ex.: Visitante ou família" /></label></div>}
         <label className="grid gap-1.5"><Label>Descrição</Label><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder={form.type === "entrada" ? "Ex.: Culto de domingo à noite" : "Ex.: Referência ou fornecedor"} /></label>
         <label className="grid gap-1.5"><Label>Referência opcional</Label><Input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Comprovante, recibo ou nota" /></label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.status === "rascunho"} onChange={(event) => setForm({ ...form, status: event.target.checked ? "rascunho" : "confirmado" })} /> Salvar como rascunho</label>
@@ -242,6 +274,10 @@ export default function Tesouraria() {
       <Dialog open={accountOpen} onOpenChange={setAccountOpen}><DialogContent><DialogHeader><DialogTitle className="font-display text-2xl text-navy">Nova conta financeira</DialogTitle><DialogDescription>O saldo inicial só deve ser usado na implantação ou na abertura de uma nova conta.</DialogDescription></DialogHeader><form className="grid gap-4" onSubmit={(event) => { event.preventDefault(); createAccount.mutate({ churchId, name: newAccount.name, type: newAccount.type, openingBalanceCents: parseCents(newAccount.openingBalance) }); }}><label className="grid gap-1.5"><Label>Nome</Label><Input required value={newAccount.name} onChange={(event) => setNewAccount({ ...newAccount, name: event.target.value })} placeholder="Ex.: Banco Missões" /></label><label className="grid gap-1.5"><Label>Tipo</Label><select value={newAccount.type} onChange={(event) => setNewAccount({ ...newAccount, type: event.target.value as "caixa" | "banco" | "outro" })} className="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="caixa">Caixa</option><option value="banco">Banco</option><option value="outro">Outro</option></select></label><label className="grid gap-1.5"><Label>Saldo inicial (R$)</Label><Input inputMode="decimal" value={newAccount.openingBalance} onChange={(event) => setNewAccount({ ...newAccount, openingBalance: event.target.value })} /></label>{createAccount.error && <p className="text-sm text-rose-700">{createAccount.error.message}</p>}<Button disabled={createAccount.isPending} className="bg-navy hover:bg-navy/90">Criar conta</Button></form></DialogContent></Dialog>
 
       <Dialog open={reverseOpen !== null} onOpenChange={(open) => { if (!open) setReverseOpen(null); }}><DialogContent><DialogHeader><DialogTitle className="font-display text-2xl text-navy">Estornar lançamento</DialogTitle><DialogDescription>O lançamento será preservado no histórico, identificado como estornado e deixará de compor os saldos.</DialogDescription></DialogHeader><label className="grid gap-1.5"><Label>Motivo do estorno</Label><Textarea value={reverseReason} onChange={(event) => setReverseReason(event.target.value)} placeholder="Explique o motivo da correção" /></label>{reverseTransaction.error && <p className="text-sm text-rose-700">{reverseTransaction.error.message}</p>}<Button variant="destructive" disabled={reverseTransaction.isPending || reverseReason.trim().length < 5} onClick={() => reverseOpen && reverseTransaction.mutate({ churchId, id: reverseOpen, reason: reverseReason })}>Estornar lançamento</Button></DialogContent></Dialog>
+
+      <Dialog open={receiptOpen !== null} onOpenChange={(open) => { if (!open) setReceiptOpen(null); }}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle className="font-display text-2xl text-navy">Recibo de contribuição</DialogTitle><DialogDescription>Disponível apenas para entradas confirmadas da sua igreja.</DialogDescription></DialogHeader>{receiptQuery.isLoading ? <div className="h-44 animate-pulse rounded-xl bg-muted" /> : receiptQuery.data && <div className="rounded-xl border border-gold/30 bg-cream/30 p-5 space-y-3"><p className="text-xs font-semibold uppercase tracking-wider text-gold">Recibo nº {receiptQuery.data.transaction.id}</p><p className="font-display text-2xl text-navy">{toCurrency(receiptQuery.data.transaction.amountCents)}</p><div className="grid grid-cols-2 gap-3 text-sm"><p><span className="block text-xs text-muted-foreground">Contribuinte</span>{receiptQuery.data.contributor?.fullName || receiptQuery.data.transaction.contributorName || "Não identificado"}</p><p><span className="block text-xs text-muted-foreground">Categoria</span>{receiptQuery.data.category.name}</p><p><span className="block text-xs text-muted-foreground">Data</span>{new Date(receiptQuery.data.transaction.transactionDate).toLocaleDateString("pt-BR")}</p><p><span className="block text-xs text-muted-foreground">Forma</span>{receiptQuery.data.transaction.paymentMethod}</p></div><p className="text-sm text-muted-foreground">{receiptQuery.data.transaction.description || "Contribuição registrada na Tesouraria."}</p><Button className="w-full bg-navy" onClick={printReceipt}><Printer className="mr-2 h-4 w-4" /> Imprimir recibo</Button></div>}</DialogContent></Dialog>
+
+      <Dialog open={reconciliationOpen} onOpenChange={(open) => { if (!open) { setReconciliationOpen(false); setReconciliationForm({ accountId: "", bankClosingBalance: "", notes: "" }); } }}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle className="font-display text-2xl text-navy">Conciliação bancária</DialogTitle><DialogDescription>Compare o saldo do extrato com o saldo registrado até o fim do período. A conciliação não altera lançamentos nem fechamento.</DialogDescription></DialogHeader><div className="grid gap-4"><label className="grid gap-1.5"><Label>Conta bancária</Label><select value={reconciliationForm.accountId || String(bankAccounts[0]?.id ?? "")} onChange={(event) => setReconciliationForm({ ...reconciliationForm, accountId: event.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><div className="rounded-xl bg-muted/50 p-4"><p className="text-xs text-muted-foreground">Saldo do livro-caixa em {new Date(`${endDate}T12:00:00`).toLocaleDateString("pt-BR")}</p><p className="mt-1 text-xl font-semibold text-navy">{toCurrency(reconciliationQuery.data?.bookBalanceCents ?? 0)}</p></div><label className="grid gap-1.5"><Label>Saldo final no extrato (R$)</Label><Input inputMode="decimal" value={reconciliationForm.bankClosingBalance} onChange={(event) => setReconciliationForm({ ...reconciliationForm, bankClosingBalance: event.target.value })} placeholder="0,00" /></label><div className={`rounded-xl p-3 text-sm ${reconciliationDifference === 0 ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}><strong>{reconciliationDifference === 0 ? "Conciliação sem divergência" : "Divergência identificada"}</strong><span className="ml-2">{toCurrency(reconciliationDifference)}</span></div><label className="grid gap-1.5"><Label>Observações</Label><Textarea value={reconciliationForm.notes} onChange={(event) => setReconciliationForm({ ...reconciliationForm, notes: event.target.value })} placeholder="Ex.: PIX em trânsito ou tarifa ainda não registrada." /></label>{saveReconciliation.error && <p className="text-sm text-rose-700">{saveReconciliation.error.message}</p>}<Button disabled={saveReconciliation.isPending || !reconciliationForm.bankClosingBalance.trim()} className="bg-navy" onClick={() => saveReconciliation.mutate({ churchId, accountId: reconciliationAccountId, periodStart: startDate, periodEnd: endDate, bankClosingBalanceCents: bankBalanceInput, notes: reconciliationForm.notes.trim() || undefined })}>{saveReconciliation.isPending ? "Salvando…" : "Salvar conciliação"}</Button></div></DialogContent></Dialog>
     </div>
   );
 }

@@ -587,3 +587,12 @@
 - [x] Criar calendário mensal de visitas na aba Visitas da Consolidação, com filtros e detalhes respeitando o escopo
 - [x] Permitir criar e consultar funções ministeriais personalizadas também em Configurações
 - [x] Cobrir novas permissões e fluxos com testes, validar desktop/mobile e salvar checkpoint
+
+## FASE 54 – Alertas e Tesouraria Operacional
+
+- [x] Mapear a estrutura atual e modelar notificações por evento, destinatário, mensagem e canal
+- [x] Implementar notificações internas persistentes por igreja, preparando o canal WhatsApp sem integração externa
+- [x] Conectar os eventos prioritários de cadastro pendente e encaminhamentos de Consolidação sem aceite
+- [x] Gerar recibos individuais de contribuições com acesso protegido e impressão
+- [x] Implementar conciliação bancária mensal com cálculos e fechamento preservados
+- [x] Validar isolamento por tenant, permissões, cálculos, impressão, responsividade e regressões antes do checkpoint

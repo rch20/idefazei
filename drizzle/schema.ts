@@ -2,6 +2,7 @@ import {
   boolean,
   date,
   decimal,
+  index,
   int,
   json,
   mysqlEnum,
@@ -906,6 +907,91 @@ export const communicationLogs = mysqlTable("communication_logs", {
 
 export type CommunicationLog = typeof communicationLogs.$inferSelect;
 
+// ─── NOTIFICAÇÕES MULTI-CANAL ─────────────────────────────────────────────────
+
+/**
+ * Evento de negócio independente do canal. A mesma ocorrência pode gerar uma
+ * entrega interna hoje e, no futuro, uma entrega pela API oficial do WhatsApp.
+ */
+export const notificationEvents = mysqlTable("notification_events", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  type: mysqlEnum("type", [
+    "cadastro_pendente",
+    "pessoa_aprovada",
+    "visita_agendada",
+    "lembrete_visita",
+    "visita_nao_realizada",
+    "responsabilidade_atribuida",
+    "funcao_ministerial_atribuida",
+    "evento_igreja",
+    "comunicado_lideranca",
+    "encaminhamento_sem_aceite",
+  ]).notNull(),
+  entityType: varchar("entityType", { length: 80 }),
+  entityId: int("entityId"),
+  title: varchar("title", { length: 255 }).notNull(),
+  body: text("body").notNull(),
+  metadata: json("metadata"),
+  dedupeKey: varchar("dedupeKey", { length: 190 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("notification_events_church_created_idx").on(table.churchId, table.createdAt),
+  uniqueIndex("notification_events_church_dedupe_unique").on(table.churchId, table.dedupeKey),
+]);
+
+export type NotificationEvent = typeof notificationEvents.$inferSelect;
+
+/**
+ * Registro individual de entrega por destinatário e canal. O canal WhatsApp
+ * permanece apenas como estrutura de dados até a integração oficial futura.
+ */
+export const notificationDeliveries = mysqlTable("notification_deliveries", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  eventId: int("eventId").notNull(),
+  recipientChurchUserId: int("recipientChurchUserId").notNull(),
+  channel: mysqlEnum("channel", ["sistema", "whatsapp"]).notNull(),
+  status: mysqlEnum("status", ["pendente", "entregue", "lida", "ignorada", "falhou"]).default("pendente").notNull(),
+  deliveredAt: timestamp("deliveredAt"),
+  readAt: timestamp("readAt"),
+  providerMessageId: varchar("providerMessageId", { length: 255 }),
+  failureReason: text("failureReason"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("notification_deliveries_recipient_status_idx").on(table.churchId, table.recipientChurchUserId, table.status),
+  uniqueIndex("notification_deliveries_event_recipient_channel_unique").on(table.eventId, table.recipientChurchUserId, table.channel),
+]);
+
+export type NotificationDelivery = typeof notificationDeliveries.$inferSelect;
+
+/** Preferências por igreja; ausência de registro usa Sistema ativo e WhatsApp inativo. */
+export const churchNotificationPreferences = mysqlTable("church_notification_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  eventType: mysqlEnum("eventType", [
+    "cadastro_pendente",
+    "pessoa_aprovada",
+    "visita_agendada",
+    "lembrete_visita",
+    "visita_nao_realizada",
+    "responsabilidade_atribuida",
+    "funcao_ministerial_atribuida",
+    "evento_igreja",
+    "comunicado_lideranca",
+    "encaminhamento_sem_aceite",
+  ]).notNull(),
+  channel: mysqlEnum("channel", ["sistema", "whatsapp"]).notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("church_notification_preferences_unique").on(table.churchId, table.eventType, table.channel),
+]);
+
+export type ChurchNotificationPreference = typeof churchNotificationPreferences.$inferSelect;
+
 // ─── TESOURARIA DA IGREJA ──────────────────────────────────────────────────────
 
 /** Contas operacionais da igreja, como Caixa e Banco principal. */
@@ -957,6 +1043,8 @@ export const financialTransactions = mysqlTable("financial_transactions", {
   paymentMethod: mysqlEnum("paymentMethod", ["dinheiro", "pix", "transferencia", "cartao", "cheque", "outro"])
     .default("dinheiro")
     .notNull(),
+  contributorPersonId: int("contributorPersonId"),
+  contributorName: varchar("contributorName", { length: 255 }),
   description: text("description"),
   reference: varchar("reference", { length: 160 }),
   status: mysqlEnum("status", ["rascunho", "confirmado", "estornado"]).default("rascunho").notNull(),
@@ -991,6 +1079,30 @@ export const financialPeriodClosures = mysqlTable(
 );
 
 export type FinancialPeriodClosure = typeof financialPeriodClosures.$inferSelect;
+
+/** Conciliação mensal por conta bancária, sem alterar o livro-caixa ou o fechamento do período. */
+export const financialReconciliations = mysqlTable(
+  "financial_reconciliations",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    accountId: int("accountId").notNull(),
+    periodStart: date("periodStart").notNull(),
+    periodEnd: date("periodEnd").notNull(),
+    bankClosingBalanceCents: int("bankClosingBalanceCents").notNull(),
+    bookBalanceCents: int("bookBalanceCents").notNull(),
+    differenceCents: int("differenceCents").notNull(),
+    status: mysqlEnum("status", ["em_andamento", "conciliada", "com_divergencia"]).default("em_andamento").notNull(),
+    notes: text("notes"),
+    reconciledByChurchUserId: int("reconciledByChurchUserId").notNull(),
+    reconciledAt: timestamp("reconciledAt").defaultNow().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [uniqueIndex("financial_reconciliations_church_account_period_unique").on(table.churchId, table.accountId, table.periodStart)]
+);
+
+export type FinancialReconciliation = typeof financialReconciliations.$inferSelect;
 
 /** Histórico imutável de ações financeiras relevantes. */
 export const financialAuditLogs = mysqlTable("financial_audit_logs", {

@@ -18,9 +18,10 @@
 import type { Request, Response } from "express";
 import { sdk } from "./_core/sdk";
 import { getDb } from "./db";
-import { people, cellAttendance, cellMeetings } from "../drizzle/schema";
+import { people, cellAttendance, cellMeetings, churchUsers, consolidationReferrals } from "../drizzle/schema";
 import { and, eq, sql, lt, isNull } from "drizzle-orm";
 import { notifyOwner } from "./_core/notification";
+import { emitInternalNotification } from "./notifications";
 
 export async function dailyNotificationsHandler(req: Request, res: Response) {
   try {
@@ -107,11 +108,45 @@ export async function dailyNotificationsHandler(req: Request, res: Response) {
       });
     }
 
-    // ── 4. Resposta ───────────────────────────────────────────────────────────
+    // ── 4. Encaminhamentos sem aceite ─────────────────────────────────────────
+    // O evento é idempotente por encaminhamento; o canal interno já fica pronto
+    // para que outro provedor (WhatsApp oficial) seja acrescentado no futuro.
+    const unacceptedCutoff = new Date();
+    unacceptedCutoff.setDate(unacceptedCutoff.getDate() - 2);
+    const staleReferrals = await db.select().from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.status, "pendente"), lt(consolidationReferrals.referredAt, unacceptedCutoff)));
+    const recipientCache = new Map<number, Array<{ id: number; role: string; personId: number | null }>>();
+    let staleReferralNotifications = 0;
+    for (const referral of staleReferrals) {
+      let churchRecipients = recipientCache.get(referral.churchId);
+      if (!churchRecipients) {
+        churchRecipients = await db.select({ id: churchUsers.id, role: churchUsers.role, personId: churchUsers.personId }).from(churchUsers)
+          .where(and(eq(churchUsers.churchId, referral.churchId), eq(churchUsers.active, true)));
+        recipientCache.set(referral.churchId, churchRecipients);
+      }
+      const recipients = churchRecipients
+        .filter((account) => ["pastor_presidente", "pastor_local", "supervisor", "consolidador"].includes(account.role) || account.personId === referral.preferredConsolidatorId)
+        .map((account) => account.id);
+      const result = await emitInternalNotification({
+        churchId: referral.churchId,
+        type: "encaminhamento_sem_aceite",
+        recipientChurchUserIds: recipients,
+        title: "Encaminhamento sem aceite há mais de 2 dias",
+        body: "Um encaminhamento de Consolidação continua aguardando responsável. Revise a fila para definir o cuidado necessário.",
+        entityType: "consolidation_referral",
+        entityId: referral.id,
+        metadata: { preferredConsolidatorId: referral.preferredConsolidatorId, referredAt: referral.referredAt.toISOString() },
+        dedupeKey: `encaminhamento-sem-aceite-${referral.id}`,
+      });
+      if (result.created) staleReferralNotifications += result.deliveries;
+    }
+
+    // ── 5. Resposta ───────────────────────────────────────────────────────────
     return res.json({
       ok: true,
       birthdays: birthdayPeople.length,
       absent: absentPeople.length,
+      staleReferralNotifications,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {

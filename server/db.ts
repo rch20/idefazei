@@ -10,6 +10,7 @@ import {
   cellMembers,
   cells,
   churchMembers,
+  churchNotificationPreferences,
   churchRegistrations,
   churchUserComplementaryRoles,
   churchUsers,
@@ -32,6 +33,7 @@ import {
   financialAuditLogs,
   financialCategories,
   financialPeriodClosures,
+  financialReconciliations,
   financialTransactions,
   InsertUser,
   leadershipHistory,
@@ -42,6 +44,8 @@ import {
   ministryMembers,
   ministryRoleAssignments,
   ministryRoleDefinitions,
+  notificationDeliveries,
+  notificationEvents,
   people,
   prayerRequests,
   scheduleItems,
@@ -65,6 +69,91 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+// ─── NOTIFICAÇÕES MULTI-CANAL ─────────────────────────────────────────────────
+
+export type NotificationEventType =
+  | "cadastro_pendente"
+  | "pessoa_aprovada"
+  | "visita_agendada"
+  | "lembrete_visita"
+  | "visita_nao_realizada"
+  | "responsabilidade_atribuida"
+  | "funcao_ministerial_atribuida"
+  | "evento_igreja"
+  | "comunicado_lideranca"
+  | "encaminhamento_sem_aceite";
+
+export type NotificationChannel = "sistema" | "whatsapp";
+
+export async function isNotificationChannelActive(churchId: number, eventType: NotificationEventType, channel: NotificationChannel) {
+  const db = await getDb();
+  if (!db) return false;
+  const preference = await db.select().from(churchNotificationPreferences)
+    .where(and(eq(churchNotificationPreferences.churchId, churchId), eq(churchNotificationPreferences.eventType, eventType), eq(churchNotificationPreferences.channel, channel)))
+    .limit(1);
+  return preference[0]?.active ?? channel === "sistema";
+}
+
+export async function getNotificationEventByDedupeKey(churchId: number, dedupeKey: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(notificationEvents)
+    .where(and(eq(notificationEvents.churchId, churchId), eq(notificationEvents.dedupeKey, dedupeKey)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createNotificationEvent(data: {
+  churchId: number; type: NotificationEventType; entityType?: string | null; entityId?: number | null;
+  title: string; body: string; metadata?: Record<string, unknown> | null; dedupeKey?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(notificationEvents).values({
+    churchId: data.churchId, type: data.type, entityType: data.entityType ?? null, entityId: data.entityId ?? null,
+    title: data.title, body: data.body, metadata: data.metadata ?? null, dedupeKey: data.dedupeKey ?? null,
+  });
+  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+  const rows = await db.select().from(notificationEvents).where(eq(notificationEvents.id, id)).limit(1);
+  if (!rows[0]) throw new Error("Falha ao criar evento de notificação");
+  return rows[0];
+}
+
+export async function createInternalNotificationDelivery(data: { churchId: number; eventId: number; recipientChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(notificationDeliveries).values({
+    churchId: data.churchId, eventId: data.eventId, recipientChurchUserId: data.recipientChurchUserId,
+    channel: "sistema", status: "entregue", deliveredAt: new Date(),
+  });
+}
+
+export async function getNotificationsForChurchUser(data: { churchId: number; churchUserId: number; unreadOnly?: boolean; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(notificationDeliveries.churchId, data.churchId), eq(notificationDeliveries.recipientChurchUserId, data.churchUserId), eq(notificationDeliveries.channel, "sistema")];
+  if (data.unreadOnly) conditions.push(isNull(notificationDeliveries.readAt));
+  return db.select({ delivery: notificationDeliveries, event: notificationEvents })
+    .from(notificationDeliveries)
+    .innerJoin(notificationEvents, and(eq(notificationEvents.id, notificationDeliveries.eventId), eq(notificationEvents.churchId, data.churchId)))
+    .where(and(...conditions)).orderBy(desc(notificationDeliveries.createdAt)).limit(data.limit ?? 40);
+}
+
+export async function getUnreadNotificationCount(churchId: number, churchUserId: number) {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ value: count() }).from(notificationDeliveries)
+    .where(and(eq(notificationDeliveries.churchId, churchId), eq(notificationDeliveries.recipientChurchUserId, churchUserId), eq(notificationDeliveries.channel, "sistema"), isNull(notificationDeliveries.readAt)));
+  return Number(rows[0]?.value ?? 0);
+}
+
+export async function markNotificationRead(data: { id: number; churchId: number; churchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(notificationDeliveries).set({ status: "lida", readAt: new Date() })
+    .where(and(eq(notificationDeliveries.id, data.id), eq(notificationDeliveries.churchId, data.churchId), eq(notificationDeliveries.recipientChurchUserId, data.churchUserId), eq(notificationDeliveries.channel, "sistema")));
 }
 
 // ─── USERS ────────────────────────────────────────────────────────────────────
@@ -2056,7 +2145,7 @@ async function writeFinancialAuditLog(data: {
 
 export async function createFinancialTransaction(data: {
   churchId: number; accountId: number; categoryId: number; type: "entrada" | "saida"; amountCents: number; transactionDate: string;
-  paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; description?: string; reference?: string; status: "rascunho" | "confirmado"; actorChurchUserId: number;
+  paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; contributorPersonId?: number; contributorName?: string; description?: string; reference?: string; status: "rascunho" | "confirmado"; actorChurchUserId: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -2064,7 +2153,7 @@ export async function createFinancialTransaction(data: {
     const now = new Date();
     const insert = await tx.insert(financialTransactions).values({
       churchId: data.churchId, accountId: data.accountId, categoryId: data.categoryId, type: data.type, amountCents: data.amountCents,
-      transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, description: data.description ?? null, reference: data.reference ?? null,
+      transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, contributorPersonId: data.contributorPersonId ?? null, contributorName: data.contributorName ?? null, description: data.description ?? null, reference: data.reference ?? null,
       status: data.status, createdByChurchUserId: data.actorChurchUserId,
       confirmedByChurchUserId: data.status === "confirmado" ? data.actorChurchUserId : null,
       confirmedAt: data.status === "confirmado" ? now : null,
@@ -2081,13 +2170,13 @@ export async function createFinancialTransaction(data: {
 
 export async function updateFinancialDraft(data: {
   id: number; churchId: number; accountId: number; categoryId: number; type: "entrada" | "saida"; amountCents: number; transactionDate: string;
-  paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; description?: string; reference?: string; actorChurchUserId: number;
+  paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; contributorPersonId?: number; contributorName?: string; description?: string; reference?: string; actorChurchUserId: number;
 }) {
   const previous = await getFinancialTransactionById(data.id, data.churchId);
   if (!previous) return null;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(financialTransactions).set({ accountId: data.accountId, categoryId: data.categoryId, type: data.type, amountCents: data.amountCents, transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, description: data.description ?? null, reference: data.reference ?? null })
+  await db.update(financialTransactions).set({ accountId: data.accountId, categoryId: data.categoryId, type: data.type, amountCents: data.amountCents, transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, contributorPersonId: data.contributorPersonId ?? null, contributorName: data.contributorName ?? null, description: data.description ?? null, reference: data.reference ?? null })
     .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")));
   const updated = await getFinancialTransactionById(data.id, data.churchId);
   if (!updated) return null;
@@ -2126,6 +2215,58 @@ export async function getFinancialPeriodClosure(churchId: number, periodStart: s
   if (!db) return null;
   const rows = await db.select().from(financialPeriodClosures).where(and(eq(financialPeriodClosures.churchId, churchId), sql`DATE(${financialPeriodClosures.periodStart}) = DATE(${periodStart})`)).limit(1);
   return rows[0] ?? null;
+}
+
+export async function getFinancialReceiptData(transactionId: number, churchId: number) {
+  const transaction = await getFinancialTransactionById(transactionId, churchId);
+  if (!transaction) return null;
+  const [account, category, contributor] = await Promise.all([
+    getFinancialAccountById(transaction.accountId, churchId),
+    getFinancialCategoryById(transaction.categoryId, churchId),
+    transaction.contributorPersonId ? getPersonById(transaction.contributorPersonId, churchId) : Promise.resolve(null),
+  ]);
+  if (!account || !category) return null;
+  return { transaction, account, category, contributor };
+}
+
+export async function getFinancialReconciliation(data: { churchId: number; accountId: number; periodStart: string }) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(financialReconciliations)
+    .where(and(eq(financialReconciliations.churchId, data.churchId), eq(financialReconciliations.accountId, data.accountId), sql`DATE(${financialReconciliations.periodStart}) = DATE(${data.periodStart})`))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getBookBalanceAt(data: { churchId: number; accountId: number; endDate: string }) {
+  const account = await getFinancialAccountById(data.accountId, data.churchId);
+  if (!account) return null;
+  const rows = await getFinancialTransactions({ churchId: data.churchId, accountId: data.accountId, endDate: data.endDate });
+  const movement = rows.filter((row) => row.transaction.status === "confirmado")
+    .reduce((total, row) => total + (row.transaction.type === "entrada" ? row.transaction.amountCents : -row.transaction.amountCents), 0);
+  return account.openingBalanceCents + movement;
+}
+
+export async function saveFinancialReconciliation(data: {
+  churchId: number; accountId: number; periodStart: string; periodEnd: string; bankClosingBalanceCents: number;
+  bookBalanceCents: number; differenceCents: number; status: "em_andamento" | "conciliada" | "com_divergencia"; notes?: string; actorChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await getFinancialReconciliation(data);
+  if (existing) {
+    await db.update(financialReconciliations).set({
+      periodEnd: financialDate(data.periodEnd), bankClosingBalanceCents: data.bankClosingBalanceCents, bookBalanceCents: data.bookBalanceCents,
+      differenceCents: data.differenceCents, status: data.status, notes: data.notes ?? null, reconciledByChurchUserId: data.actorChurchUserId, reconciledAt: new Date(),
+    }).where(and(eq(financialReconciliations.id, existing.id), eq(financialReconciliations.churchId, data.churchId)));
+  } else {
+    await db.insert(financialReconciliations).values({
+      churchId: data.churchId, accountId: data.accountId, periodStart: financialDate(data.periodStart), periodEnd: financialDate(data.periodEnd),
+      bankClosingBalanceCents: data.bankClosingBalanceCents, bookBalanceCents: data.bookBalanceCents, differenceCents: data.differenceCents,
+      status: data.status, notes: data.notes ?? null, reconciledByChurchUserId: data.actorChurchUserId,
+    });
+  }
+  return getFinancialReconciliation(data);
 }
 
 export async function closeFinancialPeriod(data: { churchId: number; periodStart: string; periodEnd: string; actorChurchUserId: number }) {

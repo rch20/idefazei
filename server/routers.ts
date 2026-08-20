@@ -47,6 +47,9 @@ import {
   setComplementaryRolesForChurchUser,
   canChurchUserManageJourney,
   getJourneyManagedPersonIds,
+  getNotificationsForChurchUser,
+  getUnreadNotificationCount,
+  markNotificationRead,
   getConsolidationsByChurch,
   getConsolidationsBySoul,
   getConsolidationById,
@@ -67,12 +70,16 @@ import {
   getFinancialCategoriesByChurch,
   getFinancialCategoryById,
   getFinancialPeriodClosure,
+  getFinancialReceiptData,
+  getFinancialReconciliation,
+  getBookBalanceAt,
   getFinancialTransactionById,
   getTreasuryOverview,
   isFinancialPeriodClosed,
   updateFinancialDraft,
   confirmFinancialTransaction,
   reverseFinancialTransaction,
+  saveFinancialReconciliation,
   closeFinancialPeriod,
   reopenFinancialPeriod,
   getMinistriesByChurch,
@@ -155,6 +162,7 @@ import { getDb } from "./db";
 import { events } from "../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { generateReportHTML, htmlToBase64 } from "./reports";
+import { emitInternalNotification } from "./notifications";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
@@ -169,7 +177,15 @@ async function requireChurchMember(userId: number, churchId: number) {
 
   const member = await getChurchMemberByUserId(userId, churchId);
 if (!member) throw new TRPCError({ code: "FORBIDDEN", message: "Acesso negado a esta igreja" });
-return member;
+	return member;
+}
+
+async function emitNotificationWithoutBlocking(data: Parameters<typeof emitInternalNotification>[0]) {
+  try {
+    await emitInternalNotification(data);
+  } catch (error) {
+    console.error("[notifications] Failed to emit internal notification:", error);
+  }
 }
 
 const CHURCH_ADMIN_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario"]);
@@ -2007,6 +2023,18 @@ const churchAuthRouter = router({
       const actorId = ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id;
       const user = await resolveChurchUserRegistration(input.userId, input.churchId, actorId, input.approved, input.rejectionReason);
       if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Cadastro pendente não encontrado." });
+      if (input.approved) {
+        await emitNotificationWithoutBlocking({
+          churchId: input.churchId,
+          type: "pessoa_aprovada",
+          recipientChurchUserIds: [user.id],
+          title: "Seu cadastro foi aprovado",
+          body: "Sua conta foi ativada pela liderança. Você já pode entrar na plataforma da sua igreja.",
+          entityType: "church_user",
+          entityId: user.id,
+          dedupeKey: `pessoa-aprovada-${user.id}`,
+        });
+      }
       return user;
     }),
 
@@ -2210,6 +2238,20 @@ const registerRouter = router({
         personId: person.id,
         active: false,
         registrationStatus: "pending",
+      });
+      const recipients = (await getChurchUsersByChurch(church.id))
+        .filter((churchUser) => churchUser.active && ["pastor_presidente", "pastor_local", "secretario"].includes(churchUser.role))
+        .map((churchUser) => churchUser.id);
+      await emitNotificationWithoutBlocking({
+        churchId: church.id,
+        type: "cadastro_pendente",
+        recipientChurchUserIds: recipients,
+        title: "Novo cadastro aguardando aprovação",
+        body: `${input.name} solicitou acesso à plataforma. Revise o cadastro em Configurações → Perfis e Hierarquia.`,
+        entityType: "church_user",
+        entityId: user.id,
+        metadata: { personId: person.id },
+        dedupeKey: `cadastro-pendente-${user.id}`,
       });
       return { success: true, userId: user.id, message: "Cadastro recebido. Aguarde a aprovação da liderança." };
     }),
@@ -2877,20 +2919,26 @@ const financialTransactionInput = z.object({
   amountCents: z.number().int().positive("O valor deve ser maior que zero."),
   transactionDate: financialDateInput,
   paymentMethod: z.enum(["dinheiro", "pix", "transferencia", "cartao", "cheque", "outro"]),
+  contributorPersonId: z.number().int().positive().optional(),
+  contributorName: z.string().trim().min(2).max(255).optional(),
   description: z.string().trim().max(2000).optional(),
   reference: z.string().trim().max(160).optional(),
 });
 
 async function validateFinancialReferences(input: z.infer<typeof financialTransactionInput>) {
-  const [account, category] = await Promise.all([
+  const [account, category, contributor] = await Promise.all([
     getFinancialAccountById(input.accountId, input.churchId),
     getFinancialCategoryById(input.categoryId, input.churchId),
+    input.contributorPersonId ? getPersonById(input.contributorPersonId, input.churchId) : Promise.resolve(null),
   ]);
   if (!account || !category) {
     throw new TRPCError({ code: "NOT_FOUND", message: "Conta ou categoria financeira não encontrada." });
   }
   if (category.type !== input.type) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "A categoria precisa ter o mesmo tipo do lançamento." });
+  }
+  if (input.contributorPersonId && !contributor) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa contribuinte não pertence a esta igreja." });
   }
   if (["outra_entrada", "outra_saida"].includes(category.key) && !input.description?.trim()) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Descreva o lançamento usando uma categoria manual." });
@@ -2928,6 +2976,41 @@ const treasuryRouter = router({
     .query(async ({ input, ctx }) => {
       await requireTreasuryAccess(ctx.user.id, input.churchId);
       return getFinancialPeriodClosure(input.churchId, input.periodStart);
+    }),
+
+  receipt: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const receipt = await getFinancialReceiptData(input.id, input.churchId);
+      if (!receipt) throw new TRPCError({ code: "NOT_FOUND", message: "Lançamento financeiro não encontrado." });
+      if (receipt.transaction.type !== "entrada" || receipt.transaction.status !== "confirmado") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Recibos estão disponíveis apenas para entradas confirmadas." });
+      }
+      return receipt;
+    }),
+
+  reconciliation: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), accountId: z.number().int().positive(), periodStart: financialDateInput, periodEnd: financialDateInput }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const account = await getFinancialAccountById(input.accountId, input.churchId);
+      if (!account || account.type !== "banco") throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma conta bancária desta igreja." });
+      const bookBalanceCents = await getBookBalanceAt({ churchId: input.churchId, accountId: input.accountId, endDate: input.periodEnd });
+      return { reconciliation: await getFinancialReconciliation(input), bookBalanceCents };
+    }),
+
+  saveReconciliation: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), accountId: z.number().int().positive(), periodStart: financialDateInput, periodEnd: financialDateInput, bankClosingBalanceCents: z.number().int(), notes: z.string().trim().max(2000).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (input.periodEnd < input.periodStart) throw new TRPCError({ code: "BAD_REQUEST", message: "O término do período deve ser posterior ao início." });
+      const account = await getFinancialAccountById(input.accountId, input.churchId);
+      if (!account || account.type !== "banco") throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma conta bancária desta igreja." });
+      const bookBalanceCents = await getBookBalanceAt({ churchId: input.churchId, accountId: input.accountId, endDate: input.periodEnd });
+      if (bookBalanceCents === null) throw new TRPCError({ code: "NOT_FOUND", message: "Conta bancária não encontrada." });
+      const differenceCents = input.bankClosingBalanceCents - bookBalanceCents;
+      return saveFinancialReconciliation({ ...input, bookBalanceCents, differenceCents, status: differenceCents === 0 ? "conciliada" : "com_divergencia", actorChurchUserId: access.actor.id });
     }),
 
   createAccount: protectedProcedure
@@ -3020,6 +3103,30 @@ const treasuryRouter = router({
       const closure = await reopenFinancialPeriod({ ...input, actorChurchUserId: access.actor.id });
       if (!closure) throw new TRPCError({ code: "NOT_FOUND", message: "Fechamento financeiro não encontrado." });
       return closure;
+    }),
+});
+
+// ─── NOTIFICAÇÕES ──────────────────────────────────────────────────────────────
+
+const notificationsRouter = router({
+  mine: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), unreadOnly: z.boolean().optional() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      return getNotificationsForChurchUser({ churchId: input.churchId, churchUserId: actor.id, unreadOnly: input.unreadOnly, limit: 40 });
+    }),
+  unreadCount: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      return { count: await getUnreadNotificationCount(input.churchId, actor.id) };
+    }),
+  markRead: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      await markNotificationRead({ id: input.id, churchId: input.churchId, churchUserId: actor.id });
+      return { success: true };
     }),
 });
 
@@ -3207,6 +3314,7 @@ export const appRouter = router({
   comunicacao: comunicacaoRouter,
   certificates: certificatesRouter,
   treasury: treasuryRouter,
+  notifications: notificationsRouter,
   stripe: stripeRouter,
   contact: router({
     send: publicProcedure
