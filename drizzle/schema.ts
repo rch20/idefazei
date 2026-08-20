@@ -668,6 +668,7 @@ export const consolidationReferrals = mysqlTable("consolidation_referrals", {
     .default("pendente")
     .notNull(),
   referredAt: timestamp("referredAt").defaultNow().notNull(),
+  careDueAt: timestamp("careDueAt"),
   acceptedAt: timestamp("acceptedAt"),
   firstContactAt: timestamp("firstContactAt"),
   closedAt: timestamp("closedAt"),

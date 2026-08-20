@@ -217,9 +217,26 @@ const MINISTRY_FUNCTION_CATALOG = [
 
 const MINISTRY_FUNCTION_GRANTS = new Map<string, readonly string[]>(MINISTRY_FUNCTION_CATALOG.map((item) => [item.key, item.grants]));
 const CUSTOM_PERMISSION_PACKAGE_GRANTS: Record<string, readonly string[]> = {
-  member: [], cell_leader: ["lider"], consolidator: ["consolidador"], visitor: ["visitador"],
-  treasurer: ["tesoureiro"], ministry_leader: ["lider_ministerio"], communication_leader: ["comunicacao"],
+  member: [],
+  cell_leader: ["lider"],
+  consolidator: ["consolidador"],
+  visitor: ["visitador"],
+  treasurer: ["tesoureiro"],
+  ministry_leader: ["lider_ministerio"],
+  communication_leader: ["comunicacao"],
 };
+
+const DEFAULT_REFERRAL_CARE_DUE_DAYS = 3;
+const CARE_DUE_WARNING_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+function getReferralCareDueState(referral: { careDueAt?: Date | null; referredAt: Date; status: string }) {
+  const careDueAt = referral.careDueAt ?? new Date(new Date(referral.referredAt).getTime() + DEFAULT_REFERRAL_CARE_DUE_DAYS * 24 * 60 * 60 * 1000);
+  if (["encerrado", "cancelado"].includes(referral.status)) return { careDueAt, careDueStatus: "encerrado" as const, hoursUntilCareDue: null };
+  const hoursUntilCareDue = Math.ceil((careDueAt.getTime() - Date.now()) / (60 * 60 * 1000));
+  if (hoursUntilCareDue < 0) return { careDueAt, careDueStatus: "atrasado" as const, hoursUntilCareDue };
+  if (careDueAt.getTime() - Date.now() <= CARE_DUE_WARNING_WINDOW_MS) return { careDueAt, careDueStatus: "proximo" as const, hoursUntilCareDue };
+  return { careDueAt, careDueStatus: "em_dia" as const, hoursUntilCareDue };
+}
 
 function getMinistryFunctionCatalogFor(ministry: { type: string; name: string }) {
   const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -781,6 +798,7 @@ const consolidationRouter = router({
         const canViewContact = canViewAll || (referral.acceptedByPersonId === actor.personId && referral.status !== "pendente");
         return {
           ...referral,
+          ...getReferralCareDueState(referral),
           personName: person?.fullName ?? "Pessoa vinculada",
           contactNumber: canViewContact ? (person?.whatsapp || person?.phone || null) : null,
           referredByName: peopleById.get(referral.referredByPersonId)?.fullName ?? "Liderança",
@@ -845,6 +863,7 @@ const consolidationRouter = router({
       reason: z.string().trim().min(3).max(255),
       notes: z.string().trim().max(2000).optional(),
       preferredConsolidatorId: z.number().optional(),
+      careDueInDays: z.number().int().min(1).max(14).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const actor = await requireJourneyStagePermission(ctx.user.id, input.churchId, input.personId);
@@ -862,7 +881,27 @@ const consolidationRouter = router({
         reason: input.reason,
         notes: input.notes || null,
         status: "pendente",
+        careDueAt: new Date(Date.now() + (input.careDueInDays ?? DEFAULT_REFERRAL_CARE_DUE_DAYS) * 24 * 60 * 60 * 1000),
       });
+    }),
+
+  updateReferralCareDue: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number(), careDueAt: z.string().datetime() }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const referral = await getConsolidationReferralById(input.id, input.churchId);
+      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Encaminhamento não encontrado." });
+      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      if (!canOverride && referral.acceptedByPersonId !== actor.personId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável ou Pastores podem ajustar este prazo." });
+      }
+      if (["encerrado", "cancelado"].includes(referral.status)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível alterar o prazo de um encaminhamento encerrado." });
+      }
+      const dueAt = new Date(input.careDueAt);
+      if (dueAt.getTime() <= Date.now()) throw new TRPCError({ code: "BAD_REQUEST", message: "Defina um prazo futuro para o cuidado." });
+      return updateConsolidationReferral(input.id, input.churchId, { careDueAt: dueAt });
     }),
 
   acceptReferral: protectedProcedure

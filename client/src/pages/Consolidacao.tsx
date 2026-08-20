@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Circle, ClipboardCheck, Heart, MapPinned, Phone, MessageCircle, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Circle, ClipboardCheck, Clock3, Heart, MapPinned, Phone, MessageCircle, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { toast } from "sonner";
 
@@ -54,6 +54,18 @@ function getLocalDayKey(value: Date | string) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function toDateTimeLocal(value: Date | string) {
+  const date = new Date(value);
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 16);
+}
+
+function getCareDueLabel(referral: { careDueStatus: string; hoursUntilCareDue: number | null; careDueAt: Date | string }) {
+  if (referral.careDueStatus === "atrasado") return `Atrasado há ${Math.max(1, Math.abs(referral.hoursUntilCareDue ?? 0))}h`;
+  if (referral.careDueStatus === "proximo") return (referral.hoursUntilCareDue ?? 0) <= 24 ? "Vence nas próximas 24h" : "Vence em até 48h";
+  return `Prazo: ${new Date(referral.careDueAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}`;
+}
+
 export default function Consolidacao() {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
@@ -79,6 +91,7 @@ export default function Consolidacao() {
   const [followUpForm, setFollowUpForm] = useState(initialFollowUpForm);
   const [activeSection, setActiveSection] = useState<"consolidacao" | "visitas">("consolidacao");
   const [visitNotesById, setVisitNotesById] = useState<Record<number, string>>({});
+  const [careDueInputByReferral, setCareDueInputByReferral] = useState<Record<number, string>>({});
   const [visitCalendarMonth, setVisitCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
   useEffect(() => {
@@ -133,8 +146,17 @@ export default function Consolidacao() {
     },
     onError: (error: { message: string }) => toast.error(error.message || "Não foi possível registrar a visita."),
   });
+  const updateCareDue = trpc.consolidation.updateReferralCareDue.useMutation({
+    onSuccess: async () => {
+      toast.success("Prazo de cuidado atualizado.");
+      await referralsQuery.refetch();
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
+  });
 
   const soulsMap = new Map((souls ?? []).map((s) => [s.id, s]));
+  const referralAlerts = (referralsQuery.data ?? []).filter((referral) => ["atrasado", "proximo"].includes(referral.careDueStatus));
+  const overdueReferrals = referralAlerts.filter((referral) => referral.careDueStatus === "atrasado");
 
   function toggleItem(consolidationId: number, key: ChecklistKey, current: boolean) {
     updateChecklist.mutate({
@@ -238,6 +260,8 @@ export default function Consolidacao() {
 
       {canAccessVisits && <div className="inline-flex rounded-lg border border-border bg-background p-1"><Button size="sm" className="bg-navy text-white hover:bg-navy-light">Consolidação</Button><Button size="sm" variant="ghost" onClick={() => setActiveSection("visitas")}><MapPinned className="mr-2 h-4 w-4" />Visitas</Button></div>}
 
+      {referralAlerts.length > 0 && <section className={`rounded-2xl border p-4 sm:p-5 ${overdueReferrals.length > 0 ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}><div className="flex items-start gap-3"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${overdueReferrals.length > 0 ? "bg-rose-100" : "bg-amber-100"}`}><AlertTriangle className={`h-5 w-5 ${overdueReferrals.length > 0 ? "text-rose-700" : "text-amber-700"}`} /></div><div><h2 className="font-display text-lg font-semibold text-navy">Atenção aos prazos de cuidado</h2><p className="mt-1 text-sm text-muted-foreground">{overdueReferrals.length > 0 ? `${overdueReferrals.length} caso${overdueReferrals.length === 1 ? "" : "s"} está${overdueReferrals.length === 1 ? "" : "ão"} atrasado${overdueReferrals.length === 1 ? "" : "s"}. ` : ""}{referralAlerts.length - overdueReferrals.length > 0 ? `${referralAlerts.length - overdueReferrals.length} caso${referralAlerts.length - overdueReferrals.length === 1 ? "" : "s"} vence${referralAlerts.length - overdueReferrals.length === 1 ? "" : "m"} nas próximas 48 horas.` : ""}</p></div></div></section>}
+
       <section className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4 sm:p-5">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100">
@@ -263,6 +287,7 @@ export default function Consolidacao() {
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-navy">{referral.personName}</p>
                         <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${referral.status === "encerrado" ? "border-green-200 bg-green-50 text-green-700" : referral.status === "em_acompanhamento" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{referral.status === "pendente" ? "Aguardando aceite" : referral.status === "aceito" ? "Aceito" : referral.status === "em_acompanhamento" ? "Em acompanhamento" : "Encerrado"}</span>
+                        {referral.careDueStatus !== "encerrado" && <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${referral.careDueStatus === "atrasado" ? "border-rose-200 bg-rose-50 text-rose-700" : referral.careDueStatus === "proximo" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}><Clock3 className="h-3 w-3" />{getCareDueLabel(referral)}</span>}
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">Encaminhado por {referral.referredByName} em {new Date(referral.referredAt).toLocaleDateString("pt-BR")}{referral.preferredConsolidatorName ? ` · Indicado para ${referral.preferredConsolidatorName}` : ""}</p>
                       <p className="mt-3 text-sm font-medium text-navy">Motivo: <span className="font-normal text-foreground">{referral.reason}</span></p>
@@ -291,6 +316,11 @@ export default function Consolidacao() {
                           <h3 className="font-semibold text-navy">Acompanhamento do caso</h3>
                           <p className="mt-0.5 text-xs text-muted-foreground">Registre como foi o contato, programe a próxima ação e sinalize se há necessidade de visita.</p>
                         </div>
+                      </div>
+                      <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                        <Label htmlFor={`care-due-${referral.id}`} className="flex items-center gap-2 text-amber-900"><Clock3 className="h-4 w-4" />Prazo de cuidado</Label>
+                        <p className="mt-1 text-xs text-muted-foreground">Defina quando este caso deve receber atenção. Alertas aparecem nas 48 horas anteriores e após o vencimento.</p>
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row"><Input id={`care-due-${referral.id}`} type="datetime-local" className="bg-background" value={careDueInputByReferral[referral.id] ?? toDateTimeLocal(referral.careDueAt)} onChange={(event) => setCareDueInputByReferral((current) => ({ ...current, [referral.id]: event.target.value }))} /><Button type="button" size="sm" variant="outline" disabled={updateCareDue.isPending} onClick={() => { const value = careDueInputByReferral[referral.id] ?? toDateTimeLocal(referral.careDueAt); if (!value) return; updateCareDue.mutate({ churchId, id: referral.id, careDueAt: new Date(value).toISOString() }); }}>{updateCareDue.isPending ? "Salvando…" : "Atualizar prazo"}</Button></div>
                       </div>
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
                         <div>

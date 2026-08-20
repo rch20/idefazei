@@ -900,7 +900,28 @@ describe("Fluxo completo de discipulado", () => {
         personId: 1,
         referredByPersonId: 10,
         status: "pendente",
+        careDueAt: expect.any(Date),
       }));
+    });
+
+    it("permite que o Consolidador responsável ajuste um prazo futuro de cuidado", async () => {
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
+      vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({ id: 51, churchId: CHURCH_ID, acceptedByPersonId: 10, status: "aceito" } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+      const careDueAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+
+      await caller.consolidation.updateReferralCareDue({ churchId: CHURCH_ID, id: 51, careDueAt });
+
+      expect(updateConsolidationReferral).toHaveBeenCalledWith(51, CHURCH_ID, expect.objectContaining({ careDueAt: expect.any(Date) }));
+    });
+
+    it("bloqueia ajuste de prazo por Consolidador sem responsabilidade no caso", async () => {
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
+      vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({ id: 51, churchId: CHURCH_ID, acceptedByPersonId: 99, status: "aceito" } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+      const careDueAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+
+      await expect(caller.consolidation.updateReferralCareDue({ churchId: CHURCH_ID, id: 51, careDueAt })).rejects.toThrow("Somente o Consolidador responsável");
     });
 
     it("permite que um Consolidador assuma o encaminhamento e registre o cuidado", async () => {

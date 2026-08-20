@@ -624,3 +624,10 @@
 - [x] Criar resumo protegido de inscritos, check-ins e ausentes por evento no servidor
 - [x] Adicionar relatório visual e impressão na tela de Eventos, com leitura mobile-first
 - [x] Cobrir o relatório com testes de tenant e autorização, validar TypeScript, logs e regressões
+
+## FASE 59 – Prazos de Cuidado na Consolidação
+
+- [x] Mapear encaminhamentos, escopos e a regra configurável de prazo de cuidado
+- [x] Persistir o prazo de cada encaminhamento e calcular proximidade ou atraso no servidor
+- [x] Adicionar definição de prazo e alertas visuais seguros na Consolidação e na fila pessoal
+- [x] Cobrir os estados de prazo com testes de tenant e permissão, validar TypeScript, logs, mobile e regressões

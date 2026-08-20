@@ -1,0 +1,1 @@
+ALTER TABLE `consolidation_referrals` ADD `careDueAt` timestamp;
