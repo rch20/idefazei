@@ -84,6 +84,8 @@ import {
   deactivateMinistryRole,
   getActiveMinistryRoleKeysByPerson,
   getMinistryRoleAssignmentsByPerson,
+  getMinistryRoleDefinitionsByChurch,
+  createMinistryRoleDefinition,
   getPeopleByChurch,
   getPersonById,
   getPrayerRequestsByChurch,
@@ -1659,6 +1661,28 @@ const ministriesRouter = router({
       const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
       if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado." });
       return getMinistryFunctionCatalogFor(ministry);
+    }),
+  customFunctions: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      return getMinistryRoleDefinitionsByChurch(input.churchId);
+    }),
+  createCustomFunction: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      ministryId: z.number().optional(),
+      key: z.string().trim().min(2).max(100).regex(/^[a-z0-9_\-]+$/),
+      name: z.string().trim().min(2).max(120),
+      permissionPackage: z.enum(["member", "cell_leader", "consolidator", "visitor", "treasurer", "ministry_leader", "communication_leader"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchAdministrator(ctx.user.id, input.churchId);
+      if (input.ministryId && !(await getMinistriesByChurch(input.churchId)).some((item) => item.id === input.ministryId)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Ministério inválido para esta igreja." });
+      }
+      const definition = await createMinistryRoleDefinition({ ...input, ministryId: input.ministryId ?? null, createdByChurchUserId: actor.id });
+      return definition;
     }),
   personFunctions: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))

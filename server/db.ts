@@ -41,6 +41,7 @@ import {
   ministries,
   ministryMembers,
   ministryRoleAssignments,
+  ministryRoleDefinitions,
   people,
   prayerRequests,
   scheduleItems,
@@ -1101,6 +1102,27 @@ export async function deactivateMinistryRole(id: number, churchId: number) {
   if (!db) throw new Error("DB not available");
   await db.update(ministryRoleAssignments).set({ active: false, endedAt: new Date() })
     .where(and(eq(ministryRoleAssignments.id, id), eq(ministryRoleAssignments.churchId, churchId)));
+}
+
+export async function getMinistryRoleDefinitionsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(ministryRoleDefinitions).where(eq(ministryRoleDefinitions.churchId, churchId)).orderBy(ministryRoleDefinitions.name);
+}
+
+export async function createMinistryRoleDefinition(data: {
+  churchId: number;
+  ministryId?: number | null;
+  key: string;
+  name: string;
+  permissionPackage: "member" | "cell_leader" | "consolidator" | "visitor" | "treasurer" | "ministry_leader" | "communication_leader";
+  createdByChurchUserId?: number | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.insert(ministryRoleDefinitions).values({ ...data, ministryId: data.ministryId ?? null, createdByChurchUserId: data.createdByChurchUserId ?? null });
+  const rows = await db.select().from(ministryRoleDefinitions).where(and(eq(ministryRoleDefinitions.churchId, data.churchId), eq(ministryRoleDefinitions.key, data.key))).limit(1);
+  return rows[0] ?? null;
 }
 
 // ─── ANNOUNCEMENTS (MURAL) ────────────────────────────────────────────────────
