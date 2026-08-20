@@ -30,6 +30,7 @@ import Mural from "./pages/Mural";
 import Placeholder from "./pages/Placeholder";
 import Familias from "./pages/Familias";
 import Ministerios from "./pages/Ministerios";
+import EstruturaOrganizacional from "./pages/EstruturaOrganizacional";
 import Escalas from "./pages/Escalas";
 import Configuracoes from "./pages/Configuracoes";
 import Biblioteca from "./pages/Biblioteca";
@@ -169,6 +170,11 @@ function Router() {
       <Route path="/app/ministerios">
         <AppPage title="Ministérios">
           <Ministerios />
+        </AppPage>
+      </Route>
+      <Route path="/app/estrutura-organizacional">
+        <AppPage title="Estrutura Organizacional">
+          <EstruturaOrganizacional />
         </AppPage>
       </Route>
 
