@@ -89,8 +89,8 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-[#1e3a5f] rounded-lg flex items-center justify-center">
-                <span className="text-[#c9a84c] font-bold text-sm">✦</span>
+              <div className="w-8 h-8 bg-[#1e3a5f] rounded-lg flex items-center justify-center overflow-hidden" aria-hidden="true">
+                <img src="/manus-storage/ide-fazei-symbol_59bf82d4.png" alt="" className="w-6 h-6 object-contain" />
               </div>
               <div>
                 <span className="font-bold text-[#1e3a5f] text-lg tracking-tight">Ide Fazei</span>

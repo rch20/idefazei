@@ -10,13 +10,13 @@
   "lang": "pt-BR",
   "icons": [
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
+      "src": "/manus-storage/ide-fazei-symbol_59bf82d4.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/manus-storage/ide-fazei-symbol_59bf82d4.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -30,21 +30,21 @@
       "short_name": "Dashboard",
       "description": "Visão geral da sua igreja",
       "url": "/app/dashboard",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/manus-storage/ide-fazei-symbol_59bf82d4.png", "sizes": "512x512" }]
     },
     {
       "name": "Ganhar Almas",
       "short_name": "Almas",
       "description": "Registrar nova conversão",
       "url": "/app/almas",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/manus-storage/ide-fazei-symbol_59bf82d4.png", "sizes": "512x512" }]
     },
     {
       "name": "Funil de Discipulado",
       "short_name": "Funil",
       "description": "Acompanhar o funil de discipulado",
       "url": "/app/funil",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/manus-storage/ide-fazei-symbol_59bf82d4.png", "sizes": "512x512" }]
     }
   ]
 }

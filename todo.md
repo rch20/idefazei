@@ -530,3 +530,11 @@
 - [x] Atualizar a marca visível para Ide Fazei sem alterar as referências técnicas internas
 - [x] Atualizar título do aplicativo e metadados de navegação
 - [x] Validar a nova identidade visual, os testes e o checkpoint
+
+## FASE 47 – Ativos e Domínio Ide Fazei
+
+- [x] Definir e criar o logo oficial e o favicon da Ide Fazei
+- [x] Aplicar os ativos oficiais à experiência pública e ao manifesto PWA
+- [x] Documentar a estrutura de domínio principal e subdomínios de igrejas
+- [x] Preparar os apontamentos DNS necessários para `idefazei.com.br` e `*.idefazei.com.br`
+- [x] Validar os ativos e apresentar os passos de publicação que dependem do titular do domínio
