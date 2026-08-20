@@ -9,6 +9,7 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { dailyNotificationsHandler } from "../scheduledNotifications";
+import { scheduleRemindersHandler } from "../scheduleReminders";
 import Busboy from "busboy";
 import { storagePut } from "../storage";
 import { stripeWebhookHandler } from "../stripe-webhook";
@@ -56,6 +57,7 @@ async function startServer() {
 
   // Scheduled heartbeat endpoints
   app.post("/api/scheduled/daily-notifications", dailyNotificationsHandler);
+  app.post("/api/scheduled/schedule-reminders", scheduleRemindersHandler);
 
   // Upload de logos da igreja: somente perfis administrativos autenticados.
   app.post("/api/upload", async (req, res) => {

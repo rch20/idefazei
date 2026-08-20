@@ -84,7 +84,8 @@ export type NotificationEventType =
   | "funcao_ministerial_atribuida"
   | "evento_igreja"
   | "comunicado_lideranca"
-  | "encaminhamento_sem_aceite";
+  | "encaminhamento_sem_aceite"
+  | "lembrete_escala";
 
 export type NotificationChannel = "sistema" | "whatsapp";
 

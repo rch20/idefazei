@@ -638,3 +638,10 @@
 - [x] Implementar validação no servidor para bloquear atribuições conflitantes no mesmo tenant
 - [x] Adicionar calendário mensal de Escalas com destaque de conflitos e leitura mobile-first
 - [x] Cobrir conflitos, isolamento e autorização com testes, validar TypeScript, logs e regressões antes do checkpoint
+
+## FASE 61 – Lembretes Internos de Escalas
+
+- [x] Mapear Escalas, notificações e automação existentes para lembretes de 24 horas e 2 horas
+- [x] Emitir lembretes internos idempotentes de 24 horas e 2 horas, respeitando igreja e destinatário
+- [ ] Registrar e ativar a rotina periódica após publicação da versão com o handler
+- [ ] Cobrir deduplicação, isolamento e destinatários com testes, validar TypeScript, logs, mobile e regressões
