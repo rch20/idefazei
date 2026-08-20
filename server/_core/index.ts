@@ -13,7 +13,14 @@ import Busboy from "busboy";
 import { storagePut } from "../storage";
 import { stripeWebhookHandler } from "../stripe-webhook";
 import { verifyToken } from "../auth";
-import { getActiveChurchUserById } from "../db";
+import {
+  createFinancialReconciliationAttachment,
+  getActiveChurchUserById,
+  getActiveMinistryRoleKeysByPerson,
+  getComplementaryRolesByChurchUser,
+  getFinancialReconciliationById,
+  getMinistryRoleDefinitionsByChurch,
+} from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -132,6 +139,93 @@ async function startServer() {
       res.status(500).json({ error: "Upload error" });
     });
 
+    req.pipe(bb);
+  });
+
+  // Comprovantes financeiros: apenas perfis de Tesouraria no tenant autenticado.
+  app.post("/api/treasury/reconciliation-attachments", async (req, res) => {
+    const authorization = req.headers.authorization;
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+    const payload = token ? await verifyToken(token) : null;
+    if (!payload || payload.type !== "church") {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    const churchUser = await getActiveChurchUserById(Number(payload.sub));
+    if (!churchUser || churchUser.churchId !== payload.churchId || churchUser.role !== payload.role) {
+      res.status(403).json({ error: "Invalid church session" });
+      return;
+    }
+    const [complementaryRoles, ministryRoleKeys, definitions] = await Promise.all([
+      getComplementaryRolesByChurchUser(churchUser.id, churchUser.churchId),
+      churchUser.personId ? getActiveMinistryRoleKeysByPerson(churchUser.personId, churchUser.churchId) : Promise.resolve([]),
+      getMinistryRoleDefinitionsByChurch(churchUser.churchId),
+    ]);
+    const hasCustomTreasuryPermission = definitions.some((definition) => definition.permissionPackage === "treasurer" && ministryRoleKeys.includes(definition.key));
+    const hasTreasuryPermission = [churchUser.role, ...complementaryRoles].some((role) => ["pastor_presidente", "pastor_local", "tesoureiro"].includes(role)) || hasCustomTreasuryPermission;
+    if (!hasTreasuryPermission) {
+      res.status(403).json({ error: "Treasury permission required" });
+      return;
+    }
+
+    const contentType = req.headers["content-type"] ?? "";
+    if (!contentType.includes("multipart/form-data")) {
+      res.status(400).json({ error: "Expected multipart/form-data" });
+      return;
+    }
+    const bb = Busboy({ headers: req.headers, limits: { fileSize: 8 * 1024 * 1024, files: 1 } });
+    let reconciliationId: number | null = null;
+    let fileBuffer: Buffer | null = null;
+    let mimeType = "application/pdf";
+    let originalFileName = "comprovante";
+    let limitReached = false;
+    let invalidMimeType = false;
+    const allowedMimeTypes = new Set(["application/pdf", "image/png", "image/jpeg", "image/webp"]);
+    const extensions: Record<string, string> = { "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+
+    bb.on("field", (name, value) => {
+      if (name === "reconciliationId" && /^\d+$/.test(value)) reconciliationId = Number(value);
+    });
+    bb.on("file", (_field, stream, info) => {
+      mimeType = info.mimeType || "application/pdf";
+      originalFileName = info.filename || "comprovante";
+      if (!allowedMimeTypes.has(mimeType)) {
+        invalidMimeType = true;
+        stream.resume();
+        return;
+      }
+      const chunks: Buffer[] = [];
+      stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+      stream.on("limit", () => { limitReached = true; stream.resume(); });
+      stream.on("end", () => { if (!limitReached) fileBuffer = Buffer.concat(chunks); });
+    });
+
+    bb.on("finish", async () => {
+      if (!reconciliationId) return res.status(400).json({ error: "Reconciliation is required" });
+      if (limitReached) return res.status(413).json({ error: "File too large (max 8MB)" });
+      if (invalidMimeType) return res.status(415).json({ error: "Only PDF, PNG, JPEG and WebP files are allowed" });
+      if (!fileBuffer) return res.status(400).json({ error: "No file received" });
+      const reconciliation = await getFinancialReconciliationById(reconciliationId, churchUser.churchId);
+      if (!reconciliation) return res.status(404).json({ error: "Reconciliation not found" });
+      try {
+        const safeName = originalFileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "comprovante";
+        const key = `churches/${churchUser.churchId}/treasury/reconciliations/${reconciliation.id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}.${extensions[mimeType]}`;
+        const { url } = await storagePut(key, fileBuffer, mimeType);
+        const attachment = await createFinancialReconciliationAttachment({
+          churchId: churchUser.churchId, reconciliationId: reconciliation.id, fileKey: key, url,
+          fileName: originalFileName.slice(0, 255), mimeType, sizeBytes: fileBuffer.length, uploadedByChurchUserId: churchUser.id,
+        });
+        return res.json({ attachment });
+      } catch (error) {
+        console.error("[TreasuryAttachment] Error:", error);
+        return res.status(500).json({ error: "Upload failed" });
+      }
+    });
+    bb.on("error", (error) => {
+      console.error("[TreasuryAttachment] Busboy error:", error);
+      res.status(500).json({ error: "Upload error" });
+    });
     req.pipe(bb);
   });
   // tRPC API

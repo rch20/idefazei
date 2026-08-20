@@ -8,8 +8,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useChurchAuth } from "@/hooks/useChurchAuth";
-import { ArrowDownCircle, ArrowUpCircle, BookOpenCheck, CheckCircle2, CircleDollarSign, FileText, Landmark, Loader2, Plus, Printer, ReceiptText, RotateCcw, WalletCards, XCircle } from "lucide-react";
+import { getChurchToken, useChurchAuth } from "@/hooks/useChurchAuth";
+import { ArrowDownCircle, ArrowUpCircle, BookOpenCheck, CheckCircle2, CircleDollarSign, ExternalLink, FileText, Landmark, Loader2, Paperclip, Plus, Printer, ReceiptText, RotateCcw, Upload, WalletCards, XCircle } from "lucide-react";
 
 type TransactionType = "entrada" | "saida";
 type TransactionStatus = "rascunho" | "confirmado";
@@ -53,6 +53,8 @@ export default function Tesouraria() {
   const [receiptOpen, setReceiptOpen] = useState<number | null>(null);
   const [reconciliationOpen, setReconciliationOpen] = useState(false);
   const [reconciliationForm, setReconciliationForm] = useState({ accountId: "", bankClosingBalance: "", notes: "" });
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [categoryName, setCategoryName] = useState("");
   const [categoryType, setCategoryType] = useState<TransactionType>("entrada");
   const [newAccount, setNewAccount] = useState({ name: "", type: "caixa" as "caixa" | "banco" | "outro", openingBalance: "0" });
@@ -82,6 +84,8 @@ export default function Tesouraria() {
   const bankAccounts = (accountsQuery.data ?? []).filter((account) => account.type === "banco");
   const reconciliationAccountId = Number(reconciliationForm.accountId || bankAccounts[0]?.id || 0);
   const reconciliationQuery = trpc.treasury.reconciliation.useQuery({ churchId, accountId: reconciliationAccountId, periodStart: startDate, periodEnd: endDate }, { enabled: Boolean(churchId && reconciliationOpen && reconciliationAccountId) });
+  const reconciliationId = reconciliationQuery.data?.reconciliation?.id ?? 0;
+  const attachmentsQuery = trpc.treasury.reconciliationAttachments.useQuery({ churchId, reconciliationId }, { enabled: Boolean(churchId && reconciliationId) });
 
   const periodClosed = closureQuery.data?.status === "fechado";
   const canManageStructure = ["pastor_presidente", "pastor_local"].includes(user?.role ?? "");
@@ -112,7 +116,7 @@ export default function Tesouraria() {
   const reverseTransaction = trpc.treasury.reverseTransaction.useMutation({ onSuccess: async () => { await invalidateTreasury(); setReverseOpen(null); setReverseReason(""); } });
   const closePeriod = trpc.treasury.closePeriod.useMutation({ onSuccess: invalidateTreasury });
   const reopenPeriod = trpc.treasury.reopenPeriod.useMutation({ onSuccess: invalidateTreasury });
-  const saveReconciliation = trpc.treasury.saveReconciliation.useMutation({ onSuccess: async () => { await invalidateTreasury(); setReconciliationOpen(false); setReconciliationForm({ accountId: "", bankClosingBalance: "", notes: "" }); } });
+  const saveReconciliation = trpc.treasury.saveReconciliation.useMutation({ onSuccess: async () => { setAttachmentError(null); await invalidateTreasury(); } });
 
   const openTransaction = (type: TransactionType) => {
     const firstCategory = (categoriesQuery.data ?? []).find((category) => category.type === type);
@@ -163,6 +167,42 @@ export default function Tesouraria() {
     if (!printWindow) return;
     printWindow.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Recibo ${data.transaction.id}</title><style>body{font-family:Arial,sans-serif;color:#1e3a5f;padding:40px;max-width:640px;margin:auto}.top{border-bottom:2px solid #c9a84c;padding-bottom:16px}.eyebrow{color:#a67c24;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}.title{font-size:28px;margin:8px 0}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}.box{background:#f8f5ef;border-radius:10px;padding:14px}.amount{font-size:28px;font-weight:700;color:#176b42}.signatures{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:80px;text-align:center}.line{border-top:1px solid #777;padding-top:8px;font-size:12px}@media print{body{padding:0}}</style></head><body><div class="top"><div class="eyebrow">Ide Fazei · Tesouraria</div><h1 class="title">Recibo de contribuição</h1><div>${escapeHtml(churchName)} · Recibo nº ${data.transaction.id}</div></div><div class="grid"><div class="box"><strong>Recebemos de</strong><br>${escapeHtml(contributorName)}</div><div class="box"><strong>Data</strong><br>${new Date(data.transaction.transactionDate).toLocaleDateString("pt-BR")}</div><div class="box"><strong>Referente a</strong><br>${escapeHtml(data.category.name)}</div><div class="box"><strong>Forma de recebimento</strong><br>${escapeHtml(data.transaction.paymentMethod)}</div></div><p>Recebemos a importância de</p><p class="amount">${toCurrency(data.transaction.amountCents)}</p><p>${escapeHtml(data.transaction.description || "Contribuição registrada na Tesouraria da igreja.")}</p><div class="signatures"><div class="line">Tesoureiro(a)</div><div class="line">Contribuinte</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);
     printWindow.document.close();
+  };
+
+  const uploadAttachment = async (file: File) => {
+    if (!reconciliationId) {
+      setAttachmentError("Salve a conciliação antes de anexar um comprovante.");
+      return;
+    }
+    const allowedTypes = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
+    if (!allowedTypes.includes(file.type)) {
+      setAttachmentError("Envie um arquivo PDF, PNG, JPEG ou WebP.");
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setAttachmentError("O comprovante deve ter no máximo 8 MB.");
+      return;
+    }
+    const token = getChurchToken();
+    if (!token) {
+      setAttachmentError("Sua sessão expirou. Entre novamente para enviar o comprovante.");
+      return;
+    }
+    setUploadingAttachment(true);
+    setAttachmentError(null);
+    try {
+      const formData = new FormData();
+      formData.append("reconciliationId", String(reconciliationId));
+      formData.append("file", file);
+      const response = await fetch("/api/treasury/reconciliation-attachments", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Não foi possível enviar o comprovante.");
+      await attachmentsQuery.refetch();
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : "Não foi possível enviar o comprovante.");
+    } finally {
+      setUploadingAttachment(false);
+    }
   };
 
   if (overviewQuery.error?.data?.code === "FORBIDDEN") {
@@ -277,7 +317,7 @@ export default function Tesouraria() {
 
       <Dialog open={receiptOpen !== null} onOpenChange={(open) => { if (!open) setReceiptOpen(null); }}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle className="font-display text-2xl text-navy">Recibo de contribuição</DialogTitle><DialogDescription>Disponível apenas para entradas confirmadas da sua igreja.</DialogDescription></DialogHeader>{receiptQuery.isLoading ? <div className="h-44 animate-pulse rounded-xl bg-muted" /> : receiptQuery.data && <div className="rounded-xl border border-gold/30 bg-cream/30 p-5 space-y-3"><p className="text-xs font-semibold uppercase tracking-wider text-gold">Recibo nº {receiptQuery.data.transaction.id}</p><p className="font-display text-2xl text-navy">{toCurrency(receiptQuery.data.transaction.amountCents)}</p><div className="grid grid-cols-2 gap-3 text-sm"><p><span className="block text-xs text-muted-foreground">Contribuinte</span>{receiptQuery.data.contributor?.fullName || receiptQuery.data.transaction.contributorName || "Não identificado"}</p><p><span className="block text-xs text-muted-foreground">Categoria</span>{receiptQuery.data.category.name}</p><p><span className="block text-xs text-muted-foreground">Data</span>{new Date(receiptQuery.data.transaction.transactionDate).toLocaleDateString("pt-BR")}</p><p><span className="block text-xs text-muted-foreground">Forma</span>{receiptQuery.data.transaction.paymentMethod}</p></div><p className="text-sm text-muted-foreground">{receiptQuery.data.transaction.description || "Contribuição registrada na Tesouraria."}</p><Button className="w-full bg-navy" onClick={printReceipt}><Printer className="mr-2 h-4 w-4" /> Imprimir recibo</Button></div>}</DialogContent></Dialog>
 
-      <Dialog open={reconciliationOpen} onOpenChange={(open) => { if (!open) { setReconciliationOpen(false); setReconciliationForm({ accountId: "", bankClosingBalance: "", notes: "" }); } }}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle className="font-display text-2xl text-navy">Conciliação bancária</DialogTitle><DialogDescription>Compare o saldo do extrato com o saldo registrado até o fim do período. A conciliação não altera lançamentos nem fechamento.</DialogDescription></DialogHeader><div className="grid gap-4"><label className="grid gap-1.5"><Label>Conta bancária</Label><select value={reconciliationForm.accountId || String(bankAccounts[0]?.id ?? "")} onChange={(event) => setReconciliationForm({ ...reconciliationForm, accountId: event.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm">{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><div className="rounded-xl bg-muted/50 p-4"><p className="text-xs text-muted-foreground">Saldo do livro-caixa em {new Date(`${endDate}T12:00:00`).toLocaleDateString("pt-BR")}</p><p className="mt-1 text-xl font-semibold text-navy">{toCurrency(reconciliationQuery.data?.bookBalanceCents ?? 0)}</p></div><label className="grid gap-1.5"><Label>Saldo final no extrato (R$)</Label><Input inputMode="decimal" value={reconciliationForm.bankClosingBalance} onChange={(event) => setReconciliationForm({ ...reconciliationForm, bankClosingBalance: event.target.value })} placeholder="0,00" /></label><div className={`rounded-xl p-3 text-sm ${reconciliationDifference === 0 ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}><strong>{reconciliationDifference === 0 ? "Conciliação sem divergência" : "Divergência identificada"}</strong><span className="ml-2">{toCurrency(reconciliationDifference)}</span></div><label className="grid gap-1.5"><Label>Observações</Label><Textarea value={reconciliationForm.notes} onChange={(event) => setReconciliationForm({ ...reconciliationForm, notes: event.target.value })} placeholder="Ex.: PIX em trânsito ou tarifa ainda não registrada." /></label>{saveReconciliation.error && <p className="text-sm text-rose-700">{saveReconciliation.error.message}</p>}<Button disabled={saveReconciliation.isPending || !reconciliationForm.bankClosingBalance.trim()} className="bg-navy" onClick={() => saveReconciliation.mutate({ churchId, accountId: reconciliationAccountId, periodStart: startDate, periodEnd: endDate, bankClosingBalanceCents: bankBalanceInput, notes: reconciliationForm.notes.trim() || undefined })}>{saveReconciliation.isPending ? "Salvando…" : "Salvar conciliação"}</Button></div></DialogContent></Dialog>
+      <Dialog open={reconciliationOpen} onOpenChange={(open) => { if (!open) { setReconciliationOpen(false); setReconciliationForm({ accountId: "", bankClosingBalance: "", notes: "" }); setAttachmentError(null); } }}><DialogContent className="sm:max-w-lg"><DialogHeader><DialogTitle className="font-display text-2xl text-navy">Conciliação bancária</DialogTitle><DialogDescription>Compare o saldo do extrato com o saldo registrado até o fim do período. A conciliação não altera lançamentos nem fechamento.</DialogDescription></DialogHeader><div className="grid gap-4"><label className="grid gap-1.5"><Label>Conta bancária</Label><select value={reconciliationForm.accountId || String(bankAccounts[0]?.id ?? "")} onChange={(event) => { setReconciliationForm({ ...reconciliationForm, accountId: event.target.value }); setAttachmentError(null); }} className="h-10 rounded-md border border-input bg-background px-3 text-sm">{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><div className="rounded-xl bg-muted/50 p-4"><p className="text-xs text-muted-foreground">Saldo do livro-caixa em {new Date(`${endDate}T12:00:00`).toLocaleDateString("pt-BR")}</p><p className="mt-1 text-xl font-semibold text-navy">{toCurrency(reconciliationQuery.data?.bookBalanceCents ?? 0)}</p></div><label className="grid gap-1.5"><Label>Saldo final no extrato (R$)</Label><Input inputMode="decimal" value={reconciliationForm.bankClosingBalance} onChange={(event) => setReconciliationForm({ ...reconciliationForm, bankClosingBalance: event.target.value })} placeholder="0,00" /></label><div className={`rounded-xl p-3 text-sm ${reconciliationDifference === 0 ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}><strong>{reconciliationDifference === 0 ? "Conciliação sem divergência" : "Divergência identificada"}</strong><span className="ml-2">{toCurrency(reconciliationDifference)}</span></div><label className="grid gap-1.5"><Label>Observações</Label><Textarea value={reconciliationForm.notes} onChange={(event) => setReconciliationForm({ ...reconciliationForm, notes: event.target.value })} placeholder="Ex.: PIX em trânsito ou tarifa ainda não registrada." /></label><div className="rounded-xl border border-dashed border-gold/50 bg-cream/20 p-4"><div className="flex items-start gap-3"><Paperclip className="mt-0.5 h-5 w-5 text-gold" /><div className="min-w-0 flex-1"><p className="font-semibold text-navy">Comprovantes bancários</p><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Salve a conciliação e envie PDF, PNG, JPEG ou WebP de até 8 MB.</p>{reconciliationId ? <div className="mt-3 space-y-2">{attachmentsQuery.isLoading ? <p className="text-xs text-muted-foreground">Carregando comprovantes…</p> : (attachmentsQuery.data ?? []).length === 0 ? <p className="text-xs text-muted-foreground">Nenhum comprovante anexado.</p> : (attachmentsQuery.data ?? []).map((attachment) => <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-lg bg-white/70 px-3 py-2 text-sm text-navy hover:bg-white"><span className="min-w-0 truncate">{attachment.fileName}</span><ExternalLink className="h-4 w-4 shrink-0" /></a>)}<label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-navy/20 bg-white px-3 py-2 text-sm font-medium text-navy transition-colors hover:bg-navy hover:text-white"><Upload className="h-4 w-4" />{uploadingAttachment ? "Enviando…" : "Anexar comprovante"}<input type="file" className="sr-only" accept="application/pdf,image/png,image/jpeg,image/webp" disabled={uploadingAttachment} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadAttachment(file); event.currentTarget.value = ""; }} /></label></div> : <p className="mt-3 text-xs font-medium text-amber-800">Salve a conciliação para liberar o anexo.</p>}</div></div></div>{attachmentError && <p className="text-sm text-rose-700">{attachmentError}</p>}{saveReconciliation.error && <p className="text-sm text-rose-700">{saveReconciliation.error.message}</p>}<Button disabled={saveReconciliation.isPending || !reconciliationForm.bankClosingBalance.trim()} className="bg-navy" onClick={() => saveReconciliation.mutate({ churchId, accountId: reconciliationAccountId, periodStart: startDate, periodEnd: endDate, bankClosingBalanceCents: bankBalanceInput, notes: reconciliationForm.notes.trim() || undefined })}>{saveReconciliation.isPending ? "Salvando…" : reconciliationId ? "Atualizar conciliação" : "Salvar conciliação"}</Button></div></DialogContent></Dialog>
     </div>
   );
 }

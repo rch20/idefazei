@@ -33,6 +33,7 @@ import {
   financialAuditLogs,
   financialCategories,
   financialPeriodClosures,
+  financialReconciliationAttachments,
   financialReconciliations,
   financialTransactions,
   InsertUser,
@@ -2236,6 +2237,37 @@ export async function getFinancialReconciliation(data: { churchId: number; accou
     .where(and(eq(financialReconciliations.churchId, data.churchId), eq(financialReconciliations.accountId, data.accountId), sql`DATE(${financialReconciliations.periodStart}) = DATE(${data.periodStart})`))
     .limit(1);
   return rows[0] ?? null;
+}
+
+export async function getFinancialReconciliationById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(financialReconciliations)
+    .where(and(eq(financialReconciliations.id, id), eq(financialReconciliations.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFinancialReconciliationAttachments(reconciliationId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(financialReconciliationAttachments)
+    .where(and(eq(financialReconciliationAttachments.reconciliationId, reconciliationId), eq(financialReconciliationAttachments.churchId, churchId)))
+    .orderBy(desc(financialReconciliationAttachments.createdAt));
+}
+
+export async function createFinancialReconciliationAttachment(data: {
+  churchId: number; reconciliationId: number; fileKey: string; url: string; fileName: string; mimeType: string; sizeBytes: number; uploadedByChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(financialReconciliationAttachments).values(data);
+  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+  const rows = await db.select().from(financialReconciliationAttachments)
+    .where(and(eq(financialReconciliationAttachments.id, id), eq(financialReconciliationAttachments.churchId, data.churchId)))
+    .limit(1);
+  if (!rows[0]) throw new Error("Falha ao registrar comprovante bancário");
+  return rows[0];
 }
 
 export async function getBookBalanceAt(data: { churchId: number; accountId: number; endDate: string }) {

@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -122,6 +122,8 @@ vi.mock("./db", () => ({
   getFinancialPeriodClosure: vi.fn().mockResolvedValue(null),
   getFinancialReceiptData: vi.fn().mockResolvedValue({ transaction: { id: 71, churchId: 100, type: "entrada", status: "confirmado", amountCents: 125000, transactionDate: new Date("2026-08-01"), paymentMethod: "pix", contributorPersonId: null, contributorName: "Ana" }, account: { id: 91, churchId: 100, name: "Banco", type: "banco" }, category: { id: 81, churchId: 100, name: "Dízimo", type: "entrada" }, contributor: null }),
   getFinancialReconciliation: vi.fn().mockResolvedValue(null),
+  getFinancialReconciliationById: vi.fn().mockResolvedValue({ id: 4, churchId: 100, accountId: 91 }),
+  getFinancialReconciliationAttachments: vi.fn().mockResolvedValue([{ id: 9, churchId: 100, reconciliationId: 4, fileName: "extrato-agosto.pdf", url: "/manus-storage/churches/100/proof.pdf" }]),
   getBookBalanceAt: vi.fn().mockResolvedValue(125000),
   saveFinancialReconciliation: vi.fn().mockResolvedValue({ id: 4, churchId: 100, status: "com_divergencia", differenceCents: -5000 }),
   getFinancialTransactionById: vi.fn().mockResolvedValue({ id: 71, churchId: 100, status: "confirmado", transactionDate: new Date("2026-08-01T12:00:00.000Z") }),
@@ -1267,6 +1269,14 @@ describe("Fluxo completo de discipulado", () => {
       const caller = appRouter.createCaller(createMemberContext());
       await caller.treasury.saveReconciliation({ churchId: CHURCH_ID, accountId: 91, periodStart: "2026-08-01", periodEnd: "2026-08-31", bankClosingBalanceCents: 120000, notes: "Tarifa pendente" });
       expect(saveFinancialReconciliation).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, accountId: 91, bookBalanceCents: 125000, differenceCents: -5000, status: "com_divergencia", actorChurchUserId: 1 }));
+    });
+
+    it("lista comprovantes somente da conciliação pertencente à igreja autenticada", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      const attachments = await caller.treasury.reconciliationAttachments({ churchId: CHURCH_ID, reconciliationId: 4 });
+      expect(attachments).toHaveLength(1);
+      expect(getFinancialReconciliationById).toHaveBeenCalledWith(4, CHURCH_ID);
+      expect(getFinancialReconciliationAttachments).toHaveBeenCalledWith(4, CHURCH_ID);
     });
   });
 

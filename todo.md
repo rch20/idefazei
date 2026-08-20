@@ -596,3 +596,10 @@
 - [x] Gerar recibos individuais de contribuições com acesso protegido e impressão
 - [x] Implementar conciliação bancária mensal com cálculos e fechamento preservados
 - [x] Validar isolamento por tenant, permissões, cálculos, impressão, responsividade e regressões antes do checkpoint
+
+## FASE 55 – Comprovantes da Conciliação Bancária
+
+- [x] Mapear o fluxo de conciliação e modelar os metadados do comprovante bancário
+- [x] Implementar armazenamento seguro e vínculo multi-tenant dos comprovantes
+- [x] Adicionar envio, consulta e abertura de comprovantes na tela de conciliação mensal
+- [x] Validar permissões, formatos, tamanho, isolamento, mobile e regressões antes do checkpoint

@@ -1104,6 +1104,26 @@ export const financialReconciliations = mysqlTable(
 
 export type FinancialReconciliation = typeof financialReconciliations.$inferSelect;
 
+/** Metadados dos comprovantes armazenados em S3, vinculados à conciliação da mesma igreja. */
+export const financialReconciliationAttachments = mysqlTable(
+  "financial_reconciliation_attachments",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    reconciliationId: int("reconciliationId").notNull(),
+    fileKey: varchar("fileKey", { length: 512 }).notNull(),
+    url: varchar("url", { length: 1024 }).notNull(),
+    fileName: varchar("fileName", { length: 255 }).notNull(),
+    mimeType: varchar("mimeType", { length: 100 }).notNull(),
+    sizeBytes: int("sizeBytes").notNull(),
+    uploadedByChurchUserId: int("uploadedByChurchUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [index("financial_reconciliation_attachments_reconciliation_idx").on(table.churchId, table.reconciliationId)]
+);
+
+export type FinancialReconciliationAttachment = typeof financialReconciliationAttachments.$inferSelect;
+
 /** Histórico imutável de ações financeiras relevantes. */
 export const financialAuditLogs = mysqlTable("financial_audit_logs", {
   id: int("id").autoincrement().primaryKey(),

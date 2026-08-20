@@ -72,6 +72,8 @@ import {
   getFinancialPeriodClosure,
   getFinancialReceiptData,
   getFinancialReconciliation,
+  getFinancialReconciliationAttachments,
+  getFinancialReconciliationById,
   getBookBalanceAt,
   getFinancialTransactionById,
   getTreasuryOverview,
@@ -2998,6 +3000,15 @@ const treasuryRouter = router({
       if (!account || account.type !== "banco") throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma conta bancária desta igreja." });
       const bookBalanceCents = await getBookBalanceAt({ churchId: input.churchId, accountId: input.accountId, endDate: input.periodEnd });
       return { reconciliation: await getFinancialReconciliation(input), bookBalanceCents };
+    }),
+
+  reconciliationAttachments: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), reconciliationId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const reconciliation = await getFinancialReconciliationById(input.reconciliationId, input.churchId);
+      if (!reconciliation) throw new TRPCError({ code: "NOT_FOUND", message: "Conciliação bancária não encontrada." });
+      return getFinancialReconciliationAttachments(input.reconciliationId, input.churchId);
     }),
 
   saveReconciliation: protectedProcedure
