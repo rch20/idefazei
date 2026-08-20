@@ -631,3 +631,10 @@
 - [x] Persistir o prazo de cada encaminhamento e calcular proximidade ou atraso no servidor
 - [x] Adicionar definição de prazo e alertas visuais seguros na Consolidação e na fila pessoal
 - [x] Cobrir os estados de prazo com testes de tenant e permissão, validar TypeScript, logs, mobile e regressões
+
+## FASE 60 – Calendário de Escalas e Conflitos
+
+- [x] Mapear os dados atuais de Escalas, permissões e sobreposição de horário por voluntário
+- [x] Implementar validação no servidor para bloquear atribuições conflitantes no mesmo tenant
+- [x] Adicionar calendário mensal de Escalas com destaque de conflitos e leitura mobile-first
+- [x] Cobrir conflitos, isolamento e autorização com testes, validar TypeScript, logs e regressões antes do checkpoint

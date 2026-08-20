@@ -90,6 +90,7 @@ import {
   getMinistryMembers,
   getMinistryMemberCounts,
   isActiveMinistryMember,
+  getScheduleTimeConflicts,
   assignPersonToMinistry,
   assignMinistryRole,
   deactivateMinistryRole,
@@ -1844,7 +1845,10 @@ const schedulesRouter = router({
         const d = new Date(r.scheduledDate);
         return d.getMonth() + 1 === m && d.getFullYear() === y;
       });
-      return filtered;
+      return filtered.map((item) => ({
+        ...item,
+        hasTimeConflict: Boolean(item.startTime && item.endTime && filtered.some((other) => other.id !== item.id && other.personId === item.personId && String(other.scheduledDate) === String(item.scheduledDate) && other.startTime && other.endTime && item.startTime! < other.endTime! && item.endTime! > other.startTime!)),
+      }));
     }),
   create: protectedProcedure
     .input(z.object({
@@ -1852,6 +1856,8 @@ const schedulesRouter = router({
       ministryId: z.number(),
       personId: z.number(),
       scheduledDate: z.string(),
+      startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário inicial válido."),
+      endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário final válido."),
       role: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
@@ -1866,6 +1872,13 @@ const schedulesRouter = router({
           message: "A pessoa precisa ser participante ativa deste Ministério antes de entrar na escala.",
         });
       }
+      if (input.endTime <= input.startTime) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser posterior ao horário inicial." });
+      }
+      const conflicts = await getScheduleTimeConflicts(input);
+      if (conflicts.length > 0) {
+        throw new TRPCError({ code: "CONFLICT", message: "Esta pessoa já possui outra escala em horário sobreposto nesta data." });
+      }
       const db = await import("./db").then((m) => m.getDb());
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const { scheduleItems } = await import("../drizzle/schema");
@@ -1874,6 +1887,8 @@ const schedulesRouter = router({
         ministryId: input.ministryId,
         personId: input.personId,
         scheduledDate: new Date(input.scheduledDate + "T12:00:00"),
+        startTime: input.startTime,
+        endTime: input.endTime,
         role: input.role ?? null,
       });
       return { success: true };

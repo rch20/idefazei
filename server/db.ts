@@ -1171,6 +1171,28 @@ export async function isActiveMinistryMember(ministryId: number, personId: numbe
   return rows.length > 0;
 }
 
+export async function getScheduleTimeConflicts(data: {
+  churchId: number;
+  personId: number;
+  scheduledDate: string;
+  startTime: string;
+  endTime: string;
+}) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(scheduleItems)
+    .where(
+      and(
+        eq(scheduleItems.churchId, data.churchId),
+        eq(scheduleItems.personId, data.personId),
+        eq(scheduleItems.scheduledDate, new Date(`${data.scheduledDate}T12:00:00`))
+      )
+    );
+  return rows.filter((item) => Boolean(item.startTime && item.endTime && item.startTime < data.endTime && item.endTime > data.startTime));
+}
+
 export async function assignPersonToMinistry(data: { ministryId: number; personId: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");

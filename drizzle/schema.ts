@@ -446,6 +446,8 @@ export const scheduleItems = mysqlTable("schedule_items", {
   ministryId: int("ministryId").notNull(),
   personId: int("personId").notNull(),
   scheduledDate: date("scheduledDate").notNull(),
+  startTime: varchar("startTime", { length: 5 }),
+  endTime: varchar("endTime", { length: 5 }),
   role: varchar("role", { length: 100 }), // função na escala
   notified: boolean("notified").default(false),
   confirmed: boolean("confirmed").default(false),

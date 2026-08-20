@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { Calendar, Users, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, Calendar, Users, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 
 const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MONTHS = [
@@ -22,7 +22,7 @@ export default function Escalas() {
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({ ministryId: "", personId: "", scheduledDate: "", role: "" });
+  const [form, setForm] = useState({ ministryId: "", personId: "", scheduledDate: "", startTime: "", endTime: "", role: "" });
 
   const { data: scales = [], isLoading, refetch } = trpc.schedules.list.useQuery(
     { churchId: churchId!, month: currentMonth, year: currentYear },
@@ -40,7 +40,7 @@ export default function Escalas() {
     onSuccess: () => {
       toast.success("Escala criada com sucesso!");
       setCreateOpen(false);
-      setForm({ ministryId: "", personId: "", scheduledDate: "", role: "" });
+      setForm({ ministryId: "", personId: "", scheduledDate: "", startTime: "", endTime: "", role: "" });
       refetch();
     },
     onError: (error) => toast.error(error.message),
@@ -61,14 +61,17 @@ export default function Escalas() {
   const formatDate = (day: number) =>
     `${currentYear}-${String(currentMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 
-  const hasScale = (day: number) => {
+  const getScalesForDay = (day: number) => {
     const dateStr = formatDate(day);
-    return scales.some((s) => {
+    return scales.filter((s) => {
       const d = new Date(s.scheduledDate);
       const sd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       return sd === dateStr;
     });
   };
+
+  const hasScale = (day: number) => getScalesForDay(day).length > 0;
+  const hasConflict = (day: number) => getScalesForDay(day).some((scale) => scale.hasTimeConflict);
 
   const selectedScales = selectedDate
     ? scales.filter((s) => {
@@ -84,11 +87,19 @@ export default function Escalas() {
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     })
   );
+  const conflictsThisMonth = scales.filter((scale) => scale.hasTimeConflict).length;
+  const peopleById = new Map(people.map((person) => [person.id, person.fullName]));
+  const ministriesById = new Map(ministries.map((ministry) => [ministry.id, ministry.name]));
+  const formConflict = Boolean(form.personId && form.scheduledDate && form.startTime && form.endTime && scales.some((scale) => {
+    const date = new Date(scale.scheduledDate);
+    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    return String(scale.personId) === form.personId && dateKey === form.scheduledDate && scale.startTime && scale.endTime && form.startTime < scale.endTime && form.endTime > scale.startTime;
+  }));
 
   function handleCreate(event: React.FormEvent) {
     event.preventDefault();
-    if (!churchId || !form.ministryId || !form.personId || !form.scheduledDate) {
-      toast.error("Selecione ministério, pessoa e data para criar a escala.");
+    if (!churchId || !form.ministryId || !form.personId || !form.scheduledDate || !form.startTime || !form.endTime) {
+      toast.error("Selecione ministério, pessoa, data e horário para criar a escala.");
       return;
     }
     createMutation.mutate({
@@ -96,6 +107,8 @@ export default function Escalas() {
       ministryId: Number(form.ministryId),
       personId: Number(form.personId),
       scheduledDate: form.scheduledDate,
+      startTime: form.startTime,
+      endTime: form.endTime,
       role: form.role.trim() || undefined,
     });
   }
@@ -137,10 +150,19 @@ export default function Escalas() {
                     <Input id="schedule-date" type="date" value={form.scheduledDate} onChange={(event) => setForm({ ...form, scheduledDate: event.target.value })} className="mt-1" />
                   </div>
                   <div>
+                    <Label htmlFor="schedule-start-time">Início *</Label>
+                    <Input id="schedule-start-time" type="time" value={form.startTime} onChange={(event) => setForm({ ...form, startTime: event.target.value })} className="mt-1" />
+                  </div>
+                  <div>
+                    <Label htmlFor="schedule-end-time">Término *</Label>
+                    <Input id="schedule-end-time" type="time" value={form.endTime} onChange={(event) => setForm({ ...form, endTime: event.target.value })} className="mt-1" />
+                  </div>
+                  <div>
                     <Label htmlFor="schedule-role">Função</Label>
                     <Input id="schedule-role" placeholder="Ex.: Vocal" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })} className="mt-1" />
                   </div>
                 </div>
+                {formConflict && <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Esta pessoa já aparece em uma escala com horário sobreposto nesta data. O sistema também bloqueará o salvamento.</div>}
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
                   <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>{createMutation.isPending ? "Salvando..." : "Criar Escala"}</Button>
@@ -180,18 +202,19 @@ export default function Escalas() {
                 const isToday = dateStr === todayStr;
                 const isSelected = selectedDate === dateStr;
                 const hasEvent = hasScale(day);
+                const dayHasConflict = hasConflict(day);
                 return (
                   <button
                     key={day}
                     onClick={() => setSelectedDate(isSelected ? null : dateStr)}
                     className={`
                       aspect-square flex flex-col items-center justify-center rounded-lg text-sm transition-all
-                      ${isSelected ? "bg-navy text-white" : isToday ? "bg-gold/20 text-navy font-bold" : "hover:bg-muted text-foreground"}
+                      ${isSelected ? "bg-navy text-white" : dayHasConflict ? "bg-rose-50 text-rose-800 ring-1 ring-rose-300" : isToday ? "bg-gold/20 text-navy font-bold" : "hover:bg-muted text-foreground"}
                     `}
                   >
                     {day}
                     {hasEvent && (
-                      <div className={`w-1 h-1 rounded-full mt-0.5 ${isSelected ? "bg-white" : "bg-gold"}`} />
+                      <div className={`w-1.5 h-1.5 rounded-full mt-0.5 ${isSelected ? "bg-white" : dayHasConflict ? "bg-rose-600" : "bg-gold"}`} />
                     )}
                   </button>
                 );
@@ -212,6 +235,7 @@ export default function Escalas() {
                   {[
                     { label: "Cultos Escalados", value: uniqueDates.size, icon: Calendar },
                     { label: "Escalas no Mês", value: scales.length, icon: Users },
+                    { label: "Conflitos", value: conflictsThisMonth, icon: AlertTriangle },
                   ].map((item) => (
                     <div key={item.label} className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -238,15 +262,17 @@ export default function Escalas() {
               ) : (
                 <div className="space-y-2">
                   {selectedScales.map((scale) => (
-                    <div key={scale.id} className="p-2 rounded-lg bg-muted/50 border border-border/50">
+                    <div key={scale.id} className={`p-2 rounded-lg border ${scale.hasTimeConflict ? "border-rose-200 bg-rose-50" : "border-border/50 bg-muted/50"}`}>
                       <div className="flex items-center justify-between mb-1">
-                        <Badge variant="outline" className="text-xs">Min. {scale.ministryId}</Badge>
+                        <Badge variant="outline" className="text-xs">{ministriesById.get(scale.ministryId) ?? `Min. ${scale.ministryId}`}</Badge>
                         <span className="text-xs text-muted-foreground">
                           {new Date(scale.scheduledDate).toLocaleDateString("pt-BR")}
                         </span>
                       </div>
-                      <p className="text-xs font-medium text-navy">Pessoa #{scale.personId}</p>
+                      <p className="text-xs font-medium text-navy">{peopleById.get(scale.personId) ?? `Pessoa #${scale.personId}`}</p>
+                      <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" />{scale.startTime && scale.endTime ? `${scale.startTime}–${scale.endTime}` : "Horário não definido"}</p>
                       {scale.role && <p className="text-xs text-muted-foreground">{scale.role}</p>}
+                      {scale.hasTimeConflict && <p className="mt-1 flex items-center gap-1 text-xs font-medium text-rose-700"><AlertTriangle className="h-3 w-3" />Conflito de horário</p>}
                     </div>
                   ))}
                 </div>

@@ -148,6 +148,7 @@ vi.mock("./db", () => ({
   getMinistryMembers: vi.fn().mockResolvedValue([]),
   getMinistryMemberCounts: vi.fn().mockResolvedValue([]),
   isActiveMinistryMember: vi.fn().mockResolvedValue(true),
+  getScheduleTimeConflicts: vi.fn().mockResolvedValue([]),
   assignPersonToMinistry: vi.fn().mockResolvedValue({ id: 1 }),
   createMinistry: vi.fn().mockResolvedValue({ id: 1 }),
   getAnnouncements: vi.fn().mockResolvedValue([]),
@@ -577,9 +578,29 @@ describe("Fluxo completo de discipulado", () => {
           ministryId: 7,
           personId: 10,
           scheduledDate: "2026-06-28",
+          startTime: "09:00",
+          endTime: "11:00",
           role: "Recepção",
         })
       ).rejects.toThrow("precisa ser participante ativa deste Ministério");
+    });
+
+    it("bloqueia uma escala quando o voluntário já possui horário sobreposto na mesma igreja", async () => {
+      const { getScheduleTimeConflicts } = await import("./db");
+      (getScheduleTimeConflicts as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 88, churchId: CHURCH_ID }]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.schedules.create({
+        churchId: CHURCH_ID,
+        ministryId: 7,
+        personId: 10,
+        scheduledDate: "2026-06-28",
+        startTime: "09:30",
+        endTime: "11:30",
+        role: "Vocal",
+      })).rejects.toThrow("horário sobreposto");
+
+      expect(getScheduleTimeConflicts).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, personId: 10, startTime: "09:30", endTime: "11:30" }));
     });
   });
 
