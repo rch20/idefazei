@@ -424,6 +424,19 @@ export const ministryRoleAssignments = mysqlTable("ministry_role_assignments", {
 
 export type MinistryRoleAssignment = typeof ministryRoleAssignments.$inferSelect;
 
+export const ministryRoleDefinitions = mysqlTable("ministry_role_definitions", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  ministryId: int("ministryId"),
+  key: varchar("key", { length: 100 }).notNull(),
+  name: varchar("name", { length: 120 }).notNull(),
+  permissionPackage: mysqlEnum("permissionPackage", ["member", "cell_leader", "consolidator", "visitor", "treasurer", "ministry_leader", "communication_leader"]).notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdByChurchUserId: int("createdByChurchUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("ministry_role_definition_key_idx").on(table.churchId, table.key)]);
+
 // ─── ESCALAS ──────────────────────────────────────────────────────────────────
 
 export const scheduleItems = mysqlTable("schedule_items", {
