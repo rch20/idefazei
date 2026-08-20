@@ -28,6 +28,8 @@ export default function Ministerios() {
   const [form, setForm] = useState({ name: "", description: "" });
   const [selectedMinistry, setSelectedMinistry] = useState<any>(null);
   const [selectedPersonId, setSelectedPersonId] = useState("");
+  const [customRoleName, setCustomRoleName] = useState("");
+  const [customRolePackage, setCustomRolePackage] = useState("member");
 
   const { data: ministries, isLoading, refetch } = trpc.ministries.list.useQuery(
     { churchId: churchId! },
@@ -38,6 +40,7 @@ export default function Ministerios() {
     { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0 },
     { enabled: Boolean(churchId && selectedMinistry?.id) }
   );
+  const customFunctions = trpc.ministries.customFunctions.useQuery({ churchId: churchId! }, { enabled: !!churchId });
 
   const createMutation = trpc.ministries.create.useMutation({
     onSuccess: () => {
@@ -56,6 +59,10 @@ export default function Ministerios() {
     },
     onError: (error) => toast.error(error.message || "Não foi possível adicionar a pessoa."),
   });
+  const createCustomFunction = trpc.ministries.createCustomFunction.useMutation({
+    onSuccess: () => { toast.success("Função ministerial criada."); setCustomRoleName(""); customFunctions.refetch(); },
+    onError: (error) => toast.error(error.message || "Não foi possível criar a função."),
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +76,12 @@ export default function Ministerios() {
       return;
     }
     assignPerson.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: Number(selectedPersonId) });
+  };
+
+  const addCustomFunction = () => {
+    if (!selectedMinistry || !customRoleName.trim()) return toast.error("Informe o nome da função.");
+    const key = customRoleName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    createCustomFunction.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, name: customRoleName.trim(), key, permissionPackage: customRolePackage as "member" | "cell_leader" | "consolidator" | "visitor" | "treasurer" | "ministry_leader" | "communication_leader" });
   };
 
   const filtered = ministries?.filter((m: { name: string }) =>
@@ -221,6 +234,18 @@ export default function Ministerios() {
                 {ministryMembers.isLoading ? <div className="p-4 text-sm text-muted-foreground">Carregando equipe…</div> : (ministryMembers.data ?? []).length === 0 ? <div className="p-4 text-sm text-muted-foreground">Nenhuma Pessoa adicionada ainda.</div> : (
                   <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-center gap-3 px-4 py-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><span className="text-sm font-medium text-navy">{item.person.fullName}</span></div>)}</div>
                 )}
+              </div>
+              <div className="rounded-xl border border-gold/30 bg-cream/40 p-4 space-y-3">
+                <p className="text-sm font-semibold text-navy">Funções personalizadas</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input value={customRoleName} onChange={(event) => setCustomRoleName(event.target.value)} placeholder="Ex.: Líder de Louvor" />
+                  <Select value={customRolePackage} onValueChange={setCustomRolePackage}>
+                    <SelectTrigger className="sm:w-52"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="member">Membro</SelectItem><SelectItem value="ministry_leader">Liderança de Ministério</SelectItem><SelectItem value="visitor">Visitador</SelectItem><SelectItem value="consolidator">Consolidador</SelectItem><SelectItem value="cell_leader">Líder de Célula</SelectItem><SelectItem value="treasurer">Tesouraria</SelectItem><SelectItem value="communication_leader">Comunicação</SelectItem></SelectContent>
+                  </Select>
+                  <Button type="button" onClick={addCustomFunction} disabled={createCustomFunction.isPending}>Criar</Button>
+                </div>
+                <div className="flex flex-wrap gap-2">{(customFunctions.data ?? []).filter((role) => !role.ministryId || role.ministryId === selectedMinistry?.id).map((role) => <Badge key={role.id} variant="outline">{role.name}</Badge>)}</div>
               </div>
             </div>
           </DialogContent>
