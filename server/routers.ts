@@ -196,6 +196,10 @@ const MINISTRY_FUNCTION_CATALOG = [
 ] as const;
 
 const MINISTRY_FUNCTION_GRANTS = new Map<string, readonly string[]>(MINISTRY_FUNCTION_CATALOG.map((item) => [item.key, item.grants]));
+const CUSTOM_PERMISSION_PACKAGE_GRANTS: Record<string, readonly string[]> = {
+  member: [], cell_leader: ["lider"], consolidator: ["consolidador"], visitor: ["visitador"],
+  treasurer: ["tesoureiro"], ministry_leader: ["lider_ministerio"], communication_leader: ["comunicacao"],
+};
 
 function getMinistryFunctionCatalogFor(ministry: { type: string; name: string }) {
   const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -296,7 +300,9 @@ async function getEffectiveChurchRoles(userId: number, churchId: number, actor: 
   if (userId >= 0) return [actor.role];
   const complementary = await getComplementaryRolesByChurchUser(Math.abs(userId), churchId);
   const ministryRoleKeys = actor.personId ? await getActiveMinistryRoleKeysByPerson(actor.personId, churchId) : [];
-  const ministryGrants = ministryRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? []);
+  const customDefinitions = await getMinistryRoleDefinitionsByChurch(churchId);
+  const customGrants = new Map(customDefinitions.map((definition) => [definition.key, CUSTOM_PERMISSION_PACKAGE_GRANTS[definition.permissionPackage] ?? []]));
+  const ministryGrants = ministryRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
   return Array.from(new Set([actor.role, ...complementary, ...ministryGrants]));
 }
 

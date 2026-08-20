@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -106,6 +106,7 @@ vi.mock("./db", () => ({
   updateChurchUserAssignment: vi.fn().mockResolvedValue({ id: 2, personId: 10, role: "lider" }),
   getComplementaryRolesByChurchUser: vi.fn().mockResolvedValue([]),
   getActiveMinistryRoleKeysByPerson: vi.fn().mockResolvedValue([]),
+  getMinistryRoleDefinitionsByChurch: vi.fn().mockResolvedValue([]),
   getMinistryRoleAssignmentsByPerson: vi.fn().mockResolvedValue([]),
   assignMinistryRole: vi.fn().mockResolvedValue({ id: 1, alreadyAssigned: false }),
   deactivateMinistryRole: vi.fn().mockResolvedValue(undefined),
