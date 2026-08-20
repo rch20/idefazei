@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
+import { timingSafeEqual } from "crypto";
 import { and, eq, gte, isNotNull, lte } from "drizzle-orm";
 import { ministries, scheduleItems, churchUsers } from "../drizzle/schema";
-import { sdk } from "./_core/sdk";
+import { ENV } from "./_core/env";
 import { getDb } from "./db";
 import { emitInternalNotification } from "./notifications";
 
@@ -20,6 +21,13 @@ export function getScheduleDateKey(value: Date | string) {
   return value.toISOString().slice(0, 10);
 }
 
+export function isValidInternalJobToken(receivedToken: string | undefined, configuredToken = ENV.internalJobsToken) {
+  if (!receivedToken || !configuredToken) return false;
+  const received = Buffer.from(receivedToken);
+  const configured = Buffer.from(configuredToken);
+  return received.length === configured.length && timingSafeEqual(received, configured);
+}
+
 function getScheduleStartAt(scheduledDate: Date | string, startTime: string) {
   const day = getScheduleDateKey(scheduledDate);
   return new Date(`${day}T${startTime}:00${DEFAULT_SCHEDULE_TIMEZONE_OFFSET}`);
@@ -27,8 +35,10 @@ function getScheduleStartAt(scheduledDate: Date | string, startTime: string) {
 
 export async function scheduleRemindersHandler(req: Request, res: Response) {
   try {
-    const user = await sdk.authenticateRequest(req);
-    if (!user.isCron) return res.status(403).json({ error: "cron-only" });
+    const configuredToken = ENV.internalJobsToken;
+    if (!configuredToken) return res.status(503).json({ error: "internal-jobs-token-not-configured" });
+    const providedToken = req.header("x-internal-jobs-token") ?? undefined;
+    if (!isValidInternalJobToken(providedToken, configuredToken)) return res.status(403).json({ error: "forbidden" });
 
     const db = await getDb();
     if (!db) return res.status(500).json({ error: "database unavailable" });

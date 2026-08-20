@@ -643,5 +643,12 @@
 
 - [x] Mapear Escalas, notificações e automação existentes para lembretes de 24 horas e 2 horas
 - [x] Emitir lembretes internos idempotentes de 24 horas e 2 horas, respeitando igreja e destinatário
-- [ ] Registrar e ativar a rotina periódica após publicação da versão com o handler
-- [ ] Cobrir deduplicação, isolamento e destinatários com testes, validar TypeScript, logs, mobile e regressões
+- [x] Decidir não registrar Heartbeat; a ativação será exclusivamente por systemd timer na Hostinger VPS
+- [x] Cobrir deduplicação, isolamento e destinatários com testes, validar TypeScript, logs e regressões
+
+## FASE 62 – Arquitetura Portável para VPS
+
+- [x] Mapear dependências e definir o contrato de job interno com segredo local
+- [x] Adaptar o handler de lembretes para execução via systemd timer, sem autenticação de cron externa
+- [x] Documentar unidades systemd, logs, variáveis e implantação com Node e MySQL na Hostinger VPS
+- [x] Validar autenticação, deduplicação, isolamento e portabilidade antes do checkpoint

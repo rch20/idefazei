@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getScheduleDateKey, getScheduleReminderStage } from "./scheduleReminders";
+import { getScheduleDateKey, getScheduleReminderStage, isValidInternalJobToken } from "./scheduleReminders";
 
 describe("lembretes internos de Escalas", () => {
   const now = new Date("2026-08-20T12:00:00.000Z");
@@ -16,5 +16,11 @@ describe("lembretes internos de Escalas", () => {
   it("preserva a data civil da Escala ao montar a notificação", () => {
     expect(getScheduleDateKey("2026-08-21")).toBe("2026-08-21");
     expect(getScheduleDateKey(new Date("2026-08-21T12:00:00.000Z"))).toBe("2026-08-21");
+  });
+
+  it("aceita somente o segredo local configurado para execução do job", () => {
+    expect(isValidInternalJobToken("segredo-correto", "segredo-correto")).toBe(true);
+    expect(isValidInternalJobToken("segredo-incorreto", "segredo-correto")).toBe(false);
+    expect(isValidInternalJobToken(undefined, "segredo-correto")).toBe(false);
   });
 });
