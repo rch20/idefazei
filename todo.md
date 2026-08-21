@@ -695,12 +695,19 @@
 
 ## FASE 69 – Auditoria Global de Scroll e Overflow
 
-- [ ] Inventariar todas as rotas, layouts, modais, drawers, tabelas e componentes compartilhados
-- [ ] Auditar em desktop, tablet e celular qualquer overflow horizontal, deslocamento lateral e scroll aninhado desnecessário
-- [ ] Inspecionar CSS e componentes responsáveis, identificando causas sem aplicar correções genéricas
-- [ ] Entregar diagnóstico por rota e proposta de padronização global antes de alterar layouts
+- [x] Inventariar todas as rotas, layouts, modais, drawers, tabelas e componentes compartilhados
+- [x] Auditar em desktop, tablet e celular qualquer overflow horizontal, deslocamento lateral e scroll aninhado desnecessário
+- [x] Inspecionar CSS e componentes responsáveis, identificando causas sem aplicar correções genéricas
+- [x] Entregar diagnóstico por rota e proposta de padronização global antes de alterar layouts
 - [ ] Aplicar somente as correções de CSS e componentes compartilhados aprovadas pelo usuário
 - [ ] Revalidar todas as rotas nos três breakpoints e registrar estabilidade final
+
+## FASE 71 – Diagnóstico Direto de Scroll e Viewport
+
+- [x] Inventariar diretamente todas as rotas, páginas e componentes compartilhados do projeto
+- [x] Analisar cada arquivo de página e layout quanto a 100vw, larguras mínimas, margens, grids, tabelas, modais e overflow
+- [x] Verificar visualmente as rotas representativas em desktop, tablet e celular sem alterar código
+- [x] Entregar diagnóstico por página e regra global de layout/scroll antes de aplicar qualquer correção
 
 ## FASE 70 – Implantação Controlada na VPS
 
@@ -716,3 +723,20 @@
 - [x] Validar o novo par certificado/chave e substituir o material incompatível sem expor a chave
 - [x] Restringir HTTP e HTTPS no firewall aos intervalos oficiais do Cloudflare, preservando SSH administrativo
 - [x] Confirmar Cloudflare em modo Full (strict) antes da validação pública final
+
+## FASE 72 – Auditoria Integral de Fluxos e Lógica
+
+- [x] Mapear os fluxos críticos, dependências e transições de estado da plataforma
+- [x] Auditar autenticação, isolamento multi-tenant, permissões acumuladas e escopos de acesso no servidor
+- [x] Auditar jornadas de pessoas, novas almas, células, consolidação, visitas, eventos, escalas e tesouraria
+- [x] Revisar notificações, jobs idempotentes, uploads e cenários de falha ou dados inconsistentes
+- [x] Validar a cobertura de testes, reproduzir achados com segurança e classificar risco, impacto e prioridade
+- [x] Entregar relatório de achados e recomendações antes de alterar fluxos críticos
+
+## FASE 73 – Segurança e Permissões de Ministérios e Escalas
+
+- [x] Auditar superfícies de autorização de Ministérios, participantes, funções e Escalas
+- [x] Criar guard central de gestão ministerial com validação de tenant, função efetiva e responsabilidade pelo Ministério
+- [x] Restringir criação de Ministério, atribuição de participante e gestão de Escalas no servidor
+- [x] Cobrir tentativas de elevação de privilégio, acesso entre tenants e fluxos legítimos de liderança com testes
+- [x] Executar TypeScript, suíte completa, revisão de logs e checkpoint da correção

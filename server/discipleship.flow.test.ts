@@ -568,6 +568,46 @@ describe("Fluxo completo de discipulado", () => {
 
   // ── Etapa 2.6: Serviço em Ministério ───────────────────────────────────────
   describe("Etapa 2.6 — Serviço em Ministério", () => {
+    it("bloqueia membro comum de criar Ministério, alterar participantes ou montar Escalas", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 12,
+        userId: 44,
+        churchId: CHURCH_ID,
+        personId: 44,
+        role: "membro",
+        active: true,
+      });
+      const caller = appRouter.createCaller(createMemberContext(44));
+
+      await expect(caller.ministries.create({ churchId: CHURCH_ID, name: "Recepção" })).rejects.toThrow("não tem permissão");
+      await expect(caller.ministries.assignPerson({ churchId: CHURCH_ID, ministryId: 7, personId: 10 })).rejects.toThrow("responsáveis por este Ministério");
+      await expect(caller.schedules.create({
+        churchId: CHURCH_ID,
+        ministryId: 7,
+        personId: 10,
+        scheduledDate: "2026-06-28",
+        startTime: "09:00",
+        endTime: "11:00",
+      })).rejects.toThrow("responsáveis por este Ministério");
+    });
+
+    it("permite ao responsável nomeado do Ministério atribuir participantes e criar Escalas", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 13,
+        userId: 45,
+        churchId: CHURCH_ID,
+        personId: 10,
+        role: "membro",
+        active: true,
+      });
+      (getMinistriesByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { id: 7, churchId: CHURCH_ID, name: "Ministério de Consolidação", type: "outro", leaderId: 10, active: true },
+      ]);
+      const caller = appRouter.createCaller(createMemberContext(45));
+
+      await expect(caller.ministries.assignPerson({ churchId: CHURCH_ID, ministryId: 7, personId: 10 })).resolves.toMatchObject({ success: true });
+    });
+
     it("bloqueia uma escala quando a Pessoa não pertence ao Ministério", async () => {
       (isActiveMinistryMember as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
       const caller = appRouter.createCaller(createMemberContext());

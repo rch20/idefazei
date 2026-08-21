@@ -199,6 +199,7 @@ const COUNSELING_ROLES = new Set(["pastor_presidente", "pastor_local", "supervis
 const PASTORAL_ACTION_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"]);
 const TREASURY_ROLES = new Set(["pastor_presidente", "pastor_local", "tesoureiro"]);
 const VISIT_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor", "consolidador", "visitador"]);
+const MINISTRY_MANAGEMENT_ROLE_KEYS = new Set(["lider_louvor"]);
 
 /**
  * Catálogo central: a igreja atribui uma função, nunca permissões isoladas por pessoa.
@@ -333,6 +334,46 @@ async function requireCellManagementPermission(userId: number, churchId: number,
     throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores, Supervisores ou o próprio Líder podem estruturar uma Célula." });
   }
   return { actor, roles, canManageAll };
+}
+
+/**
+ * Protege participantes e Escalas: a autoridade precisa ser administrativa ou
+ * pertencer especificamente ao Ministério que sofrerá a alteração.
+ */
+async function requireMinistryManagementPermission(userId: number, churchId: number, ministryId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, actor);
+  const ministry = (await getMinistriesByChurch(churchId)).find((item) => item.id === ministryId);
+  if (!ministry) {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
+  }
+
+  const canManageAll = roles.some((role) => CHURCH_ADMIN_ROLES.has(role));
+  const isNamedLeader = Boolean(actor.personId && ministry.leaderId === actor.personId);
+  let hasMinistryLeadershipAssignment = false;
+
+  if (!canManageAll && !isNamedLeader && actor.personId) {
+    const [assignments, definitions] = await Promise.all([
+      getMinistryRoleAssignmentsByPerson(actor.personId, churchId),
+      getMinistryRoleDefinitionsByChurch(churchId),
+    ]);
+    const definitionByKey = new Map(definitions.map((definition) => [definition.key, definition]));
+    hasMinistryLeadershipAssignment = assignments.some(({ assignment }) =>
+      assignment.ministryId === ministryId && (
+        MINISTRY_MANAGEMENT_ROLE_KEYS.has(assignment.roleKey)
+        || definitionByKey.get(assignment.roleKey)?.permissionPackage === "ministry_leader"
+      )
+    );
+  }
+
+  if (!canManageAll && !isNamedLeader && !hasMinistryLeadershipAssignment) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Somente Pastores, Secretários ou responsáveis por este Ministério podem gerenciar participantes e Escalas.",
+    });
+  }
+
+  return { actor, roles, ministry, canManageAll };
 }
 
 async function getEffectiveChurchRoles(userId: number, churchId: number, actor: { role: string; personId?: number | null }) {
@@ -1716,12 +1757,9 @@ const ministriesRouter = router({
   assignPerson: protectedProcedure
     .input(z.object({ churchId: z.number(), ministryId: z.number(), personId: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      const [ministry, person] = await Promise.all([
-        getMinistriesByChurch(input.churchId).then((items) => items.find((item) => item.id === input.ministryId)),
-        getPersonById(input.personId, input.churchId),
-      ]);
-      if (!ministry || !person) {
+      await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou Ministério inválido para esta igreja." });
       }
       if (await isActiveMinistryMember(input.ministryId, input.personId, input.churchId)) {
@@ -1810,7 +1848,7 @@ const ministriesRouter = router({
       description: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
       const db = await import("./db").then((m) => m.getDb());
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const { ministries: ministriesTable } = await import("../drizzle/schema");
@@ -1861,7 +1899,7 @@ const schedulesRouter = router({
       role: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
       const [person, eligible] = await Promise.all([
         getPersonById(input.personId, input.churchId),
         isActiveMinistryMember(input.ministryId, input.personId, input.churchId),
