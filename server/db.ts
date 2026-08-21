@@ -1178,6 +1178,7 @@ export async function getScheduleTimeConflicts(data: {
   scheduledDate: string;
   startTime: string;
   endTime: string;
+  excludeScheduleItemId?: number;
 }) {
   const db = await getDb();
   if (!db) return [];
@@ -1191,7 +1192,68 @@ export async function getScheduleTimeConflicts(data: {
         eq(scheduleItems.scheduledDate, new Date(`${data.scheduledDate}T12:00:00`))
       )
     );
-  return rows.filter((item) => Boolean(item.startTime && item.endTime && item.startTime < data.endTime && item.endTime > data.startTime));
+  return rows.filter((item) =>
+    item.id !== data.excludeScheduleItemId
+    && item.status !== "cancelada"
+    && Boolean(item.startTime && item.endTime && item.startTime < data.endTime && item.endTime > data.startTime)
+  );
+}
+
+export async function getScheduleItemById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(scheduleItems)
+    .where(and(eq(scheduleItems.id, id), eq(scheduleItems.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateScheduleItem(data: {
+  id: number;
+  churchId: number;
+  ministryId: number;
+  personId: number;
+  scheduledDate: Date;
+  startTime: string;
+  endTime: string;
+  role?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(scheduleItems)
+    .set({
+      ministryId: data.ministryId,
+      personId: data.personId,
+      scheduledDate: data.scheduledDate,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      role: data.role ?? null,
+    })
+    .where(and(eq(scheduleItems.id, data.id), eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.status, "agendada")));
+  return getScheduleItemById(data.id, data.churchId);
+}
+
+export async function cancelScheduleItem(data: {
+  id: number;
+  churchId: number;
+  cancelledByChurchUserId: number;
+  cancelReason?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(scheduleItems)
+    .set({
+      status: "cancelada",
+      cancelledAt: new Date(),
+      cancelledByChurchUserId: data.cancelledByChurchUserId,
+      cancelReason: data.cancelReason ?? null,
+    })
+    .where(and(eq(scheduleItems.id, data.id), eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.status, "agendada")));
+  return getScheduleItemById(data.id, data.churchId);
 }
 
 export async function assignPersonToMinistry(data: { ministryId: number; personId: number }) {

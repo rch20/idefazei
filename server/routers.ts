@@ -91,6 +91,9 @@ import {
   getMinistryMemberCounts,
   isActiveMinistryMember,
   getScheduleTimeConflicts,
+  getScheduleItemById,
+  updateScheduleItem,
+  cancelScheduleItem,
   assignPersonToMinistry,
   assignMinistryRole,
   deactivateMinistryRole,
@@ -1885,7 +1888,7 @@ const schedulesRouter = router({
       });
       return filtered.map((item) => ({
         ...item,
-        hasTimeConflict: Boolean(item.startTime && item.endTime && filtered.some((other) => other.id !== item.id && other.personId === item.personId && String(other.scheduledDate) === String(item.scheduledDate) && other.startTime && other.endTime && item.startTime! < other.endTime! && item.endTime! > other.startTime!)),
+        hasTimeConflict: Boolean(item.status !== "cancelada" && item.startTime && item.endTime && filtered.some((other) => other.status !== "cancelada" && other.id !== item.id && other.personId === item.personId && String(other.scheduledDate) === String(item.scheduledDate) && other.startTime && other.endTime && item.startTime! < other.endTime! && item.endTime! > other.startTime!)),
       }));
     }),
   create: protectedProcedure
@@ -1930,6 +1933,68 @@ const schedulesRouter = router({
         role: input.role ?? null,
       });
       return { success: true };
+    }),
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      churchId: z.number().int().positive(),
+      ministryId: z.number().int().positive(),
+      personId: z.number().int().positive(),
+      scheduledDate: z.string(),
+      startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário inicial válido."),
+      endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário final válido."),
+      role: z.string().trim().max(100).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const existing = await getScheduleItemById(input.id, input.churchId);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Escala não encontrada nesta igreja." });
+      if (existing.status === "cancelada") throw new TRPCError({ code: "BAD_REQUEST", message: "Uma Escala cancelada não pode ser editada. Crie uma nova Escala se necessário." });
+
+      await requireMinistryManagementPermission(ctx.user.id, input.churchId, existing.ministryId);
+      if (input.ministryId !== existing.ministryId) {
+        await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
+      }
+      const [person, eligible] = await Promise.all([
+        getPersonById(input.personId, input.churchId),
+        isActiveMinistryMember(input.ministryId, input.personId, input.churchId),
+      ]);
+      if (!person || !eligible) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A pessoa precisa ser participante ativa deste Ministério antes de entrar na escala." });
+      }
+      if (input.endTime <= input.startTime) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser posterior ao horário inicial." });
+      }
+      const conflicts = await getScheduleTimeConflicts({ ...input, excludeScheduleItemId: input.id });
+      if (conflicts.length > 0) {
+        throw new TRPCError({ code: "CONFLICT", message: "Esta pessoa já possui outra escala em horário sobreposto nesta data." });
+      }
+      const updated = await updateScheduleItem({
+        ...input,
+        scheduledDate: new Date(`${input.scheduledDate}T12:00:00`),
+        role: input.role || null,
+      });
+      if (!updated) throw new TRPCError({ code: "CONFLICT", message: "A Escala não pôde ser atualizada." });
+      return updated;
+    }),
+  cancel: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      churchId: z.number().int().positive(),
+      reason: z.string().trim().min(3, "Informe o motivo do cancelamento.").max(500),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const existing = await getScheduleItemById(input.id, input.churchId);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Escala não encontrada nesta igreja." });
+      if (existing.status === "cancelada") throw new TRPCError({ code: "CONFLICT", message: "Esta Escala já foi cancelada." });
+      const authorization = await requireMinistryManagementPermission(ctx.user.id, input.churchId, existing.ministryId);
+      const cancelled = await cancelScheduleItem({
+        id: input.id,
+        churchId: input.churchId,
+        cancelledByChurchUserId: authorization.actor.id,
+        cancelReason: input.reason,
+      });
+      if (!cancelled) throw new TRPCError({ code: "CONFLICT", message: "A Escala não pôde ser cancelada." });
+      return cancelled;
     }),
 });
 

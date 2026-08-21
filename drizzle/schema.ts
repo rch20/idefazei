@@ -449,6 +449,10 @@ export const scheduleItems = mysqlTable("schedule_items", {
   startTime: varchar("startTime", { length: 5 }),
   endTime: varchar("endTime", { length: 5 }),
   role: varchar("role", { length: 100 }), // função na escala
+  status: mysqlEnum("status", ["agendada", "cancelada"]).default("agendada").notNull(),
+  cancelledAt: timestamp("cancelledAt"),
+  cancelledByChurchUserId: int("cancelledByChurchUserId"),
+  cancelReason: varchar("cancelReason", { length: 500 }),
   notified: boolean("notified").default(false),
   confirmed: boolean("confirmed").default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

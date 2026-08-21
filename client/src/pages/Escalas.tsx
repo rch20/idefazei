@@ -3,11 +3,12 @@ import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, Calendar, Users, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, Calendar, Users, Clock, ChevronLeft, ChevronRight, Pencil, XCircle } from "lucide-react";
 
 const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MONTHS = [
@@ -15,14 +16,21 @@ const MONTHS = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
+type ScheduleForm = { ministryId: string; personId: string; scheduledDate: string; startTime: string; endTime: string; role: string };
+type ScheduleItem = { id: number; ministryId: number; personId: number; scheduledDate: Date | string; startTime: string | null; endTime: string | null; role: string | null; status: "agendada" | "cancelada"; cancelReason?: string | null; hasTimeConflict?: boolean };
+const EMPTY_FORM: ScheduleForm = { ministryId: "", personId: "", scheduledDate: "", startTime: "", endTime: "", role: "" };
+
 export default function Escalas() {
   const { churchId } = useChurch();
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({ ministryId: "", personId: "", scheduledDate: "", startTime: "", endTime: "", role: "" });
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<ScheduleItem | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<ScheduleItem | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [form, setForm] = useState<ScheduleForm>(EMPTY_FORM);
 
   const { data: scales = [], isLoading, refetch } = trpc.schedules.list.useQuery(
     { churchId: churchId!, month: currentMonth, year: currentYear },
@@ -39,8 +47,27 @@ export default function Escalas() {
   const createMutation = trpc.schedules.create.useMutation({
     onSuccess: () => {
       toast.success("Escala criada com sucesso!");
-      setCreateOpen(false);
-      setForm({ ministryId: "", personId: "", scheduledDate: "", startTime: "", endTime: "", role: "" });
+      setScheduleOpen(false);
+      setForm(EMPTY_FORM);
+      refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const updateMutation = trpc.schedules.update.useMutation({
+    onSuccess: () => {
+      toast.success("Escala atualizada com sucesso!");
+      setScheduleOpen(false);
+      setEditingSchedule(null);
+      setForm(EMPTY_FORM);
+      refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const cancelMutation = trpc.schedules.cancel.useMutation({
+    onSuccess: () => {
+      toast.success("Escala cancelada. O histórico foi preservado.");
+      setCancelTarget(null);
+      setCancelReason("");
       refetch();
     },
     onError: (error) => toast.error(error.message),
@@ -70,7 +97,7 @@ export default function Escalas() {
     });
   };
 
-  const hasScale = (day: number) => getScalesForDay(day).length > 0;
+  const hasScale = (day: number) => getScalesForDay(day).some((scale) => scale.status !== "cancelada");
   const hasConflict = (day: number) => getScalesForDay(day).some((scale) => scale.hasTimeConflict);
 
   const selectedScales = selectedDate
@@ -81,28 +108,53 @@ export default function Escalas() {
       })
     : [];
 
+  const activeScales = scales.filter((scale) => scale.status !== "cancelada");
   const uniqueDates = new Set(
-    scales.map((s) => {
+    activeScales.map((s) => {
       const d = new Date(s.scheduledDate);
       return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     })
   );
-  const conflictsThisMonth = scales.filter((scale) => scale.hasTimeConflict).length;
+  const conflictsThisMonth = activeScales.filter((scale) => scale.hasTimeConflict).length;
   const peopleById = new Map(people.map((person) => [person.id, person.fullName]));
   const ministriesById = new Map(ministries.map((ministry) => [ministry.id, ministry.name]));
-  const formConflict = Boolean(form.personId && form.scheduledDate && form.startTime && form.endTime && scales.some((scale) => {
+  const formConflict = Boolean(form.personId && form.scheduledDate && form.startTime && form.endTime && activeScales.some((scale) => {
     const date = new Date(scale.scheduledDate);
     const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-    return String(scale.personId) === form.personId && dateKey === form.scheduledDate && scale.startTime && scale.endTime && form.startTime < scale.endTime && form.endTime > scale.startTime;
+    return scale.id !== editingSchedule?.id && String(scale.personId) === form.personId && dateKey === form.scheduledDate && scale.startTime && scale.endTime && form.startTime < scale.endTime && form.endTime > scale.startTime;
   }));
 
-  function handleCreate(event: React.FormEvent) {
+  const toDateInput = (value: Date | string) => {
+    const date = new Date(value);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  };
+
+  function openCreateDialog() {
+    setEditingSchedule(null);
+    setForm(EMPTY_FORM);
+    setScheduleOpen(true);
+  }
+
+  function openEditDialog(scale: ScheduleItem) {
+    setEditingSchedule(scale);
+    setForm({
+      ministryId: String(scale.ministryId),
+      personId: String(scale.personId),
+      scheduledDate: toDateInput(scale.scheduledDate),
+      startTime: scale.startTime ?? "",
+      endTime: scale.endTime ?? "",
+      role: scale.role ?? "",
+    });
+    setScheduleOpen(true);
+  }
+
+  function handleSave(event: React.FormEvent) {
     event.preventDefault();
     if (!churchId || !form.ministryId || !form.personId || !form.scheduledDate || !form.startTime || !form.endTime) {
-      toast.error("Selecione ministério, pessoa, data e horário para criar a escala.");
+      toast.error("Selecione ministério, pessoa, data e horário para salvar a Escala.");
       return;
     }
-    createMutation.mutate({
+    const payload = {
       churchId,
       ministryId: Number(form.ministryId),
       personId: Number(form.personId),
@@ -110,7 +162,12 @@ export default function Escalas() {
       startTime: form.startTime,
       endTime: form.endTime,
       role: form.role.trim() || undefined,
-    });
+    };
+    if (editingSchedule) {
+      updateMutation.mutate({ ...payload, id: editingSchedule.id });
+    } else {
+      createMutation.mutate(payload);
+    }
   }
 
   return (
@@ -121,15 +178,21 @@ export default function Escalas() {
             <h1 className="text-2xl font-display font-bold text-navy">Escalas</h1>
             <p className="text-sm text-muted-foreground mt-1">Escalonamento de voluntários e ministérios</p>
           </div>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <Dialog open={scheduleOpen} onOpenChange={(open) => {
+            setScheduleOpen(open);
+            if (!open) {
+              setEditingSchedule(null);
+              setForm(EMPTY_FORM);
+            }
+          }}>
             <DialogTrigger asChild>
-              <Button className="bg-navy text-white hover:bg-navy-light gap-2">+ Nova Escala</Button>
+              <Button onClick={openCreateDialog} className="bg-navy text-white hover:bg-navy-light gap-2">+ Nova Escala</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle className="font-display text-navy">Criar Escala</DialogTitle>
+                <DialogTitle className="font-display text-navy">{editingSchedule ? "Editar Escala" : "Criar Escala"}</DialogTitle>
               </DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4 pt-2">
+              <form onSubmit={handleSave} className="space-y-4 pt-2">
                 <div>
                   <Label htmlFor="schedule-ministry">Ministério *</Label>
                   <select id="schedule-ministry" value={form.ministryId} onChange={(event) => setForm({ ...form, ministryId: event.target.value })} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
@@ -164,8 +227,8 @@ export default function Escalas() {
                 </div>
                 {formConflict && <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Esta pessoa já aparece em uma escala com horário sobreposto nesta data. O sistema também bloqueará o salvamento.</div>}
                 <div className="flex justify-end gap-2 pt-2">
-                  <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-                  <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>{createMutation.isPending ? "Salvando..." : "Criar Escala"}</Button>
+                  <Button type="button" variant="outline" onClick={() => setScheduleOpen(false)}>Cancelar</Button>
+                  <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending || updateMutation.isPending}>{createMutation.isPending || updateMutation.isPending ? "Salvando..." : editingSchedule ? "Salvar Alterações" : "Criar Escala"}</Button>
                 </div>
               </form>
             </DialogContent>
@@ -234,7 +297,8 @@ export default function Escalas() {
                 <div className="space-y-2">
                   {[
                     { label: "Cultos Escalados", value: uniqueDates.size, icon: Calendar },
-                    { label: "Escalas no Mês", value: scales.length, icon: Users },
+                    { label: "Escalas no Mês", value: activeScales.length, icon: Users },
+                    { label: "Canceladas", value: scales.length - activeScales.length, icon: XCircle },
                     { label: "Conflitos", value: conflictsThisMonth, icon: AlertTriangle },
                   ].map((item) => (
                     <div key={item.label} className="flex items-center justify-between">
@@ -262,7 +326,7 @@ export default function Escalas() {
               ) : (
                 <div className="space-y-2">
                   {selectedScales.map((scale) => (
-                    <div key={scale.id} className={`p-2 rounded-lg border ${scale.hasTimeConflict ? "border-rose-200 bg-rose-50" : "border-border/50 bg-muted/50"}`}>
+                    <div key={scale.id} className={`p-2 rounded-lg border ${scale.status === "cancelada" ? "border-slate-200 bg-slate-50 opacity-75" : scale.hasTimeConflict ? "border-rose-200 bg-rose-50" : "border-border/50 bg-muted/50"}`}>
                       <div className="flex items-center justify-between mb-1">
                         <Badge variant="outline" className="text-xs">{ministriesById.get(scale.ministryId) ?? `Min. ${scale.ministryId}`}</Badge>
                         <span className="text-xs text-muted-foreground">
@@ -272,7 +336,14 @@ export default function Escalas() {
                       <p className="text-xs font-medium text-navy">{peopleById.get(scale.personId) ?? `Pessoa #${scale.personId}`}</p>
                       <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" />{scale.startTime && scale.endTime ? `${scale.startTime}–${scale.endTime}` : "Horário não definido"}</p>
                       {scale.role && <p className="text-xs text-muted-foreground">{scale.role}</p>}
+                      {scale.status === "cancelada" && <p className="mt-1 text-xs font-medium text-slate-600">Cancelada{scale.cancelReason ? `: ${scale.cancelReason}` : ""}</p>}
                       {scale.hasTimeConflict && <p className="mt-1 flex items-center gap-1 text-xs font-medium text-rose-700"><AlertTriangle className="h-3 w-3" />Conflito de horário</p>}
+                      {scale.status !== "cancelada" && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => openEditDialog(scale as ScheduleItem)}><Pencil className="mr-1 h-3 w-3" />Editar</Button>
+                          <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => { setCancelTarget(scale as ScheduleItem); setCancelReason(""); }}><XCircle className="mr-1 h-3 w-3" />Cancelar</Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -280,6 +351,25 @@ export default function Escalas() {
             </div>
           </div>
         </div>
+        <AlertDialog open={Boolean(cancelTarget)} onOpenChange={(open) => { if (!open) { setCancelTarget(null); setCancelReason(""); } }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Cancelar esta Escala?</AlertDialogTitle>
+              <AlertDialogDescription>O cancelamento preserva o registro no histórico e remove a Escala ativa do calendário.</AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="schedule-cancel-reason">Motivo do cancelamento *</Label>
+              <Input id="schedule-cancel-reason" value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder="Ex.: voluntário indisponível" maxLength={500} />
+            </div>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={cancelMutation.isPending}>Voltar</AlertDialogCancel>
+              <AlertDialogAction className="bg-rose-700 hover:bg-rose-800" disabled={cancelReason.trim().length < 3 || cancelMutation.isPending} onClick={(event) => {
+                event.preventDefault();
+                if (cancelTarget && churchId) cancelMutation.mutate({ id: cancelTarget.id, churchId, reason: cancelReason.trim() });
+              }}>{cancelMutation.isPending ? "Cancelando..." : "Confirmar cancelamento"}</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
   );
 }

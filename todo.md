@@ -748,3 +748,12 @@
 - [x] Adicionar pista visual acessível à rolagem horizontal intencional da demonstração
 - [x] Validar rotas públicas e shell autenticado em mobile, tablet e desktop
 - [x] Executar TypeScript, testes, revisão de logs e salvar checkpoint
+
+## FASE 75 – Edição e Cancelamento de Escalas
+
+- [x] Mapear as Escalas existentes, permissões por Ministério, conflitos e a interface do calendário
+- [x] Implementar edição de Escala com validação de tenant, responsável ministerial e conflito de horário
+- [x] Implementar cancelamento protegido sem excluir o histórico operacional da Escala
+- [x] Adicionar ações de editar e cancelar ao calendário, com confirmação, feedback e experiência mobile
+- [x] Cobrir edição, cancelamento, conflito e bloqueio de acesso indevido com testes
+- [x] Validar TypeScript, logs, desktop/mobile e salvar checkpoint

@@ -149,6 +149,9 @@ vi.mock("./db", () => ({
   getMinistryMemberCounts: vi.fn().mockResolvedValue([]),
   isActiveMinistryMember: vi.fn().mockResolvedValue(true),
   getScheduleTimeConflicts: vi.fn().mockResolvedValue([]),
+  getScheduleItemById: vi.fn().mockResolvedValue({ id: 41, churchId: 100, ministryId: 7, personId: 10, scheduledDate: new Date("2026-06-28T12:00:00.000Z"), startTime: "09:00", endTime: "11:00", role: "Recepção", status: "agendada" }),
+  updateScheduleItem: vi.fn().mockResolvedValue({ id: 41, churchId: 100, ministryId: 7, personId: 10, status: "agendada" }),
+  cancelScheduleItem: vi.fn().mockResolvedValue({ id: 41, churchId: 100, ministryId: 7, personId: 10, status: "cancelada", cancelReason: "Voluntário indisponível" }),
   assignPersonToMinistry: vi.fn().mockResolvedValue({ id: 1 }),
   createMinistry: vi.fn().mockResolvedValue({ id: 1 }),
   getAnnouncements: vi.fn().mockResolvedValue([]),
@@ -641,6 +644,75 @@ describe("Fluxo completo de discipulado", () => {
       })).rejects.toThrow("horário sobreposto");
 
       expect(getScheduleTimeConflicts).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, personId: 10, startTime: "09:30", endTime: "11:30" }));
+    });
+
+    it("edita uma Escala ativa sem contar a própria Escala como conflito", async () => {
+      const { getScheduleItemById, getScheduleTimeConflicts, updateScheduleItem } = await import("./db");
+      (getScheduleItemById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 41, churchId: CHURCH_ID, ministryId: 7, personId: 10,
+        scheduledDate: new Date("2026-06-28T12:00:00.000Z"), startTime: "09:00", endTime: "11:00", status: "agendada",
+      });
+      (getScheduleTimeConflicts as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.schedules.update({
+        id: 41, churchId: CHURCH_ID, ministryId: 7, personId: 10,
+        scheduledDate: "2026-06-28", startTime: "09:30", endTime: "11:30", role: "Recepção",
+      })).resolves.toMatchObject({ id: 41, status: "agendada" });
+
+      expect(getScheduleTimeConflicts).toHaveBeenCalledWith(expect.objectContaining({ excludeScheduleItemId: 41 }));
+      expect(updateScheduleItem).toHaveBeenCalledWith(expect.objectContaining({ id: 41, churchId: CHURCH_ID, role: "Recepção" }));
+    });
+
+    it("bloqueia a edição que cria um conflito de horário e mantém a Escala existente", async () => {
+      const { getScheduleItemById, getScheduleTimeConflicts, updateScheduleItem } = await import("./db");
+      (getScheduleItemById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 41, churchId: CHURCH_ID, ministryId: 7, personId: 10,
+        scheduledDate: new Date("2026-06-28T12:00:00.000Z"), startTime: "09:00", endTime: "11:00", status: "agendada",
+      });
+      (getScheduleTimeConflicts as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 99, churchId: CHURCH_ID }]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.schedules.update({
+        id: 41, churchId: CHURCH_ID, ministryId: 7, personId: 10,
+        scheduledDate: "2026-06-28", startTime: "09:30", endTime: "11:30",
+      })).rejects.toThrow("horário sobreposto");
+
+      expect(updateScheduleItem).not.toHaveBeenCalled();
+    });
+
+    it("cancela uma Escala mantendo o registro e o motivo no histórico", async () => {
+      const { getScheduleItemById, cancelScheduleItem } = await import("./db");
+      (getScheduleItemById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 41, churchId: CHURCH_ID, ministryId: 7, personId: 10,
+        scheduledDate: new Date("2026-06-28T12:00:00.000Z"), startTime: "09:00", endTime: "11:00", status: "agendada",
+      });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.schedules.cancel({ id: 41, churchId: CHURCH_ID, reason: "Voluntário indisponível" })).resolves.toMatchObject({ id: 41, status: "cancelada" });
+
+      expect(cancelScheduleItem).toHaveBeenCalledWith(expect.objectContaining({ id: 41, churchId: CHURCH_ID, cancelledByChurchUserId: 1, cancelReason: "Voluntário indisponível" }));
+    });
+
+    it("impede membro comum de editar ou cancelar uma Escala sem responsabilidade ministerial", async () => {
+      const { getScheduleItemById, updateScheduleItem, cancelScheduleItem } = await import("./db");
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 12, userId: 44, churchId: CHURCH_ID, personId: 44, role: "membro", active: true,
+      });
+      (getScheduleItemById as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 41, churchId: CHURCH_ID, ministryId: 7, personId: 10,
+        scheduledDate: new Date("2026-06-28T12:00:00.000Z"), startTime: "09:00", endTime: "11:00", status: "agendada",
+      });
+      const caller = appRouter.createCaller(createMemberContext(44));
+
+      await expect(caller.schedules.update({
+        id: 41, churchId: CHURCH_ID, ministryId: 7, personId: 10,
+        scheduledDate: "2026-06-28", startTime: "09:30", endTime: "11:30",
+      })).rejects.toThrow("responsáveis por este Ministério");
+      await expect(caller.schedules.cancel({ id: 41, churchId: CHURCH_ID, reason: "Voluntário indisponível" })).rejects.toThrow("responsáveis por este Ministério");
+
+      expect(updateScheduleItem).not.toHaveBeenCalled();
+      expect(cancelScheduleItem).not.toHaveBeenCalled();
     });
   });
 
