@@ -711,3 +711,4 @@
 - [ ] Solicitar autorização antes de abrir portas, configurar Nginx, TLS Cloudflare Origin CA e wildcard
 - [ ] Validar produção, systemd timer, isolamento multi-tenant e controles de segurança
 - [ ] Restringir a escuta de produção ao loopback antes de expor a aplicação por Nginx
+- [ ] Permitir iniciar o núcleo da aplicação sem credenciais Stripe, mantendo o webhook indisponível até sua configuração

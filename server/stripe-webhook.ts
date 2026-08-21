@@ -4,17 +4,20 @@ import { getDb } from "./db";
 import { churches } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "", {
-  apiVersion: "2026-05-27.dahlia",
-});
+function getStripeClient() {
+  const apiKey = process.env.STRIPE_SECRET_KEY;
+  if (!apiKey) return null;
+  return new Stripe(apiKey, { apiVersion: "2026-05-27.dahlia" });
+}
 
 export async function stripeWebhookHandler(req: Request, res: Response) {
   const sig = req.headers["stripe-signature"];
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  const stripe = getStripeClient();
 
-  if (!sig || !webhookSecret) {
-    console.error("[Stripe Webhook] Missing signature or secret");
-    res.status(400).json({ error: "Missing signature or secret" });
+  if (!stripe || !sig || !webhookSecret) {
+    console.error("[Stripe Webhook] Stripe is not configured or signature is missing");
+    res.status(503).json({ error: "Stripe webhook is not configured" });
     return;
   }
 
