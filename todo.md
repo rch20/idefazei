@@ -692,3 +692,21 @@
 - [x] Inspecionar carregamento, transbordamento e estabilidade da página pública em viewport móvel
 - [x] Nenhuma correção CSS necessária; não foram identificados transbordamentos ou deslocamentos visuais na inspeção
 - [x] Validar novamente a página em mobile e registrar o resultado
+
+## FASE 69 – Auditoria Global de Scroll e Overflow
+
+- [ ] Inventariar todas as rotas, layouts, modais, drawers, tabelas e componentes compartilhados
+- [ ] Auditar em desktop, tablet e celular qualquer overflow horizontal, deslocamento lateral e scroll aninhado desnecessário
+- [ ] Inspecionar CSS e componentes responsáveis, identificando causas sem aplicar correções genéricas
+- [ ] Entregar diagnóstico por rota e proposta de padronização global antes de alterar layouts
+- [ ] Aplicar somente as correções de CSS e componentes compartilhados aprovadas pelo usuário
+- [ ] Revalidar todas as rotas nos três breakpoints e registrar estabilidade final
+
+## FASE 70 – Implantação Controlada na VPS
+
+- [ ] Auditar a VPS, repositório, serviços e pré-requisitos antes de iniciar o deploy
+- [ ] Preparar código, segredos locais e banco MySQL para execução privada
+- [ ] Instalar dependências, validar build e iniciar a aplicação apenas no loopback
+- [ ] Aplicar migrations e ativar as units locais da aplicação após validação do banco
+- [ ] Solicitar autorização antes de abrir portas, configurar Nginx, TLS Cloudflare Origin CA e wildcard
+- [ ] Validar produção, systemd timer, isolamento multi-tenant e controles de segurança
