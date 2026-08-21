@@ -710,3 +710,4 @@
 - [ ] Aplicar migrations e ativar as units locais da aplicação após validação do banco
 - [ ] Solicitar autorização antes de abrir portas, configurar Nginx, TLS Cloudflare Origin CA e wildcard
 - [ ] Validar produção, systemd timer, isolamento multi-tenant e controles de segurança
+- [ ] Restringir a escuta de produção ao loopback antes de expor a aplicação por Nginx
