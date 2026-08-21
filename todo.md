@@ -670,3 +670,11 @@
 - [x] Verificar acesso, histórico e branch principal de rch20/idefazei
 - [x] Preparar um commit seguro com o estado atual da Ide Fazei
 - [x] Enviar o commit ao repositório confirmado e validar o backup remoto
+
+## FASE 66 – Preparação da VPS Hostinger
+
+- [x] Receber acesso temporário seguro e confirmar o escopo de preparação sem deploy da aplicação
+- [x] Auditar a VPS e aplicar a base segura de sistema e rede
+- [x] Instalar Node.js, pnpm, MySQL, Nginx e dependências operacionais necessárias
+- [x] Preparar usuário de serviço, diretórios, unidades systemd e timer local sem expor segredos
+- [x] Validar a preparação e entregar o checklist do deploy independente
