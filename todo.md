@@ -655,18 +655,18 @@
 
 ## FASE 63 – Backup no GitHub
 
-- [ ] Verificar o repositório remoto correto e o estado local antes do envio
-- [ ] Preparar commit da Ide Fazei sem segredos ou artefatos locais
-- [ ] Enviar o backup ao GitHub e confirmar o commit remoto
+- [x] Verificar o repositório remoto correto e o estado local antes do envio
+- [x] Preparar commit da Ide Fazei sem segredos ou artefatos locais
+- [x] Enviar o backup ao GitHub e confirmar o commit remoto
 
 ## FASE 64 – Repositório GitHub da Ide Fazei
 
-- [ ] Verificar a disponibilidade de igrea/idefazei e a permissão de criação
-- [ ] Criar o repositório privado igrea/idefazei sem alterar o remoto interno do ambiente
-- [ ] Enviar o commit inicial da Ide Fazei sem segredos e confirmar o backup remoto
+- [x] Verificar a disponibilidade de igrea/idefazei e a permissão de criação
+- [x] Não criar igrea/idefazei por indisponibilidade do proprietário; usar o repositório confirmado rch20/idefazei
+- [x] Enviar o commit inicial da Ide Fazei sem segredos e confirmar o backup remoto
 
 ## FASE 65 – Backup em rch20/idefazei
 
-- [ ] Verificar acesso, histórico e branch principal de rch20/idefazei
-- [ ] Preparar um commit seguro com o estado atual da Ide Fazei
-- [ ] Enviar o commit ao repositório confirmado e validar o backup remoto
+- [x] Verificar acesso, histórico e branch principal de rch20/idefazei
+- [x] Preparar um commit seguro com o estado atual da Ide Fazei
+- [x] Enviar o commit ao repositório confirmado e validar o backup remoto
