@@ -681,11 +681,11 @@
 
 ## FASE 67 – Domínio, Wildcard e Cloudflare
 
-- [ ] Auditar Nginx, aplicação, certificados, firewall e serviços da VPS em modo somente leitura
-- [ ] Verificar DNS de idefazei.com.br, www e wildcard durante a delegação Cloudflare
-- [ ] Definir a configuração segura de Nginx, TLS e firewall para o domínio principal e subdomínios automáticos
-- [ ] Apresentar diagnóstico e solicitar autorização antes de aplicar qualquer alteração na VPS
-- [ ] Configurar o domínio aprovado e validar HTTPS, proxy e multi-tenant wildcard
+- [x] Auditar Nginx, aplicação, certificados, firewall e serviços da VPS em modo somente leitura
+- [x] Verificar DNS de idefazei.com.br, www e wildcard durante a delegação Cloudflare
+- [x] Definir a configuração segura de Nginx, TLS e firewall para o domínio principal e subdomínios automáticos
+- [x] Apresentar diagnóstico e solicitar autorização antes de aplicar qualquer alteração na VPS
+- [x] Configurar o domínio aprovado e validar HTTPS, proxy e multi-tenant wildcard
 
 ## FASE 68 – Estabilidade Mobile da Página Pública
 
@@ -704,11 +704,15 @@
 
 ## FASE 70 – Implantação Controlada na VPS
 
-- [ ] Auditar a VPS, repositório, serviços e pré-requisitos antes de iniciar o deploy
-- [ ] Preparar código, segredos locais e banco MySQL para execução privada
-- [ ] Instalar dependências, validar build e iniciar a aplicação apenas no loopback
-- [ ] Aplicar migrations e ativar as units locais da aplicação após validação do banco
-- [ ] Solicitar autorização antes de abrir portas, configurar Nginx, TLS Cloudflare Origin CA e wildcard
-- [ ] Validar produção, systemd timer, isolamento multi-tenant e controles de segurança
-- [ ] Restringir a escuta de produção ao loopback antes de expor a aplicação por Nginx
-- [ ] Permitir iniciar o núcleo da aplicação sem credenciais Stripe, mantendo o webhook indisponível até sua configuração
+- [x] Auditar a VPS, repositório, serviços e pré-requisitos antes de iniciar o deploy
+- [x] Preparar código, segredos locais e banco MySQL para execução privada
+- [x] Instalar dependências, validar build e iniciar a aplicação apenas no loopback
+- [x] Aplicar migrations e ativar as units locais da aplicação após validação do banco
+- [x] Solicitar autorização antes de abrir portas, configurar Nginx, TLS Cloudflare Origin CA e wildcard
+- [x] Validar produção, systemd timer, isolamento multi-tenant e controles de segurança
+- [x] Restringir a escuta de produção ao loopback antes de expor a aplicação por Nginx
+- [x] Permitir iniciar o núcleo da aplicação sem credenciais Stripe, mantendo o webhook indisponível até sua configuração
+- [x] Receber certificado e chave Cloudflare Origin CA para idefazei.com.br e *.idefazei.com.br
+- [x] Validar o novo par certificado/chave e substituir o material incompatível sem expor a chave
+- [x] Restringir HTTP e HTTPS no firewall aos intervalos oficiais do Cloudflare, preservando SSH administrativo
+- [x] Confirmar Cloudflare em modo Full (strict) antes da validação pública final
