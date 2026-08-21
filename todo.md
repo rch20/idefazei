@@ -652,3 +652,21 @@
 - [x] Adaptar o handler de lembretes para execução via systemd timer, sem autenticação de cron externa
 - [x] Documentar unidades systemd, logs, variáveis e implantação com Node e MySQL na Hostinger VPS
 - [x] Validar autenticação, deduplicação, isolamento e portabilidade antes do checkpoint
+
+## FASE 63 – Backup no GitHub
+
+- [ ] Verificar o repositório remoto correto e o estado local antes do envio
+- [ ] Preparar commit da Ide Fazei sem segredos ou artefatos locais
+- [ ] Enviar o backup ao GitHub e confirmar o commit remoto
+
+## FASE 64 – Repositório GitHub da Ide Fazei
+
+- [ ] Verificar a disponibilidade de igrea/idefazei e a permissão de criação
+- [ ] Criar o repositório privado igrea/idefazei sem alterar o remoto interno do ambiente
+- [ ] Enviar o commit inicial da Ide Fazei sem segredos e confirmar o backup remoto
+
+## FASE 65 – Backup em rch20/idefazei
+
+- [ ] Verificar acesso, histórico e branch principal de rch20/idefazei
+- [ ] Preparar um commit seguro com o estado atual da Ide Fazei
+- [ ] Enviar o commit ao repositório confirmado e validar o backup remoto
