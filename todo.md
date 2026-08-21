@@ -678,3 +678,17 @@
 - [x] Instalar Node.js, pnpm, MySQL, Nginx e dependências operacionais necessárias
 - [x] Preparar usuário de serviço, diretórios, unidades systemd e timer local sem expor segredos
 - [x] Validar a preparação e entregar o checklist do deploy independente
+
+## FASE 67 – Domínio, Wildcard e Cloudflare
+
+- [ ] Auditar Nginx, aplicação, certificados, firewall e serviços da VPS em modo somente leitura
+- [ ] Verificar DNS de idefazei.com.br, www e wildcard durante a delegação Cloudflare
+- [ ] Definir a configuração segura de Nginx, TLS e firewall para o domínio principal e subdomínios automáticos
+- [ ] Apresentar diagnóstico e solicitar autorização antes de aplicar qualquer alteração na VPS
+- [ ] Configurar o domínio aprovado e validar HTTPS, proxy e multi-tenant wildcard
+
+## FASE 68 – Estabilidade Mobile da Página Pública
+
+- [x] Inspecionar carregamento, transbordamento e estabilidade da página pública em viewport móvel
+- [x] Nenhuma correção CSS necessária; não foram identificados transbordamentos ou deslocamentos visuais na inspeção
+- [x] Validar novamente a página em mobile e registrar o resultado
