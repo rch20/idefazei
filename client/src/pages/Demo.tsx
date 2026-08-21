@@ -321,25 +321,31 @@ export default function Demo() {
 
       {/* Steps navigation */}
       <div className="relative z-10 max-w-6xl mx-auto px-4 mb-8">
-        <div className="flex items-center justify-center gap-2 overflow-x-auto pb-2">
-          {STEPS.map((s, idx) => {
-            const StepIcon = s.icon;
-            return (
-              <button
-                key={s.id}
-                onClick={() => setCurrentStep(idx)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
-                  idx === currentStep
-                    ? "bg-[#1e3a5f] text-white shadow-md"
-                    : "bg-white text-[#1e3a5f]/60 border border-[#1e3a5f]/10 hover:border-[#1e3a5f]/30"
-                }`}
-              >
-                <StepIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">{s.title}</span>
-                <span className="sm:hidden">{idx + 1}</span>
-              </button>
-            );
-          })}
+        <div className="relative">
+          <div className="flex items-center justify-start sm:justify-center gap-2 overflow-x-auto pb-2 scroll-smooth" aria-label="Etapas do tour. Deslize horizontalmente para ver todas as opções.">
+            {STEPS.map((s, idx) => {
+              const StepIcon = s.icon;
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => setCurrentStep(idx)}
+                  aria-pressed={idx === currentStep}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all flex-shrink-0 ${
+                    idx === currentStep
+                      ? "bg-[#1e3a5f] text-white shadow-md"
+                      : "bg-white text-[#1e3a5f]/60 border border-[#1e3a5f]/10 hover:border-[#1e3a5f]/30"
+                  }`}
+                >
+                  <StepIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">{s.title}</span>
+                  <span className="sm:hidden">{idx + 1}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="sm:hidden mt-1 flex items-center justify-end gap-1 text-[11px] font-medium text-[#1e3a5f]/50">
+            Deslize para ver as etapas <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          </p>
         </div>
       </div>
 

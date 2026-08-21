@@ -351,12 +351,12 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
 
   return (
     <ChurchContext.Provider value={churchContext}>
-      <div className="min-h-screen bg-background flex golden-pattern">
+      <div className="min-h-screen min-w-0 overflow-x-hidden bg-background flex golden-pattern">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         <div className="flex-1 flex flex-col min-w-0">
           <TopBar onMenuClick={() => setSidebarOpen(true)} title={title} />
-          <main className="flex-1 overflow-auto p-4 lg:p-6">
+          <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto p-4 lg:p-6">
             {children}
           </main>
         </div>

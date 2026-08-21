@@ -699,8 +699,8 @@
 - [x] Auditar em desktop, tablet e celular qualquer overflow horizontal, deslocamento lateral e scroll aninhado desnecessário
 - [x] Inspecionar CSS e componentes responsáveis, identificando causas sem aplicar correções genéricas
 - [x] Entregar diagnóstico por rota e proposta de padronização global antes de alterar layouts
-- [ ] Aplicar somente as correções de CSS e componentes compartilhados aprovadas pelo usuário
-- [ ] Revalidar todas as rotas nos três breakpoints e registrar estabilidade final
+- [x] Aplicar somente as correções de CSS e componentes compartilhados aprovadas pelo usuário
+- [x] Revalidar todas as rotas nos três breakpoints e registrar estabilidade final
 
 ## FASE 71 – Diagnóstico Direto de Scroll e Viewport
 
@@ -740,3 +740,11 @@
 - [x] Restringir criação de Ministério, atribuição de participante e gestão de Escalas no servidor
 - [x] Cobrir tentativas de elevação de privilégio, acesso entre tenants e fluxos legítimos de liderança com testes
 - [x] Executar TypeScript, suíte completa, revisão de logs e checkpoint da correção
+
+## FASE 74 – Estabilidade de Scroll e Overflow Autorizada
+
+- [x] Adicionar guarda horizontal global em `html` e `body` sem bloquear rolagens internas intencionais
+- [x] Definir rolagem vertical e horizontal explícita no conteúdo principal do painel
+- [x] Adicionar pista visual acessível à rolagem horizontal intencional da demonstração
+- [x] Validar rotas públicas e shell autenticado em mobile, tablet e desktop
+- [x] Executar TypeScript, testes, revisão de logs e salvar checkpoint
