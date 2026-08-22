@@ -60,6 +60,9 @@ export function useChurchAuth() {
   const logout = useCallback(() => {
     clearChurchSession();
     setUser(null);
+    // O caminho raiz preserva o host atual: tenant vai para sua página pública;
+    // domínio comercial retorna à landing da Ide Fazei.
+    window.location.replace("/");
   }, []);
 
   return {

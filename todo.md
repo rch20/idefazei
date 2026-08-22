@@ -903,3 +903,11 @@
 - [x] Aplicar logo, cores e fallback acessível sem alterar a identidade comercial do domínio principal
 - [x] Cobrir isolamento, ausência de logo, contraste e responsividade com testes
 - [x] Validar em mobile, implantar na VPS e salvar checkpoint
+
+## FASE 94 – Logout e Retorno à Página Pública do Tenant
+
+- [x] Mapear o botão de logout, a limpeza de sessão, cache e o roteamento posterior
+- [x] Corrigir logout para invalidar sessão e dados protegidos antes do redirecionamento
+- [x] Redirecionar o usuário para a página pública do subdomínio atual após sair
+- [x] Cobrir estado residual, isolamento por tenant e redirecionamento com testes
+- [ ] Validar em produção, implantar na VPS e salvar checkpoint
