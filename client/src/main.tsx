@@ -1,7 +1,16 @@
-// PWA: registrar Service Worker
-if ('serviceWorker' in navigator) {
+declare global {
+  interface Window {
+    __ideFazeiReady?: () => void;
+    __ideFazeiShowRecovery?: () => void;
+  }
+}
+
+// PWA: registro isolado para não bloquear a renderização no Safari iOS.
+if ("serviceWorker" in navigator && window.isSecureContext) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').catch((error) => {
+      console.warn("[PWA] Falha ao registrar Service Worker:", error);
+    });
   });
 }
 
@@ -18,6 +27,14 @@ import "./index.css";
 
 const queryClient = new QueryClient();
 
+const readBrowserStorage = (key: string) => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
   if (typeof window === "undefined") return;
@@ -27,7 +44,7 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!isUnauthorized) return;
 
   const hasChurchSession = Boolean(getChurchToken());
-  const hasAdminSession = Boolean(localStorage.getItem("admin_token"));
+  const hasAdminSession = Boolean(readBrowserStorage("admin_token"));
   if (hasChurchSession) {
     clearChurchSession();
     window.location.href = "/login";
@@ -35,7 +52,11 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
   }
 
   if (hasAdminSession) {
-    localStorage.removeItem("admin_token");
+    try {
+      localStorage.removeItem("admin_token");
+    } catch {
+      // Em navegadores com armazenamento restrito, apenas redireciona para o login.
+    }
     window.location.href = "/admin/login";
     return;
   }
@@ -83,10 +104,16 @@ const trpcClient = trpc.createClient({
   ],
 });
 
-createRoot(document.getElementById("root")!).render(
-  <trpc.Provider client={trpcClient} queryClient={queryClient}>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </trpc.Provider>
-);
+const rootElement = document.getElementById("root");
+if (!rootElement) {
+  window.__ideFazeiShowRecovery?.();
+} else {
+  createRoot(rootElement).render(
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </trpc.Provider>
+  );
+  window.setTimeout(() => window.__ideFazeiReady?.(), 0);
+}

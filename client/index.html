@@ -19,9 +19,57 @@
       href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap"
       rel="stylesheet"
     />
+    <style>
+      #app-loading { align-items: center; background: #f5f0e8; box-sizing: border-box; color: #1e3a5f; display: flex; flex-direction: column; font-family: Inter, sans-serif; inset: 0; justify-content: center; min-height: 100dvh; padding: 24px; position: fixed; text-align: center; z-index: 9999; }
+      #app-loading[hidden] { display: none; }
+      #app-loading .app-mark { align-items: center; background: #1e3a5f; border-radius: 18px; color: #c9a84c; display: flex; font-size: 28px; height: 64px; justify-content: center; margin-bottom: 18px; width: 64px; }
+      #app-loading p { color: #64748b; font-size: 14px; margin: 8px 0 0; }
+      #app-loading button { background: #1e3a5f; border: 0; border-radius: 10px; color: #fff; cursor: pointer; font: inherit; margin-top: 20px; padding: 12px 18px; }
+    </style>
   </head>
   <body>
+    <div id="app-loading" role="status" aria-live="polite">
+      <div class="app-mark" aria-hidden="true">✦</div>
+      <strong>Carregando Ide Fazei</strong>
+      <p id="app-loading-message">Preparando a plataforma ministerial...</p>
+      <button id="app-recovery" type="button" hidden>Atualizar aplicação</button>
+    </div>
     <div id="root"></div>
+    <script>
+      (function () {
+        var loader = document.getElementById("app-loading");
+        var message = document.getElementById("app-loading-message");
+        var recovery = document.getElementById("app-recovery");
+        var recoveryTimer;
+        window.__ideFazeiReady = function () {
+          window.clearTimeout(recoveryTimer);
+          if (loader) loader.hidden = true;
+        };
+        window.__ideFazeiShowRecovery = function () {
+          if (message) message.textContent = "Não foi possível concluir o carregamento. Atualize a aplicação para recuperar arquivos em cache.";
+          if (recovery) recovery.hidden = false;
+        };
+        window.__ideFazeiRecover = async function () {
+          if (recovery) { recovery.disabled = true; recovery.textContent = "Atualizando..."; }
+          try {
+            if ("serviceWorker" in navigator) {
+              var registrations = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(registrations.map(function (registration) { return registration.unregister(); }));
+            }
+            if ("caches" in window) {
+              var cacheKeys = await caches.keys();
+              await Promise.all(cacheKeys.map(function (key) { return caches.delete(key); }));
+            }
+          } finally {
+            window.location.reload();
+          }
+        };
+        if (recovery) recovery.addEventListener("click", window.__ideFazeiRecover);
+        recoveryTimer = window.setTimeout(window.__ideFazeiShowRecovery, 9000);
+        window.addEventListener("error", window.__ideFazeiShowRecovery);
+        window.addEventListener("unhandledrejection", window.__ideFazeiShowRecovery);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
     <script
       defer

@@ -2,55 +2,59 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
+import { lazy, Suspense } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import ChurchLayout from "./components/ChurchLayout";
 
-// Pages — Public / Auth
-import LandingPage from "./pages/LandingPage";
-import LoginIgreja from "./pages/LoginIgreja";
-import CadastroIgreja from "./pages/CadastroIgreja";
-import CadastroDiscipulo from "./pages/CadastroDiscipulo";
-import PortalVisitante from "./pages/PortalVisitante";
-import AdminPanel from "./pages/AdminPanel";
-import Planos from "./pages/Planos";
-import Recursos from "./pages/Recursos";
-import Contato from "./pages/Contato";
+// Carregamento sob demanda reduz o JavaScript inicial no Safari iOS e mantém
+// um retorno visual claro enquanto a página solicitada é baixada.
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const LoginIgreja = lazy(() => import("./pages/LoginIgreja"));
+const CadastroIgreja = lazy(() => import("./pages/CadastroIgreja"));
+const CadastroDiscipulo = lazy(() => import("./pages/CadastroDiscipulo"));
+const PortalVisitante = lazy(() => import("./pages/PortalVisitante"));
+const AdminPanel = lazy(() => import("./pages/AdminPanel"));
+const Planos = lazy(() => import("./pages/Planos"));
+const Recursos = lazy(() => import("./pages/Recursos"));
+const Contato = lazy(() => import("./pages/Contato"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const GanharAlmas = lazy(() => import("./pages/GanharAlmas"));
+const Consolidacao = lazy(() => import("./pages/Consolidacao"));
+const FunilDiscipulado = lazy(() => import("./pages/FunilDiscipulado"));
+const Pessoas = lazy(() => import("./pages/Pessoas"));
+const Celulas = lazy(() => import("./pages/Celulas"));
+const Eventos = lazy(() => import("./pages/Eventos"));
+const Oracao = lazy(() => import("./pages/Oracao"));
+const Mural = lazy(() => import("./pages/Mural"));
+const Placeholder = lazy(() => import("./pages/Placeholder"));
+const Familias = lazy(() => import("./pages/Familias"));
+const Ministerios = lazy(() => import("./pages/Ministerios"));
+const EstruturaOrganizacional = lazy(() => import("./pages/EstruturaOrganizacional"));
+const Escalas = lazy(() => import("./pages/Escalas"));
+const Configuracoes = lazy(() => import("./pages/Configuracoes"));
+const Biblioteca = lazy(() => import("./pages/Biblioteca"));
+const AreaMembro = lazy(() => import("./pages/AreaMembro"));
+const AppLider = lazy(() => import("./pages/AppLider"));
+const CheckinEvento = lazy(() => import("./pages/CheckinEvento"));
+const Demo = lazy(() => import("./pages/Demo"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
+const CadastroSucesso = lazy(() => import("./pages/CadastroSucesso"));
+const EscolaFundamentos = lazy(() => import("./pages/EscolaFundamentos"));
+const Batismo = lazy(() => import("./pages/Batismo"));
+const EncontroComDeus = lazy(() => import("./pages/EncontroComDeus"));
+const EscolaLideres = lazy(() => import("./pages/EscolaLideres"));
+const GestaoLideranca = lazy(() => import("./pages/GestaoLideranca"));
+const Aconselhamento = lazy(() => import("./pages/Aconselhamento"));
+const Comunicacao = lazy(() => import("./pages/Comunicacao"));
+const ConfiguracoesCertificados = lazy(() => import("./pages/ConfiguracoesCertificados"));
+const Faturamento = lazy(() => import("./pages/Faturamento"));
+const CentralCuidado = lazy(() => import("./pages/CentralCuidado"));
+const Tesouraria = lazy(() => import("./pages/Tesouraria"));
 
-// Pages — App
-import Dashboard from "./pages/Dashboard";
-import GanharAlmas from "./pages/GanharAlmas";
-import Consolidacao from "./pages/Consolidacao";
-import FunilDiscipulado from "./pages/FunilDiscipulado";
-import Pessoas from "./pages/Pessoas";
-import Celulas from "./pages/Celulas";
-import Eventos from "./pages/Eventos";
-import Oracao from "./pages/Oracao";
-import Mural from "./pages/Mural";
-import Placeholder from "./pages/Placeholder";
-import Familias from "./pages/Familias";
-import Ministerios from "./pages/Ministerios";
-import EstruturaOrganizacional from "./pages/EstruturaOrganizacional";
-import Escalas from "./pages/Escalas";
-import Configuracoes from "./pages/Configuracoes";
-import Biblioteca from "./pages/Biblioteca";
-import AreaMembro from "./pages/AreaMembro";
-import AppLider from "./pages/AppLider";
-import CheckinEvento from "./pages/CheckinEvento";
-import Demo from "./pages/Demo";
-import Onboarding from "./pages/Onboarding";
-import CadastroSucesso from "./pages/CadastroSucesso";
-import EscolaFundamentos from "./pages/EscolaFundamentos";
-import Batismo from "./pages/Batismo";
-import EncontroComDeus from "./pages/EncontroComDeus";
-import EscolaLideres from "./pages/EscolaLideres";
-import GestaoLideranca from "./pages/GestaoLideranca";
-import Aconselhamento from "./pages/Aconselhamento";
-import Comunicacao from "./pages/Comunicacao";
-import ConfiguracoesCertificados from "./pages/ConfiguracoesCertificados";
-import Faturamento from "./pages/Faturamento";
-import CentralCuidado from "./pages/CentralCuidado";
-import Tesouraria from "./pages/Tesouraria";
+function RouteLoading() {
+  return <div className="flex min-h-[40vh] items-center justify-center bg-background p-6"><div className="flex flex-col items-center gap-3 text-center"><div className="h-9 w-9 animate-spin rounded-full border-2 border-gold border-t-transparent" /><p className="text-sm font-medium text-muted-foreground">Carregando...</p></div></div>;
+}
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
 
@@ -66,6 +70,7 @@ function AppPage({ children, title }: { children: React.ReactNode; title?: strin
 
 function Router() {
   return (
+    <Suspense fallback={<RouteLoading />}>
     <Switch>
       {/* ── Domínio Principal ── */}
       <Route path="/" component={LandingPage} />
@@ -296,6 +301,7 @@ function Router() {
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
+    </Suspense>
   );
 }
 

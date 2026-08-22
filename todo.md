@@ -766,3 +766,11 @@
 - [x] Reutilizar a Central de Notificações sem criar canais externos ou dados duplicados
 - [x] Cobrir entrega, isolamento por igreja, ausência de conta ativa e regressões com testes
 - [x] Validar TypeScript, logs, experiência responsiva e salvar checkpoint
+
+## FASE 77 – Correção de Inicialização no iOS
+
+- [x] Mapear o carregamento inicial, PWA, Service Worker, autenticação e APIs do navegador usadas antes da primeira tela
+- [x] Reproduzir ou isolar a causa da tela creme persistente no Safari iOS
+- [x] Aplicar correção compatível com iOS, preservando o carregamento existente nos demais navegadores
+- [x] Adicionar recuperação segura para falha de inicialização ou cache desatualizado do PWA
+- [x] Validar TypeScript, testes, logs, viewport de iPhone e salvar checkpoint

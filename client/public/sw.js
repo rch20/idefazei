@@ -1,7 +1,7 @@
 // Service Worker — Ide Fazei
 // Estratégia: Cache-First para assets estáticos, Network-First para API
 
-const CACHE_NAME = "lampas-v3";
+const CACHE_NAME = "ide-fazei-v4";
 
 // Instalar
 self.addEventListener("install", (event) => {
@@ -48,10 +48,14 @@ self.addEventListener("fetch", (event) => {
     return; // Deixar o browser buscar diretamente da rede
   }
 
-  // Para navegação (HTML), sempre vai para a rede
+  // Para navegação (HTML), sempre vai para a rede. Não devolve uma resposta
+  // indefinida em falhas de cache, comportamento que pode deixar o PWA do iOS vazio.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() => caches.match("/"))
+      fetch(request).catch(() => new Response(
+        "<!doctype html><html lang=\"pt-BR\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Ide Fazei</title><body style=\"margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f0e8;color:#1e3a5f;font-family:system-ui,sans-serif;text-align:center;padding:24px\"><main><strong>Não foi possível abrir a Ide Fazei sem conexão.</strong><p>Verifique sua internet e atualize a aplicação.</p></main></body></html>",
+        { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 503 }
+      ))
     );
     return;
   }

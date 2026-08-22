@@ -11,7 +11,7 @@ export type ChurchSessionUser = {
 function readChurchSession(): ChurchSessionUser | null {
   try {
     const token = getChurchToken();
-    const storedUser = localStorage.getItem("church_user") ?? sessionStorage.getItem("church_user");
+    const storedUser = readSessionValue("church_user");
     if (!token || !storedUser) return null;
 
     const user = JSON.parse(storedUser) as ChurchSessionUser;
@@ -22,15 +22,35 @@ function readChurchSession(): ChurchSessionUser | null {
   }
 }
 
+function readSessionValue(key: string) {
+  try {
+    return localStorage.getItem(key) ?? sessionStorage.getItem(key);
+  } catch {
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+}
+
 export function getChurchToken() {
-  return localStorage.getItem("church_token") ?? sessionStorage.getItem("church_token");
+  return readSessionValue("church_token");
 }
 
 export function clearChurchSession() {
-  localStorage.removeItem("church_token");
-  localStorage.removeItem("church_user");
-  sessionStorage.removeItem("church_token");
-  sessionStorage.removeItem("church_user");
+  try {
+    localStorage.removeItem("church_token");
+    localStorage.removeItem("church_user");
+  } catch {
+    // Safari pode restringir localStorage em alguns contextos de privacidade.
+  }
+  try {
+    sessionStorage.removeItem("church_token");
+    sessionStorage.removeItem("church_user");
+  } catch {
+    // Sem sessão persistente disponível, o redirecionamento ao login permanece seguro.
+  }
 }
 
 /** Sessão própria da igreja, armazenada após churchAuth.login. */
