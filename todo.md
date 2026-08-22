@@ -917,4 +917,4 @@
 - [x] Mapear o botão de saída e os componentes de diálogo já disponíveis
 - [x] Adicionar confirmação de saída acessível, discreta e responsiva no painel
 - [x] Manter cancelamento sem alteração de sessão e confirmar saída com o redirecionamento atual
-- [ ] Cobrir os dois caminhos com testes, validar em produção e salvar checkpoint
+- [x] Cobrir os dois caminhos com testes, validar em produção e salvar checkpoint
