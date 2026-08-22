@@ -405,3 +405,12 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 @media (prefers-reduced-motion: reduce) {
   .tenant-public-root *, .tenant-public-root *::before, .tenant-public-root *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+/* Prévia do painel: usa apenas variáveis de marca e herda o mesmo limite de viewport do template. */
+.tenant-public-preview { min-width: 0; overflow: clip; color: var(--tenant-primary); background: #fdfaf4; }
+.tenant-public-preview-header { padding: .8rem 1rem; font-size: .75rem; font-weight: 800; color: var(--tenant-primary); background: #fffdf9; }
+.tenant-public-preview-hero { min-width: 0; padding: 2rem 1.25rem; color: #fff; background: var(--tenant-primary); }
+.tenant-public-preview-hero span { color: var(--tenant-secondary); font-size: .64rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.tenant-public-preview-hero h3 { margin: .7rem 0; overflow-wrap: anywhere; font-family: "Playfair Display", Georgia, serif; font-size: clamp(1.75rem, 8vw, 2.5rem); line-height: .98; }
+.tenant-public-preview-hero p { overflow-wrap: anywhere; color: rgb(255 255 255 / 78%); font-size: .88rem; line-height: 1.5; }
+.tenant-public-preview-hero b { display: inline-block; max-width: 100%; margin-top: 1rem; overflow-wrap: anywhere; border-radius: .45rem; padding: .6rem .75rem; color: var(--tenant-primary); background: var(--tenant-secondary); font-size: .75rem; }

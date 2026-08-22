@@ -839,3 +839,12 @@
 - [x] Criar site, tema, seções e revisão publicada exclusivamente para a Crista Viver
 - [x] Validar `cristaviver.idefazei.com.br` em desktop/mobile e confirmar que `idefazei.com.br` continua comercial
 - [x] Registrar a implantação, testes de isolamento e checkpoint final
+
+## FASE 86 – Painel Página Pública por Igreja
+
+- [x] Mapear os contratos de site, tema, seções, revisões e as permissões administrativas existentes
+- [x] Implementar procedures protegidas de rascunho, tema, blocos e publicação derivadas da sessão da igreja
+- [x] Criar Configurações → Página Pública com identidade, Hero, Sobre, Horários, Contato e ordem de blocos
+- [x] Adicionar prévia responsiva e publicação atômica sem expor rascunhos aos visitantes
+- [x] Cobrir escrita cruzada, permissões, publicação, estabilidade visual e regressões com testes
+- [ ] Validar desktop/mobile, implantar na VPS e salvar checkpoint

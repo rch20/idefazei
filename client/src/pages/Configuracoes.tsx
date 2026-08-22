@@ -10,6 +10,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX } from "lucide-react";
 import { getChurchToken, useChurchAuth } from "@/hooks/useChurchAuth";
+import { TenantPublicSettings } from "@/components/TenantPublicSettings";
 
 const ROLES = [
   { value: "pastor_presidente", label: "Pastor Presidente" },
@@ -211,6 +212,9 @@ export default function Configuracoes() {
             <TabsTrigger value="identidade" className="gap-2">
               <Palette className="w-4 h-4" /> Identidade Visual
             </TabsTrigger>
+            {canManageRoles && <TabsTrigger value="pagina-publica" className="gap-2">
+              <Globe className="w-4 h-4" /> Página Pública
+            </TabsTrigger>}
             <TabsTrigger value="membros" className="gap-2">
               <Users className="w-4 h-4" /> Perfis e Hierarquia
             </TabsTrigger>
@@ -428,6 +432,10 @@ export default function Configuracoes() {
               </div>
             </div>
           </TabsContent>
+
+          {canManageRoles && <TabsContent value="pagina-publica">
+            <TenantPublicSettings />
+          </TabsContent>}
 
           {/* Perfis e Hierarquia */}
           <TabsContent value="membros">

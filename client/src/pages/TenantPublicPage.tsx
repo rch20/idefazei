@@ -22,6 +22,7 @@ export default function TenantPublicPage() {
 
   const hero = findContent(data.sections, "hero");
   const about = findContent(data.sections, "about");
+  const schedule = findContent(data.sections, "schedule");
   const contact = findContent(data.sections, "contact");
   const title = hero?.title ?? `Bem-vindo à ${data.church.name}`;
   const subtitle = hero?.subtitle ?? data.church.mission ?? "Uma igreja comprometida com pessoas, fé e propósito.";
@@ -70,11 +71,21 @@ export default function TenantPublicPage() {
           </section>
         )}
 
+        {schedule?.body && (
+          <section className="tenant-public-section tenant-public-schedule-section">
+            <div className="tenant-public-container tenant-public-prose">
+              <span className="tenant-public-eyebrow">Encontros</span>
+              <h2>{schedule.title ?? "Horários"}</h2>
+              <p>{schedule.body}</p>
+            </div>
+          </section>
+        )}
+
         <section className="tenant-public-section tenant-public-contact-section">
           <div className="tenant-public-container tenant-public-contact-grid">
             {data.church.address && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.church.address)}`} className="tenant-public-contact-card"><MapPin aria-hidden="true" /><span><strong>Onde estamos</strong>{data.church.address}</span></a>}
             {data.church.whatsapp && <a href={`https://wa.me/${data.church.whatsapp.replace(/\D/g, "")}`} className="tenant-public-contact-card"><MessageCircle aria-hidden="true" /><span><strong>Fale conosco</strong>{contact?.subtitle ?? "Envie uma mensagem"}</span></a>}
-            <a href="/visitante" className="tenant-public-contact-card"><CalendarDays aria-hidden="true" /><span><strong>Visite-nos</strong>Estamos prontos para receber você.</span></a>
+            <a href="/visitante" className="tenant-public-contact-card"><CalendarDays aria-hidden="true" /><span><strong>{contact?.title ?? "Visite-nos"}</strong>{contact?.subtitle ?? "Estamos prontos para receber você."}</span></a>
           </div>
         </section>
       </main>

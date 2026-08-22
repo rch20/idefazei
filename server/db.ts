@@ -309,6 +309,21 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
       .orderBy(tenantPageSections.sortOrder, tenantPageSections.id)
     : [];
 
+  let publishedTheme = theme;
+  let publishedSections = sections;
+  if (site?.publishedRevisionId) {
+    const revisionRows = await db.select().from(tenantPageRevisions).where(and(
+      eq(tenantPageRevisions.id, site.publishedRevisionId),
+      eq(tenantPageRevisions.churchId, church.id),
+      eq(tenantPageRevisions.siteId, site.id),
+    )).limit(1);
+    const snapshot = revisionRows[0]?.snapshot as { theme?: unknown; sections?: unknown } | undefined;
+    if (snapshot?.theme && Array.isArray(snapshot.sections)) {
+      publishedTheme = snapshot.theme as typeof theme;
+      publishedSections = snapshot.sections as typeof sections;
+    }
+  }
+
   return {
     church: {
       id: church.id,
@@ -329,8 +344,8 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
       socialMedia: church.socialMedia,
     },
     site,
-    theme,
-    sections,
+    theme: publishedTheme,
+    sections: publishedSections,
   };
 }
 
@@ -347,6 +362,76 @@ export async function getTenantPublicSiteByChurchId(churchId: number) {
     db.select().from(tenantPageRevisions).where(and(eq(tenantPageRevisions.churchId, churchId), eq(tenantPageRevisions.siteId, site.id))).orderBy(desc(tenantPageRevisions.version)),
   ]);
   return { site, theme: themeRows[0] ?? null, sections, revisions };
+}
+
+export type TenantPublicDraftInput = {
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  theme: { primaryColor: string; secondaryColor: string; accentColor?: string | null; fontPair?: "sacred_serif"; logoUrl?: string | null; faviconUrl?: string | null };
+  sections: Array<{ sectionType: "hero" | "welcome" | "about" | "schedule" | "events" | "contact" | "footer"; enabled: boolean; sortOrder: number; content: Record<string, string> }>;
+};
+
+const DEFAULT_PUBLIC_SECTIONS = [
+  { sectionType: "hero" as const, enabled: true, sortOrder: 0, content: { title: "", subtitle: "", primaryCtaLabel: "Quero conhecer a igreja", primaryCtaHref: "/visitante" } },
+  { sectionType: "about" as const, enabled: true, sortOrder: 1, content: { title: "Uma igreja para caminhar junto", body: "" } },
+  { sectionType: "schedule" as const, enabled: true, sortOrder: 2, content: { title: "Horários", body: "Em breve, veja nossos dias e horários de encontro." } },
+  { sectionType: "contact" as const, enabled: true, sortOrder: 3, content: { title: "Visite-nos", subtitle: "Estamos prontos para receber você." } },
+];
+
+/** Garante a fundação do site sem depender de IDs enviados pelo cliente. */
+async function ensureTenantPublicSiteByChurchId(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const churchRows = await db.select().from(churches).where(eq(churches.id, churchId)).limit(1);
+  const church = churchRows[0];
+  if (!church) return null;
+  await db.insert(tenantPublicSites).values({ churchId, templateKey: "ministerial_base", status: "draft" }).onDuplicateKeyUpdate({ set: { templateKey: sql`templateKey` } });
+  const siteRows = await db.select().from(tenantPublicSites).where(eq(tenantPublicSites.churchId, churchId)).limit(1);
+  const site = siteRows[0];
+  if (!site) return null;
+  await db.insert(tenantThemes).values({ churchId, primaryColor: church.primaryColor || "#1e3a5f", secondaryColor: church.secondaryColor || "#c9a84c", logoUrl: church.logoUrl }).onDuplicateKeyUpdate({ set: { churchId: sql`churchId` } });
+  for (const section of DEFAULT_PUBLIC_SECTIONS) {
+    const content = section.sectionType === "hero"
+      ? { ...section.content, title: `Bem-vindo à ${church.name}`, subtitle: church.mission || "Uma igreja comprometida com pessoas, fé e propósito." }
+      : section.sectionType === "about"
+        ? { ...section.content, body: church.vision || church.mission || "" }
+        : section.content;
+    await db.insert(tenantPageSections).values({ churchId, siteId: site.id, ...section, content }).onDuplicateKeyUpdate({ set: { churchId: sql`churchId` } });
+  }
+  return site;
+}
+
+/** Persiste somente o rascunho da própria igreja. O visitante continua lendo a última versão publicada. */
+export async function saveTenantPublicDraftByChurchId(churchId: number, input: TenantPublicDraftInput) {
+  const db = await getDb();
+  if (!db) return null;
+  const site = await ensureTenantPublicSiteByChurchId(churchId);
+  if (!site) return null;
+  await db.transaction(async (tx) => {
+    await tx.update(tenantPublicSites).set({ seoTitle: input.seoTitle ?? null, seoDescription: input.seoDescription ?? null }).where(and(eq(tenantPublicSites.id, site.id), eq(tenantPublicSites.churchId, churchId)));
+    await tx.update(tenantThemes).set(input.theme).where(eq(tenantThemes.churchId, churchId));
+    for (const section of input.sections) {
+      await tx.insert(tenantPageSections).values({ churchId, siteId: site.id, ...section }).onDuplicateKeyUpdate({ set: { enabled: section.enabled, sortOrder: section.sortOrder, content: section.content } });
+    }
+  });
+  return getTenantPublicSiteByChurchId(churchId);
+}
+
+/** Publica um snapshot imutável do rascunho, preservando a última versão pública até esta transição. */
+export async function publishTenantPublicSiteByChurchId(churchId: number, createdByChurchUserId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const site = await ensureTenantPublicSiteByChurchId(churchId);
+  if (!site) return null;
+  const current = await getTenantPublicSiteByChurchId(churchId);
+  if (!current?.theme) return null;
+  const version = (current.revisions[0]?.version ?? 0) + 1;
+  const snapshot = { theme: current.theme, sections: current.sections, seoTitle: current.site?.seoTitle ?? null, seoDescription: current.site?.seoDescription ?? null };
+  const result = await db.insert(tenantPageRevisions).values({ churchId, siteId: site.id, version, snapshot, createdByChurchUserId, publishedAt: new Date() });
+  const revisionId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+  if (!revisionId) throw new Error("Não foi possível registrar a revisão publicada.");
+  await db.update(tenantPublicSites).set({ status: "published", publishedRevisionId: revisionId }).where(and(eq(tenantPublicSites.id, site.id), eq(tenantPublicSites.churchId, churchId)));
+  return getTenantPublicSiteByChurchId(churchId);
 }
 
 // ─── CHURCH MEMBERS ───────────────────────────────────────────────────────────

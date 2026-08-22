@@ -130,6 +130,8 @@ import {
   getOnboardingProgress,
   getPublishedTenantPublicExperienceBySlug,
   getTenantPublicSiteByChurchId,
+  publishTenantPublicSiteByChurchId,
+  saveTenantPublicDraftByChurchId,
   upsertOnboardingProgress,
   importPeopleFromCSV,
   // Escola de Fundamentos
@@ -263,6 +265,15 @@ async function requireChurchAdministrator(userId: number, churchId: number) {
   const roles = await getEffectiveChurchRoles(userId, churchId, member);
   if (!roles.some((role) => CHURCH_ADMIN_ROLES.has(role))) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Seu perfil não tem permissão para esta ação" });
+  }
+  return member;
+}
+
+async function requireChurchPublicSitePublisher(userId: number, churchId: number) {
+  const member = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, member);
+  if (!roles.some((role) => role === "pastor_presidente" || role === "pastor_local")) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "A publicação da página pública é restrita a Pastores da própria igreja." });
   }
   return member;
 }
@@ -547,6 +558,41 @@ const tenantPublicRouter = router({
     }
     await requireChurchAdministrator(ctx.user.id, ctx.user.churchId);
     return getTenantPublicSiteByChurchId(ctx.user.churchId);
+  }),
+
+  saveDraft: protectedProcedure.input(z.object({
+    seoTitle: z.string().trim().max(255).nullable().optional(),
+    seoDescription: z.string().trim().max(320).nullable().optional(),
+    theme: z.object({
+      primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+      secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+      accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+      fontPair: z.literal("sacred_serif").optional(),
+      logoUrl: z.string().url().nullable().optional(),
+      faviconUrl: z.string().url().nullable().optional(),
+    }),
+    sections: z.array(z.object({
+      sectionType: z.enum(["hero", "welcome", "about", "schedule", "events", "contact", "footer"]),
+      enabled: z.boolean(),
+      sortOrder: z.number().int().min(0).max(20),
+      content: z.object({
+        title: z.string().trim().max(140).optional(),
+        subtitle: z.string().trim().max(280).optional(),
+        body: z.string().trim().max(2000).optional(),
+        primaryCtaLabel: z.string().trim().max(48).optional(),
+        primaryCtaHref: z.string().trim().max(280).optional(),
+      }).strict(),
+    })).min(1).max(7),
+  })).mutation(async ({ ctx, input }) => {
+    if (!ctx.user.churchId || ctx.user.authSource !== "church") throw new TRPCError({ code: "FORBIDDEN" });
+    await requireChurchPublicSitePublisher(ctx.user.id, ctx.user.churchId);
+    return saveTenantPublicDraftByChurchId(ctx.user.churchId, input);
+  }),
+
+  publish: protectedProcedure.mutation(async ({ ctx }) => {
+    if (!ctx.user.churchId || ctx.user.authSource !== "church") throw new TRPCError({ code: "FORBIDDEN" });
+    await requireChurchPublicSitePublisher(ctx.user.id, ctx.user.churchId);
+    return publishTenantPublicSiteByChurchId(ctx.user.churchId, ctx.user.id);
   }),
 });
 
