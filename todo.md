@@ -871,4 +871,4 @@
 - [x] Criar contrato seguro para horários públicos derivado do tenant e persistido somente no site da igreja
 - [x] Adicionar edição de horários e bloco ativável/reordenável à Página Pública
 - [x] Cobrir isolamento, validação de dados, estado vazio e estabilidade em múltiplos breakpoints
-- [ ] Validar TypeScript, testes, produção e checkpoint
+- [x] Validar TypeScript, testes, produção e checkpoint
