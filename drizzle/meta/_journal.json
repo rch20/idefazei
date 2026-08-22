@@ -183,6 +183,13 @@
       "when": 1787362564251,
       "tag": "0025_loud_roland_deschain",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1787369490135,
+      "tag": "0026_past_argent",
+      "breakpoints": true
     }
   ]
 }

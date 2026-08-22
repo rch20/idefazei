@@ -798,3 +798,11 @@
 - [x] Aplicar fallback compatível e validar que a tela de recuperação não seja acionada em condição normal
 - [x] Implantar a correção na VPS e validar o bundle, Service Worker e resposta pública
 - [x] Confirmar em iPhone real, registrar o resultado e salvar checkpoint
+
+## FASE 81 – Cadastro Inicial do Super Admin
+
+- [x] Auditar a conta administrativa existente, autenticação e rotas do painel Super Admin
+- [x] Implementar bootstrap atômico para criar somente o primeiro Super Admin quando não houver administrador ativo
+- [x] Criar tela de cadastro inicial com validação de e-mail, senha e confirmação de senha
+- [x] Bloquear definitivamente o cadastro público após a primeira criação e preservar o login administrativo existente
+- [ ] Cobrir autorização, concorrência, senha e login com testes; implantar e validar em produção

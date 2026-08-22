@@ -620,6 +620,12 @@ export const superAdmins = mysqlTable("super_admins", {
 
 export type SuperAdmin = typeof superAdmins.$inferSelect;
 
+/** Estado singleton que impede duas criações concorrentes do primeiro Super Admin. */
+export const superAdminBootstrap = mysqlTable("super_admin_bootstrap", {
+  id: int("id").primaryKey(),
+  configuredAt: timestamp("configuredAt").defaultNow().notNull(),
+});
+
 // ─── PLANOS E ASSINATURAS ─────────────────────────────────────────────────────
 
 export const plans = mysqlTable("plans", {

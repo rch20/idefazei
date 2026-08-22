@@ -7,9 +7,9 @@
 import { SignJWT, jwtVerify } from "jose";
 import { ENV } from "./_core/env";
 import { getChurchById, getDb } from "./db";
-import { churchUsers, superAdmins } from "../drizzle/schema";
+import { churchUsers, superAdmins, superAdminBootstrap } from "../drizzle/schema";
 import { eq } from "drizzle-orm";
-import { createHash } from "crypto";
+import { createHash, timingSafeEqual } from "crypto";
 
 const JWT_SECRET = new TextEncoder().encode(ENV.cookieSecret || "fallback-secret-change-me");
 const TOKEN_EXPIRY = "7d";
@@ -132,6 +132,54 @@ export async function createSuperAdmin(name: string, email: string, password: st
 
   const passwordHash = hashPassword(password);
   await db.insert(superAdmins).values({ name, email: email.toLowerCase(), passwordHash });
+}
+
+function matchesSetupToken(candidate: string) {
+  const configured = ENV.superAdminSetupToken;
+  if (!configured || candidate.length !== configured.length) return false;
+  return timingSafeEqual(Buffer.from(candidate), Buffer.from(configured));
+}
+
+export async function isInitialSuperAdminSetupAvailable() {
+  if (!ENV.superAdminSetupToken) return false;
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+  const configured = await db.select({ id: superAdminBootstrap.id }).from(superAdminBootstrap).limit(1);
+  const admins = await db.select({ id: superAdmins.id }).from(superAdmins).limit(1);
+  return configured.length === 0 && admins.length === 0;
+}
+
+export async function createInitialSuperAdmin(input: { name: string; email: string; password: string; setupToken: string }) {
+  if (!matchesSetupToken(input.setupToken)) return { ok: false as const, reason: "invalid_setup_token" as const };
+  const db = await getDb();
+  if (!db) throw new Error("Database unavailable");
+
+  try {
+    await db.transaction(async (tx) => {
+      const configured = await tx.select({ id: superAdminBootstrap.id }).from(superAdminBootstrap).limit(1);
+      const admins = await tx.select({ id: superAdmins.id }).from(superAdmins).limit(1);
+      if (configured.length > 0 || admins.length > 0) {
+        throw new Error("SUPER_ADMIN_ALREADY_CONFIGURED");
+      }
+
+      await tx.insert(superAdminBootstrap).values({ id: 1 });
+      await tx.insert(superAdmins).values({
+        name: input.name.trim(),
+        email: input.email.toLowerCase(),
+        passwordHash: hashPassword(input.password),
+      });
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "SUPER_ADMIN_ALREADY_CONFIGURED") {
+      return { ok: false as const, reason: "already_configured" as const };
+    }
+    if (String(error).toLowerCase().includes("duplicate")) {
+      return { ok: false as const, reason: "already_configured" as const };
+    }
+    throw error;
+  }
+
+  return { ok: true as const };
 }
 
 export { hashPassword };

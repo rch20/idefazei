@@ -9,6 +9,8 @@ import {
   loginSuperAdmin,
   createChurchUser,
   createSuperAdmin,
+  createInitialSuperAdmin,
+  isInitialSuperAdminSetupAvailable,
 } from "./auth";
 import {
   createAnnouncement,
@@ -2302,6 +2304,32 @@ const churchAuthRouter = router({
 // ─── ADMIN AUTH ROUTER ────────────────────────────────────────────────────────
 
 const adminAuthRouter = router({
+  bootstrapStatus: publicProcedure.query(async () => ({
+    available: await isInitialSuperAdminSetupAvailable(),
+  })),
+
+  bootstrap: publicProcedure
+    .input(z.object({
+      name: z.string().trim().min(2).max(255),
+      email: z.string().email(),
+      password: z.string().min(12, "A senha deve ter ao menos 12 caracteres"),
+      setupToken: z.string().min(16),
+    }))
+    .mutation(async ({ input }) => {
+      const result = await createInitialSuperAdmin(input);
+      if (!result.ok) {
+        throw new TRPCError({
+          code: result.reason === "invalid_setup_token" ? "FORBIDDEN" : "CONFLICT",
+          message: result.reason === "invalid_setup_token"
+            ? "Código de configuração inválido"
+            : "O Super Admin inicial já foi configurado",
+        });
+      }
+      const login = await loginSuperAdmin(input.email, input.password);
+      if (!login) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível iniciar a sessão administrativa" });
+      return login;
+    }),
+
   login: publicProcedure
     .input(z.object({ email: z.string().email(), password: z.string().min(6) }))
     .mutation(async ({ input }) => {

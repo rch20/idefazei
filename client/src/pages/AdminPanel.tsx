@@ -20,6 +20,55 @@ const loginSchema = z.object({
 });
 type LoginData = z.infer<typeof loginSchema>;
 
+const bootstrapSchema = z.object({
+  name: z.string().trim().min(2, "Informe seu nome"),
+  email: z.string().email("Email inválido"),
+  password: z.string().min(12, "Use pelo menos 12 caracteres"),
+  confirmPassword: z.string().min(1, "Confirme a senha"),
+  setupToken: z.string().min(16, "Informe o código de configuração"),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "As senhas não coincidem",
+  path: ["confirmPassword"],
+});
+type BootstrapData = z.infer<typeof bootstrapSchema>;
+
+function readAdminToken() {
+  try {
+    return localStorage.getItem("admin_token") ?? sessionStorage.getItem("admin_token");
+  } catch {
+    try {
+      return sessionStorage.getItem("admin_token");
+    } catch {
+      return null;
+    }
+  }
+}
+
+function persistAdminToken(token: string) {
+  try {
+    localStorage.setItem("admin_token", token);
+  } catch {
+    try {
+      sessionStorage.setItem("admin_token", token);
+    } catch {
+      // Sem armazenamento disponível, a sessão continua ativa enquanto o painel estiver aberto.
+    }
+  }
+}
+
+function clearAdminToken() {
+  try {
+    localStorage.removeItem("admin_token");
+  } catch {
+    // Safari pode restringir localStorage em alguns contextos.
+  }
+  try {
+    sessionStorage.removeItem("admin_token");
+  } catch {
+    // Sem sessão persistente disponível, o estado local será removido.
+  }
+}
+
 function AdminLogin({ onLogin }: { onLogin: (token: string) => void }) {
   const [showPassword, setShowPassword] = useState(false);
   const { register, handleSubmit, formState: { errors } } = useForm<LoginData>({
@@ -28,9 +77,13 @@ function AdminLogin({ onLogin }: { onLogin: (token: string) => void }) {
 
   const loginMutation = trpc.adminAuth.login.useMutation({
     onSuccess: (data: { token: string }) => {
-      localStorage.removeItem("church_token");
-      localStorage.removeItem("church_user");
-      localStorage.setItem("admin_token", data.token);
+      try {
+        localStorage.removeItem("church_token");
+        localStorage.removeItem("church_user");
+      } catch {
+        // O token administrativo continua protegido nas chamadas ao servidor.
+      }
+      persistAdminToken(data.token);
       onLogin(data.token);
       toast.success("Acesso autorizado!");
     },
@@ -95,6 +148,50 @@ function AdminLogin({ onLogin }: { onLogin: (token: string) => void }) {
         <p className="text-center text-xs text-white/20 mt-4">
           Acesso restrito. Tentativas são registradas.
         </p>
+      </div>
+    </div>
+  );
+}
+
+function InitialAdminSetup({ onLogin }: { onLogin: (token: string) => void }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const { register, handleSubmit, formState: { errors } } = useForm<BootstrapData>({
+    resolver: zodResolver(bootstrapSchema),
+  });
+
+  const bootstrapMutation = trpc.adminAuth.bootstrap.useMutation({
+    onSuccess: (data: { token: string }) => {
+      persistAdminToken(data.token);
+      onLogin(data.token);
+      toast.success("Super Admin configurado com sucesso.");
+    },
+    onError: (err: { message?: string }) => {
+      toast.error(err.message || "Não foi possível concluir a configuração.");
+    },
+  });
+
+  return (
+    <div className="min-h-screen bg-[#0f1923] flex items-center justify-center px-4 py-8">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden opacity-[0.03]" aria-hidden="true">
+        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"><circle cx="50%" cy="50%" r="300" fill="none" stroke="#c9a84c" strokeWidth="1" /><circle cx="50%" cy="50%" r="500" fill="none" stroke="#c9a84c" strokeWidth="0.8" /></svg>
+      </div>
+      <div className="w-full max-w-md relative z-10">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-[#c9a84c] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg"><Shield className="w-8 h-8 text-[#0f1923]" /></div>
+          <h1 className="font-serif text-3xl font-bold text-white mb-1">Configurar Super Admin</h1>
+          <p className="text-white/50 text-sm">Crie a conta principal de administração da Ide Fazei.</p>
+        </div>
+        <Card className="bg-white/5 border-white/10 backdrop-blur-sm"><CardContent className="pt-6">
+          <form onSubmit={handleSubmit((data) => bootstrapMutation.mutate(data))} className="space-y-4">
+            <div><Label htmlFor="setup-name" className="text-white/70 text-sm">Seu nome</Label><Input id="setup-name" className="mt-1 bg-white/10 border-white/20 text-white" {...register("name")} />{errors.name && <p className="text-red-400 text-xs mt-1">{errors.name.message}</p>}</div>
+            <div><Label htmlFor="setup-email" className="text-white/70 text-sm">Email administrativo</Label><Input id="setup-email" type="email" autoComplete="email" className="mt-1 bg-white/10 border-white/20 text-white" {...register("email")} />{errors.email && <p className="text-red-400 text-xs mt-1">{errors.email.message}</p>}</div>
+            <div><Label htmlFor="setup-password" className="text-white/70 text-sm">Senha principal</Label><div className="relative mt-1"><Input id="setup-password" type={showPassword ? "text" : "password"} autoComplete="new-password" className="bg-white/10 border-white/20 text-white pr-10" {...register("password")} /><button type="button" aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white" onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div>{errors.password && <p className="text-red-400 text-xs mt-1">{errors.password.message}</p>}</div>
+            <div><Label htmlFor="setup-confirm-password" className="text-white/70 text-sm">Confirmar senha</Label><Input id="setup-confirm-password" type={showPassword ? "text" : "password"} autoComplete="new-password" className="mt-1 bg-white/10 border-white/20 text-white" {...register("confirmPassword")} />{errors.confirmPassword && <p className="text-red-400 text-xs mt-1">{errors.confirmPassword.message}</p>}</div>
+            <div><Label htmlFor="setup-token" className="text-white/70 text-sm">Código de configuração</Label><Input id="setup-token" type="password" autoComplete="one-time-code" className="mt-1 bg-white/10 border-white/20 text-white" {...register("setupToken")} />{errors.setupToken && <p className="text-red-400 text-xs mt-1">{errors.setupToken.message}</p>}</div>
+            <Button type="submit" className="w-full bg-[#c9a84c] hover:bg-[#b8943e] text-[#0f1923] font-bold py-5" disabled={bootstrapMutation.isPending}>{bootstrapMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Configurando...</> : "Criar Super Admin"}</Button>
+          </form>
+        </CardContent></Card>
+        <p className="text-center text-xs text-white/30 mt-4">Este cadastro só fica disponível enquanto não houver Super Admin configurado.</p>
       </div>
     </div>
   );
@@ -469,15 +566,22 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
 export default function AdminPanel() {
   const [, navigate] = useLocation();
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("admin_token"));
+  const [token, setToken] = useState<string | null>(readAdminToken);
+  const bootstrapStatus = trpc.adminAuth.bootstrapStatus.useQuery(undefined, { retry: false, staleTime: 0 });
 
   const handleLogout = () => {
-    localStorage.removeItem("admin_token");
+    clearAdminToken();
     setToken(null);
     navigate("/admin/login");
   };
 
   if (!token) {
+    if (bootstrapStatus.isLoading) {
+      return <div className="min-h-screen bg-[#0f1923] flex items-center justify-center text-white/60"><Loader2 className="h-6 w-6 animate-spin mr-3" /> Carregando...</div>;
+    }
+    if (bootstrapStatus.data?.available) {
+      return <InitialAdminSetup onLogin={setToken} />;
+    }
     return <AdminLogin onLogin={setToken} />;
   }
 
