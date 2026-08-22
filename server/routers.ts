@@ -145,6 +145,11 @@ import {
   getFoundationStudyById,
   createFoundationStudy,
   updateFoundationStudy,
+  getLibraryItemById,
+  getFoundationStudyMaterials,
+  attachFoundationStudyMaterial,
+  updateFoundationStudyMaterialPosition,
+  detachFoundationStudyMaterial,
   getFoundationStudyAdministrators,
   isFoundationStudyAdministrator,
   assignFoundationStudyAdministrator,
@@ -2174,7 +2179,7 @@ const libraryRouter = router({
       description: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
       const db = await import("./db").then((m) => m.getDb());
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const { libraryItems } = await import("../drizzle/schema");
@@ -2810,6 +2815,78 @@ const escolaFundamentosRouter = router({
       const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
       return getFoundationStudiesByCourse(input.churchId, input.courseId, access.canManageStudies);
+    }),
+  listStudyMaterials: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await getFoundationStudyAccess(ctx.user.id, input.churchId);
+      const study = await getFoundationStudyById(input.studyId, input.churchId);
+      if (!study || (!study.active && !access.canManageStudies)) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      }
+      return getFoundationStudyMaterials(input.churchId, input.studyId);
+    }),
+  attachStudyMaterial: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(), studyId: z.number().int().positive(),
+      libraryItemId: z.number().int().positive(), position: z.number().int().min(0).max(999).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const [study, material] = await Promise.all([
+        getFoundationStudyById(input.studyId, input.churchId),
+        getLibraryItemById(input.libraryItemId, input.churchId),
+      ]);
+      if (!study) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      if (!material) throw new TRPCError({ code: "NOT_FOUND", message: "Material não encontrado na Biblioteca desta igreja." });
+      const current = await getFoundationStudyMaterials(input.churchId, input.studyId);
+      await attachFoundationStudyMaterial({ ...input, position: input.position ?? current.length });
+      return { success: true };
+    }),
+  updateStudyMaterialPosition: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(), studyId: z.number().int().positive(),
+      id: z.number().int().positive(), position: z.number().int().min(0).max(999),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const materials = await getFoundationStudyMaterials(input.churchId, input.studyId);
+      if (!materials.some((material) => material.id === input.id)) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Vínculo de material não encontrado neste estudo." });
+      }
+      await updateFoundationStudyMaterialPosition(input);
+      return { success: true };
+    }),
+  moveStudyMaterial: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(), studyId: z.number().int().positive(),
+      id: z.number().int().positive(), direction: z.enum(["up", "down"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const materials = await getFoundationStudyMaterials(input.churchId, input.studyId);
+      const index = materials.findIndex((material) => material.id === input.id);
+      if (index < 0) throw new TRPCError({ code: "NOT_FOUND", message: "Vínculo de material não encontrado neste estudo." });
+      const targetIndex = input.direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= materials.length) return { success: true };
+      const current = materials[index];
+      const target = materials[targetIndex];
+      await Promise.all([
+        updateFoundationStudyMaterialPosition({ id: current.id, churchId: input.churchId, studyId: input.studyId, position: target.position }),
+        updateFoundationStudyMaterialPosition({ id: target.id, churchId: input.churchId, studyId: input.studyId, position: current.position }),
+      ]);
+      return { success: true };
+    }),
+  detachStudyMaterial: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive(), id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const materials = await getFoundationStudyMaterials(input.churchId, input.studyId);
+      if (!materials.some((material) => material.id === input.id)) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Vínculo de material não encontrado neste estudo." });
+      }
+      await detachFoundationStudyMaterial(input);
+      return { success: true };
     }),
   createStudy: protectedProcedure
     .input(z.object({

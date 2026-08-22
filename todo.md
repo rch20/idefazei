@@ -934,3 +934,11 @@
 - [x] Permitir que o Pastor defina administradores aptos a criar, editar e organizar estudos
 - [x] Validar no servidor o acesso de Pastor ou administrador autorizado e manter o isolamento por `churchId`
 - [x] Implementar a experiência responsiva, testes de permissão/tenant e implantação na VPS
+
+## FASE 98 – Biblioteca como Acervo da Escola de Fundamentos
+
+- [x] Mapear o acervo atual, os estudos e as permissões reutilizáveis sem alterar materiais existentes
+- [x] Criar vínculo ordenado e isolado entre estudo de Fundamentos e material da Biblioteca Digital
+- [x] Garantir que somente Pastor ou administrador de estudos possa organizar os materiais de cada estudo
+- [x] Ajustar Biblioteca e Escola para criação única de materiais e associação clara à jornada formativa
+- [ ] Cobrir reutilização, publicação, isolamento por igreja, permissões, desktop/mobile e implantar na VPS

@@ -636,6 +636,19 @@ export const foundationStudies = mysqlTable("foundation_studies", {
   index("foundation_studies_church_course_position_idx").on(table.churchId, table.courseId, table.position),
 ]);
 
+/** Referências ordenadas a materiais do acervo, sem copiar arquivos para cada estudo ou turma. */
+export const foundationStudyMaterials = mysqlTable("foundation_study_materials", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  studyId: int("studyId").notNull(),
+  libraryItemId: int("libraryItemId").notNull(),
+  position: int("position").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("foundation_study_materials_church_study_position_idx").on(table.churchId, table.studyId, table.position),
+  uniqueIndex("foundation_study_materials_study_library_unique").on(table.churchId, table.studyId, table.libraryItemId),
+]);
+
 /** Delegação explícita do Pastor para administrar estudos da Escola de Fundamentos. */
 export const foundationStudyAdministrators = mysqlTable("foundation_study_administrators", {
   id: int("id").autoincrement().primaryKey(),

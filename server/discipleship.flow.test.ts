@@ -179,6 +179,11 @@ vi.mock("./db", () => ({
   getFoundationStudyById: vi.fn().mockResolvedValue({ id: 90, churchId: 100, courseId: 55, title: "Salvação" }),
   createFoundationStudy: vi.fn().mockResolvedValue({ id: 90 }),
   updateFoundationStudy: vi.fn().mockResolvedValue(undefined),
+  getLibraryItemById: vi.fn().mockResolvedValue({ id: 301, churchId: 100, title: "Apostila de Fundamentos", type: "pdf" }),
+  getFoundationStudyMaterials: vi.fn().mockResolvedValue([]),
+  attachFoundationStudyMaterial: vi.fn().mockResolvedValue(undefined),
+  updateFoundationStudyMaterialPosition: vi.fn().mockResolvedValue(undefined),
+  detachFoundationStudyMaterial: vi.fn().mockResolvedValue(undefined),
   getFoundationStudyAdministrators: vi.fn().mockResolvedValue([]),
   isFoundationStudyAdministrator: vi.fn().mockResolvedValue(false),
   assignFoundationStudyAdministrator: vi.fn().mockResolvedValue(undefined),
@@ -1572,6 +1577,32 @@ describe("Fluxo completo de discipulado", () => {
 
       await expect(caller.escolaFundamentos.assignStudyAdministrator({ churchId: CHURCH_ID, churchUserId: 88 })).rejects.toThrow("Somente Pastores");
       expect(assignFoundationStudyAdministrator).not.toHaveBeenCalled();
+    });
+
+    it("vincula um material do acervo ao estudo sem criar cópia do arquivo", async () => {
+      const { attachFoundationStudyMaterial } = await import("./db");
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.escolaFundamentos.attachStudyMaterial({ churchId: CHURCH_ID, studyId: 90, libraryItemId: 301 })).resolves.toEqual({ success: true });
+      expect(attachFoundationStudyMaterial).toHaveBeenCalledWith({ churchId: CHURCH_ID, studyId: 90, libraryItemId: 301, position: 0 });
+    });
+
+    it("bloqueia vínculo de material que não pertence à Biblioteca da igreja", async () => {
+      const { getLibraryItemById, attachFoundationStudyMaterial } = await import("./db");
+      (getLibraryItemById as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.escolaFundamentos.attachStudyMaterial({ churchId: CHURCH_ID, studyId: 90, libraryItemId: 999 })).rejects.toThrow("Material não encontrado na Biblioteca desta igreja");
+      expect(attachFoundationStudyMaterial).not.toHaveBeenCalled();
+    });
+
+    it("bloqueia membro não designado de adicionar materiais a um estudo", async () => {
+      const { getChurchMemberByUserId, attachFoundationStudyMaterial } = await import("./db");
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 3, userId: 10, churchId: CHURCH_ID, role: "membro", active: true });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.escolaFundamentos.attachStudyMaterial({ churchId: CHURCH_ID, studyId: 90, libraryItemId: 301 })).rejects.toThrow("gestão de estudos é restrita");
+      expect(attachFoundationStudyMaterial).not.toHaveBeenCalled();
     });
   });
 });

@@ -7,201 +7,82 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
-import { BookOpen, FileText, Video, Music, Search, ExternalLink } from "lucide-react";
+import { BookOpen, ExternalLink, FileText, LibraryBig, Link as LinkIcon, Presentation, Search, Video } from "lucide-react";
 
-const CATEGORIES = ["Todos", "pdf", "video", "apostila", "devocional"];
+const CATEGORIES = ["Todos", "pdf", "video", "apostila", "devocional"] as const;
 const CATEGORY_LABELS: Record<string, string> = {
   Todos: "Todos",
-  pdf: "PDF",
+  pdf: "Documentos",
   video: "Vídeos",
-  apostila: "Apostilas",
-  devocional: "Devocionais",
+  apostila: "Apresentações",
+  devocional: "Links e devocionais",
 };
 
 const FORMAT_ICONS: Record<string, React.ReactNode> = {
-  pdf: <FileText className="w-5 h-5 text-red-500" />,
-  video: <Video className="w-5 h-5 text-blue-500" />,
-  apostila: <BookOpen className="w-5 h-5 text-green-600" />,
-  devocional: <Music className="w-5 h-5 text-purple-500" />,
+  pdf: <FileText className="h-5 w-5 text-red-600" />,
+  video: <Video className="h-5 w-5 text-blue-600" />,
+  apostila: <Presentation className="h-5 w-5 text-emerald-700" />,
+  devocional: <LinkIcon className="h-5 w-5 text-purple-700" />,
 };
 
 export default function Biblioteca() {
   const { churchId } = useChurch();
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("Todos");
+  const [category, setCategory] = useState<(typeof CATEGORIES)[number]>("Todos");
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<{ title: string; type: "pdf" | "video" | "apostila" | "devocional"; fileUrl: string; description: string }>({ title: "", type: "pdf", fileUrl: "", description: "" });
-
-  const { data: items = [], isLoading, refetch } = trpc.library.list.useQuery(
+  const utils = trpc.useUtils();
+  const { data: access } = trpc.escolaFundamentos.access.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId) });
+  const canManageMaterials = Boolean(access?.canManageStudies);
+  const { data: items = [], isLoading } = trpc.library.list.useQuery(
     { churchId: churchId!, search: search || undefined, type: category !== "Todos" ? category : undefined },
-    { enabled: !!churchId }
+    { enabled: Boolean(churchId) },
   );
   const createMutation = trpc.library.create.useMutation({
     onSuccess: () => {
-      toast.success("Material adicionado à biblioteca!");
+      toast.success("Material adicionado ao acervo da igreja.");
       setCreateOpen(false);
       setForm({ title: "", type: "pdf", fileUrl: "", description: "" });
-      refetch();
+      utils.library.list.invalidate();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => toast.error(error.message || "Não foi possível adicionar o material."),
   });
 
-  function handleCreate(event: React.FormEvent) {
+  const handleCreate = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!churchId || !form.title.trim()) {
-      toast.error("Informe o título do material.");
-      return;
-    }
-    createMutation.mutate({
-      churchId,
-      title: form.title.trim(),
-      type: form.type,
-      fileUrl: form.fileUrl.trim() || undefined,
-      description: form.description.trim() || undefined,
-    });
-  }
+    if (!churchId || !form.title.trim()) return toast.error("Informe o título do material.");
+    createMutation.mutate({ churchId, title: form.title.trim(), type: form.type, fileUrl: form.fileUrl.trim() || undefined, description: form.description.trim() || undefined });
+  };
 
   return (
-      <div className="p-6 max-w-5xl mx-auto animate-fade-in-up">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-          <div>
-            <h1 className="text-2xl font-display font-bold text-navy">Biblioteca Digital</h1>
-            <p className="text-sm text-muted-foreground mt-1">Recursos, estudos e materiais da sua igreja</p>
-          </div>
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-navy text-white hover:bg-navy-light gap-2">+ Adicionar Material</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="font-display text-navy">Adicionar Material</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleCreate} className="space-y-4 pt-2">
-                <div>
-                  <Label htmlFor="library-title">Título *</Label>
-                  <Input id="library-title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Ex.: Guia de Discipulado" className="mt-1" />
-                </div>
-                <div>
-                  <Label htmlFor="library-type">Tipo *</Label>
-                  <select id="library-type" value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as typeof form.type })} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-                    <option value="pdf">PDF</option>
-                    <option value="video">Vídeo</option>
-                    <option value="apostila">Apostila</option>
-                    <option value="devocional">Devocional</option>
-                  </select>
-                </div>
-                <div>
-                  <Label htmlFor="library-url">Link do material</Label>
-                  <Input id="library-url" type="url" value={form.fileUrl} onChange={(event) => setForm({ ...form, fileUrl: event.target.value })} placeholder="https://..." className="mt-1" />
-                </div>
-                <div>
-                  <Label htmlFor="library-description">Descrição</Label>
-                  <Input id="library-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Resumo do conteúdo" className="mt-1" />
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-                  <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>{createMutation.isPending ? "Salvando..." : "Adicionar"}</Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
+    <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-navy"><LibraryBig className="h-6 w-6 text-gold" />Biblioteca Digital</h1>
+          <p className="mt-1 text-sm text-muted-foreground">O acervo único de documentos, apresentações, vídeos e links da sua igreja.</p>
         </div>
-
-        {/* Search & Filter */}
-        <div className="flex gap-3 mb-5">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por título ou descrição..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-        </div>
-
-        {/* Category tabs */}
-        <div className="flex gap-2 mb-5 flex-wrap">
-          {CATEGORIES.map((cat) => (
-            <button
-              type="button"
-              aria-pressed={category === cat}
-              key={cat}
-              onClick={() => setCategory(cat)}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
-                category === cat
-                  ? "bg-navy text-white"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {CATEGORY_LABELS[cat]}
-            </button>
-          ))}
-        </div>
-
-        {/* Items grid */}
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="card-sacred p-4 animate-pulse">
-                <div className="flex gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-muted flex-shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-4 bg-muted rounded w-3/4" />
-                    <div className="h-3 bg-muted rounded w-full" />
-                    <div className="h-3 bg-muted rounded w-1/2" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : items.length === 0 ? (
-          <div className="card-sacred p-12 flex flex-col items-center gap-3 text-center">
-            <BookOpen className="w-12 h-12 text-muted-foreground/40" />
-            <p className="font-medium text-navy">Nenhum material encontrado</p>
-            <p className="text-sm text-muted-foreground">
-              {search || category !== "Todos"
-                ? "Tente outra busca ou categoria"
-                : "Adicione o primeiro material à biblioteca da sua igreja"}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {items.map((item) => (
-              <div key={item.id} className="card-sacred p-4 flex gap-4 hover:border-gold/30 transition-colors">
-                <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                  {FORMAT_ICONS[item.type] ?? <FileText className="w-5 h-5 text-muted-foreground" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-semibold text-navy text-sm leading-tight">{item.title}</h3>
-                    <Badge variant="outline" className="text-xs flex-shrink-0">{CATEGORY_LABELS[item.type] ?? item.type}</Badge>
-                  </div>
-                  {item.description && (
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{item.description}</p>
-                  )}
-                  <div className="flex items-center justify-between mt-2">
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(item.createdAt).toLocaleDateString("pt-BR")}
-                    </span>
-                    {item.fileUrl && (
-                      <a
-                        href={item.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1 rounded hover:bg-muted transition-colors"
-                        title="Abrir"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {canManageMaterials ? <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogTrigger asChild><Button className="w-full bg-navy text-white hover:bg-navy-light sm:w-auto">Adicionar material</Button></DialogTrigger>
+          <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
+            <DialogHeader><DialogTitle className="font-display text-navy">Adicionar ao acervo</DialogTitle></DialogHeader>
+            <form onSubmit={handleCreate} className="space-y-4 pt-2">
+              <p className="rounded-lg bg-gold/10 p-3 text-sm text-navy">Este material poderá ser usado em quantos estudos e turmas forem necessários, sem criar cópias.</p>
+              <div className="space-y-2"><Label htmlFor="library-title">Título</Label><Input id="library-title" required maxLength={255} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Ex.: Apostila — Fundamentos da Fé" /></div>
+              <div className="space-y-2"><Label htmlFor="library-type">Formato</Label><select id="library-type" value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as typeof form.type })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="pdf">Documento ou PDF</option><option value="apostila">Apresentação ou apostila</option><option value="video">Vídeo por link</option><option value="devocional">Link ou devocional</option></select></div>
+              <div className="space-y-2"><Label htmlFor="library-url">Link do material</Label><Input id="library-url" type="url" value={form.fileUrl} onChange={(event) => setForm({ ...form, fileUrl: event.target.value })} placeholder="https://..." /><p className="text-xs text-muted-foreground">Para PPTX ou DOCX, use o link do arquivo no armazenamento da igreja. Para vídeos, use YouTube ou Vimeo.</p></div>
+              <div className="space-y-2"><Label htmlFor="library-description">Descrição</Label><Input id="library-description" maxLength={500} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Explique onde ou como este material será usado." /></div>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>{createMutation.isPending ? "Salvando..." : "Adicionar ao acervo"}</Button></div>
+            </form>
+          </DialogContent>
+        </Dialog> : null}
       </div>
+
+      <div className="rounded-xl border border-gold/25 bg-gold/5 p-4"><div className="flex gap-3"><BookOpen className="mt-0.5 h-5 w-5 shrink-0 text-gold" /><div><p className="font-semibold text-navy">Biblioteca e Escola têm papéis diferentes.</p><p className="mt-1 text-sm text-muted-foreground">Aqui fica o material reutilizável. Na Escola de Fundamentos, a liderança monta a sequência de estudos, relacionando materiais deste acervo às turmas.</p></div></div></div>
+
+      <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input placeholder="Buscar por título ou descrição..." value={search} onChange={(event) => setSearch(event.target.value)} className="pl-9" /></div>
+      <div className="flex flex-wrap gap-2">{CATEGORIES.map((item) => <button type="button" aria-pressed={category === item} key={item} onClick={() => setCategory(item)} className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${category === item ? "bg-navy text-white" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{CATEGORY_LABELS[item]}</button>)}</div>
+
+      {isLoading ? <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{[1, 2, 3, 4].map((item) => <div key={item} className="h-28 animate-pulse rounded-xl bg-muted/40" />)}</div> : items.length === 0 ? <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-gold/30 p-12 text-center"><BookOpen className="h-12 w-12 text-muted-foreground/40" /><p className="font-medium text-navy">Nenhum material encontrado</p><p className="max-w-md text-sm text-muted-foreground">{search || category !== "Todos" ? "Tente outra busca ou filtro." : canManageMaterials ? "Adicione o primeiro material para reutilizá-lo nos estudos de Fundamentos." : "A liderança ainda não adicionou materiais ao acervo."}</p></div> : <div className="grid grid-cols-1 gap-4 md:grid-cols-2">{items.map((item) => <article key={item.id} className="flex gap-4 rounded-xl border border-gold/20 bg-card p-4 transition-colors hover:border-gold/50"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">{FORMAT_ICONS[item.type] ?? <FileText className="h-5 w-5 text-muted-foreground" />}</div><div className="min-w-0 flex-1"><div className="flex items-start justify-between gap-2"><h2 className="line-clamp-2 text-sm font-semibold text-navy">{item.title}</h2><Badge variant="outline" className="shrink-0 text-xs">{CATEGORY_LABELS[item.type] ?? item.type}</Badge></div>{item.description ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.description}</p> : null}<div className="mt-3 flex items-center justify-between gap-2"><span className="text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleDateString("pt-BR")}</span>{item.fileUrl ? <a href={item.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-navy hover:text-gold"><ExternalLink className="h-3.5 w-3.5" />Abrir</a> : <span className="text-xs text-muted-foreground">Sem link</span>}</div></div></article>)}</div>}
+    </div>
   );
 }

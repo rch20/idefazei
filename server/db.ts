@@ -24,6 +24,7 @@ import {
   courseEnrollments,
   courses,
   foundationStudies,
+  foundationStudyMaterials,
   foundationStudyAdministrators,
   encounterEnrollments,
   encounterEvents,
@@ -2173,6 +2174,65 @@ export async function updateFoundationStudy(data: {
   if (data.active !== undefined) update.active = data.active;
   if (Object.keys(update).length === 0) return;
   await db.update(foundationStudies).set(update).where(and(eq(foundationStudies.id, data.id), eq(foundationStudies.churchId, data.churchId)));
+}
+
+export async function getLibraryItemById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(libraryItems)
+    .where(and(eq(libraryItems.id, id), eq(libraryItems.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFoundationStudyMaterials(churchId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: foundationStudyMaterials.id,
+    studyId: foundationStudyMaterials.studyId,
+    libraryItemId: foundationStudyMaterials.libraryItemId,
+    position: foundationStudyMaterials.position,
+    title: libraryItems.title,
+    type: libraryItems.type,
+    fileUrl: libraryItems.fileUrl,
+    thumbnailUrl: libraryItems.thumbnailUrl,
+    description: libraryItems.description,
+  })
+    .from(foundationStudyMaterials)
+    .innerJoin(libraryItems, and(
+      eq(foundationStudyMaterials.libraryItemId, libraryItems.id),
+      eq(foundationStudyMaterials.churchId, libraryItems.churchId),
+    ))
+    .where(and(eq(foundationStudyMaterials.churchId, churchId), eq(foundationStudyMaterials.studyId, studyId)))
+    .orderBy(foundationStudyMaterials.position, foundationStudyMaterials.id);
+}
+
+export async function attachFoundationStudyMaterial(data: { churchId: number; studyId: number; libraryItemId: number; position: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(foundationStudyMaterials).values(data).onDuplicateKeyUpdate({ set: { position: data.position } });
+}
+
+export async function updateFoundationStudyMaterialPosition(data: { id: number; churchId: number; studyId: number; position: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(foundationStudyMaterials).set({ position: data.position })
+    .where(and(
+      eq(foundationStudyMaterials.id, data.id),
+      eq(foundationStudyMaterials.churchId, data.churchId),
+      eq(foundationStudyMaterials.studyId, data.studyId),
+    ));
+}
+
+export async function detachFoundationStudyMaterial(data: { id: number; churchId: number; studyId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(foundationStudyMaterials).where(and(
+    eq(foundationStudyMaterials.id, data.id),
+    eq(foundationStudyMaterials.churchId, data.churchId),
+    eq(foundationStudyMaterials.studyId, data.studyId),
+  ));
 }
 
 export async function getFoundationStudyAdministrators(churchId: number) {

@@ -8,11 +8,13 @@ describe("Escola de Fundamentos", () => {
 
     expect(source).toContain("Criar turma");
     expect(source).toContain("Criar primeira turma");
-    expect(source).toContain("organize os estudos");
-    expect(source).toContain("Conheça os estudos");
-    expect(source).toContain("Gerenciar estudos");
+    expect(source).toContain("conecte materiais do acervo");
+    expect(source).toContain("Jornada, não depósito de arquivos");
     expect(source).toContain("Gerenciar estudos");
     expect(source).toContain("Administradores de estudos");
     expect(source).toContain("canManageStudies");
+    expect(source).toContain("Biblioteca Digital");
+    expect(source).toContain("Materiais do estudo");
+    expect(source).toContain("attachStudyMaterial");
   });
 });
