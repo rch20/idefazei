@@ -805,4 +805,12 @@
 - [x] Implementar bootstrap atômico para criar somente o primeiro Super Admin quando não houver administrador ativo
 - [x] Criar tela de cadastro inicial com validação de e-mail, senha e confirmação de senha
 - [x] Bloquear definitivamente o cadastro público após a primeira criação e preservar o login administrativo existente
-- [ ] Cobrir autorização, concorrência, senha e login com testes; implantar e validar em produção
+- [x] Cobrir autorização, concorrência, senha e login com testes; implantar e validar em produção
+
+## FASE 82 – Arquitetura de Identidade e Página Pública por Tenant
+
+- [x] Mapear a resolução atual por subdomínio, a tela comercial global e as rotas públicas de igreja
+- [x] Avaliar a viabilidade de separar núcleo global de tema, conteúdo e apresentação individual por tenant
+- [x] Projetar entidades de banco, isolamento, permissões e contratos de configuração por igreja
+- [x] Propor painel de personalização, modelos de página, responsividade, desempenho e estratégia de templates
+- [x] Entregar parecer técnico e plano de evolução sem alterar funcionalidades existentes
