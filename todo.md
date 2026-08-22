@@ -782,3 +782,11 @@
 - [x] Capturar exceções globais, rejeições não tratadas, falhas de carregamento e acionamento do modo de recuperação
 - [x] Criar visão administrativa protegida para consultar, filtrar e solucionar diagnósticos recentes
 - [x] Cobrir abuso, autorização, privacidade e regressões com testes, validações e checkpoint
+
+## FASE 79 – Correção Crítica de Tela Vazia no iOS em Produção
+
+- [x] Comparar os arquivos públicos entregues por `idefazei.com.br` com a versão corrigida do projeto
+- [x] Investigar Service Worker, cache, ativos JavaScript, Nginx e serviço Node da VPS
+- [x] Implantar a correção compatível com iOS na VPS sem interromper os demais tenants
+- [x] Validar a resposta pública e orientar a atualização de cache no iPhone afetado
+- [x] Registrar resultado, testes de produção e checkpoint da correção
