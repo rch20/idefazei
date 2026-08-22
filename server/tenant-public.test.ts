@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { TrpcContext } from "./_core/context";
 import * as db from "./db";
 import { appRouter } from "./routers";
@@ -37,6 +39,7 @@ describe("tenantPublic.current", () => {
       site: null,
       theme: null,
       sections: [],
+      upcomingEvents: [{ id: 81, name: "Culto de Celebração", type: "culto", startDate: new Date("2030-01-01T19:00:00.000Z"), endDate: null, location: "Templo", description: "Celebre conosco" }],
     };
     const getExperience = vi.spyOn(db, "getPublishedTenantPublicExperienceBySlug").mockResolvedValue(experience as never);
 
@@ -46,6 +49,7 @@ describe("tenantPublic.current", () => {
     expect(getExperience).toHaveBeenCalledTimes(1);
     expect(getExperience).toHaveBeenCalledWith("igrejaa");
     expect(getExperience).not.toHaveBeenCalledWith("999");
+    expect((await caller.tenantPublic.current())?.upcomingEvents).toEqual([expect.objectContaining({ id: 81, name: "Culto de Celebração" })]);
   });
 
   it("não retorna uma configuração pública no domínio principal sem tenant", async () => {
@@ -91,5 +95,23 @@ describe("tenantPublic administração", () => {
     await caller.tenantPublic.publish();
 
     expect(publish).toHaveBeenCalledWith(100, 10);
+  });
+});
+
+describe("Eventos públicos por tenant", () => {
+  const dbSource = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
+
+  it("filtra eventos ativos e futuros sem selecionar QR code, capacidade ou inscrições", () => {
+    const helperStart = dbSource.indexOf("export async function getPublicUpcomingEventsByChurchId");
+    const helperEnd = dbSource.indexOf("export async function getEventAttendanceReport", helperStart);
+    const helper = dbSource.slice(helperStart, helperEnd);
+
+    expect(helper).toContain("eq(events.churchId, churchId)");
+    expect(helper).toContain("eq(events.active, true)");
+    expect(helper).toContain("gte(events.startDate, new Date())");
+    expect(helper).toContain(".limit(3)");
+    expect(helper).not.toContain("qrCode:");
+    expect(helper).not.toContain("maxCapacity:");
+    expect(helper).not.toContain("eventRegistrations");
   });
 });

@@ -8,15 +8,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
-type SectionType = "hero" | "about" | "schedule" | "contact";
+type SectionType = "hero" | "about" | "schedule" | "events" | "contact";
 type EditorSection = { sectionType: SectionType; enabled: boolean; sortOrder: number; content: { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string } };
 
-const labels: Record<SectionType, string> = { hero: "Hero", about: "Sobre a igreja", schedule: "Horários", contact: "Contato" };
+const labels: Record<SectionType, string> = { hero: "Hero", about: "Sobre a igreja", schedule: "Horários", events: "Eventos", contact: "Contato" };
 const defaultSections: EditorSection[] = [
   { sectionType: "hero", enabled: true, sortOrder: 0, content: { title: "", subtitle: "", primaryCtaLabel: "Quero conhecer a igreja", primaryCtaHref: "/visitante" } },
   { sectionType: "about", enabled: true, sortOrder: 1, content: { title: "Uma igreja para caminhar junto", body: "" } },
   { sectionType: "schedule", enabled: true, sortOrder: 2, content: { title: "Horários", body: "Em breve, veja nossos dias e horários de encontro." } },
-  { sectionType: "contact", enabled: true, sortOrder: 3, content: { title: "Visite-nos", subtitle: "Estamos prontos para receber você." } },
+  { sectionType: "events", enabled: true, sortOrder: 3, content: { title: "Próximos eventos", subtitle: "Participe do que Deus está fazendo em nossa comunidade." } },
+  { sectionType: "contact", enabled: true, sortOrder: 4, content: { title: "Visite-nos", subtitle: "Estamos prontos para receber você." } },
 ];
 
 export function TenantPublicSettings() {
@@ -31,7 +32,7 @@ export function TenantPublicSettings() {
     if (!preview.data) return;
     const currentTheme = preview.data.theme;
     if (currentTheme) setTheme({ primaryColor: currentTheme.primaryColor, secondaryColor: currentTheme.secondaryColor, accentColor: currentTheme.accentColor ?? currentTheme.secondaryColor, fontPair: "sacred_serif", logoUrl: currentTheme.logoUrl, faviconUrl: currentTheme.faviconUrl });
-    const saved = preview.data.sections.filter((section) => ["hero", "about", "schedule", "contact"].includes(section.sectionType)) as unknown as EditorSection[];
+    const saved = preview.data.sections.filter((section) => ["hero", "about", "schedule", "events", "contact"].includes(section.sectionType)) as unknown as EditorSection[];
     setSections(defaultSections.map((fallback) => saved.find((section) => section.sectionType === fallback.sectionType) ?? fallback).sort((a, b) => a.sortOrder - b.sortOrder));
     setSeo({ title: preview.data.site?.seoTitle ?? "", description: preview.data.site?.seoDescription ?? "" });
   }, [preview.data]);
@@ -76,7 +77,7 @@ export function TenantPublicSettings() {
         </section>
         <section className="card-sacred p-5"><h2 className="font-semibold text-navy">Blocos da página</h2><p className="mt-1 text-sm text-muted-foreground">Ative, edite e reordene blocos aprovados. A mudança só fica pública ao publicar.</p>
           <div className="mt-4 space-y-3">{sections.map((section, index) => <article key={section.sectionType} className="rounded-xl border border-border bg-muted/20 p-4"><div className="flex flex-wrap items-center gap-3"><GripVertical className="h-4 w-4 text-muted-foreground" /><strong className="mr-auto text-sm text-navy">{labels[section.sectionType]}</strong><Button variant="outline" size="sm" disabled={index === 0} onClick={() => move(index, -1)}>Subir</Button><Button variant="outline" size="sm" disabled={index === sections.length - 1} onClick={() => move(index, 1)}>Descer</Button><Switch checked={section.enabled} onCheckedChange={(enabled) => patchSection(section.sectionType, { enabled })} aria-label={`Ativar bloco ${labels[section.sectionType]}`} /></div>
-            {section.enabled && <div className="mt-4 grid gap-3"><label><Label>Título</Label><Input className="mt-1" value={section.content.title ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { title: event.target.value } })} /></label>{section.sectionType === "hero" && <><label><Label>Subtítulo</Label><Textarea className="mt-1" rows={3} value={section.content.subtitle ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { subtitle: event.target.value } })} /></label><div className="grid gap-3 sm:grid-cols-2"><label><Label>Texto do botão</Label><Input className="mt-1" value={section.content.primaryCtaLabel ?? ""} onChange={(event) => patchSection("hero", { content: { primaryCtaLabel: event.target.value } })} /></label><label><Label>Destino do botão</Label><Input className="mt-1" value={section.content.primaryCtaHref ?? ""} onChange={(event) => patchSection("hero", { content: { primaryCtaHref: event.target.value } })} /></label></div></>}{["about", "schedule"].includes(section.sectionType) && <label><Label>Texto</Label><Textarea className="mt-1" rows={4} value={section.content.body ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { body: event.target.value } })} /></label>}{section.sectionType === "contact" && <label><Label>Mensagem</Label><Input className="mt-1" value={section.content.subtitle ?? ""} onChange={(event) => patchSection("contact", { content: { subtitle: event.target.value } })} /></label>}</div>}</article>)}</div>
+            {section.enabled && <div className="mt-4 grid gap-3"><label><Label>Título</Label><Input className="mt-1" value={section.content.title ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { title: event.target.value } })} /></label>{section.sectionType === "hero" && <><label><Label>Subtítulo</Label><Textarea className="mt-1" rows={3} value={section.content.subtitle ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { subtitle: event.target.value } })} /></label><div className="grid gap-3 sm:grid-cols-2"><label><Label>Texto do botão</Label><Input className="mt-1" value={section.content.primaryCtaLabel ?? ""} onChange={(event) => patchSection("hero", { content: { primaryCtaLabel: event.target.value } })} /></label><label><Label>Destino do botão</Label><Input className="mt-1" value={section.content.primaryCtaHref ?? ""} onChange={(event) => patchSection("hero", { content: { primaryCtaHref: event.target.value } })} /></label></div></>}{["about", "schedule"].includes(section.sectionType) && <label><Label>Texto</Label><Textarea className="mt-1" rows={4} value={section.content.body ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { body: event.target.value } })} /></label>}{["events", "contact"].includes(section.sectionType) && <label><Label>Mensagem</Label><Input className="mt-1" value={section.content.subtitle ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { subtitle: event.target.value } })} /></label>}</div>}</article>)}</div>
         </section>
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-end"><Button variant="outline" disabled={saveDraft.isPending || publish.isPending} onClick={save}><Save className="mr-2 h-4 w-4" />{saveDraft.isPending ? "Salvando..." : "Salvar rascunho"}</Button><Button className="bg-navy text-white hover:bg-navy-light" disabled={saveDraft.isPending || publish.isPending} onClick={publishPage}><Send className="mr-2 h-4 w-4" />{publish.isPending ? "Publicando..." : "Publicar página"}</Button></div>
       </div>

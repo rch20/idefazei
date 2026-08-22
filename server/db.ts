@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   announcements,
@@ -324,6 +324,10 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
     }
   }
 
+  const upcomingEvents = site?.status === "published"
+    ? await getPublicUpcomingEventsByChurchId(church.id)
+    : [];
+
   return {
     church: {
       id: church.id,
@@ -346,6 +350,7 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
     site,
     theme: publishedTheme,
     sections: publishedSections,
+    upcomingEvents,
   };
 }
 
@@ -375,7 +380,8 @@ const DEFAULT_PUBLIC_SECTIONS = [
   { sectionType: "hero" as const, enabled: true, sortOrder: 0, content: { title: "", subtitle: "", primaryCtaLabel: "Quero conhecer a igreja", primaryCtaHref: "/visitante" } },
   { sectionType: "about" as const, enabled: true, sortOrder: 1, content: { title: "Uma igreja para caminhar junto", body: "" } },
   { sectionType: "schedule" as const, enabled: true, sortOrder: 2, content: { title: "Horários", body: "Em breve, veja nossos dias e horários de encontro." } },
-  { sectionType: "contact" as const, enabled: true, sortOrder: 3, content: { title: "Visite-nos", subtitle: "Estamos prontos para receber você." } },
+  { sectionType: "events" as const, enabled: true, sortOrder: 3, content: { title: "Próximos eventos", subtitle: "Participe do que Deus está fazendo em nossa comunidade." } },
+  { sectionType: "contact" as const, enabled: true, sortOrder: 4, content: { title: "Visite-nos", subtitle: "Estamos prontos para receber você." } },
 ];
 
 /** Garante a fundação do site sem depender de IDs enviados pelo cliente. */
@@ -1263,6 +1269,29 @@ export async function getEventsByChurch(churchId: number) {
     .from(events)
     .where(and(eq(events.churchId, churchId), eq(events.active, true)))
     .orderBy(desc(events.startDate));
+}
+
+/** Expõe somente dados institucionais de próximos eventos ativos da mesma igreja. */
+export async function getPublicUpcomingEventsByChurchId(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: events.id,
+    name: events.name,
+    type: events.type,
+    description: events.description,
+    startDate: events.startDate,
+    endDate: events.endDate,
+    location: events.location,
+  })
+    .from(events)
+    .where(and(
+      eq(events.churchId, churchId),
+      eq(events.active, true),
+      gte(events.startDate, new Date()),
+    ))
+    .orderBy(events.startDate)
+    .limit(3);
 }
 
 export async function getEventAttendanceReport(data: { churchId: number; eventId: number }) {

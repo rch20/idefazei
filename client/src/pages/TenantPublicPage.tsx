@@ -1,7 +1,7 @@
 import { TenantPublicShell } from "@/components/TenantPublicShell";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, CalendarDays, MapPin, MessageCircle } from "lucide-react";
+import { ArrowRight, CalendarDays, Clock3, MapPin, MessageCircle } from "lucide-react";
 
 type SectionContent = { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string };
 
@@ -23,6 +23,7 @@ export default function TenantPublicPage() {
   const hero = findContent(data.sections, "hero");
   const about = findContent(data.sections, "about");
   const schedule = findContent(data.sections, "schedule");
+  const eventsSection = findContent(data.sections, "events");
   const contact = findContent(data.sections, "contact");
   const title = hero?.title ?? `Bem-vindo à ${data.church.name}`;
   const subtitle = hero?.subtitle ?? data.church.mission ?? "Uma igreja comprometida com pessoas, fé e propósito.";
@@ -77,6 +78,27 @@ export default function TenantPublicPage() {
               <span className="tenant-public-eyebrow">Encontros</span>
               <h2>{schedule.title ?? "Horários"}</h2>
               <p>{schedule.body}</p>
+            </div>
+          </section>
+        )}
+
+        {eventsSection && data.upcomingEvents.length > 0 && (
+          <section className="tenant-public-section tenant-public-events-section">
+            <div className="tenant-public-container">
+              <div className="tenant-public-prose tenant-public-events-heading">
+                <span className="tenant-public-eyebrow">Agenda da igreja</span>
+                <h2>{eventsSection.title ?? "Próximos eventos"}</h2>
+                {eventsSection.subtitle && <p>{eventsSection.subtitle}</p>}
+              </div>
+              <div className="tenant-public-events-grid">
+                {data.upcomingEvents.map((event) => {
+                  const startsAt = new Date(event.startDate);
+                  return <article key={event.id} className="tenant-public-event-card">
+                    <div className="tenant-public-event-date"><strong>{startsAt.toLocaleDateString("pt-BR", { day: "2-digit" })}</strong><span>{startsAt.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")}</span></div>
+                    <div className="min-w-0"><span className="tenant-public-event-type">{event.type}</span><h3>{event.name}</h3>{event.description && <p>{event.description}</p>}<div className="tenant-public-event-meta"><span><Clock3 aria-hidden="true" />{startsAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>{event.location && <span><MapPin aria-hidden="true" />{event.location}</span>}</div></div>
+                  </article>;
+                })}
+              </div>
             </div>
           </section>
         )}

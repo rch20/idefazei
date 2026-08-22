@@ -23,4 +23,10 @@ describe("Template Ministerial Base — estabilidade global", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain(".tenant-public-root *");
   });
+
+  it("mantém os cartões de Eventos em uma grade segura e empilhada no mobile", () => {
+    expect(css).toContain(".tenant-public-events-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));");
+    expect(css).toContain(".tenant-public-contact-grid, .tenant-public-events-grid { grid-template-columns: 1fr; }");
+    expect(css).toContain(".tenant-public-event-card { min-width: 0;");
+  });
 });

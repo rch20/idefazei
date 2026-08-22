@@ -848,3 +848,11 @@
 - [x] Adicionar prévia responsiva e publicação atômica sem expor rascunhos aos visitantes
 - [x] Cobrir escrita cruzada, permissões, publicação, estabilidade visual e regressões com testes
 - [x] Validar desktop/mobile, implantar na VPS e salvar checkpoint
+
+## FASE 87 – Bloco Público de Eventos por Igreja
+
+- [x] Mapear Eventos existentes, estados publicáveis, datas e proteção de tenant
+- [x] Criar consulta pública de próximos eventos que derive o tenant do host e não exponha dados operacionais
+- [x] Adicionar bloco Eventos ativável e reordenável ao Template Ministerial Base e ao painel Página Pública
+- [x] Cobrir isolamento, eventos passados/cancelados, estado vazio e estabilidade em múltiplos breakpoints
+- [ ] Validar TypeScript, testes, produção e checkpoint
