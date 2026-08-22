@@ -855,4 +855,4 @@
 - [x] Criar consulta pública de próximos eventos que derive o tenant do host e não exponha dados operacionais
 - [x] Adicionar bloco Eventos ativável e reordenável ao Template Ministerial Base e ao painel Página Pública
 - [x] Cobrir isolamento, eventos passados/cancelados, estado vazio e estabilidade em múltiplos breakpoints
-- [ ] Validar TypeScript, testes, produção e checkpoint
+- [x] Validar TypeScript, testes, produção e checkpoint
