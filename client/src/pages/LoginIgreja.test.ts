@@ -3,10 +3,10 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("LoginIgreja", () => {
-  it("mantém o cadastro comercial fora do login de subdomínios de igreja", () => {
+  it("limita o cadastro comercial aos hosts institucionais da Ide Fazei", () => {
     const source = readFileSync(resolve(process.cwd(), "client/src/pages/LoginIgreja.tsx"), "utf8");
-    expect(source).toContain("const { isChurchSubdomain } = useTenant()");
-    expect(source).toContain("{!isChurchSubdomain && (");
+    expect(source).toContain('hostname === "idefazei.com.br" || hostname === "www.idefazei.com.br"');
+    expect(source).toContain("{isCommercialDomain && (");
     expect(source).toContain('href="/cadastro-igreja"');
   });
 });

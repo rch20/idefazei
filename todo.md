@@ -893,5 +893,5 @@
 
 - [x] Mapear a exibição do convite de cadastro de igreja nas telas de login por host
 - [x] Exibir cadastro comercial somente no domínio principal e ocultá-lo em subdomínios de igreja
-- [ ] Validar a correção no login mobile da Crista Viver e preservar o cadastro comercial global
-- [ ] Executar testes, implantar na VPS e salvar checkpoint
+- [x] Validar a correção no login mobile da Crista Viver e preservar o cadastro comercial global
+- [x] Executar testes, implantar na VPS e salvar checkpoint
