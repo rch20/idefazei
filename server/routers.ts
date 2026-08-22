@@ -141,6 +141,14 @@ import {
   getCourseEnrollmentById,
   enrollInCourse,
   updateCourseEnrollment,
+  getFoundationStudiesByCourse,
+  getFoundationStudyById,
+  createFoundationStudy,
+  updateFoundationStudy,
+  getFoundationStudyAdministrators,
+  isFoundationStudyAdministrator,
+  assignFoundationStudyAdministrator,
+  removeFoundationStudyAdministrator,
   // Batismo
   getBaptismClassesByChurch,
   getBaptismEnrollments,
@@ -268,6 +276,33 @@ async function requireChurchAdministrator(userId: number, churchId: number) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Seu perfil não tem permissão para esta ação" });
   }
   return member;
+}
+
+async function getFoundationStudyAccess(userId: number, churchId: number) {
+  const member = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, member);
+  const isPastor = roles.some((role) => role === "pastor_presidente" || role === "pastor_local");
+  const churchUserId = userId < 0 ? Math.abs(userId) : null;
+  const isDesignatedAdministrator = Boolean(
+    !isPastor && churchUserId && await isFoundationStudyAdministrator(churchId, churchUserId)
+  );
+  return { member, isPastor, isDesignatedAdministrator, canManageStudies: isPastor || isDesignatedAdministrator };
+}
+
+async function requireFoundationStudyManager(userId: number, churchId: number) {
+  const access = await getFoundationStudyAccess(userId, churchId);
+  if (!access.canManageStudies) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "A gestão de estudos é restrita ao Pastor e aos administradores designados." });
+  }
+  return access;
+}
+
+async function requireFoundationStudyPastor(userId: number, churchId: number) {
+  const access = await getFoundationStudyAccess(userId, churchId);
+  if (!access.isPastor) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem definir administradores de estudos." });
+  }
+  return access;
 }
 
 async function requireChurchPublicSitePublisher(userId: number, churchId: number) {
@@ -2756,11 +2791,76 @@ const onboardingRouter = router({
 
 // ─── ESCOLA DE FUNDAMENTOS ROUTER ──────────────────────────────────────────
 const escolaFundamentosRouter = router({
+  access: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await getFoundationStudyAccess(ctx.user.id, input.churchId);
+      return { canManageStudies: access.canManageStudies, canManageAdministrators: access.isPastor };
+    }),
   listCourses: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
       return getCoursesByChurch(input.churchId);
+    }),
+  listStudies: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await getFoundationStudyAccess(ctx.user.id, input.churchId);
+      const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
+      if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
+      return getFoundationStudiesByCourse(input.churchId, input.courseId, access.canManageStudies);
+    }),
+  createStudy: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(), courseId: z.number().int().positive(),
+      title: z.string().trim().min(3, "Informe um título com ao menos 3 caracteres.").max(160),
+      summary: z.string().trim().max(500).optional(), content: z.string().trim().max(12000).optional(),
+      position: z.number().int().min(0).max(999).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
+      if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
+      const existing = await getFoundationStudiesByCourse(input.churchId, input.courseId, true);
+      const study = await createFoundationStudy({ ...input, position: input.position ?? existing.length, createdByChurchUserId: access.member.id });
+      return { success: true, studyId: study.id };
+    }),
+  updateStudy: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(), churchId: z.number().int().positive(),
+      title: z.string().trim().min(3).max(160).optional(), summary: z.string().trim().max(500).nullable().optional(),
+      content: z.string().trim().max(12000).nullable().optional(), position: z.number().int().min(0).max(999).optional(), active: z.boolean().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      if (!(await getFoundationStudyById(input.id, input.churchId))) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      }
+      await updateFoundationStudy(input);
+      return { success: true };
+    }),
+  listStudyAdministrators: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireFoundationStudyPastor(ctx.user.id, input.churchId);
+      return getFoundationStudyAdministrators(input.churchId);
+    }),
+  assignStudyAdministrator: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), churchUserId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireFoundationStudyPastor(ctx.user.id, input.churchId);
+      const account = (await getChurchUsersByChurch(input.churchId)).find((user) => user.id === input.churchUserId && user.active);
+      if (!account) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma conta ativa desta igreja." });
+      await assignFoundationStudyAdministrator({ churchId: input.churchId, churchUserId: input.churchUserId, assignedByChurchUserId: access.member.id });
+      return { success: true };
+    }),
+  removeStudyAdministrator: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), churchUserId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireFoundationStudyPastor(ctx.user.id, input.churchId);
+      await removeFoundationStudyAdministrator(input.churchId, input.churchUserId);
+      return { success: true };
     }),
   createCourse: protectedProcedure
     .input(z.object({
@@ -2770,7 +2870,7 @@ const escolaFundamentosRouter = router({
       description: z.string().trim().max(500).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
       const course = await createCourse(input);
       return { success: true, courseId: course.id };
     }),
@@ -2783,7 +2883,7 @@ const escolaFundamentosRouter = router({
   enroll: protectedProcedure
     .input(z.object({ courseId: z.number(), personId: z.number(), churchId: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
       const [course, person] = await Promise.all([
         getCoursesByChurch(input.churchId).then((items) => items.find((item) => item.id === input.courseId)),
         getPersonById(input.personId, input.churchId),
@@ -2800,7 +2900,7 @@ const escolaFundamentosRouter = router({
       completedAt: z.date().nullable().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
       if (!(await getCourseEnrollmentById(input.id, input.churchId))) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Matrícula não encontrada nesta igreja." });
       }

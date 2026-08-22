@@ -23,6 +23,8 @@ import {
   counselingSessions,
   courseEnrollments,
   courses,
+  foundationStudies,
+  foundationStudyAdministrators,
   encounterEnrollments,
   encounterEvents,
   eventRegistrations,
@@ -2106,6 +2108,124 @@ export async function updateCourseEnrollment(id: number, data: { status?: string
   if (data.status !== undefined) update.status = data.status;
   if (data.completedAt !== undefined) update.completedAt = data.completedAt;
   await db.update(courseEnrollments).set(update).where(eq(courseEnrollments.id, id));
+}
+
+export async function getFoundationStudiesByCourse(churchId: number, courseId: number, includeInactive = false) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(foundationStudies.churchId, churchId), eq(foundationStudies.courseId, courseId)];
+  if (!includeInactive) conditions.push(eq(foundationStudies.active, true));
+  return db
+    .select()
+    .from(foundationStudies)
+    .where(and(...conditions))
+    .orderBy(foundationStudies.position, foundationStudies.id);
+}
+
+export async function getFoundationStudyById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(foundationStudies)
+    .where(and(eq(foundationStudies.id, id), eq(foundationStudies.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createFoundationStudy(data: {
+  churchId: number;
+  courseId: number;
+  title: string;
+  summary?: string | null;
+  content?: string | null;
+  position: number;
+  createdByChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(foundationStudies).values({
+    ...data,
+    title: data.title.trim(),
+    summary: data.summary?.trim() || null,
+    content: data.content?.trim() || null,
+    active: true,
+  });
+  return { id: result.insertId };
+}
+
+export async function updateFoundationStudy(data: {
+  id: number;
+  churchId: number;
+  title?: string;
+  summary?: string | null;
+  content?: string | null;
+  position?: number;
+  active?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.title !== undefined) update.title = data.title.trim();
+  if (data.summary !== undefined) update.summary = data.summary?.trim() || null;
+  if (data.content !== undefined) update.content = data.content?.trim() || null;
+  if (data.position !== undefined) update.position = data.position;
+  if (data.active !== undefined) update.active = data.active;
+  if (Object.keys(update).length === 0) return;
+  await db.update(foundationStudies).set(update).where(and(eq(foundationStudies.id, data.id), eq(foundationStudies.churchId, data.churchId)));
+}
+
+export async function getFoundationStudyAdministrators(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: foundationStudyAdministrators.id,
+      churchUserId: foundationStudyAdministrators.churchUserId,
+      assignedByChurchUserId: foundationStudyAdministrators.assignedByChurchUserId,
+      createdAt: foundationStudyAdministrators.createdAt,
+      name: churchUsers.name,
+      email: churchUsers.email,
+      role: churchUsers.role,
+      active: churchUsers.active,
+    })
+    .from(foundationStudyAdministrators)
+    .innerJoin(churchUsers, eq(foundationStudyAdministrators.churchUserId, churchUsers.id))
+    .where(and(eq(foundationStudyAdministrators.churchId, churchId), eq(churchUsers.churchId, churchId)))
+    .orderBy(churchUsers.name);
+}
+
+export async function isFoundationStudyAdministrator(churchId: number, churchUserId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: foundationStudyAdministrators.id })
+    .from(foundationStudyAdministrators)
+    .innerJoin(churchUsers, eq(foundationStudyAdministrators.churchUserId, churchUsers.id))
+    .where(and(
+      eq(foundationStudyAdministrators.churchId, churchId),
+      eq(foundationStudyAdministrators.churchUserId, churchUserId),
+      eq(churchUsers.churchId, churchId),
+      eq(churchUsers.active, true),
+    ))
+    .limit(1);
+  return Boolean(rows[0]);
+}
+
+export async function assignFoundationStudyAdministrator(data: { churchId: number; churchUserId: number; assignedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(foundationStudyAdministrators).values(data).onDuplicateKeyUpdate({
+    set: { assignedByChurchUserId: data.assignedByChurchUserId },
+  });
+}
+
+export async function removeFoundationStudyAdministrator(churchId: number, churchUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .delete(foundationStudyAdministrators)
+    .where(and(eq(foundationStudyAdministrators.churchId, churchId), eq(foundationStudyAdministrators.churchUserId, churchUserId)));
 }
 
 // ─── BATISMO ──────────────────────────────────────────────────────────────────

@@ -169,6 +169,20 @@ vi.mock("./db", () => ({
   getOnboardingProgress: vi.fn().mockResolvedValue(null),
   updateOnboardingProgress: vi.fn().mockResolvedValue({ id: 1 }),
   getChurchMembersByChurch: vi.fn().mockResolvedValue([]),
+  getCoursesByChurch: vi.fn().mockResolvedValue([{ id: 55, churchId: 100, name: "Fundamentos da Fé", type: "salvacao", active: true }]),
+  createCourse: vi.fn().mockResolvedValue({ id: 55 }),
+  getCourseEnrollments: vi.fn().mockResolvedValue([]),
+  getCourseEnrollmentById: vi.fn().mockResolvedValue({ id: 1, courseId: 55 }),
+  enrollInCourse: vi.fn().mockResolvedValue({ id: 1 }),
+  updateCourseEnrollment: vi.fn().mockResolvedValue(undefined),
+  getFoundationStudiesByCourse: vi.fn().mockResolvedValue([]),
+  getFoundationStudyById: vi.fn().mockResolvedValue({ id: 90, churchId: 100, courseId: 55, title: "Salvação" }),
+  createFoundationStudy: vi.fn().mockResolvedValue({ id: 90 }),
+  updateFoundationStudy: vi.fn().mockResolvedValue(undefined),
+  getFoundationStudyAdministrators: vi.fn().mockResolvedValue([]),
+  isFoundationStudyAdministrator: vi.fn().mockResolvedValue(false),
+  assignFoundationStudyAdministrator: vi.fn().mockResolvedValue(undefined),
+  removeFoundationStudyAdministrator: vi.fn().mockResolvedValue(undefined),
   getFoundationCoursesByChurch: vi.fn().mockResolvedValue([]),
   getFoundationEnrollments: vi.fn().mockResolvedValue([]),
   createFoundationCourse: vi.fn().mockResolvedValue({ id: 1 }),
@@ -1509,6 +1523,55 @@ describe("Fluxo completo de discipulado", () => {
       const visits = await caller.consolidation.visits({ churchId: CHURCH_ID });
       expect(visits).toHaveLength(1);
       expect(visits[0]).toMatchObject({ personName: "Pessoa Visitada", assignedToName: "Visitador", status: "agendada" });
+    });
+  });
+
+  describe("Escola de Fundamentos — estudos e administradores", () => {
+    it("permite que o Pastor crie um estudo na turma da própria igreja", async () => {
+      const { createFoundationStudy } = await import("./db");
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.escolaFundamentos.createStudy({
+        churchId: CHURCH_ID,
+        courseId: 55,
+        title: "A graça e a salvação",
+        summary: "Compreender a salvação pela graça.",
+        content: "Efésios 2:8-9",
+      })).resolves.toEqual({ success: true, studyId: 90 });
+
+      expect(createFoundationStudy).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        courseId: 55,
+        createdByChurchUserId: 1,
+      }));
+    });
+
+    it("permite que uma conta designada pelo Pastor gerencie estudos", async () => {
+      const { getActiveChurchUserById, isFoundationStudyAdministrator, createFoundationStudy } = await import("./db");
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 88, churchId: CHURCH_ID, personId: 20, role: "membro", active: true });
+      (isFoundationStudyAdministrator as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+      const caller = appRouter.createCaller(createMemberContext(-88));
+
+      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, title: "Vida de oração" })).resolves.toEqual({ success: true, studyId: 90 });
+      expect(createFoundationStudy).toHaveBeenCalledWith(expect.objectContaining({ createdByChurchUserId: 88 }));
+    });
+
+    it("bloqueia a criação de estudos por membro não designado", async () => {
+      const { getChurchMemberByUserId, createFoundationStudy } = await import("./db");
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 3, userId: 10, churchId: CHURCH_ID, role: "membro", active: true });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, title: "Estudo sem autorização" })).rejects.toThrow("gestão de estudos é restrita");
+      expect(createFoundationStudy).not.toHaveBeenCalled();
+    });
+
+    it("mantém a definição de administradores restrita ao Pastor", async () => {
+      const { getChurchMemberByUserId, assignFoundationStudyAdministrator } = await import("./db");
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 4, userId: 10, churchId: CHURCH_ID, role: "secretario", active: true });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.escolaFundamentos.assignStudyAdministrator({ churchId: CHURCH_ID, churchUserId: 88 })).rejects.toThrow("Somente Pastores");
+      expect(assignFoundationStudyAdministrator).not.toHaveBeenCalled();
     });
   });
 });

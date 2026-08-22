@@ -926,3 +926,11 @@
 - [x] Tornar a matrícula e o acompanhamento de alunos mais claros e acionáveis
 - [x] Melhorar estados de progresso, presença, conclusão e certificado sem alterar regras de acesso
 - [x] Cobrir isolamento, permissões, desktop/mobile e regressões; implantar e salvar checkpoint
+
+## FASE 97 – Gestão de Estudos de Fundamentos
+
+- [x] Mapear o modelo atual de turmas e estudos, perfis administrativos e autorização por igreja
+- [x] Definir na própria aba a gestão de estudos, sem expor controles de edição a usuários operacionais
+- [x] Permitir que o Pastor defina administradores aptos a criar, editar e organizar estudos
+- [x] Validar no servidor o acesso de Pastor ou administrador autorizado e manter o isolamento por `churchId`
+- [ ] Implementar a experiência responsiva, testes de permissão/tenant e implantação na VPS

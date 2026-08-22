@@ -211,6 +211,13 @@
       "when": 1787394840466,
       "tag": "0029_bumpy_gideon",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1787407884363,
+      "tag": "0030_fuzzy_shard",
+      "breakpoints": true
     }
   ]
 }

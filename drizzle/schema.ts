@@ -619,6 +619,35 @@ export const courseEnrollments = mysqlTable("course_enrollments", {
   status: mysqlEnum("status", ["matriculado", "em_andamento", "concluido"]).default("matriculado"),
 });
 
+/** Conteúdo pedagógico de cada turma de Fundamentos, sempre isolado pela igreja. */
+export const foundationStudies = mysqlTable("foundation_studies", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  courseId: int("courseId").notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  summary: varchar("summary", { length: 500 }),
+  content: text("content"),
+  position: int("position").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("foundation_studies_church_course_position_idx").on(table.churchId, table.courseId, table.position),
+]);
+
+/** Delegação explícita do Pastor para administrar estudos da Escola de Fundamentos. */
+export const foundationStudyAdministrators = mysqlTable("foundation_study_administrators", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  churchUserId: int("churchUserId").notNull(),
+  assignedByChurchUserId: int("assignedByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("foundation_study_administrators_church_idx").on(table.churchId),
+  uniqueIndex("foundation_study_administrators_church_user_unique").on(table.churchId, table.churchUserId),
+]);
+
 // ─── AUTENTICAÇÃO PRÓPRIA DA PLATAFORMA ──────────────────────────────────────
 
 /** Usuários das igrejas (login próprio, sem Manus OAuth) */
