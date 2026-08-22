@@ -447,3 +447,11 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-preview-hero h3 { margin: .7rem 0; overflow-wrap: anywhere; font-family: "Playfair Display", Georgia, serif; font-size: clamp(1.75rem, 8vw, 2.5rem); line-height: .98; }
 .tenant-public-preview-hero p { overflow-wrap: anywhere; color: rgb(255 255 255 / 78%); font-size: .88rem; line-height: 1.5; }
 .tenant-public-preview-hero b { display: inline-block; max-width: 100%; margin-top: 1rem; overflow-wrap: anywhere; border-radius: .45rem; padding: .6rem .75rem; color: var(--tenant-primary); background: var(--tenant-secondary); font-size: .75rem; }
+
+/* Login por tenant: consome somente nome, logo e cores seguras da configuração publicada. */
+.tenant-login-brand-mark { display: grid; flex: 0 0 auto; overflow: hidden; place-items: center; border-radius: 1rem; background: var(--tenant-login-primary, #1e3a5f); color: var(--tenant-login-accent, #c9a84c); box-shadow: 0 10px 24px color-mix(in srgb, var(--tenant-login-primary, #1e3a5f) 18%, transparent); font-family: "Playfair Display", Georgia, serif; font-weight: 700; letter-spacing: -.04em; }
+.tenant-login-brand-mark img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.tenant-login-brand-mark--header { width: 2.75rem; height: 2.75rem; border-radius: .75rem; font-size: .9rem; }
+.tenant-login-brand-mark--hero { width: 4.5rem; height: 4.5rem; border-radius: 1.25rem; font-size: 1.5rem; }
+.tenant-login-brand-name { display: block; max-width: min(48vw, 16rem); overflow: hidden; color: var(--tenant-login-primary, #1e3a5f); font-size: 1rem; font-weight: 700; letter-spacing: -.025em; text-overflow: ellipsis; white-space: nowrap; }
+.tenant-login-brand-kicker { display: block; color: var(--tenant-login-accent, #c9a84c); font-size: .625rem; line-height: 1.1; letter-spacing: .14em; text-transform: uppercase; }

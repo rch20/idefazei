@@ -9,4 +9,12 @@ describe("LoginIgreja", () => {
     expect(source).toContain("{isCommercialDomain && (");
     expect(source).toContain('href="/cadastro-igreja"');
   });
+
+  it("carrega a identidade pública somente quando o login pertence a um tenant", () => {
+    const source = readFileSync(resolve(process.cwd(), "client/src/pages/LoginIgreja.tsx"), "utf8");
+    expect(source).toContain("const { data: tenantPublic } = trpc.tenantPublic.current.useQuery");
+    expect(source).toContain("enabled: isTenantLogin");
+    expect(source).toContain("tenantPublic?.church.name ?? \"Ide Fazei\"");
+    expect(source).toContain("tenant-login-brand-mark");
+  });
 });

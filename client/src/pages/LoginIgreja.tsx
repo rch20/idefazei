@@ -36,6 +36,23 @@ export default function LoginIgreja() {
   const [, navigate] = useLocation();
   const hostname = typeof window === "undefined" ? "" : window.location.hostname.toLowerCase();
   const isCommercialDomain = hostname === "idefazei.com.br" || hostname === "www.idefazei.com.br";
+  const isTenantLogin = !isCommercialDomain && hostname.split(".").length >= 3 && !hostname.startsWith("admin.") && !hostname.startsWith("www.");
+  const { data: tenantPublic } = trpc.tenantPublic.current.useQuery(undefined, {
+    enabled: isTenantLogin,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const tenantName = tenantPublic?.church.name ?? "Ide Fazei";
+  const primaryColor = tenantPublic?.theme?.primaryColor ?? tenantPublic?.church.primaryColor ?? "#1e3a5f";
+  const accentColor = tenantPublic?.theme?.secondaryColor ?? tenantPublic?.church.secondaryColor ?? "#c9a84c";
+  const logoUrl = tenantPublic?.theme?.logoUrl ?? tenantPublic?.church.logoUrl ?? null;
+  const logoLetters = tenantName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "✦";
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
@@ -77,7 +94,7 @@ export default function LoginIgreja() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f5f0e8] flex flex-col">
+    <div className="min-h-screen bg-[#f5f0e8] flex flex-col" style={{ "--tenant-login-primary": primaryColor, "--tenant-login-accent": accentColor } as React.CSSProperties}>
       {/* Sacred geometry background */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden opacity-[0.04]" aria-hidden="true">
         <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
@@ -90,13 +107,13 @@ export default function LoginIgreja() {
 
       {/* Header */}
       <header className="relative z-10 py-5 px-6 flex items-center justify-between">
-        <a href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-[#1e3a5f] rounded-lg flex items-center justify-center">
-            <span className="text-[#c9a84c] font-bold text-sm">✦</span>
+        <a href="/" className="flex items-center gap-2 min-w-0" aria-label={isTenantLogin ? `Página inicial da ${tenantName}` : "Página inicial da Ide Fazei"}>
+          <div className="tenant-login-brand-mark tenant-login-brand-mark--header">
+            {logoUrl ? <img src={logoUrl} alt={`Logo ${tenantName}`} /> : <span aria-hidden="true">{isTenantLogin ? logoLetters : "✦"}</span>}
           </div>
-          <div>
-            <span className="font-bold text-[#1e3a5f] text-base tracking-tight">Ide Fazei</span>
-            <span className="text-[#c9a84c] text-[10px] block leading-none tracking-widest uppercase">Plataforma Ministerial</span>
+          <div className="min-w-0">
+            <span className="tenant-login-brand-name">{tenantName}</span>
+            <span className="tenant-login-brand-kicker">{isTenantLogin ? "Acesso da igreja" : "Plataforma Ministerial"}</span>
           </div>
         </a>
         {isCommercialDomain && (
@@ -111,46 +128,46 @@ export default function LoginIgreja() {
         <div className="w-full max-w-md">
           {/* Logo da Igreja (placeholder) */}
           <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-[#1e3a5f] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <span className="text-[#c9a84c] text-2xl font-bold">✦</span>
+            <div className="tenant-login-brand-mark tenant-login-brand-mark--hero mx-auto mb-4">
+              {logoUrl ? <img src={logoUrl} alt={`Logo ${tenantName}`} /> : <span aria-hidden="true">{isTenantLogin ? logoLetters : "✦"}</span>}
             </div>
-            <h1 className="font-serif text-3xl font-bold text-[#1e3a5f] mb-1">Acesso à Plataforma</h1>
-            <p className="text-[#1e3a5f]/50 text-sm">Entre com seu email e senha cadastrados</p>
+            <h1 className="font-serif text-3xl font-bold text-[var(--tenant-login-primary)] mb-1">{isTenantLogin ? `Bem-vindo à ${tenantName}` : "Acesso à Plataforma"}</h1>
+            <p className="text-[var(--tenant-login-primary)]/50 text-sm">{isTenantLogin ? "Entre para acessar o painel da sua igreja" : "Entre com seu email e senha cadastrados"}</p>
           </div>
 
-          <Card className="bg-white/80 backdrop-blur-sm border-[#c9a84c]/20 shadow-xl">
+          <Card className="bg-white/80 backdrop-blur-sm border-[color:color-mix(in_srgb,var(--tenant-login-accent)_25%,transparent)] shadow-xl">
             <CardHeader className="pb-4">
-              <CardTitle className="font-serif text-xl text-[#1e3a5f]">Entrar</CardTitle>
+              <CardTitle className="font-serif text-xl text-[var(--tenant-login-primary)]">Entrar</CardTitle>
               <CardDescription>Acesse o painel da sua igreja</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 <div>
-                  <Label htmlFor="email" className="text-[#1e3a5f] font-medium text-sm">Email</Label>
+                  <Label htmlFor="email" className="text-[var(--tenant-login-primary)] font-medium text-sm">Email</Label>
                   <Input
                     id="email"
                     type="email"
                     placeholder="seu@email.com"
-                    className="mt-1 border-[#c9a84c]/30 focus:border-[#1e3a5f] bg-white"
+                    className="mt-1 border-[color:color-mix(in_srgb,var(--tenant-login-accent)_40%,transparent)] focus:border-[var(--tenant-login-primary)] bg-white"
                     {...register("email")}
                   />
                   {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
                 </div>
 
                 <div>
-                  <Label htmlFor="password" className="text-[#1e3a5f] font-medium text-sm">Senha</Label>
+                  <Label htmlFor="password" className="text-[var(--tenant-login-primary)] font-medium text-sm">Senha</Label>
                   <div className="relative mt-1">
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
-                      className="border-[#c9a84c]/30 focus:border-[#1e3a5f] bg-white pr-10"
+                      className="border-[color:color-mix(in_srgb,var(--tenant-login-accent)_40%,transparent)] focus:border-[var(--tenant-login-primary)] bg-white pr-10"
                       {...register("password")}
                     />
                     <button
                       type="button"
                       aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#1e3a5f]/40 hover:text-[#1e3a5f] transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--tenant-login-primary)]/40 hover:text-[var(--tenant-login-primary)] transition-colors"
                       onClick={() => setShowPassword(!showPassword)}
                     >
                       {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -160,13 +177,13 @@ export default function LoginIgreja() {
                 </div>
 
                 <div className="flex items-center justify-between text-sm">
-                  <label className="flex items-center gap-2 text-[#1e3a5f]/60 cursor-pointer">
+                  <label className="flex items-center gap-2 text-[var(--tenant-login-primary)]/60 cursor-pointer">
                     <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} className="rounded border-[#c9a84c]/30" />
                     Lembrar-me
                   </label>
                   <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
                     <DialogTrigger asChild>
-                      <button type="button" className="text-[#c9a84c] hover:text-[#b8943e] transition-colors">
+                      <button type="button" className="text-[var(--tenant-login-accent)] hover:opacity-80 transition-opacity">
                         Esqueci a senha
                       </button>
                     </DialogTrigger>
@@ -186,7 +203,7 @@ export default function LoginIgreja() {
 
                 <Button
                   type="submit"
-                  className="w-full bg-[#1e3a5f] hover:bg-[#162d4a] text-white font-semibold py-5"
+                  className="w-full bg-[var(--tenant-login-primary)] hover:opacity-90 text-white font-semibold py-5"
                   disabled={loginMutation.isPending}
                 >
                   {loginMutation.isPending ? (
@@ -198,11 +215,11 @@ export default function LoginIgreja() {
               </form>
 
               {/* Perfis disponíveis */}
-              <div className="mt-6 pt-5 border-t border-[#c9a84c]/20">
-                <p className="text-xs text-[#1e3a5f]/40 text-center mb-3 uppercase tracking-wider">Perfis disponíveis</p>
+              <div className="mt-6 pt-5 border-t border-[color:color-mix(in_srgb,var(--tenant-login-accent)_25%,transparent)]">
+                <p className="text-xs text-[var(--tenant-login-primary)]/40 text-center mb-3 uppercase tracking-wider">Perfis disponíveis</p>
                 <div className="flex flex-wrap gap-1.5 justify-center">
                   {Object.values(ROLE_LABELS).map((label) => (
-                    <span key={label} className="px-2 py-0.5 bg-[#1e3a5f]/5 text-[#1e3a5f]/50 text-xs rounded-full border border-[#1e3a5f]/10">
+                    <span key={label} className="px-2 py-0.5 bg-[color:color-mix(in_srgb,var(--tenant-login-primary)_5%,transparent)] text-[var(--tenant-login-primary)]/50 text-xs rounded-full border border-[color:color-mix(in_srgb,var(--tenant-login-primary)_10%,transparent)]">
                       {label}
                     </span>
                   ))}
@@ -211,7 +228,7 @@ export default function LoginIgreja() {
             </CardContent>
           </Card>
 
-          <p className="text-center text-xs text-[#1e3a5f]/40 mt-6">
+          <p className="text-center text-xs text-[var(--tenant-login-primary)]/40 mt-6">
             Não tem acesso? Fale com o administrador da sua igreja.
           </p>
         </div>

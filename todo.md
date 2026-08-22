@@ -895,3 +895,11 @@
 - [x] Exibir cadastro comercial somente no domínio principal e ocultá-lo em subdomínios de igreja
 - [x] Validar a correção no login mobile da Crista Viver e preservar o cadastro comercial global
 - [x] Executar testes, implantar na VPS e salvar checkpoint
+
+## FASE 93 – Identidade Visual no Login de Tenant
+
+- [x] Mapear nome, logo, cores e tema público disponíveis para a Crista Viver
+- [x] Carregar no login somente a identidade pública do tenant resolvido pelo subdomínio
+- [x] Aplicar logo, cores e fallback acessível sem alterar a identidade comercial do domínio principal
+- [x] Cobrir isolamento, ausência de logo, contraste e responsividade com testes
+- [ ] Validar em mobile, implantar na VPS e salvar checkpoint
