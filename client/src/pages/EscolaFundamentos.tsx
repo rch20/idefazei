@@ -6,9 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useState } from "react";
-import { BookOpen, Users, Award, CheckCircle, Clock, Plus, Loader2 } from "lucide-react";
+import { BookOpen, Users, Award, CheckCircle, Clock, Plus, Loader2, GraduationCap, UserPlus } from "lucide-react";
 
 
 const COURSE_TYPES = [
@@ -19,7 +22,7 @@ const COURSE_TYPES = [
   { value: "espirito_santo", label: "Espírito Santo", icon: "🕊️" },
   { value: "batismo", label: "Batismo nas Águas", icon: "💧" },
   { value: "outro", label: "Outro", icon: "📚" },
-];
+] as const;
 
 const STATUS_COLORS: Record<string, string> = {
   matriculado: "bg-blue-100 text-blue-800",
@@ -83,6 +86,7 @@ function CourseCard({ course, churchId, people }: {
 
   const courseInfo = COURSE_TYPES.find((c) => c.value === course.type);
   const total = enrollments?.length ?? 0;
+  const emAndamento = enrollments?.filter((e) => e.enrollment.status === "em_andamento").length ?? 0;
   const concluidos = enrollments?.filter((e) => e.enrollment.status === "concluido").length ?? 0;
 
   return (
@@ -105,9 +109,12 @@ function CourseCard({ course, churchId, people }: {
         {course.description && (
           <p className="text-sm text-muted-foreground mb-4">{course.description}</p>
         )}
-        <div className="flex gap-4 text-sm mb-4">
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm mb-4">
           <span className="flex items-center gap-1 text-muted-foreground">
             <Users className="h-4 w-4" /> {total} matriculados
+          </span>
+          <span className="flex items-center gap-1 text-amber-700">
+            <Clock className="h-4 w-4" /> {emAndamento} em andamento
           </span>
           <span className="flex items-center gap-1 text-green-600">
             <CheckCircle className="h-4 w-4" /> {concluidos} concluídos
@@ -115,11 +122,11 @@ function CourseCard({ course, churchId, people }: {
         </div>
 
         {enrollments && enrollments.length > 0 && (
-          <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+          <div className="space-y-2 mb-4 max-h-52 overflow-y-auto pr-1">
             {enrollments.map(({ enrollment, person }) => (
-              <div key={enrollment.id} className="flex items-center justify-between p-2 rounded bg-muted/30">
-                <span className="text-sm font-medium">{person.fullName}</span>
-                <div className="flex items-center gap-2">
+              <div key={enrollment.id} className="flex flex-col gap-2 rounded bg-muted/30 p-2 sm:flex-row sm:items-center sm:justify-between">
+                <span className="min-w-0 truncate text-sm font-medium">{person.fullName}</span>
+                <div className="flex flex-wrap items-center gap-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[enrollment.status ?? "matriculado"]}`}>
                     {STATUS_LABELS[enrollment.status ?? "matriculado"]}
                   </span>
@@ -219,6 +226,11 @@ function CourseCard({ course, churchId, people }: {
 
 export default function EscolaFundamentos() {
   const { churchId } = useChurch();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [courseName, setCourseName] = useState("");
+  const [courseType, setCourseType] = useState<(typeof COURSE_TYPES)[number]["value"]>("salvacao");
+  const [courseDescription, setCourseDescription] = useState("");
+  const utils = trpc.useUtils();
   const { data: courses, isLoading } = trpc.escolaFundamentos.listCourses.useQuery(
     { churchId: churchId! },
     { enabled: !!churchId }
@@ -231,10 +243,29 @@ export default function EscolaFundamentos() {
   if (!churchId) return null;
 
   const simplePeople = (people ?? []).map((p) => ({ id: p.id, fullName: p.fullName }));
+  const createCourseMutation = trpc.escolaFundamentos.createCourse.useMutation({
+    onSuccess: () => {
+      toast.success("Turma criada. O próximo passo é matricular os participantes.");
+      setCreateOpen(false);
+      setCourseName("");
+      setCourseType("salvacao");
+      setCourseDescription("");
+      utils.escolaFundamentos.listCourses.invalidate();
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível criar a turma."),
+  });
+
+  const submitNewCourse = () => {
+    if (courseName.trim().length < 3) {
+      toast.error("Informe um nome com ao menos 3 caracteres.");
+      return;
+    }
+    createCourseMutation.mutate({ churchId, name: courseName, type: courseType, description: courseDescription || undefined });
+  };
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-[#1e3a5f] flex items-center gap-2">
             <BookOpen className="h-6 w-6 text-[#c9a84c]" />
@@ -244,6 +275,21 @@ export default function EscolaFundamentos() {
             Cursos de base para o crescimento espiritual dos membros
           </p>
         </div>
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <DialogTrigger asChild>
+            <Button className="w-full bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90 sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Criar turma</Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
+            <DialogHeader><DialogTitle className="font-display text-[#1e3a5f]">Criar turma de fundamentos</DialogTitle></DialogHeader>
+            <div className="space-y-4 pt-2">
+              <p className="text-sm text-muted-foreground">Depois de criar a turma, você poderá matricular as Pessoas e acompanhar o progresso de cada uma.</p>
+              <div className="space-y-2"><Label htmlFor="foundation-course-name">Nome da turma</Label><Input id="foundation-course-name" value={courseName} onChange={(event) => setCourseName(event.target.value)} placeholder="Ex.: Fundamentos da Fé — 1º semestre" maxLength={120} /></div>
+              <div className="space-y-2"><Label>Área de fundamento</Label><Select value={courseType} onValueChange={(value) => setCourseType(value as typeof courseType)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{COURSE_TYPES.map((course) => <SelectItem key={course.value} value={course.value}>{course.icon} {course.label}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-2"><Label htmlFor="foundation-course-description">Descrição opcional</Label><Textarea id="foundation-course-description" value={courseDescription} onChange={(event) => setCourseDescription(event.target.value)} placeholder="Explique brevemente o propósito desta turma." maxLength={500} /></div>
+              <Button className="w-full bg-[#1e3a5f] text-white" disabled={createCourseMutation.isPending} onClick={submitNewCourse}>{createCourseMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GraduationCap className="mr-2 h-4 w-4" />}Criar e matricular participantes</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Stats */}
@@ -270,25 +316,25 @@ export default function EscolaFundamentos() {
           ))}
         </div>
       ) : courses && courses.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {courses.map((course) => (
-            <CourseCard
-              key={course.id}
-              course={course}
-              churchId={churchId}
-              people={simplePeople}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-3 rounded-xl border border-[#c9a84c]/20 bg-[#c9a84c]/5 p-4 sm:grid-cols-3">
+            <div className="flex items-center gap-2 text-sm text-[#1e3a5f]"><GraduationCap className="h-4 w-4 text-[#c9a84c]" /><span><strong>1.</strong> Crie a turma</span></div>
+            <div className="flex items-center gap-2 text-sm text-[#1e3a5f]"><UserPlus className="h-4 w-4 text-[#c9a84c]" /><span><strong>2.</strong> Matricule as Pessoas</span></div>
+            <div className="flex items-center gap-2 text-sm text-[#1e3a5f]"><Award className="h-4 w-4 text-[#c9a84c]" /><span><strong>3.</strong> Conclua e gere certificado</span></div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {courses.map((course) => <CourseCard key={course.id} course={course} churchId={churchId} people={simplePeople} />)}
+          </div>
+        </>
       ) : (
         <Card className="border-dashed border-[#c9a84c]/30">
           <CardContent className="p-12 text-center">
             <BookOpen className="h-12 w-12 text-[#c9a84c]/40 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-[#1e3a5f] mb-2">Nenhum curso cadastrado</h3>
+            <h3 className="text-lg font-semibold text-[#1e3a5f] mb-2">Nenhuma turma criada ainda</h3>
             <p className="text-muted-foreground text-sm">
-              Os cursos da Escola de Fundamentos são criados pelo administrador do sistema.
-              Entre em contato com o suporte para ativar os cursos padrão.
+              Comece criando a primeira turma. Em seguida, matricule as Pessoas e acompanhe o crescimento espiritual de cada participante.
             </p>
+            <Button className="mt-5 bg-[#1e3a5f] text-white" onClick={() => setCreateOpen(true)}><Plus className="mr-2 h-4 w-4" /> Criar primeira turma</Button>
           </CardContent>
         </Card>
       )}

@@ -2046,6 +2046,24 @@ export async function getCoursesByChurch(churchId: number) {
   return db.select().from(courses).where(eq(courses.churchId, churchId));
 }
 
+export async function createCourse(data: {
+  churchId: number;
+  name: string;
+  type: "salvacao" | "oracao" | "biblia" | "igreja" | "espirito_santo" | "batismo" | "outro";
+  description?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(courses).values({
+    churchId: data.churchId,
+    name: data.name.trim(),
+    type: data.type,
+    description: data.description?.trim() || null,
+    active: true,
+  });
+  return { id: result.insertId };
+}
+
 export async function getCourseEnrollments(courseId: number, churchId: number) {
   const db = await getDb();
   if (!db) return [];

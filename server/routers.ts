@@ -136,6 +136,7 @@ import {
   importPeopleFromCSV,
   // Escola de Fundamentos
   getCoursesByChurch,
+  createCourse,
   getCourseEnrollments,
   getCourseEnrollmentById,
   enrollInCourse,
@@ -2760,6 +2761,18 @@ const escolaFundamentosRouter = router({
     .query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
       return getCoursesByChurch(input.churchId);
+    }),
+  createCourse: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      name: z.string().trim().min(3, "Informe um nome com ao menos 3 caracteres.").max(120),
+      type: z.enum(["salvacao", "oracao", "biblia", "igreja", "espirito_santo", "batismo", "outro"]),
+      description: z.string().trim().max(500).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const course = await createCourse(input);
+      return { success: true, courseId: course.id };
     }),
   getEnrollments: protectedProcedure
     .input(z.object({ courseId: z.number(), churchId: z.number() }))

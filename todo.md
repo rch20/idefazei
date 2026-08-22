@@ -918,3 +918,11 @@
 - [x] Adicionar confirmação de saída acessível, discreta e responsiva no painel
 - [x] Manter cancelamento sem alteração de sessão e confirmar saída com o redirecionamento atual
 - [x] Cobrir os dois caminhos com testes, validar em produção e salvar checkpoint
+
+## FASE 96 – Revisão da Escola de Fundamentos
+
+- [x] Mapear a criação de turmas, matrícula, presença, conclusão e visão do membro
+- [x] Simplificar a criação de turma e orientar o próximo passo da liderança
+- [x] Tornar a matrícula e o acompanhamento de alunos mais claros e acionáveis
+- [x] Melhorar estados de progresso, presença, conclusão e certificado sem alterar regras de acesso
+- [ ] Cobrir isolamento, permissões, desktop/mobile e regressões; implantar e salvar checkpoint
