@@ -831,3 +831,11 @@
 - [x] Criar componente global de tema e estabilidade visual herdado por todas as páginas públicas de tenant
 - [x] Proteger globalmente overflow, viewport, mídia, animações, fontes e scroll sem liberar CSS estrutural por igreja
 - [x] Cobrir isolamento, publicação, estabilidade em 320/375/768/1280px, TypeScript, logs e regressões antes do checkpoint
+
+## FASE 85 – Implantação da Página Pública da Crista Viver
+
+- [x] Auditar a versão da VPS, migrações pendentes e o tenant `cristaviver`
+- [x] Sincronizar o checkpoint da fundação, aplicar migração 0027 e reiniciar a aplicação com segurança
+- [x] Criar site, tema, seções e revisão publicada exclusivamente para a Crista Viver
+- [ ] Validar `cristaviver.idefazei.com.br` em desktop/mobile e confirmar que `idefazei.com.br` continua comercial
+- [ ] Registrar a implantação, testes de isolamento e checkpoint final

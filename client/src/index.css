@@ -382,6 +382,7 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-hero-content { position: relative; z-index: 1; padding-block: clamp(5rem, 11vw, 8rem); }
 .tenant-public-eyebrow { display: inline-block; margin-bottom: 1.25rem; color: var(--tenant-secondary, #c9a84c); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .tenant-public-hero h1, .tenant-public-prose h2 { max-width: 15ch; margin: 0; font-family: "Playfair Display", serif; font-size: clamp(2.7rem, 9vw, 6.25rem); line-height: .98; text-wrap: balance; }
+.tenant-public-hero h1 { color: white; }
 .tenant-public-hero p { max-width: 43rem; margin: 1.5rem 0 2rem; color: rgb(255 255 255 / 82%); font-family: "Cormorant Garamond", serif; font-size: clamp(1.3rem, 4vw, 1.75rem); line-height: 1.45; }
 .tenant-public-cta { max-width: 100%; background: var(--tenant-secondary, #c9a84c); color: var(--tenant-primary, #1e3a5f); }
 .tenant-public-cta a { display: inline-flex; align-items: center; gap: .65rem; white-space: normal; }
