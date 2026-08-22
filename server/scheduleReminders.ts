@@ -50,7 +50,7 @@ export async function scheduleRemindersHandler(req: Request, res: Response) {
     endDate.setDate(endDate.getDate() + 2);
 
     const [items, accounts, ministryRows] = await Promise.all([
-      db.select().from(scheduleItems).where(and(isNotNull(scheduleItems.startTime), isNotNull(scheduleItems.endTime), gte(scheduleItems.scheduledDate, startDate), lte(scheduleItems.scheduledDate, endDate))),
+      db.select().from(scheduleItems).where(and(eq(scheduleItems.status, "agendada"), isNotNull(scheduleItems.startTime), isNotNull(scheduleItems.endTime), gte(scheduleItems.scheduledDate, startDate), lte(scheduleItems.scheduledDate, endDate))),
       db.select({ id: churchUsers.id, churchId: churchUsers.churchId, personId: churchUsers.personId }).from(churchUsers).where(eq(churchUsers.active, true)),
       db.select({ id: ministries.id, churchId: ministries.churchId, name: ministries.name }).from(ministries),
     ]);

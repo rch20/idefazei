@@ -1974,6 +1974,22 @@ const schedulesRouter = router({
         role: input.role || null,
       });
       if (!updated) throw new TRPCError({ code: "CONFLICT", message: "A Escala não pôde ser atualizada." });
+      const impactedPersonIds = new Set([existing.personId, updated.personId]);
+      const recipients = (await getChurchUsersByChurch(input.churchId))
+        .filter((account) => account.active && account.personId !== null && impactedPersonIds.has(account.personId))
+        .map((account) => account.id);
+      const ministryName = (await getMinistriesByChurch(input.churchId)).find((ministry) => ministry.id === updated.ministryId)?.name ?? "Ministério";
+      await emitNotificationWithoutBlocking({
+        churchId: input.churchId,
+        type: "escala_alterada",
+        recipientChurchUserIds: recipients,
+        title: "Sua Escala foi alterada",
+        body: `A Escala de ${ministryName} para ${input.scheduledDate.split("-").reverse().join("/")} foi atualizada. Confira os novos detalhes no calendário.`,
+        entityType: "schedule_item",
+        entityId: updated.id,
+        metadata: { ministryId: updated.ministryId, personId: updated.personId, scheduledDate: input.scheduledDate, startTime: updated.startTime, endTime: updated.endTime },
+        dedupeKey: `escala-alterada:${updated.id}:${updated.ministryId}:${updated.personId}:${input.scheduledDate}:${updated.startTime}:${updated.endTime}:${updated.role ?? ""}`,
+      });
       return updated;
     }),
   cancel: protectedProcedure
@@ -1994,6 +2010,21 @@ const schedulesRouter = router({
         cancelReason: input.reason,
       });
       if (!cancelled) throw new TRPCError({ code: "CONFLICT", message: "A Escala não pôde ser cancelada." });
+      const recipients = (await getChurchUsersByChurch(input.churchId))
+        .filter((account) => account.active && account.personId === existing.personId)
+        .map((account) => account.id);
+      const ministryName = (await getMinistriesByChurch(input.churchId)).find((ministry) => ministry.id === existing.ministryId)?.name ?? "Ministério";
+      await emitNotificationWithoutBlocking({
+        churchId: input.churchId,
+        type: "escala_cancelada",
+        recipientChurchUserIds: recipients,
+        title: "Sua Escala foi cancelada",
+        body: `A Escala de ${ministryName} para ${new Date(existing.scheduledDate).toLocaleDateString("pt-BR")} foi cancelada. Motivo: ${input.reason}`,
+        entityType: "schedule_item",
+        entityId: cancelled.id,
+        metadata: { ministryId: existing.ministryId, personId: existing.personId, scheduledDate: existing.scheduledDate, cancelReason: input.reason },
+        dedupeKey: `escala-cancelada:${cancelled.id}`,
+      });
       return cancelled;
     }),
 });

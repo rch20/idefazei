@@ -757,3 +757,12 @@
 - [x] Adicionar ações de editar e cancelar ao calendário, com confirmação, feedback e experiência mobile
 - [x] Cobrir edição, cancelamento, conflito e bloqueio de acesso indevido com testes
 - [x] Validar TypeScript, logs, desktop/mobile e salvar checkpoint
+
+## FASE 76 – Notificações de Alteração e Cancelamento de Escalas
+
+- [x] Mapear eventos, destinatários, preferências e deduplicação da arquitetura interna de notificações
+- [x] Emitir evento interno quando uma Escala for alterada, direcionado ao voluntário escalado do mesmo tenant
+- [x] Emitir evento interno quando uma Escala for cancelada, preservando o motivo e direcionando ao voluntário escalado
+- [x] Reutilizar a Central de Notificações sem criar canais externos ou dados duplicados
+- [x] Cobrir entrega, isolamento por igreja, ausência de conta ativa e regressões com testes
+- [x] Validar TypeScript, logs, experiência responsiva e salvar checkpoint

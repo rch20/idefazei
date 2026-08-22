@@ -647,12 +647,14 @@ describe("Fluxo completo de discipulado", () => {
     });
 
     it("edita uma Escala ativa sem contar a própria Escala como conflito", async () => {
-      const { getScheduleItemById, getScheduleTimeConflicts, updateScheduleItem } = await import("./db");
+      const { getScheduleItemById, getScheduleTimeConflicts, updateScheduleItem, getChurchUsersByChurch } = await import("./db");
+      const { emitInternalNotification } = await import("./notifications");
       (getScheduleItemById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         id: 41, churchId: CHURCH_ID, ministryId: 7, personId: 10,
         scheduledDate: new Date("2026-06-28T12:00:00.000Z"), startTime: "09:00", endTime: "11:00", status: "agendada",
       });
       (getScheduleTimeConflicts as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+      (getChurchUsersByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 88, churchId: CHURCH_ID, personId: 10, active: true }]);
       const caller = appRouter.createCaller(createMemberContext());
 
       await expect(caller.schedules.update({
@@ -662,6 +664,13 @@ describe("Fluxo completo de discipulado", () => {
 
       expect(getScheduleTimeConflicts).toHaveBeenCalledWith(expect.objectContaining({ excludeScheduleItemId: 41 }));
       expect(updateScheduleItem).toHaveBeenCalledWith(expect.objectContaining({ id: 41, churchId: CHURCH_ID, role: "Recepção" }));
+      expect(emitInternalNotification).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        type: "escala_alterada",
+        recipientChurchUserIds: [88],
+        entityType: "schedule_item",
+        entityId: 41,
+      }));
     });
 
     it("bloqueia a edição que cria um conflito de horário e mantém a Escala existente", async () => {
@@ -682,16 +691,25 @@ describe("Fluxo completo de discipulado", () => {
     });
 
     it("cancela uma Escala mantendo o registro e o motivo no histórico", async () => {
-      const { getScheduleItemById, cancelScheduleItem } = await import("./db");
+      const { getScheduleItemById, cancelScheduleItem, getChurchUsersByChurch } = await import("./db");
+      const { emitInternalNotification } = await import("./notifications");
       (getScheduleItemById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         id: 41, churchId: CHURCH_ID, ministryId: 7, personId: 10,
         scheduledDate: new Date("2026-06-28T12:00:00.000Z"), startTime: "09:00", endTime: "11:00", status: "agendada",
       });
+      (getChurchUsersByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 88, churchId: CHURCH_ID, personId: 10, active: true }]);
       const caller = appRouter.createCaller(createMemberContext());
 
       await expect(caller.schedules.cancel({ id: 41, churchId: CHURCH_ID, reason: "Voluntário indisponível" })).resolves.toMatchObject({ id: 41, status: "cancelada" });
 
       expect(cancelScheduleItem).toHaveBeenCalledWith(expect.objectContaining({ id: 41, churchId: CHURCH_ID, cancelledByChurchUserId: 1, cancelReason: "Voluntário indisponível" }));
+      expect(emitInternalNotification).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        type: "escala_cancelada",
+        recipientChurchUserIds: [88],
+        entityType: "schedule_item",
+        entityId: 41,
+      }));
     });
 
     it("impede membro comum de editar ou cancelar uma Escala sem responsabilidade ministerial", async () => {
