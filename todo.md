@@ -911,3 +911,10 @@
 - [x] Redirecionar o usuário para a página pública do subdomínio atual após sair
 - [x] Cobrir estado residual, isolamento por tenant e redirecionamento com testes
 - [x] Validar em produção, implantar na VPS e salvar checkpoint
+
+## FASE 95 – Confirmação Discreta de Logout
+
+- [x] Mapear o botão de saída e os componentes de diálogo já disponíveis
+- [x] Adicionar confirmação de saída acessível, discreta e responsiva no painel
+- [x] Manter cancelamento sem alteração de sessão e confirmar saída com o redirecionamento atual
+- [ ] Cobrir os dois caminhos com testes, validar em produção e salvar checkpoint

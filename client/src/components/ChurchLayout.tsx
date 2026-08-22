@@ -1,6 +1,16 @@
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { trpc } from "@/lib/trpc";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Award,
   Bell,
   BookOpen,
@@ -119,6 +129,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [location, navigate] = useLocation();
   const { user, logout } = useChurchAuth();
   const { churchName, logoUrl } = useChurch();
+  const [logoutOpen, setLogoutOpen] = useState(false);
   const currentRole = user?.role ?? "membro";
   const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery(
     { churchId: user?.churchId ?? 0 },
@@ -221,9 +232,13 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
               <p className="text-xs text-white/40 truncate">{user?.email ?? ""}</p>
             </div>
             <button
-              onClick={logout}
+              onClick={() => {
+                onClose();
+                setLogoutOpen(true);
+              }}
               className="text-white/30 hover:text-white/70 transition-colors"
               title="Sair"
+              aria-label="Sair da plataforma"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -240,6 +255,23 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           </div>
         </div>
       </aside>
+
+      <AlertDialog open={logoutOpen} onOpenChange={setLogoutOpen}>
+        <AlertDialogContent className="max-w-[calc(100%-2rem)] border-gold/30 bg-card sm:max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display text-navy">Sair da plataforma?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você voltará para a página pública de {churchName}. Seus dados de sessão serão encerrados neste dispositivo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setLogoutOpen(false)}>Continuar aqui</AlertDialogCancel>
+            <AlertDialogAction className="bg-navy text-white hover:bg-navy/90" onClick={logout}>
+              Sair agora
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
