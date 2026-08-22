@@ -87,7 +87,7 @@ const trpcClient = trpc.createClient({
       transformer: superjson,
       fetch(input, init) {
         const churchToken = getChurchToken();
-        const adminToken = localStorage.getItem("admin_token");
+        const adminToken = readBrowserStorage("admin_token");
         const sessionToken = churchToken ?? adminToken;
         const headers = new Headers(init?.headers);
         if (sessionToken) {

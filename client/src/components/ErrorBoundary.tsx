@@ -21,6 +21,13 @@ class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
+  componentDidCatch(error: Error) {
+    const reporter = (window as Window & {
+      __ideFazeiReportStartupIssue?: (kind: string, detail: string) => void;
+    }).__ideFazeiReportStartupIssue;
+    reporter?.("error", `Erro React: ${error.message || "sem mensagem disponível"}`);
+  }
+
   render() {
     if (this.state.hasError) {
       return (
@@ -31,13 +38,11 @@ class ErrorBoundary extends Component<Props, State> {
               className="text-destructive mb-6 flex-shrink-0"
             />
 
-            <h2 className="text-xl mb-4">An unexpected error occurred.</h2>
+            <h2 className="text-xl mb-3 text-center">Não foi possível abrir esta tela.</h2>
 
-            <div className="p-4 w-full rounded bg-muted overflow-auto mb-6">
-              <pre className="text-sm text-muted-foreground whitespace-break-spaces">
-                {this.state.error?.stack}
-              </pre>
-            </div>
+            <p className="max-w-md text-center text-sm text-muted-foreground mb-6">
+              O diagnóstico técnico foi registrado com segurança. Tente atualizar a aplicação.
+            </p>
 
             <button
               onClick={() => window.location.reload()}
@@ -48,7 +53,7 @@ class ErrorBoundary extends Component<Props, State> {
               )}
             >
               <RotateCcw size={16} />
-              Reload Page
+              Atualizar aplicação
             </button>
           </div>
         </div>

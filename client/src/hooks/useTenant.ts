@@ -34,7 +34,7 @@ function extractSlugFromHostname(hostname: string): string | null {
 
 export function useTenant(): TenantInfo {
   return useMemo(() => {
-    const hostname = window.location.hostname;
+    const hostname = typeof window === "undefined" ? "" : window.location.hostname;
     const slug = extractSlugFromHostname(hostname);
     const parts = hostname.split(".");
     const isSuperAdminDomain = parts[0] === "admin";
@@ -48,7 +48,7 @@ export function useTenant(): TenantInfo {
         if (user.churchId) churchId = user.churchId;
       }
     } catch {
-      // Ignora erros de parse
+      // Safari e navegadores em modo restrito podem bloquear o armazenamento local.
     }
 
     return {
