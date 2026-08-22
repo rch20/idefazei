@@ -887,4 +887,4 @@
 - [x] Mapear o botão, rota, formulário e envio de pedido de oração na página pública
 - [x] Validar churchId derivado do subdomínio, persistência e leitura pela liderança da própria igreja
 - [x] Corrigir navegação, formulário ou feedback se houver alguma lacuna comprovada
-- [ ] Testar o fluxo completo e registrar a confirmação operacional
+- [x] Testar o fluxo completo e registrar a confirmação operacional
