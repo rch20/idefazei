@@ -941,4 +941,4 @@
 - [x] Criar vínculo ordenado e isolado entre estudo de Fundamentos e material da Biblioteca Digital
 - [x] Garantir que somente Pastor ou administrador de estudos possa organizar os materiais de cada estudo
 - [x] Ajustar Biblioteca e Escola para criação única de materiais e associação clara à jornada formativa
-- [ ] Cobrir reutilização, publicação, isolamento por igreja, permissões, desktop/mobile e implantar na VPS
+- [x] Cobrir reutilização, publicação, isolamento por igreja, permissões, desktop/mobile e implantar na VPS
