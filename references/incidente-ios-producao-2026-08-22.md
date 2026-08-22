@@ -27,3 +27,13 @@ A versão `1a63358` foi sincronizada ao repositório GitHub e instalada na VPS. 
 Após a atualização de cache, os diagnósticos de produção registraram apenas `resource_load` no iPhone. A investigação confirmou que o HTML ainda continha um script de analytics com os placeholders `%VITE_ANALYTICS_ENDPOINT%` e `%VITE_ANALYTICS_WEBSITE_ID%` sem configuração. O coletor de bootstrap também tratava qualquer falha de recurso — inclusive fontes, ícones e scripts auxiliares — como falha crítica, exibindo a recuperação mesmo quando o JavaScript da aplicação estava disponível.
 
 A versão `d94697a` removeu o script de analytics não configurado e restringiu a recuperação a falhas do JavaScript principal da aplicação. A VPS foi reconstruída, reiniciada e a página pública completou o carregamento normalmente após a atualização.
+
+## Endurecimento complementar para Safari com armazenamento restrito
+
+A versão `ce1d8fd` passou a proteger todas as leituras críticas de armazenamento local durante a inicialização do tema, da sessão administrativa e da resolução de tenant. A tela de erro React também passou a registrar uma mensagem sanitizada no monitoramento interno, sem expor stack técnico ao usuário final.
+
+A versão foi reconstruída e ativada na VPS. A validação pública posterior ao reinício concluiu o carregamento normal da landing page; a confirmação no iPhone físico permanece como a etapa final do incidente.
+
+## Encerramento do incidente
+
+Em 22 de agosto de 2026, a página pública foi confirmada em um iPhone real após a versão reforçada ser publicada. A landing page carregou integralmente, sem a tela creme, sem o modo de recuperação e sem a tela de exceção React. O incidente de inicialização no Safari iOS está resolvido.

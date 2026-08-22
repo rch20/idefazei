@@ -796,5 +796,5 @@
 - [x] Coletar o diagnóstico sanitizado da exceção real ocorrida após a recuperação de cache
 - [x] Reproduzir ou isolar o código incompatível com Safari iOS sem expor dados de usuários
 - [x] Aplicar fallback compatível e validar que a tela de recuperação não seja acionada em condição normal
-- [ ] Implantar a correção na VPS e validar o bundle, Service Worker e resposta pública
-- [ ] Confirmar em iPhone real, registrar o resultado e salvar checkpoint
+- [x] Implantar a correção na VPS e validar o bundle, Service Worker e resposta pública
+- [x] Confirmar em iPhone real, registrar o resultado e salvar checkpoint
