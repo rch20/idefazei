@@ -949,4 +949,4 @@
 - [x] Criar módulos por turma e permitir ordenar estudos dentro de cada módulo
 - [x] Manter Pastor e administradores de estudos como únicos gestores das trilhas no servidor
 - [x] Criar visão visual, responsiva e sem rolagem lateral da trilha para liderança e alunos
-- [ ] Cobrir módulo, ordem, isolamento, permissões e regressões; implantar na VPS
+- [x] Cobrir módulo, ordem, isolamento, permissões e regressões; implantar na VPS
