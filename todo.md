@@ -863,4 +863,4 @@
 - [x] Criar consulta pública de Ministérios que derive o tenant do host e não exponha participantes, funções ou escalas
 - [x] Adicionar bloco Ministérios ativável e reordenável ao Template Ministerial Base e ao painel Página Pública
 - [x] Cobrir isolamento, estado vazio, exposição mínima e estabilidade em múltiplos breakpoints
-- [ ] Validar TypeScript, testes, produção e checkpoint
+- [x] Validar TypeScript, testes, produção e checkpoint
