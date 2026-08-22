@@ -847,4 +847,4 @@
 - [x] Criar Configurações → Página Pública com identidade, Hero, Sobre, Horários, Contato e ordem de blocos
 - [x] Adicionar prévia responsiva e publicação atômica sem expor rascunhos aos visitantes
 - [x] Cobrir escrita cruzada, permissões, publicação, estabilidade visual e regressões com testes
-- [ ] Validar desktop/mobile, implantar na VPS e salvar checkpoint
+- [x] Validar desktop/mobile, implantar na VPS e salvar checkpoint
