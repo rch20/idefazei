@@ -568,8 +568,8 @@ const tenantPublicRouter = router({
       secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
       accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
       fontPair: z.literal("sacred_serif").optional(),
-      logoUrl: z.string().url().nullable().optional(),
-      faviconUrl: z.string().url().nullable().optional(),
+      logoUrl: z.string().trim().max(500).refine((value) => value.startsWith("/") || /^https:\/\//.test(value), "Informe uma URL HTTPS ou um arquivo interno.").nullable().optional(),
+      faviconUrl: z.string().trim().max(500).refine((value) => value.startsWith("/") || /^https:\/\//.test(value), "Informe uma URL HTTPS ou um arquivo interno.").nullable().optional(),
     }),
     sections: z.array(z.object({
       sectionType: z.enum(["hero", "welcome", "about", "schedule", "events", "contact", "footer"]),
@@ -580,7 +580,7 @@ const tenantPublicRouter = router({
         subtitle: z.string().trim().max(280).optional(),
         body: z.string().trim().max(2000).optional(),
         primaryCtaLabel: z.string().trim().max(48).optional(),
-        primaryCtaHref: z.string().trim().max(280).optional(),
+        primaryCtaHref: z.string().trim().max(280).refine((value) => value.startsWith("/") || /^https:\/\//.test(value), "Informe um destino interno ou uma URL HTTPS.").optional(),
       }).strict(),
     })).min(1).max(7),
   })).mutation(async ({ ctx, input }) => {
