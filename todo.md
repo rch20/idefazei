@@ -942,3 +942,11 @@
 - [x] Garantir que somente Pastor ou administrador de estudos possa organizar os materiais de cada estudo
 - [x] Ajustar Biblioteca e Escola para criação única de materiais e associação clara à jornada formativa
 - [x] Cobrir reutilização, publicação, isolamento por igreja, permissões, desktop/mobile e implantar na VPS
+
+## FASE 99 – Trilhas Visuais de Fundamentos
+
+- [x] Mapear turmas, estudos e materiais existentes para preservar a sequência já configurada
+- [x] Criar módulos por turma e permitir ordenar estudos dentro de cada módulo
+- [x] Manter Pastor e administradores de estudos como únicos gestores das trilhas no servidor
+- [x] Criar visão visual, responsiva e sem rolagem lateral da trilha para liderança e alunos
+- [ ] Cobrir módulo, ordem, isolamento, permissões e regressões; implantar na VPS

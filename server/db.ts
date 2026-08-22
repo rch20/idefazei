@@ -24,6 +24,7 @@ import {
   courseEnrollments,
   courses,
   foundationStudies,
+  foundationModules,
   foundationStudyMaterials,
   foundationStudyAdministrators,
   encounterEnrollments,
@@ -2123,6 +2124,47 @@ export async function getFoundationStudiesByCourse(churchId: number, courseId: n
     .orderBy(foundationStudies.position, foundationStudies.id);
 }
 
+export async function getFoundationModulesByCourse(churchId: number, courseId: number, includeInactive = false) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(foundationModules.churchId, churchId), eq(foundationModules.courseId, courseId)];
+  if (!includeInactive) conditions.push(eq(foundationModules.active, true));
+  return db.select().from(foundationModules).where(and(...conditions)).orderBy(foundationModules.position, foundationModules.id);
+}
+
+export async function getFoundationModuleById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(foundationModules)
+    .where(and(eq(foundationModules.id, id), eq(foundationModules.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createFoundationModule(data: { churchId: number; courseId: number; title: string; description?: string | null; position: number; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(foundationModules).values({
+    ...data,
+    title: data.title.trim(),
+    description: data.description?.trim() || null,
+    active: true,
+  });
+  return { id: result.insertId };
+}
+
+export async function updateFoundationModule(data: { id: number; churchId: number; title?: string; description?: string | null; position?: number; active?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.title !== undefined) update.title = data.title.trim();
+  if (data.description !== undefined) update.description = data.description?.trim() || null;
+  if (data.position !== undefined) update.position = data.position;
+  if (data.active !== undefined) update.active = data.active;
+  if (Object.keys(update).length === 0) return;
+  await db.update(foundationModules).set(update).where(and(eq(foundationModules.id, data.id), eq(foundationModules.churchId, data.churchId)));
+}
+
 export async function getFoundationStudyById(id: number, churchId: number) {
   const db = await getDb();
   if (!db) return null;
@@ -2137,6 +2179,7 @@ export async function getFoundationStudyById(id: number, churchId: number) {
 export async function createFoundationStudy(data: {
   churchId: number;
   courseId: number;
+  moduleId?: number | null;
   title: string;
   summary?: string | null;
   content?: string | null;
@@ -2158,6 +2201,7 @@ export async function createFoundationStudy(data: {
 export async function updateFoundationStudy(data: {
   id: number;
   churchId: number;
+  moduleId?: number | null;
   title?: string;
   summary?: string | null;
   content?: string | null;
@@ -2168,6 +2212,7 @@ export async function updateFoundationStudy(data: {
   if (!db) throw new Error("Database not available");
   const update: Record<string, unknown> = {};
   if (data.title !== undefined) update.title = data.title.trim();
+  if (data.moduleId !== undefined) update.moduleId = data.moduleId;
   if (data.summary !== undefined) update.summary = data.summary?.trim() || null;
   if (data.content !== undefined) update.content = data.content?.trim() || null;
   if (data.position !== undefined) update.position = data.position;

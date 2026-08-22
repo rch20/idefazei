@@ -624,6 +624,7 @@ export const foundationStudies = mysqlTable("foundation_studies", {
   id: int("id").autoincrement().primaryKey(),
   churchId: int("churchId").notNull(),
   courseId: int("courseId").notNull(),
+  moduleId: int("moduleId"),
   title: varchar("title", { length: 160 }).notNull(),
   summary: varchar("summary", { length: 500 }),
   content: text("content"),
@@ -634,6 +635,23 @@ export const foundationStudies = mysqlTable("foundation_studies", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [
   index("foundation_studies_church_course_position_idx").on(table.churchId, table.courseId, table.position),
+  index("foundation_studies_church_module_position_idx").on(table.churchId, table.moduleId, table.position),
+]);
+
+/** Etapas visuais de uma jornada de Fundamentos; cada módulo organiza estudos de uma turma. */
+export const foundationModules = mysqlTable("foundation_modules", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  courseId: int("courseId").notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  description: varchar("description", { length: 500 }),
+  position: int("position").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("foundation_modules_church_course_position_idx").on(table.churchId, table.courseId, table.position),
 ]);
 
 /** Referências ordenadas a materiais do acervo, sem copiar arquivos para cada estudo ou turma. */

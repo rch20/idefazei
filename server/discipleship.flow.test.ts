@@ -177,8 +177,12 @@ vi.mock("./db", () => ({
   updateCourseEnrollment: vi.fn().mockResolvedValue(undefined),
   getFoundationStudiesByCourse: vi.fn().mockResolvedValue([]),
   getFoundationStudyById: vi.fn().mockResolvedValue({ id: 90, churchId: 100, courseId: 55, title: "Salvação" }),
+  getFoundationModulesByCourse: vi.fn().mockResolvedValue([]),
+  getFoundationModuleById: vi.fn().mockResolvedValue({ id: 71, churchId: 100, courseId: 55, title: "Alicerces" }),
   createFoundationStudy: vi.fn().mockResolvedValue({ id: 90 }),
+  createFoundationModule: vi.fn().mockResolvedValue({ id: 71 }),
   updateFoundationStudy: vi.fn().mockResolvedValue(undefined),
+  updateFoundationModule: vi.fn().mockResolvedValue(undefined),
   getLibraryItemById: vi.fn().mockResolvedValue({ id: 301, churchId: 100, title: "Apostila de Fundamentos", type: "pdf" }),
   getFoundationStudyMaterials: vi.fn().mockResolvedValue([]),
   attachFoundationStudyMaterial: vi.fn().mockResolvedValue(undefined),
@@ -1549,6 +1553,23 @@ describe("Fluxo completo de discipulado", () => {
         courseId: 55,
         createdByChurchUserId: 1,
       }));
+    });
+
+    it("permite que o Pastor crie um módulo para organizar a trilha da própria turma", async () => {
+      const { createFoundationModule } = await import("./db");
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.escolaFundamentos.createModule({ churchId: CHURCH_ID, courseId: 55, title: "Alicerces da fé" })).resolves.toEqual({ success: true, moduleId: 71 });
+      expect(createFoundationModule).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, courseId: 55, createdByChurchUserId: 1 }));
+    });
+
+    it("bloqueia a associação de um estudo a módulo de outra turma", async () => {
+      const { getFoundationModuleById, createFoundationStudy } = await import("./db");
+      (getFoundationModuleById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 72, churchId: CHURCH_ID, courseId: 999, title: "Outra turma" });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, moduleId: 72, title: "Estudo inválido" })).rejects.toThrow("Módulo não encontrado nesta turma");
+      expect(createFoundationStudy).not.toHaveBeenCalled();
     });
 
     it("permite que uma conta designada pelo Pastor gerencie estudos", async () => {

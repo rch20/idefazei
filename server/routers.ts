@@ -143,8 +143,12 @@ import {
   updateCourseEnrollment,
   getFoundationStudiesByCourse,
   getFoundationStudyById,
+  getFoundationModulesByCourse,
+  getFoundationModuleById,
   createFoundationStudy,
+  createFoundationModule,
   updateFoundationStudy,
+  updateFoundationModule,
   getLibraryItemById,
   getFoundationStudyMaterials,
   attachFoundationStudyMaterial,
@@ -2816,6 +2820,80 @@ const escolaFundamentosRouter = router({
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
       return getFoundationStudiesByCourse(input.churchId, input.courseId, access.canManageStudies);
     }),
+  listModules: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await getFoundationStudyAccess(ctx.user.id, input.churchId);
+      const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
+      if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
+      return getFoundationModulesByCourse(input.churchId, input.courseId, access.canManageStudies);
+    }),
+  createModule: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(), courseId: z.number().int().positive(),
+      title: z.string().trim().min(3, "Informe um título com ao menos 3 caracteres.").max(160),
+      description: z.string().trim().max(500).optional(), position: z.number().int().min(0).max(999).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
+      if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
+      const modules = await getFoundationModulesByCourse(input.churchId, input.courseId, true);
+      const module = await createFoundationModule({ ...input, position: input.position ?? modules.length, createdByChurchUserId: access.member.id });
+      return { success: true, moduleId: module.id };
+    }),
+  updateModule: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(), churchId: z.number().int().positive(),
+      title: z.string().trim().min(3).max(160).optional(), description: z.string().trim().max(500).nullable().optional(),
+      position: z.number().int().min(0).max(999).optional(), active: z.boolean().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      if (!(await getFoundationModuleById(input.id, input.churchId))) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Módulo não encontrado nesta igreja." });
+      }
+      await updateFoundationModule(input);
+      return { success: true };
+    }),
+  moveModule: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), id: z.number().int().positive(), direction: z.enum(["up", "down"]) }))
+    .mutation(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const modules = await getFoundationModulesByCourse(input.churchId, input.courseId, true);
+      const index = modules.findIndex((module) => module.id === input.id);
+      if (index < 0) throw new TRPCError({ code: "NOT_FOUND", message: "Módulo não encontrado nesta turma." });
+      const targetIndex = input.direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= modules.length) return { success: true };
+      const current = modules[index];
+      const target = modules[targetIndex];
+      await Promise.all([
+        updateFoundationModule({ id: current.id, churchId: input.churchId, position: target.position }),
+        updateFoundationModule({ id: target.id, churchId: input.churchId, position: current.position }),
+      ]);
+      return { success: true };
+    }),
+  moveStudy: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(), courseId: z.number().int().positive(), id: z.number().int().positive(),
+      moduleId: z.number().int().positive().nullable(), direction: z.enum(["up", "down"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const studies = (await getFoundationStudiesByCourse(input.churchId, input.courseId, true))
+        .filter((study) => study.moduleId === input.moduleId);
+      const index = studies.findIndex((study) => study.id === input.id);
+      if (index < 0) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado neste módulo." });
+      const targetIndex = input.direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= studies.length) return { success: true };
+      const current = studies[index];
+      const target = studies[targetIndex];
+      await Promise.all([
+        updateFoundationStudy({ id: current.id, churchId: input.churchId, position: target.position }),
+        updateFoundationStudy({ id: target.id, churchId: input.churchId, position: current.position }),
+      ]);
+      return { success: true };
+    }),
   listStudyMaterials: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
@@ -2891,6 +2969,7 @@ const escolaFundamentosRouter = router({
   createStudy: protectedProcedure
     .input(z.object({
       churchId: z.number().int().positive(), courseId: z.number().int().positive(),
+      moduleId: z.number().int().positive().nullable().optional(),
       title: z.string().trim().min(3, "Informe um título com ao menos 3 caracteres.").max(160),
       summary: z.string().trim().max(500).optional(), content: z.string().trim().max(12000).optional(),
       position: z.number().int().min(0).max(999).optional(),
@@ -2899,6 +2978,10 @@ const escolaFundamentosRouter = router({
       const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
       const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
+      if (input.moduleId) {
+        const module = await getFoundationModuleById(input.moduleId, input.churchId);
+        if (!module || module.courseId !== input.courseId) throw new TRPCError({ code: "NOT_FOUND", message: "Módulo não encontrado nesta turma." });
+      }
       const existing = await getFoundationStudiesByCourse(input.churchId, input.courseId, true);
       const study = await createFoundationStudy({ ...input, position: input.position ?? existing.length, createdByChurchUserId: access.member.id });
       return { success: true, studyId: study.id };
@@ -2906,6 +2989,7 @@ const escolaFundamentosRouter = router({
   updateStudy: protectedProcedure
     .input(z.object({
       id: z.number().int().positive(), churchId: z.number().int().positive(),
+      moduleId: z.number().int().positive().nullable().optional(),
       title: z.string().trim().min(3).max(160).optional(), summary: z.string().trim().max(500).nullable().optional(),
       content: z.string().trim().max(12000).nullable().optional(), position: z.number().int().min(0).max(999).optional(), active: z.boolean().optional(),
     }))
@@ -2913,6 +2997,11 @@ const escolaFundamentosRouter = router({
       await requireFoundationStudyManager(ctx.user.id, input.churchId);
       if (!(await getFoundationStudyById(input.id, input.churchId))) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      }
+      if (input.moduleId) {
+        const study = await getFoundationStudyById(input.id, input.churchId);
+        const module = await getFoundationModuleById(input.moduleId, input.churchId);
+        if (!study || !module || study.courseId !== module.courseId) throw new TRPCError({ code: "NOT_FOUND", message: "Módulo não encontrado nesta turma." });
       }
       await updateFoundationStudy(input);
       return { success: true };
