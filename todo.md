@@ -910,4 +910,4 @@
 - [x] Corrigir logout para invalidar sessão e dados protegidos antes do redirecionamento
 - [x] Redirecionar o usuário para a página pública do subdomínio atual após sair
 - [x] Cobrir estado residual, isolamento por tenant e redirecionamento com testes
-- [ ] Validar em produção, implantar na VPS e salvar checkpoint
+- [x] Validar em produção, implantar na VPS e salvar checkpoint
