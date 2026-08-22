@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   announcements,
@@ -50,6 +50,7 @@ import {
   people,
   prayerRequests,
   scheduleItems,
+  startupDiagnostics,
   superAdmins,
   souls,
   users,
@@ -158,6 +159,38 @@ export async function markNotificationRead(data: { id: number; churchId: number;
   if (!db) throw new Error("Database not available");
   await db.update(notificationDeliveries).set({ status: "lida", readAt: new Date() })
     .where(and(eq(notificationDeliveries.id, data.id), eq(notificationDeliveries.churchId, data.churchId), eq(notificationDeliveries.recipientChurchUserId, data.churchUserId), eq(notificationDeliveries.channel, "sistema")));
+}
+
+// ─── DIAGNÓSTICOS DE INICIALIZAÇÃO ────────────────────────────────────────────
+
+export type StartupDiagnosticKind = "error" | "unhandled_rejection" | "resource_load" | "startup_timeout" | "recovery";
+
+export async function createStartupDiagnostic(data: {
+  churchId?: number | null;
+  kind: StartupDiagnosticKind;
+  message: string;
+  fingerprint: string;
+  path: string;
+  userAgent: string;
+  platform?: string | null;
+  appVersion?: string | null;
+  clientId?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const retentionDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  await db.delete(startupDiagnostics).where(lt(startupDiagnostics.createdAt, retentionDate));
+  const result = await db.insert(startupDiagnostics).values(data);
+  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+  const rows = await db.select().from(startupDiagnostics).where(eq(startupDiagnostics.id, id)).limit(1);
+  if (!rows[0]) throw new Error("Falha ao registrar diagnóstico de inicialização");
+  return rows[0];
+}
+
+export async function getStartupDiagnostics(limit = 80) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(startupDiagnostics).orderBy(desc(startupDiagnostics.createdAt)).limit(Math.min(Math.max(limit, 1), 200));
 }
 
 // ─── USERS ────────────────────────────────────────────────────────────────────

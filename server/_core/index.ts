@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
+import { createHash } from "crypto";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
@@ -16,12 +17,34 @@ import { stripeWebhookHandler } from "../stripe-webhook";
 import { verifyToken } from "../auth";
 import {
   createFinancialReconciliationAttachment,
+  createStartupDiagnostic,
   getActiveChurchUserById,
   getActiveMinistryRoleKeysByPerson,
   getComplementaryRolesByChurchUser,
   getFinancialReconciliationById,
+  getChurchBySlug,
   getMinistryRoleDefinitionsByChurch,
 } from "../db";
+
+const STARTUP_DIAGNOSTIC_INTERVAL_MS = 60_000;
+const startupDiagnosticRateLimit = new Map<string, number>();
+const STARTUP_DIAGNOSTIC_KINDS = new Set(["error", "unhandled_rejection", "resource_load", "startup_timeout", "recovery"]);
+
+function sanitizeDiagnosticText(value: unknown, maxLength: number) {
+  return String(value ?? "")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/https?:\/\/[^\s]+/gi, "[url-removida]")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email-removido]")
+    .replace(/bearer\s+[\w.-]+/gi, "[token-removido]")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function getTenantSlugFromHost(host: string | undefined) {
+  const hostname = host?.split(":")[0] ?? "";
+  const parts = hostname.split(".");
+  return parts.length >= 3 && !["www", "admin"].includes(parts[0]) ? parts[0] : null;
+}
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -58,6 +81,45 @@ async function startServer() {
   // Scheduled heartbeat endpoints
   app.post("/api/scheduled/daily-notifications", dailyNotificationsHandler);
   app.post("/api/scheduled/schedule-reminders", scheduleRemindersHandler);
+
+  // Diagnósticos de bootstrap: endpoint público e limitado, sem dados de conta,
+  // tokens, conteúdo de formulário ou IP persistido.
+  app.post("/api/diagnostics/startup", async (req, res) => {
+    try {
+      const raw = (req.body ?? {}) as Record<string, unknown>;
+      const kind = String(raw.kind ?? "");
+      if (!STARTUP_DIAGNOSTIC_KINDS.has(kind)) return res.status(400).json({ error: "invalid-diagnostic-kind" });
+      const clientId = sanitizeDiagnosticText(raw.clientId, 80);
+      const rateKey = clientId || `anonymous:${req.ip}`;
+      const now = Date.now();
+      const previous = startupDiagnosticRateLimit.get(rateKey) ?? 0;
+      if (now - previous < STARTUP_DIAGNOSTIC_INTERVAL_MS) return res.status(202).json({ accepted: true, throttled: true });
+      startupDiagnosticRateLimit.set(rateKey, now);
+      if (startupDiagnosticRateLimit.size > 2_000) startupDiagnosticRateLimit.clear();
+
+      const message = sanitizeDiagnosticText(raw.message, 500) || "Falha de inicialização sem mensagem disponível";
+      const path = sanitizeDiagnosticText(raw.path, 255).replace(/\?.*$/, "") || "/";
+      const userAgent = sanitizeDiagnosticText(raw.userAgent, 500) || "indisponível";
+      const tenantSlug = getTenantSlugFromHost(req.headers.host);
+      const church = tenantSlug ? await getChurchBySlug(tenantSlug) : null;
+      const fingerprint = createHash("sha256").update(`${kind}|${message}|${path}`).digest("hex").slice(0, 64);
+      await createStartupDiagnostic({
+        churchId: church?.id ?? null,
+        kind: kind as "error" | "unhandled_rejection" | "resource_load" | "startup_timeout" | "recovery",
+        message,
+        fingerprint,
+        path,
+        userAgent,
+        platform: sanitizeDiagnosticText(raw.platform, 120) || null,
+        appVersion: sanitizeDiagnosticText(raw.appVersion, 80) || null,
+        clientId: clientId || null,
+      });
+      return res.status(202).json({ accepted: true });
+    } catch (error) {
+      console.warn("[startup-diagnostics] Falha ao registrar diagnóstico:", error);
+      return res.status(202).json({ accepted: false });
+    }
+  });
 
   // Upload de logos da igreja: somente perfis administrativos autenticados.
   app.post("/api/upload", async (req, res) => {

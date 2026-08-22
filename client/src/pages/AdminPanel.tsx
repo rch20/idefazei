@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Eye, EyeOff, Building2, Users, TrendingUp, Shield, CheckCircle2, XCircle, Clock, LogOut, LayoutDashboard, Settings, CreditCard, MessageSquare } from "lucide-react";
+import { Loader2, Eye, EyeOff, Building2, Users, TrendingUp, Shield, CheckCircle2, XCircle, Clock, LogOut, LayoutDashboard, Settings, CreditCard, MessageSquare, Bug } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -115,10 +115,11 @@ type Church = {
 };
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<"overview" | "churches" | "plans" | "support" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "churches" | "plans" | "support" | "diagnostics" | "settings">("overview");
 
   const { data: churches, isLoading, refetch } = trpc.superAdmin.churches.useQuery();
   const { data: pendingRegs, refetch: refetchPending } = trpc.superAdmin.pendingRegistrations.useQuery();
+  const { data: startupDiagnostics, isLoading: diagnosticsLoading } = trpc.diagnostics.recent.useQuery({ limit: 80 }, { enabled: activeTab === "diagnostics" });
 
   const reviewMutation = trpc.superAdmin.reviewRegistration.useMutation({
     onSuccess: (_, vars) => {
@@ -160,6 +161,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             { id: "churches", label: "Igrejas", icon: Building2 },
             { id: "plans", label: "Planos", icon: CreditCard },
             { id: "support", label: "Suporte", icon: MessageSquare },
+            { id: "diagnostics", label: "Diagnósticos", icon: Bug },
             { id: "settings", label: "Configurações", icon: Settings },
           ].map((item) => {
             const Icon = item.icon;
@@ -399,6 +401,38 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
                 </CardContent>
               </Card>
+            </div>
+          )}
+
+          {activeTab === "diagnostics" && (
+            <div>
+              <h1 className="font-serif text-2xl font-bold text-white mb-1">Diagnósticos de Inicialização</h1>
+              <p className="text-white/40 text-sm mb-8">Falhas técnicas anônimas dos últimos 30 dias. Nenhum token, e-mail ou texto de formulário é armazenado.</p>
+              {diagnosticsLoading ? (
+                <div className="flex items-center justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-[#c9a84c]" /></div>
+              ) : (startupDiagnostics?.length ?? 0) === 0 ? (
+                <Card className="bg-white/5 border-white/10"><CardContent className="py-16 text-center text-white/35"><Bug className="mx-auto mb-3 h-10 w-10 opacity-40" /><p>Nenhum diagnóstico recente.</p></CardContent></Card>
+              ) : (
+                <div className="space-y-2">
+                  {startupDiagnostics?.map((diagnostic) => (
+                    <Card key={diagnostic.id} className="bg-white/5 border-white/10">
+                      <CardContent className="py-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="mb-2 flex flex-wrap items-center gap-2">
+                              <Badge className="bg-amber-500/15 text-amber-300 border-amber-500/30">{diagnostic.kind}</Badge>
+                              <span className="text-xs text-white/35">{diagnostic.churchId ? `Igreja #${diagnostic.churchId}` : "Domínio principal"}</span>
+                            </div>
+                            <p className="break-words text-sm text-white/85">{diagnostic.message}</p>
+                            <p className="mt-1 break-all text-xs text-white/35">{diagnostic.path} · {diagnostic.platform || "plataforma não informada"}</p>
+                          </div>
+                          <div className="shrink-0 text-xs text-white/35">{new Date(diagnostic.createdAt).toLocaleString("pt-BR")}</div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

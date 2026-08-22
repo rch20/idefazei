@@ -1005,6 +1005,32 @@ export const churchNotificationPreferences = mysqlTable("church_notification_pre
 
 export type ChurchNotificationPreference = typeof churchNotificationPreferences.$inferSelect;
 
+// ─── DIAGNÓSTICOS DE INICIALIZAÇÃO ────────────────────────────────────────────
+
+/**
+ * Falhas técnicas de bootstrap informadas pelo cliente. Não armazena tokens,
+ * e-mails, conteúdo de formulários, IP ou outros dados pessoais.
+ */
+export const startupDiagnostics = mysqlTable("startup_diagnostics", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId"),
+  kind: mysqlEnum("kind", ["error", "unhandled_rejection", "resource_load", "startup_timeout", "recovery"]).notNull(),
+  message: varchar("message", { length: 500 }).notNull(),
+  fingerprint: varchar("fingerprint", { length: 96 }).notNull(),
+  path: varchar("path", { length: 255 }).notNull(),
+  userAgent: varchar("userAgent", { length: 500 }).notNull(),
+  platform: varchar("platform", { length: 120 }),
+  appVersion: varchar("appVersion", { length: 80 }),
+  clientId: varchar("clientId", { length: 80 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("startup_diagnostics_created_idx").on(table.createdAt),
+  index("startup_diagnostics_church_created_idx").on(table.churchId, table.createdAt),
+  index("startup_diagnostics_fingerprint_created_idx").on(table.fingerprint, table.createdAt),
+]);
+
+export type StartupDiagnostic = typeof startupDiagnostics.$inferSelect;
+
 // ─── TESOURARIA DA IGREJA ──────────────────────────────────────────────────────
 
 /** Contas operacionais da igreja, como Caixa e Banco principal. */

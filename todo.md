@@ -774,3 +774,11 @@
 - [x] Aplicar correção compatível com iOS, preservando o carregamento existente nos demais navegadores
 - [x] Adicionar recuperação segura para falha de inicialização ou cache desatualizado do PWA
 - [x] Validar TypeScript, testes, logs, viewport de iPhone e salvar checkpoint
+
+## FASE 78 – Monitoramento de Falhas de Inicialização
+
+- [x] Definir o diagnóstico mínimo, sem tokens, e-mails, textos de formulários ou outros dados pessoais
+- [x] Criar persistência protegida e retenção de erros de inicialização por ambiente e tenant quando disponível
+- [x] Capturar exceções globais, rejeições não tratadas, falhas de carregamento e acionamento do modo de recuperação
+- [x] Criar visão administrativa protegida para consultar, filtrar e solucionar diagnósticos recentes
+- [x] Cobrir abuso, autorização, privacidade e regressões com testes, validações e checkpoint

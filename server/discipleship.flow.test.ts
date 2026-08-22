@@ -102,6 +102,7 @@ vi.mock("./db", () => ({
   canChurchUserManageJourney: vi.fn().mockResolvedValue(true),
   getJourneyManagedPersonIds: vi.fn().mockResolvedValue([]),
   getChurchUsersByChurch: vi.fn().mockResolvedValue([]),
+  getStartupDiagnostics: vi.fn().mockResolvedValue([]),
   getPendingChurchUsers: vi.fn().mockResolvedValue([]),
   resolveChurchUserRegistration: vi.fn().mockResolvedValue({ id: 77, churchId: 100, active: true, registrationStatus: "approved" }),
   linkChurchUserToPerson: vi.fn().mockResolvedValue({ id: 1, personId: 10 }),
@@ -264,6 +265,23 @@ describe("Fluxo completo de discipulado", () => {
       active: true,
     });
     (getComplementaryRolesByChurchUser as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+  });
+
+  describe("Diagnósticos de inicialização", () => {
+    it("permite a consulta somente pelo Super Admin", async () => {
+      const { getStartupDiagnostics } = await import("./db");
+      (getStartupDiagnostics as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { id: 1, churchId: 100, kind: "startup_timeout", message: "A inicialização excedeu nove segundos", path: "/", userAgent: "Safari", createdAt: new Date() },
+      ]);
+      const adminCaller = appRouter.createCaller({
+        ...createMemberContext(),
+        user: { ...createMemberContext().user!, role: "admin", authSource: "admin" },
+      });
+
+      await expect(adminCaller.diagnostics.recent({ limit: 20 })).resolves.toHaveLength(1);
+      await expect(appRouter.createCaller(createMemberContext()).diagnostics.recent({ limit: 20 })).rejects.toThrow("required permission");
+      expect(getStartupDiagnostics).toHaveBeenCalledWith(20);
+    });
   });
 
   // ── Etapa 1: Cadastro de nova alma ──────────────────────────────────────────

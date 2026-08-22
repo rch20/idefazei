@@ -41,6 +41,36 @@
         var message = document.getElementById("app-loading-message");
         var recovery = document.getElementById("app-recovery");
         var recoveryTimer;
+        var diagnosticReported = {};
+        function clientId() {
+          try {
+            var existing = sessionStorage.getItem("ide_fazei_diagnostic_client");
+            if (existing) return existing;
+            var created = "c-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+            sessionStorage.setItem("ide_fazei_diagnostic_client", created);
+            return created;
+          } catch (_) { return ""; }
+        }
+        function cleanMessage(value) {
+          return String(value || "Falha de inicialização sem mensagem disponível")
+            .replace(/https?:\/\/[^\s]+/gi, "[url-removida]")
+            .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email-removido]")
+            .replace(/bearer\s+[\w.-]+/gi, "[token-removido]")
+            .replace(/[\r\n\t]+/g, " ").slice(0, 500);
+        }
+        window.__ideFazeiReportStartupIssue = function (kind, detail) {
+          var key = kind + ":" + cleanMessage(detail);
+          if (diagnosticReported[key]) return;
+          diagnosticReported[key] = true;
+          try {
+            fetch("/api/diagnostics/startup", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ kind: kind, message: cleanMessage(detail), path: location.pathname, userAgent: navigator.userAgent, platform: navigator.platform || "", appVersion: "web-bootstrap-v1", clientId: clientId() }),
+              keepalive: true,
+            }).catch(function () {});
+          } catch (_) {}
+        };
         window.__ideFazeiReady = function () {
           window.clearTimeout(recoveryTimer);
           if (loader) loader.hidden = true;
@@ -50,6 +80,7 @@
           if (recovery) recovery.hidden = false;
         };
         window.__ideFazeiRecover = async function () {
+          window.__ideFazeiReportStartupIssue("recovery", "Usuário acionou a recuperação da aplicação");
           if (recovery) { recovery.disabled = true; recovery.textContent = "Atualizando..."; }
           try {
             if ("serviceWorker" in navigator) {
@@ -65,9 +96,16 @@
           }
         };
         if (recovery) recovery.addEventListener("click", window.__ideFazeiRecover);
-        recoveryTimer = window.setTimeout(window.__ideFazeiShowRecovery, 9000);
-        window.addEventListener("error", window.__ideFazeiShowRecovery);
-        window.addEventListener("unhandledrejection", window.__ideFazeiShowRecovery);
+        recoveryTimer = window.setTimeout(function () { window.__ideFazeiReportStartupIssue("startup_timeout", "A inicialização excedeu nove segundos"); window.__ideFazeiShowRecovery(); }, 9000);
+        window.addEventListener("error", function (event) {
+          var detail = event && event.message ? event.message : "Falha ao carregar um recurso da aplicação";
+          window.__ideFazeiReportStartupIssue(event && event.target && event.target !== window ? "resource_load" : "error", detail);
+          window.__ideFazeiShowRecovery();
+        }, true);
+        window.addEventListener("unhandledrejection", function (event) {
+          window.__ideFazeiReportStartupIssue("unhandled_rejection", event && event.reason && event.reason.message ? event.reason.message : String(event && event.reason || "Promessa rejeitada"));
+          window.__ideFazeiShowRecovery();
+        });
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>

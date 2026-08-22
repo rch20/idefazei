@@ -30,6 +30,7 @@ import {
   getCellById,
   getCellMeetingByDate,
   getCellMeetingSummaries,
+  getStartupDiagnostics,
   createCellMeetingWithAttendance,
   getActiveCellMembership,
   getCellMembershipHistory,
@@ -2334,7 +2335,13 @@ const superAdminRouter = router({
     }))
     .mutation(async ({ input }) => {
       return updateChurchRegistration(input.id, input.status, input.reason);
-    }),
+  }),
+});
+
+const diagnosticsRouter = router({
+  recent: adminProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(200).optional() }).optional())
+    .query(({ input }) => getStartupDiagnostics(input?.limit ?? 80)),
 });
 
 // ─── VISITOR ROUTER ───────────────────────────────────────────────────────────
@@ -3523,6 +3530,7 @@ export const appRouter = router({
   churchAuth: churchAuthRouter,
   adminAuth: adminAuthRouter,
   superAdmin: superAdminRouter,
+  diagnostics: diagnosticsRouter,
   visitor: visitorRouter,
   register: registerRouter,
   onboarding: onboardingRouter,
