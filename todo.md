@@ -902,4 +902,4 @@
 - [x] Carregar no login somente a identidade pública do tenant resolvido pelo subdomínio
 - [x] Aplicar logo, cores e fallback acessível sem alterar a identidade comercial do domínio principal
 - [x] Cobrir isolamento, ausência de logo, contraste e responsividade com testes
-- [ ] Validar em mobile, implantar na VPS e salvar checkpoint
+- [x] Validar em mobile, implantar na VPS e salvar checkpoint
