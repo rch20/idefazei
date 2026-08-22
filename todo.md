@@ -925,4 +925,4 @@
 - [x] Simplificar a criação de turma e orientar o próximo passo da liderança
 - [x] Tornar a matrícula e o acompanhamento de alunos mais claros e acionáveis
 - [x] Melhorar estados de progresso, presença, conclusão e certificado sem alterar regras de acesso
-- [ ] Cobrir isolamento, permissões, desktop/mobile e regressões; implantar e salvar checkpoint
+- [x] Cobrir isolamento, permissões, desktop/mobile e regressões; implantar e salvar checkpoint
