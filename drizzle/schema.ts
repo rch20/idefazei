@@ -73,6 +73,69 @@ export const churches = mysqlTable("churches", {
 export type Church = typeof churches.$inferSelect;
 export type InsertChurch = typeof churches.$inferInsert;
 
+// ─── SITE PÚBLICO MULTI-TENANT ─────────────────────────────────────────────────
+// A apresentação pública fica separada do cadastro operacional da igreja. Todas as
+// entidades carregam churchId para que tema, conteúdo e revisões nunca atravessem
+// o limite do tenant.
+export const tenantPublicSites = mysqlTable("tenant_public_sites", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  templateKey: varchar("templateKey", { length: 80 }).notNull().default("ministerial_base"),
+  status: mysqlEnum("status", ["draft", "published"]).notNull().default("draft"),
+  publishedRevisionId: int("publishedRevisionId"),
+  seoTitle: varchar("seoTitle", { length: 255 }),
+  seoDescription: varchar("seoDescription", { length: 320 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("tenant_public_sites_church_unique").on(table.churchId)]);
+
+export const tenantThemes = mysqlTable("tenant_themes", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  primaryColor: varchar("primaryColor", { length: 7 }).notNull().default("#1e3a5f"),
+  secondaryColor: varchar("secondaryColor", { length: 7 }).notNull().default("#c9a84c"),
+  accentColor: varchar("accentColor", { length: 7 }),
+  fontPair: varchar("fontPair", { length: 80 }).notNull().default("sacred_serif"),
+  logoUrl: text("logoUrl"),
+  faviconUrl: text("faviconUrl"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [uniqueIndex("tenant_themes_church_unique").on(table.churchId)]);
+
+export const tenantPageSections = mysqlTable("tenant_page_sections", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  siteId: int("siteId").notNull(),
+  sectionType: mysqlEnum("sectionType", ["hero", "welcome", "about", "schedule", "events", "contact", "footer"]).notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  sortOrder: int("sortOrder").notNull().default(0),
+  content: json("content").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("tenant_page_sections_church_site_idx").on(table.churchId, table.siteId),
+  uniqueIndex("tenant_page_sections_site_type_unique").on(table.siteId, table.sectionType),
+]);
+
+export const tenantPageRevisions = mysqlTable("tenant_page_revisions", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  siteId: int("siteId").notNull(),
+  version: int("version").notNull(),
+  snapshot: json("snapshot").notNull(),
+  createdByChurchUserId: int("createdByChurchUserId"),
+  publishedAt: timestamp("publishedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("tenant_page_revisions_church_site_idx").on(table.churchId, table.siteId),
+  uniqueIndex("tenant_page_revisions_site_version_unique").on(table.siteId, table.version),
+]);
+
+export type TenantPublicSite = typeof tenantPublicSites.$inferSelect;
+export type TenantTheme = typeof tenantThemes.$inferSelect;
+export type TenantPageSection = typeof tenantPageSections.$inferSelect;
+export type TenantPageRevision = typeof tenantPageRevisions.$inferSelect;
+
 // ─── MEMBROS DA IGREJA (PERFIS E HIERARQUIA) ──────────────────────────────────
 
 export const churchRoleEnum = mysqlEnum("churchRole", [

@@ -53,6 +53,10 @@ import {
   startupDiagnostics,
   superAdmins,
   souls,
+  tenantPageRevisions,
+  tenantPageSections,
+  tenantPublicSites,
+  tenantThemes,
   users,
   visitorLeads,
   onboardingProgress,
@@ -273,6 +277,76 @@ export async function updateChurch(id: number, data: Partial<typeof churches.$in
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.update(churches).set(data).where(eq(churches.id, id));
+}
+
+// ─── SITE PÚBLICO MULTI-TENANT ─────────────────────────────────────────────────
+
+/**
+ * Retorna somente o conteúdo já publicado para um tenant ativo. A resolução usa o
+ * slug no servidor e nunca aceita churchId informado pelo visitante.
+ */
+export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const churchRows = await db.select().from(churches)
+    .where(and(eq(churches.slug, slug), eq(churches.active, true))).limit(1);
+  const church = churchRows[0];
+  if (!church) return null;
+
+  const [siteRows, themeRows] = await Promise.all([
+    db.select().from(tenantPublicSites).where(eq(tenantPublicSites.churchId, church.id)).limit(1),
+    db.select().from(tenantThemes).where(eq(tenantThemes.churchId, church.id)).limit(1),
+  ]);
+  const site = siteRows[0] ?? null;
+  const theme = themeRows[0] ?? null;
+  const sections = site && site.status === "published"
+    ? await db.select().from(tenantPageSections)
+      .where(and(
+        eq(tenantPageSections.churchId, church.id),
+        eq(tenantPageSections.siteId, site.id),
+        eq(tenantPageSections.enabled, true),
+      ))
+      .orderBy(tenantPageSections.sortOrder, tenantPageSections.id)
+    : [];
+
+  return {
+    church: {
+      id: church.id,
+      name: church.name,
+      slug: church.slug,
+      logoUrl: church.logoUrl,
+      primaryColor: church.primaryColor,
+      secondaryColor: church.secondaryColor,
+      city: church.city,
+      state: church.state,
+      phone: church.phone,
+      whatsapp: church.whatsapp,
+      email: church.email,
+      address: church.address,
+      vision: church.vision,
+      mission: church.mission,
+      values: church.values,
+      socialMedia: church.socialMedia,
+    },
+    site,
+    theme,
+    sections,
+  };
+}
+
+/** Consulta administrativa preparada para a próxima fase. Sempre recebe churchId validado no router. */
+export async function getTenantPublicSiteByChurchId(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const siteRows = await db.select().from(tenantPublicSites).where(eq(tenantPublicSites.churchId, churchId)).limit(1);
+  const site = siteRows[0] ?? null;
+  if (!site) return { site: null, theme: null, sections: [], revisions: [] };
+  const [themeRows, sections, revisions] = await Promise.all([
+    db.select().from(tenantThemes).where(eq(tenantThemes.churchId, churchId)).limit(1),
+    db.select().from(tenantPageSections).where(and(eq(tenantPageSections.churchId, churchId), eq(tenantPageSections.siteId, site.id))).orderBy(tenantPageSections.sortOrder, tenantPageSections.id),
+    db.select().from(tenantPageRevisions).where(and(eq(tenantPageRevisions.churchId, churchId), eq(tenantPageRevisions.siteId, site.id))).orderBy(desc(tenantPageRevisions.version)),
+  ]);
+  return { site, theme: themeRows[0] ?? null, sections, revisions };
 }
 
 // ─── CHURCH MEMBERS ───────────────────────────────────────────────────────────

@@ -10,6 +10,7 @@ import ChurchLayout from "./components/ChurchLayout";
 // Carregamento sob demanda reduz o JavaScript inicial no Safari iOS e mantém
 // um retorno visual claro enquanto a página solicitada é baixada.
 const LandingPage = lazy(() => import("./pages/LandingPage"));
+const TenantPublicPage = lazy(() => import("./pages/TenantPublicPage"));
 const LoginIgreja = lazy(() => import("./pages/LoginIgreja"));
 const CadastroIgreja = lazy(() => import("./pages/CadastroIgreja"));
 const CadastroDiscipulo = lazy(() => import("./pages/CadastroDiscipulo"));
@@ -52,6 +53,16 @@ const Faturamento = lazy(() => import("./pages/Faturamento"));
 const CentralCuidado = lazy(() => import("./pages/CentralCuidado"));
 const Tesouraria = lazy(() => import("./pages/Tesouraria"));
 
+function PublicRoot() {
+  const hostname = typeof window === "undefined" ? "" : window.location.hostname;
+  const parts = hostname.split(".");
+  // O preview técnico também possui subdomínios. A experiência pública de tenant
+  // só deve ser acionada no domínio produtivo (ou em subdomínios localhost).
+  const isIdeFazeiHost = hostname.endsWith(".idefazei.com.br") || hostname.endsWith(".localhost");
+  const isTenantSubdomain = isIdeFazeiHost && parts.length >= 3 && !["www", "admin"].includes(parts[0]);
+  return isTenantSubdomain ? <TenantPublicPage /> : <LandingPage />;
+}
+
 function RouteLoading() {
   return <div className="flex min-h-[40vh] items-center justify-center bg-background p-6"><div className="flex flex-col items-center gap-3 text-center"><div className="h-9 w-9 animate-spin rounded-full border-2 border-gold border-t-transparent" /><p className="text-sm font-medium text-muted-foreground">Carregando...</p></div></div>;
 }
@@ -73,7 +84,7 @@ function Router() {
     <Suspense fallback={<RouteLoading />}>
     <Switch>
       {/* ── Domínio Principal ── */}
-      <Route path="/" component={LandingPage} />
+      <Route path="/" component={PublicRoot} />
       <Route path="/cadastro-igreja" component={CadastroIgreja} />
       <Route path="/planos" component={Planos} />
       <Route path="/recursos" component={Recursos} />

@@ -814,3 +814,20 @@
 - [x] Projetar entidades de banco, isolamento, permissões e contratos de configuração por igreja
 - [x] Propor painel de personalização, modelos de página, responsividade, desempenho e estratégia de templates
 - [x] Entregar parecer técnico e plano de evolução sem alterar funcionalidades existentes
+
+## FASE 83 – Confirmação Técnica do Template Ministerial Base
+
+- [x] Revalidar resolução do tenant pelo subdomínio e a separação entre domínio comercial e subdomínios de igrejas
+- [x] Revalidar isolamentos obrigatórios de configuração no backend, API, banco e arquivos
+- [x] Confirmar o armazenamento, publicação e carregamento dinâmico de tema e blocos por igreja
+- [x] Confirmar permissões do painel de identidade e a estratégia de evolução sem regressões
+- [x] Entregar arquitetura técnica definitiva sem alterar o sistema
+
+## FASE 84 – Fundação Técnica do Template Ministerial Base
+
+- [x] Mapear os contratos atuais de tenant, rotas públicas e componentes reutilizáveis sem alterar módulos operacionais
+- [x] Criar schema, migração e contratos multi-tenant para site público, tema, seções e revisões por igreja
+- [x] Criar guardas de backend/API que derivem o tenant de host ou sessão e bloqueiem escrita cruzada
+- [x] Criar componente global de tema e estabilidade visual herdado por todas as páginas públicas de tenant
+- [x] Proteger globalmente overflow, viewport, mídia, animações, fontes e scroll sem liberar CSS estrutural por igreja
+- [x] Cobrir isolamento, publicação, estabilidade em 320/375/768/1280px, TypeScript, logs e regressões antes do checkpoint

@@ -128,6 +128,8 @@ import {
   createVisitorLead,
   getVisitorLeadsByChurch,
   getOnboardingProgress,
+  getPublishedTenantPublicExperienceBySlug,
+  getTenantPublicSiteByChurchId,
   upsertOnboardingProgress,
   importPeopleFromCSV,
   // Escola de Fundamentos
@@ -528,6 +530,24 @@ const churchRouter = router({
       await requireChurchAdministrator(ctx.user.id, id);
       return updateChurch(id, data);
     }),
+});
+
+// ─── SITE PÚBLICO MULTI-TENANT ─────────────────────────────────────────────────
+// A página visitante descobre a igreja exclusivamente pelo host resolvido no
+// contexto. Já o painel usa apenas o churchId confirmado pela sessão JWT.
+const tenantPublicRouter = router({
+  current: publicProcedure.query(async ({ ctx }) => {
+    if (!ctx.tenantSlug) return null;
+    return getPublishedTenantPublicExperienceBySlug(ctx.tenantSlug);
+  }),
+
+  adminPreview: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.user.churchId || ctx.user.authSource !== "church") {
+      throw new TRPCError({ code: "FORBIDDEN", message: "Esta visualização é restrita a contas de igreja." });
+    }
+    await requireChurchAdministrator(ctx.user.id, ctx.user.churchId);
+    return getTenantPublicSiteByChurchId(ctx.user.churchId);
+  }),
 });
 
 const peopleRouter = router({
@@ -3540,6 +3560,7 @@ export const appRouter = router({
     }),
   }),
   churches: churchRouter,
+  tenantPublic: tenantPublicRouter,
   people: peopleRouter,
   souls: soulsRouter,
   consolidation: consolidationRouter,

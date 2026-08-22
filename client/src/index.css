@@ -342,3 +342,65 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
     animation: none;
   }
 }
+
+/* ─── TEMPLATE MINISTERIAL BASE: ESTABILIDADE GLOBAL ────────────────────────── */
+/* Conteúdo do tenant troca somente variáveis de marca. Estrutura, viewport,
+   mídia, scroll e movimento pertencem ao núcleo global da Ide Fazei. */
+.tenant-public-root {
+  width: 100%;
+  min-height: 100dvh;
+  max-width: 100%;
+  overflow-x: clip;
+  isolation: isolate;
+  background: #f8f4ed;
+  color: var(--tenant-primary, #1e3a5f);
+  font-family: Inter, sans-serif;
+}
+
+.tenant-public-root *,
+.tenant-public-root *::before,
+.tenant-public-root *::after { min-width: 0; }
+.tenant-public-root img,
+.tenant-public-root video,
+.tenant-public-root iframe,
+.tenant-public-root canvas,
+.tenant-public-root svg { display: block; max-width: 100%; height: auto; }
+.tenant-public-root iframe { width: 100%; border: 0; }
+.tenant-public-root video { width: 100%; object-fit: cover; }
+.tenant-public-container { width: min(100% - 2rem, 72rem); margin-inline: auto; }
+.tenant-public-loading { display: grid; min-height: 100dvh; place-items: center; padding: 2rem; text-align: center; }
+
+.tenant-public-header { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 28%, transparent); background: rgb(248 244 237 / 95%); backdrop-filter: blur(12px); }
+.tenant-public-header-inner { display: flex; min-height: 4.5rem; align-items: center; justify-content: space-between; gap: 1rem; }
+.tenant-public-brand { display: inline-flex; min-width: 0; align-items: center; gap: .75rem; color: inherit; font-family: "Playfair Display", serif; font-size: clamp(1.1rem, 4vw, 1.45rem); font-weight: 700; text-decoration: none; }
+.tenant-public-logo { width: 2.5rem; height: 2.5rem; flex: 0 0 auto; border-radius: .65rem; object-fit: contain; }
+.tenant-public-mark { display: grid; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; place-items: center; border-radius: .65rem; background: var(--tenant-primary, #1e3a5f); color: var(--tenant-secondary, #c9a84c); }
+.tenant-public-login { color: inherit; font-size: .875rem; font-weight: 700; text-decoration: none; }
+
+.tenant-public-hero { position: relative; display: grid; min-height: clamp(30rem, 78dvh, 48rem); align-items: center; overflow: clip; background: linear-gradient(145deg, color-mix(in srgb, var(--tenant-primary, #1e3a5f) 98%, black), var(--tenant-primary, #1e3a5f)); color: white; }
+.tenant-public-hero::after { position: absolute; inset: auto -20% -30% auto; width: min(34rem, 82vw); aspect-ratio: 1; border: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 52%, transparent); border-radius: 999px; content: ""; pointer-events: none; }
+.tenant-public-hero-content { position: relative; z-index: 1; padding-block: clamp(5rem, 11vw, 8rem); }
+.tenant-public-eyebrow { display: inline-block; margin-bottom: 1.25rem; color: var(--tenant-secondary, #c9a84c); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.tenant-public-hero h1, .tenant-public-prose h2 { max-width: 15ch; margin: 0; font-family: "Playfair Display", serif; font-size: clamp(2.7rem, 9vw, 6.25rem); line-height: .98; text-wrap: balance; }
+.tenant-public-hero p { max-width: 43rem; margin: 1.5rem 0 2rem; color: rgb(255 255 255 / 82%); font-family: "Cormorant Garamond", serif; font-size: clamp(1.3rem, 4vw, 1.75rem); line-height: 1.45; }
+.tenant-public-cta { max-width: 100%; background: var(--tenant-secondary, #c9a84c); color: var(--tenant-primary, #1e3a5f); }
+.tenant-public-cta a { display: inline-flex; align-items: center; gap: .65rem; white-space: normal; }
+
+.tenant-public-section { padding-block: clamp(4.5rem, 10vw, 8rem); }
+.tenant-public-prose { max-width: 52rem; }
+.tenant-public-prose h2 { max-width: 18ch; font-size: clamp(2.15rem, 6vw, 4.25rem); }
+.tenant-public-prose p { max-width: 65ch; margin: 1.5rem 0 0; color: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 68%, white); font-size: clamp(1rem, 2.6vw, 1.15rem); line-height: 1.8; overflow-wrap: anywhere; }
+.tenant-public-contact-section { background: color-mix(in srgb, var(--tenant-secondary, #c9a84c) 11%, #f8f4ed); }
+.tenant-public-contact-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.tenant-public-contact-card { display: flex; min-width: 0; gap: .85rem; border: 1px solid color-mix(in srgb, var(--tenant-primary, #1e3a5f) 12%, transparent); border-radius: 1rem; background: rgb(255 255 255 / 72%); padding: 1.15rem; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+.tenant-public-contact-card svg { width: 1.35rem; height: 1.35rem; flex: 0 0 auto; color: var(--tenant-secondary, #c9a84c); }
+.tenant-public-contact-card span { display: grid; gap: .2rem; font-size: .9rem; }
+.tenant-public-footer { padding-block: 1.5rem; background: var(--tenant-primary, #1e3a5f); color: rgb(255 255 255 / 78%); font-size: .825rem; }
+
+@media (max-width: 44rem) {
+  .tenant-public-contact-grid { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tenant-public-root *, .tenant-public-root *::before, .tenant-public-root *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}

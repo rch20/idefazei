@@ -1,0 +1,85 @@
+import { TenantPublicShell } from "@/components/TenantPublicShell";
+import { Button } from "@/components/ui/button";
+import { trpc } from "@/lib/trpc";
+import { ArrowRight, CalendarDays, MapPin, MessageCircle } from "lucide-react";
+
+type SectionContent = { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string };
+
+function findContent(sections: Array<{ sectionType: string; content: unknown }>, type: string): SectionContent | null {
+  const section = sections.find((item) => item.sectionType === type);
+  return section?.content && typeof section.content === "object" ? section.content as SectionContent : null;
+}
+
+export default function TenantPublicPage() {
+  const { data, isLoading } = trpc.tenantPublic.current.useQuery();
+
+  if (isLoading) {
+    return <div className="tenant-public-root tenant-public-loading" aria-live="polite">Carregando a igreja...</div>;
+  }
+  if (!data) {
+    return <div className="tenant-public-root tenant-public-loading">Esta igreja não está disponível.</div>;
+  }
+
+  const hero = findContent(data.sections, "hero");
+  const about = findContent(data.sections, "about");
+  const contact = findContent(data.sections, "contact");
+  const title = hero?.title ?? `Bem-vindo à ${data.church.name}`;
+  const subtitle = hero?.subtitle ?? data.church.mission ?? "Uma igreja comprometida com pessoas, fé e propósito.";
+  const primaryHref = hero?.primaryCtaHref ?? "/visitante";
+  const primaryLabel = hero?.primaryCtaLabel ?? "Quero conhecer a igreja";
+
+  return (
+    <TenantPublicShell brand={{
+      primaryColor: data.theme?.primaryColor ?? data.church.primaryColor,
+      secondaryColor: data.theme?.secondaryColor ?? data.church.secondaryColor,
+      accentColor: data.theme?.accentColor,
+    }}>
+      <header className="tenant-public-header">
+        <div className="tenant-public-container tenant-public-header-inner">
+          <a href="/" className="tenant-public-brand" aria-label={`Página inicial de ${data.church.name}`}>
+            {data.theme?.logoUrl ?? data.church.logoUrl ? (
+              <img className="tenant-public-logo" src={data.theme?.logoUrl ?? data.church.logoUrl ?? ""} alt={`Logo ${data.church.name}`} />
+            ) : (
+              <span className="tenant-public-mark" aria-hidden="true">✦</span>
+            )}
+            <span>{data.church.name}</span>
+          </a>
+          <a className="tenant-public-login" href="/login">Entrar</a>
+        </div>
+      </header>
+
+      <main>
+        <section className="tenant-public-hero">
+          <div className="tenant-public-container tenant-public-hero-content">
+            <span className="tenant-public-eyebrow">Comunidade de fé</span>
+            <h1>{title}</h1>
+            <p>{subtitle}</p>
+            <Button asChild className="tenant-public-cta">
+              <a href={primaryHref}>{primaryLabel}<ArrowRight size={18} aria-hidden="true" /></a>
+            </Button>
+          </div>
+        </section>
+
+        {(about?.body ?? data.church.vision ?? data.church.mission) && (
+          <section className="tenant-public-section">
+            <div className="tenant-public-container tenant-public-prose">
+              <span className="tenant-public-eyebrow">Sobre nós</span>
+              <h2>{about?.title ?? "Uma igreja para caminhar junto"}</h2>
+              <p>{about?.body ?? data.church.vision ?? data.church.mission}</p>
+            </div>
+          </section>
+        )}
+
+        <section className="tenant-public-section tenant-public-contact-section">
+          <div className="tenant-public-container tenant-public-contact-grid">
+            {data.church.address && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.church.address)}`} className="tenant-public-contact-card"><MapPin aria-hidden="true" /><span><strong>Onde estamos</strong>{data.church.address}</span></a>}
+            {data.church.whatsapp && <a href={`https://wa.me/${data.church.whatsapp.replace(/\D/g, "")}`} className="tenant-public-contact-card"><MessageCircle aria-hidden="true" /><span><strong>Fale conosco</strong>{contact?.subtitle ?? "Envie uma mensagem"}</span></a>}
+            <a href="/visitante" className="tenant-public-contact-card"><CalendarDays aria-hidden="true" /><span><strong>Visite-nos</strong>Estamos prontos para receber você.</span></a>
+          </div>
+        </section>
+      </main>
+
+      <footer className="tenant-public-footer"><div className="tenant-public-container">© {new Date().getFullYear()} {data.church.name}</div></footer>
+    </TenantPublicShell>
+  );
+}
