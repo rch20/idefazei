@@ -933,4 +933,4 @@
 - [x] Definir na própria aba a gestão de estudos, sem expor controles de edição a usuários operacionais
 - [x] Permitir que o Pastor defina administradores aptos a criar, editar e organizar estudos
 - [x] Validar no servidor o acesso de Pastor ou administrador autorizado e manter o isolamento por `churchId`
-- [ ] Implementar a experiência responsiva, testes de permissão/tenant e implantação na VPS
+- [x] Implementar a experiência responsiva, testes de permissão/tenant e implantação na VPS
