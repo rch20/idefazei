@@ -880,4 +880,4 @@
 - [x] Adicionar galeria ativável e reordenável ao painel Página Pública e ao Template Ministerial Base
 - [x] Aplicar textos alternativos, limites de formato/tamanho, prevenção de escrita cruzada e layout sem overflow
 - [x] Cobrir formatos, autorização, isolamento, estado vazio e estabilidade em múltiplos breakpoints
-- [ ] Validar TypeScript, testes, produção e checkpoint
+- [x] Validar TypeScript, testes, produção e checkpoint
