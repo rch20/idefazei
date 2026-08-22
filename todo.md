@@ -790,3 +790,11 @@
 - [x] Implantar a correção compatível com iOS na VPS sem interromper os demais tenants
 - [x] Validar a resposta pública e orientar a atualização de cache no iPhone afetado
 - [x] Registrar resultado, testes de produção e checkpoint da correção
+
+## FASE 80 – Correção da Exceção de Inicialização no Safari iOS
+
+- [x] Coletar o diagnóstico sanitizado da exceção real ocorrida após a recuperação de cache
+- [x] Reproduzir ou isolar o código incompatível com Safari iOS sem expor dados de usuários
+- [x] Aplicar fallback compatível e validar que a tela de recuperação não seja acionada em condição normal
+- [ ] Implantar a correção na VPS e validar o bundle, Service Worker e resposta pública
+- [ ] Confirmar em iPhone real, registrar o resultado e salvar checkpoint

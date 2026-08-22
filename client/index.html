@@ -98,8 +98,17 @@
         if (recovery) recovery.addEventListener("click", window.__ideFazeiRecover);
         recoveryTimer = window.setTimeout(function () { window.__ideFazeiReportStartupIssue("startup_timeout", "A inicialização excedeu nove segundos"); window.__ideFazeiShowRecovery(); }, 9000);
         window.addEventListener("error", function (event) {
-          var detail = event && event.message ? event.message : "Falha ao carregar um recurso da aplicação";
-          window.__ideFazeiReportStartupIssue(event && event.target && event.target !== window ? "resource_load" : "error", detail);
+          var target = event && event.target;
+          if (target && target !== window) {
+            var tagName = String(target.tagName || "").toUpperCase();
+            var source = String(target.src || "");
+            var isApplicationScript = tagName === "SCRIPT" && (target.type === "module" || /\/assets\/.*\.js(?:\?|$)/.test(source));
+            if (!isApplicationScript) return;
+            window.__ideFazeiReportStartupIssue("resource_load", "Falha ao carregar o JavaScript principal da aplicação");
+          } else {
+            var detail = event && event.message ? event.message : "Erro inesperado durante a inicialização";
+            window.__ideFazeiReportStartupIssue("error", detail);
+          }
           window.__ideFazeiShowRecovery();
         }, true);
         window.addEventListener("unhandledrejection", function (event) {
@@ -109,10 +118,5 @@
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
-    <script
-      defer
-      src="%VITE_ANALYTICS_ENDPOINT%/umami"
-      data-website-id="%VITE_ANALYTICS_WEBSITE_ID%"
-    ></script>
   </body>
 </html>
