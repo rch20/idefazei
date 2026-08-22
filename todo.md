@@ -888,3 +888,10 @@
 - [x] Validar churchId derivado do subdomínio, persistência e leitura pela liderança da própria igreja
 - [x] Corrigir navegação, formulário ou feedback se houver alguma lacuna comprovada
 - [x] Testar o fluxo completo e registrar a confirmação operacional
+
+## FASE 92 – Separação de Cadastro Comercial e Login de Tenant
+
+- [x] Mapear a exibição do convite de cadastro de igreja nas telas de login por host
+- [x] Exibir cadastro comercial somente no domínio principal e ocultá-lo em subdomínios de igreja
+- [ ] Validar a correção no login mobile da Crista Viver e preservar o cadastro comercial global
+- [ ] Executar testes, implantar na VPS e salvar checkpoint

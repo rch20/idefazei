@@ -12,6 +12,7 @@ import { Loader2, Eye, EyeOff } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { clearChurchSession } from "@/hooks/useChurchAuth";
+import { useTenant } from "@/hooks/useTenant";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -34,6 +35,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 export default function LoginIgreja() {
   const [, navigate] = useLocation();
+  const { isChurchSubdomain } = useTenant();
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
@@ -97,9 +99,11 @@ export default function LoginIgreja() {
             <span className="text-[#c9a84c] text-[10px] block leading-none tracking-widest uppercase">Plataforma Ministerial</span>
           </div>
         </a>
-        <a href="/cadastro-igreja" className="text-sm text-[#1e3a5f]/60 hover:text-[#1e3a5f] transition-colors">
-          Cadastrar nova igreja →
-        </a>
+        {!isChurchSubdomain && (
+          <a href="/cadastro-igreja" className="text-sm text-[#1e3a5f]/60 hover:text-[#1e3a5f] transition-colors">
+            Cadastrar nova igreja →
+          </a>
+        )}
       </header>
 
       {/* Main */}
