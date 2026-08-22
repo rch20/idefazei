@@ -837,5 +837,5 @@
 - [x] Auditar a versão da VPS, migrações pendentes e o tenant `cristaviver`
 - [x] Sincronizar o checkpoint da fundação, aplicar migração 0027 e reiniciar a aplicação com segurança
 - [x] Criar site, tema, seções e revisão publicada exclusivamente para a Crista Viver
-- [ ] Validar `cristaviver.idefazei.com.br` em desktop/mobile e confirmar que `idefazei.com.br` continua comercial
-- [ ] Registrar a implantação, testes de isolamento e checkpoint final
+- [x] Validar `cristaviver.idefazei.com.br` em desktop/mobile e confirmar que `idefazei.com.br` continua comercial
+- [x] Registrar a implantação, testes de isolamento e checkpoint final
