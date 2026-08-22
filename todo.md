@@ -856,3 +856,11 @@
 - [x] Adicionar bloco Eventos ativável e reordenável ao Template Ministerial Base e ao painel Página Pública
 - [x] Cobrir isolamento, eventos passados/cancelados, estado vazio e estabilidade em múltiplos breakpoints
 - [x] Validar TypeScript, testes, produção e checkpoint
+
+## FASE 88 – Bloco Público de Ministérios por Igreja
+
+- [x] Mapear os campos institucionais e os estados seguros de Ministérios para exposição pública
+- [x] Criar consulta pública de Ministérios que derive o tenant do host e não exponha participantes, funções ou escalas
+- [x] Adicionar bloco Ministérios ativável e reordenável ao Template Ministerial Base e ao painel Página Pública
+- [x] Cobrir isolamento, estado vazio, exposição mínima e estabilidade em múltiplos breakpoints
+- [ ] Validar TypeScript, testes, produção e checkpoint

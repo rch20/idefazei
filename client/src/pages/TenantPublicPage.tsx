@@ -1,7 +1,7 @@
 import { TenantPublicShell } from "@/components/TenantPublicShell";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, CalendarDays, Clock3, MapPin, MessageCircle } from "lucide-react";
+import { ArrowRight, CalendarDays, Clock3, MapPin, MessageCircle, UsersRound } from "lucide-react";
 
 type SectionContent = { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string };
 
@@ -24,6 +24,7 @@ export default function TenantPublicPage() {
   const about = findContent(data.sections, "about");
   const schedule = findContent(data.sections, "schedule");
   const eventsSection = findContent(data.sections, "events");
+  const ministriesSection = findContent(data.sections, "ministries");
   const contact = findContent(data.sections, "contact");
   const title = hero?.title ?? `Bem-vindo à ${data.church.name}`;
   const subtitle = hero?.subtitle ?? data.church.mission ?? "Uma igreja comprometida com pessoas, fé e propósito.";
@@ -98,6 +99,26 @@ export default function TenantPublicPage() {
                     <div className="min-w-0"><span className="tenant-public-event-type">{event.type}</span><h3>{event.name}</h3>{event.description && <p>{event.description}</p>}<div className="tenant-public-event-meta"><span><Clock3 aria-hidden="true" />{startsAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>{event.location && <span><MapPin aria-hidden="true" />{event.location}</span>}</div></div>
                   </article>;
                 })}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {ministriesSection && data.publicMinistries.length > 0 && (
+          <section className="tenant-public-section tenant-public-ministries-section">
+            <div className="tenant-public-container">
+              <div className="tenant-public-prose tenant-public-events-heading">
+                <span className="tenant-public-eyebrow">Servindo em comunidade</span>
+                <h2>{ministriesSection.title ?? "Nossos ministérios"}</h2>
+                {ministriesSection.subtitle && <p>{ministriesSection.subtitle}</p>}
+              </div>
+              <div className="tenant-public-ministries-grid">
+                {data.publicMinistries.map((ministry) => (
+                  <article key={ministry.id} className="tenant-public-ministry-card">
+                    <UsersRound aria-hidden="true" />
+                    <div className="min-w-0"><span>{ministry.type}</span><h3>{ministry.name}</h3>{ministry.description && <p>{ministry.description}</p>}</div>
+                  </article>
+                ))}
               </div>
             </div>
           </section>

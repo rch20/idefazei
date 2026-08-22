@@ -409,10 +409,17 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-event-meta { display: grid; gap: .35rem; margin-top: .8rem; color: color-mix(in srgb, var(--tenant-primary) 68%, white); font-size: .78rem; }
 .tenant-public-event-meta span { min-width: 0; display: flex; gap: .35rem; align-items: center; overflow-wrap: anywhere; }
 .tenant-public-event-meta svg { flex: 0 0 auto; width: .9rem; height: .9rem; color: var(--tenant-secondary); }
+.tenant-public-ministries-section { background: #fffdf9; }
+.tenant-public-ministries-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.tenant-public-ministry-card { display: flex; min-width: 0; gap: .9rem; align-items: flex-start; border: 1px solid color-mix(in srgb, var(--tenant-primary) 15%, transparent); border-radius: 1rem; background: color-mix(in srgb, var(--tenant-secondary) 7%, #fffdf9); padding: 1rem; }
+.tenant-public-ministry-card > svg { flex: 0 0 auto; width: 1.35rem; height: 1.35rem; color: var(--tenant-secondary); }
+.tenant-public-ministry-card span { color: var(--tenant-secondary); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.tenant-public-ministry-card h3 { margin: .3rem 0; overflow-wrap: anywhere; color: var(--tenant-primary); font-family: "Playfair Display", serif; font-size: 1.25rem; line-height: 1.1; }
+.tenant-public-ministry-card p { margin: 0; overflow-wrap: anywhere; color: color-mix(in srgb, var(--tenant-primary) 68%, white); font-size: .88rem; line-height: 1.6; }
 .tenant-public-footer { padding-block: 1.5rem; background: var(--tenant-primary, #1e3a5f); color: rgb(255 255 255 / 78%); font-size: .825rem; }
 
 @media (max-width: 44rem) {
-  .tenant-public-contact-grid, .tenant-public-events-grid { grid-template-columns: 1fr; }
+  .tenant-public-contact-grid, .tenant-public-events-grid, .tenant-public-ministries-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

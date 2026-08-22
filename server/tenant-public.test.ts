@@ -115,3 +115,21 @@ describe("Eventos públicos por tenant", () => {
     expect(helper).not.toContain("eventRegistrations");
   });
 });
+
+describe("Ministérios públicos por tenant", () => {
+  const dbSource = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
+
+  it("retorna somente Ministérios ativos da igreja e não consulta participantes, funções ou escalas", () => {
+    const helperStart = dbSource.indexOf("export async function getPublicMinistriesByChurchId");
+    const helperEnd = dbSource.indexOf("export async function getEventAttendanceReport", helperStart);
+    const helper = dbSource.slice(helperStart, helperEnd);
+
+    expect(helper).toContain("eq(ministries.churchId, churchId)");
+    expect(helper).toContain("eq(ministries.active, true)");
+    expect(helper).toContain(".limit(6)");
+    expect(helper).not.toContain("leaderId:");
+    expect(helper).not.toContain("ministryMembers");
+    expect(helper).not.toContain("ministryRoleAssignments");
+    expect(helper).not.toContain("scheduleItems");
+  });
+});

@@ -572,7 +572,7 @@ const tenantPublicRouter = router({
       faviconUrl: z.string().trim().max(500).refine((value) => value.startsWith("/") || /^https:\/\//.test(value), "Informe uma URL HTTPS ou um arquivo interno.").nullable().optional(),
     }),
     sections: z.array(z.object({
-      sectionType: z.enum(["hero", "welcome", "about", "schedule", "events", "contact", "footer"]),
+      sectionType: z.enum(["hero", "welcome", "about", "schedule", "events", "ministries", "contact", "footer"]),
       enabled: z.boolean(),
       sortOrder: z.number().int().min(0).max(20),
       content: z.object({

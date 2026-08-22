@@ -327,6 +327,9 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
   const upcomingEvents = site?.status === "published"
     ? await getPublicUpcomingEventsByChurchId(church.id)
     : [];
+  const publicMinistries = site?.status === "published"
+    ? await getPublicMinistriesByChurchId(church.id)
+    : [];
 
   return {
     church: {
@@ -351,6 +354,7 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
     theme: publishedTheme,
     sections: publishedSections,
     upcomingEvents,
+    publicMinistries,
   };
 }
 
@@ -373,7 +377,7 @@ export type TenantPublicDraftInput = {
   seoTitle?: string | null;
   seoDescription?: string | null;
   theme: { primaryColor: string; secondaryColor: string; accentColor?: string | null; fontPair?: "sacred_serif"; logoUrl?: string | null; faviconUrl?: string | null };
-  sections: Array<{ sectionType: "hero" | "welcome" | "about" | "schedule" | "events" | "contact" | "footer"; enabled: boolean; sortOrder: number; content: Record<string, string> }>;
+  sections: Array<{ sectionType: "hero" | "welcome" | "about" | "schedule" | "events" | "ministries" | "contact" | "footer"; enabled: boolean; sortOrder: number; content: Record<string, string> }>;
 };
 
 const DEFAULT_PUBLIC_SECTIONS = [
@@ -381,7 +385,8 @@ const DEFAULT_PUBLIC_SECTIONS = [
   { sectionType: "about" as const, enabled: true, sortOrder: 1, content: { title: "Uma igreja para caminhar junto", body: "" } },
   { sectionType: "schedule" as const, enabled: true, sortOrder: 2, content: { title: "Horários", body: "Em breve, veja nossos dias e horários de encontro." } },
   { sectionType: "events" as const, enabled: true, sortOrder: 3, content: { title: "Próximos eventos", subtitle: "Participe do que Deus está fazendo em nossa comunidade." } },
-  { sectionType: "contact" as const, enabled: true, sortOrder: 4, content: { title: "Visite-nos", subtitle: "Estamos prontos para receber você." } },
+  { sectionType: "ministries" as const, enabled: true, sortOrder: 4, content: { title: "Nossos ministérios", subtitle: "Encontre um lugar para servir e caminhar em comunidade." } },
+  { sectionType: "contact" as const, enabled: true, sortOrder: 5, content: { title: "Visite-nos", subtitle: "Estamos prontos para receber você." } },
 ];
 
 /** Garante a fundação do site sem depender de IDs enviados pelo cliente. */
@@ -1292,6 +1297,25 @@ export async function getPublicUpcomingEventsByChurchId(churchId: number) {
     ))
     .orderBy(events.startDate)
     .limit(3);
+}
+
+/** Expõe somente a identidade institucional de Ministérios ativos da mesma igreja. */
+export async function getPublicMinistriesByChurchId(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: ministries.id,
+    name: ministries.name,
+    type: ministries.type,
+    description: ministries.description,
+  })
+    .from(ministries)
+    .where(and(
+      eq(ministries.churchId, churchId),
+      eq(ministries.active, true),
+    ))
+    .orderBy(ministries.name)
+    .limit(6);
 }
 
 export async function getEventAttendanceReport(data: { churchId: number; eventId: number }) {
