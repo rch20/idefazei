@@ -377,13 +377,13 @@ export type TenantPublicDraftInput = {
   seoTitle?: string | null;
   seoDescription?: string | null;
   theme: { primaryColor: string; secondaryColor: string; accentColor?: string | null; fontPair?: "sacred_serif"; logoUrl?: string | null; faviconUrl?: string | null };
-  sections: Array<{ sectionType: "hero" | "welcome" | "about" | "schedule" | "events" | "ministries" | "contact" | "footer"; enabled: boolean; sortOrder: number; content: Record<string, string> }>;
+  sections: Array<{ sectionType: "hero" | "welcome" | "about" | "schedule" | "events" | "ministries" | "contact" | "footer"; enabled: boolean; sortOrder: number; content: Record<string, unknown> }>;
 };
 
 const DEFAULT_PUBLIC_SECTIONS = [
   { sectionType: "hero" as const, enabled: true, sortOrder: 0, content: { title: "", subtitle: "", primaryCtaLabel: "Quero conhecer a igreja", primaryCtaHref: "/visitante" } },
   { sectionType: "about" as const, enabled: true, sortOrder: 1, content: { title: "Uma igreja para caminhar junto", body: "" } },
-  { sectionType: "schedule" as const, enabled: true, sortOrder: 2, content: { title: "Horários", body: "Em breve, veja nossos dias e horários de encontro." } },
+  { sectionType: "schedule" as const, enabled: true, sortOrder: 2, content: { title: "Horários de culto", body: "Encontre um horário para caminhar conosco.", services: [] } },
   { sectionType: "events" as const, enabled: true, sortOrder: 3, content: { title: "Próximos eventos", subtitle: "Participe do que Deus está fazendo em nossa comunidade." } },
   { sectionType: "ministries" as const, enabled: true, sortOrder: 4, content: { title: "Nossos ministérios", subtitle: "Encontre um lugar para servir e caminhar em comunidade." } },
   { sectionType: "contact" as const, enabled: true, sortOrder: 5, content: { title: "Visite-nos", subtitle: "Estamos prontos para receber você." } },

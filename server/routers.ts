@@ -581,6 +581,12 @@ const tenantPublicRouter = router({
         body: z.string().trim().max(2000).optional(),
         primaryCtaLabel: z.string().trim().max(48).optional(),
         primaryCtaHref: z.string().trim().max(280).refine((value) => value.startsWith("/") || /^https:\/\//.test(value), "Informe um destino interno ou uma URL HTTPS.").optional(),
+        services: z.array(z.object({
+          day: z.string().trim().min(2).max(32),
+          time: z.string().trim().min(2).max(24),
+          label: z.string().trim().max(80).optional(),
+          location: z.string().trim().max(160).optional(),
+        }).strict()).max(7).optional(),
       }).strict(),
     })).min(1).max(7),
   })).mutation(async ({ ctx, input }) => {

@@ -864,3 +864,11 @@
 - [x] Adicionar bloco Ministérios ativável e reordenável ao Template Ministerial Base e ao painel Página Pública
 - [x] Cobrir isolamento, estado vazio, exposição mínima e estabilidade em múltiplos breakpoints
 - [x] Validar TypeScript, testes, produção e checkpoint
+
+## FASE 89 – Bloco Público de Horários de Culto
+
+- [x] Mapear a informação institucional de horários e seus limites de publicação por igreja
+- [x] Criar contrato seguro para horários públicos derivado do tenant e persistido somente no site da igreja
+- [x] Adicionar edição de horários e bloco ativável/reordenável à Página Pública
+- [x] Cobrir isolamento, validação de dados, estado vazio e estabilidade em múltiplos breakpoints
+- [ ] Validar TypeScript, testes, produção e checkpoint

@@ -133,3 +133,20 @@ describe("Ministérios públicos por tenant", () => {
     expect(helper).not.toContain("scheduleItems");
   });
 });
+
+describe("Horários públicos por tenant", () => {
+  const routerSource = readFileSync(resolve(process.cwd(), "server/routers.ts"), "utf8");
+
+  it("aceita somente até sete horários estruturados no rascunho da própria igreja", () => {
+    const routerStart = routerSource.indexOf("const tenantPublicRouter");
+    const routerEnd = routerSource.indexOf("const peopleRouter", routerStart);
+    const router = routerSource.slice(routerStart, routerEnd);
+
+    expect(router).toContain("services: z.array(z.object({");
+    expect(router).toContain("day: z.string().trim().min(2).max(32)");
+    expect(router).toContain("time: z.string().trim().min(2).max(24)");
+    expect(router).toContain("}).strict()).max(7).optional()");
+    expect(router).toContain("requireChurchPublicSitePublisher(ctx.user.id, ctx.user.churchId)");
+    expect(router).not.toContain("churchId: z.number()");
+  });
+});

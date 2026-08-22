@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { ArrowRight, CalendarDays, Clock3, MapPin, MessageCircle, UsersRound } from "lucide-react";
 
-type SectionContent = { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string };
+type PublicService = { day?: string; time?: string; label?: string; location?: string };
+type SectionContent = { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string; services?: PublicService[] };
 
 function findContent(sections: Array<{ sectionType: string; content: unknown }>, type: string): SectionContent | null {
   const section = sections.find((item) => item.sectionType === type);
@@ -30,6 +31,7 @@ export default function TenantPublicPage() {
   const subtitle = hero?.subtitle ?? data.church.mission ?? "Uma igreja comprometida com pessoas, fé e propósito.";
   const primaryHref = hero?.primaryCtaHref ?? "/visitante";
   const primaryLabel = hero?.primaryCtaLabel ?? "Quero conhecer a igreja";
+  const publicServices = (schedule?.services ?? []).filter((service) => service.day && service.time);
 
   return (
     <TenantPublicShell brand={{
@@ -73,12 +75,11 @@ export default function TenantPublicPage() {
           </section>
         )}
 
-        {schedule?.body && (
+        {schedule && (schedule.body || publicServices.length > 0) && (
           <section className="tenant-public-section tenant-public-schedule-section">
-            <div className="tenant-public-container tenant-public-prose">
-              <span className="tenant-public-eyebrow">Encontros</span>
-              <h2>{schedule.title ?? "Horários"}</h2>
-              <p>{schedule.body}</p>
+            <div className="tenant-public-container">
+              <div className="tenant-public-prose tenant-public-events-heading"><span className="tenant-public-eyebrow">Encontros</span><h2>{schedule.title ?? "Horários de culto"}</h2>{schedule.body && <p>{schedule.body}</p>}</div>
+              {publicServices.length > 0 && <div className="tenant-public-services-grid">{publicServices.map((service, index) => <article className="tenant-public-service-card" key={`${service.day}-${service.time}-${index}`}><CalendarDays aria-hidden="true" /><div className="min-w-0"><span>{service.day}</span><h3>{service.label || "Encontro"}</h3><p><Clock3 aria-hidden="true" />{service.time}</p>{service.location && <p><MapPin aria-hidden="true" />{service.location}</p>}</div></article>)}</div>}
             </div>
           </section>
         )}
