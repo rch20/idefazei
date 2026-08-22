@@ -106,7 +106,7 @@ export const tenantPageSections = mysqlTable("tenant_page_sections", {
   id: int("id").autoincrement().primaryKey(),
   churchId: int("churchId").notNull(),
   siteId: int("siteId").notNull(),
-  sectionType: mysqlEnum("sectionType", ["hero", "welcome", "about", "schedule", "events", "ministries", "contact", "footer"]).notNull(),
+  sectionType: mysqlEnum("sectionType", ["hero", "welcome", "about", "schedule", "events", "ministries", "gallery", "contact", "footer"]).notNull(),
   enabled: boolean("enabled").notNull().default(true),
   sortOrder: int("sortOrder").notNull().default(0),
   content: json("content").notNull(),

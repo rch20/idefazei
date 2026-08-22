@@ -425,8 +425,14 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-service-card p svg { flex: 0 0 auto; width: .85rem; height: .85rem; color: var(--tenant-secondary); }
 .tenant-public-footer { padding-block: 1.5rem; background: var(--tenant-primary, #1e3a5f); color: rgb(255 255 255 / 78%); font-size: .825rem; }
 
+.tenant-public-gallery-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(.75rem, 2vw, 1.25rem); }
+.tenant-public-gallery-item { min-width: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--tenant-secondary) 25%, transparent); border-radius: 1rem; background: color-mix(in srgb, var(--tenant-secondary) 7%, #fffdf9); }
+.tenant-public-gallery-item img { display: block; width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: color-mix(in srgb, var(--tenant-primary) 10%, #fffdf9); }
+.tenant-public-gallery-item figcaption { padding: .7rem .8rem; color: color-mix(in srgb, var(--tenant-primary) 80%, #1f2937); font-size: .875rem; line-height: 1.4; overflow-wrap: anywhere; }
+
 @media (max-width: 44rem) {
   .tenant-public-contact-grid, .tenant-public-events-grid, .tenant-public-ministries-grid, .tenant-public-services-grid { grid-template-columns: 1fr; }
+  .tenant-public-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (prefers-reduced-motion: reduce) {

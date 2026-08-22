@@ -41,4 +41,11 @@ describe("Template Ministerial Base — estabilidade global", () => {
     expect(css).toContain(".tenant-public-service-card { display: flex; min-width: 0;");
     expect(css).toContain(".tenant-public-contact-grid, .tenant-public-events-grid, .tenant-public-ministries-grid, .tenant-public-services-grid { grid-template-columns: 1fr; }");
   });
+
+  it("mantém a galeria contida, com imagens proporcionais e duas colunas no mobile", () => {
+    expect(css).toContain(".tenant-public-gallery-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));");
+    expect(css).toContain(".tenant-public-gallery-item { min-width: 0; overflow: hidden;");
+    expect(css).toContain(".tenant-public-gallery-item img { display: block; width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: cover;");
+    expect(css).toContain(".tenant-public-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }");
+  });
 });

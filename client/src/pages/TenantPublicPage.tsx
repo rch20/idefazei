@@ -1,10 +1,11 @@
 import { TenantPublicShell } from "@/components/TenantPublicShell";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, CalendarDays, Clock3, MapPin, MessageCircle, UsersRound } from "lucide-react";
+import { ArrowRight, CalendarDays, Clock3, Images, MapPin, MessageCircle, UsersRound } from "lucide-react";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
-type SectionContent = { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string; services?: PublicService[] };
+type PublicGalleryItem = { url?: string; alt?: string; caption?: string };
+type SectionContent = { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string; services?: PublicService[]; items?: PublicGalleryItem[] };
 
 function findContent(sections: Array<{ sectionType: string; content: unknown }>, type: string): SectionContent | null {
   const section = sections.find((item) => item.sectionType === type);
@@ -26,12 +27,14 @@ export default function TenantPublicPage() {
   const schedule = findContent(data.sections, "schedule");
   const eventsSection = findContent(data.sections, "events");
   const ministriesSection = findContent(data.sections, "ministries");
+  const gallerySection = findContent(data.sections, "gallery");
   const contact = findContent(data.sections, "contact");
   const title = hero?.title ?? `Bem-vindo à ${data.church.name}`;
   const subtitle = hero?.subtitle ?? data.church.mission ?? "Uma igreja comprometida com pessoas, fé e propósito.";
   const primaryHref = hero?.primaryCtaHref ?? "/visitante";
   const primaryLabel = hero?.primaryCtaLabel ?? "Quero conhecer a igreja";
   const publicServices = (schedule?.services ?? []).filter((service) => service.day && service.time);
+  const publicGalleryItems = (gallerySection?.items ?? []).filter((item) => item.url && item.alt);
 
   return (
     <TenantPublicShell brand={{
@@ -121,6 +124,15 @@ export default function TenantPublicPage() {
                   </article>
                 ))}
               </div>
+            </div>
+          </section>
+        )}
+
+        {gallerySection && publicGalleryItems.length > 0 && (
+          <section className="tenant-public-section tenant-public-gallery-section">
+            <div className="tenant-public-container">
+              <div className="tenant-public-prose tenant-public-events-heading"><span className="tenant-public-eyebrow">Nossa comunidade</span><h2>{gallerySection.title ?? "Nossa comunidade"}</h2>{gallerySection.subtitle && <p>{gallerySection.subtitle}</p>}</div>
+              <div className="tenant-public-gallery-grid">{publicGalleryItems.map((item, index) => <figure key={`${item.url}-${index}`} className="tenant-public-gallery-item"><img src={item.url} alt={item.alt ?? "Imagem da comunidade"} loading="lazy" decoding="async" />{item.caption && <figcaption>{item.caption}</figcaption>}</figure>)}</div>
             </div>
           </section>
         )}

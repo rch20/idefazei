@@ -206,6 +206,54 @@ async function startServer() {
     req.pipe(bb);
   });
 
+  // Galeria pública: somente Pastores podem enviar mídia para a página publicada
+  // da própria igreja. O tenant vem do JWT, nunca do formulário ou da URL.
+  app.post("/api/tenant-public-media", async (req, res) => {
+    const authorization = req.headers.authorization;
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+    const payload = token ? await verifyToken(token) : null;
+    if (!payload || payload.type !== "church") return res.status(401).json({ error: "Authentication required" });
+
+    const churchUser = await getActiveChurchUserById(Number(payload.sub));
+    const publisherRoles = new Set(["pastor_presidente", "pastor_local"]);
+    if (!churchUser || churchUser.churchId !== payload.churchId || churchUser.role !== payload.role || !publisherRoles.has(churchUser.role)) {
+      return res.status(403).json({ error: "Only church pastors can upload public gallery media" });
+    }
+    if (!(req.headers["content-type"] ?? "").includes("multipart/form-data")) return res.status(400).json({ error: "Expected multipart/form-data" });
+
+    const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
+    const extensions: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+    const bb = Busboy({ headers: req.headers, limits: { fileSize: 4 * 1024 * 1024, files: 1 } });
+    let fileBuffer: Buffer | null = null;
+    let mimeType = "image/png";
+    let invalidMimeType = false;
+    let limitReached = false;
+    bb.on("file", (_field, stream, info) => {
+      mimeType = info.mimeType || "image/png";
+      if (!allowedMimeTypes.has(mimeType)) { invalidMimeType = true; stream.resume(); return; }
+      const chunks: Buffer[] = [];
+      stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+      stream.on("limit", () => { limitReached = true; stream.resume(); });
+      stream.on("end", () => { if (!limitReached) fileBuffer = Buffer.concat(chunks); });
+    });
+    bb.on("finish", async () => {
+      if (limitReached) return res.status(413).json({ error: "File too large (max 4MB)" });
+      if (invalidMimeType) return res.status(415).json({ error: "Only PNG, JPEG and WebP images are allowed" });
+      if (!fileBuffer) return res.status(400).json({ error: "No file received" });
+      try {
+        const ext = extensions[mimeType] ?? "png";
+        const key = `churches/${churchUser.churchId}/public/gallery/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+        const { key: storedKey, url } = await storagePut(key, fileBuffer, mimeType);
+        return res.json({ url, key: storedKey });
+      } catch (error) {
+        console.error("[Tenant public media] Upload failed:", error);
+        return res.status(500).json({ error: "Upload failed" });
+      }
+    });
+    bb.on("error", (error) => { console.error("[Tenant public media] Upload error:", error); res.status(500).json({ error: "Upload error" }); });
+    req.pipe(bb);
+  });
+
   // Comprovantes financeiros: apenas perfis de Tesouraria no tenant autenticado.
   app.post("/api/treasury/reconciliation-attachments", async (req, res) => {
     const authorization = req.headers.authorization;

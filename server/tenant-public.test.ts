@@ -150,3 +150,36 @@ describe("Horários públicos por tenant", () => {
     expect(router).not.toContain("churchId: z.number()");
   });
 });
+
+describe("Galeria pública por tenant", () => {
+  const dbSource = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
+  const routerSource = readFileSync(resolve(process.cwd(), "server/routers.ts"), "utf8");
+  const indexSource = readFileSync(resolve(process.cwd(), "server/_core/index.ts"), "utf8");
+
+  it("aceita no máximo oito mídias, exige texto alternativo e confirma a propriedade pelo prefixo da igreja", () => {
+    const saveStart = dbSource.indexOf("export async function saveTenantPublicDraftByChurchId");
+    const saveEnd = dbSource.indexOf("export async function publishTenantPublicSiteByChurchId", saveStart);
+    const helper = dbSource.slice(saveStart, saveEnd);
+
+    expect(helper).toContain("items.length > 8");
+    expect(helper).toContain("/manus-storage/churches/${churchId}/public/");
+    expect(helper).toContain("media.alt.trim().length < 3");
+    expect(helper).not.toContain("input.churchId");
+  });
+
+  it("mantém o tenant fora do contrato público de escrita e restringe uploads a pastores", () => {
+    const routerStart = routerSource.indexOf("const tenantPublicRouter");
+    const routerEnd = routerSource.indexOf("const peopleRouter", routerStart);
+    const router = routerSource.slice(routerStart, routerEnd);
+    const uploadStart = indexSource.indexOf('app.post("/api/tenant-public-media"');
+    const uploadEnd = indexSource.indexOf("// Comprovantes financeiros", uploadStart);
+    const upload = indexSource.slice(uploadStart, uploadEnd);
+
+    expect(router).toContain("items: z.array(z.object({");
+    expect(router).toContain("}).strict()).max(8).optional()");
+    expect(router).not.toContain("churchId: z.number()");
+    expect(upload).toContain('const publisherRoles = new Set(["pastor_presidente", "pastor_local"])');
+    expect(upload).toContain("churches/${churchUser.churchId}/public/gallery/");
+    expect(upload).toContain("fileSize: 4 * 1024 * 1024");
+  });
+});

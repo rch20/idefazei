@@ -377,7 +377,7 @@ export type TenantPublicDraftInput = {
   seoTitle?: string | null;
   seoDescription?: string | null;
   theme: { primaryColor: string; secondaryColor: string; accentColor?: string | null; fontPair?: "sacred_serif"; logoUrl?: string | null; faviconUrl?: string | null };
-  sections: Array<{ sectionType: "hero" | "welcome" | "about" | "schedule" | "events" | "ministries" | "contact" | "footer"; enabled: boolean; sortOrder: number; content: Record<string, unknown> }>;
+  sections: Array<{ sectionType: "hero" | "welcome" | "about" | "schedule" | "events" | "ministries" | "gallery" | "contact" | "footer"; enabled: boolean; sortOrder: number; content: Record<string, unknown> }>;
 };
 
 const DEFAULT_PUBLIC_SECTIONS = [
@@ -418,6 +418,19 @@ export async function saveTenantPublicDraftByChurchId(churchId: number, input: T
   if (!db) return null;
   const site = await ensureTenantPublicSiteByChurchId(churchId);
   if (!site) return null;
+  for (const section of input.sections) {
+    if (section.sectionType !== "gallery") continue;
+    const items = Array.isArray(section.content.items) ? section.content.items : [];
+    if (items.length > 8) throw new Error("A galeria permite no máximo oito imagens.");
+    for (const item of items) {
+      if (!item || typeof item !== "object") throw new Error("Imagem de galeria inválida.");
+      const media = item as { url?: unknown; alt?: unknown; caption?: unknown };
+      const ownedPrefix = `/manus-storage/churches/${churchId}/public/`;
+      if (typeof media.url !== "string" || !media.url.startsWith(ownedPrefix)) throw new Error("A imagem não pertence a esta igreja.");
+      if (typeof media.alt !== "string" || media.alt.trim().length < 3 || media.alt.length > 180) throw new Error("Informe um texto alternativo entre 3 e 180 caracteres.");
+      if (media.caption !== undefined && (typeof media.caption !== "string" || media.caption.length > 180)) throw new Error("A legenda da imagem é inválida.");
+    }
+  }
   await db.transaction(async (tx) => {
     await tx.update(tenantPublicSites).set({ seoTitle: input.seoTitle ?? null, seoDescription: input.seoDescription ?? null }).where(and(eq(tenantPublicSites.id, site.id), eq(tenantPublicSites.churchId, churchId)));
     await tx.update(tenantThemes).set(input.theme).where(eq(tenantThemes.churchId, churchId));

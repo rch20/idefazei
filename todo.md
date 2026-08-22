@@ -872,3 +872,12 @@
 - [x] Adicionar edição de horários e bloco ativável/reordenável à Página Pública
 - [x] Cobrir isolamento, validação de dados, estado vazio e estabilidade em múltiplos breakpoints
 - [x] Validar TypeScript, testes, produção e checkpoint
+
+## FASE 90 – Galeria de Mídia por Igreja
+
+- [x] Mapear o armazenamento, upload atual, schema público e limites de imagens por tenant
+- [x] Criar persistência e upload protegidos para mídias públicas vinculadas somente à igreja autenticada
+- [x] Adicionar galeria ativável e reordenável ao painel Página Pública e ao Template Ministerial Base
+- [x] Aplicar textos alternativos, limites de formato/tamanho, prevenção de escrita cruzada e layout sem overflow
+- [x] Cobrir formatos, autorização, isolamento, estado vazio e estabilidade em múltiplos breakpoints
+- [ ] Validar TypeScript, testes, produção e checkpoint

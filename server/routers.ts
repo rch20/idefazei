@@ -572,7 +572,7 @@ const tenantPublicRouter = router({
       faviconUrl: z.string().trim().max(500).refine((value) => value.startsWith("/") || /^https:\/\//.test(value), "Informe uma URL HTTPS ou um arquivo interno.").nullable().optional(),
     }),
     sections: z.array(z.object({
-      sectionType: z.enum(["hero", "welcome", "about", "schedule", "events", "ministries", "contact", "footer"]),
+      sectionType: z.enum(["hero", "welcome", "about", "schedule", "events", "ministries", "gallery", "contact", "footer"]),
       enabled: z.boolean(),
       sortOrder: z.number().int().min(0).max(20),
       content: z.object({
@@ -587,6 +587,11 @@ const tenantPublicRouter = router({
           label: z.string().trim().max(80).optional(),
           location: z.string().trim().max(160).optional(),
         }).strict()).max(7).optional(),
+        items: z.array(z.object({
+          url: z.string().startsWith("/manus-storage/churches/"),
+          alt: z.string().trim().min(3).max(180),
+          caption: z.string().trim().max(180).optional(),
+        }).strict()).max(8).optional(),
       }).strict(),
     })).min(1).max(7),
   })).mutation(async ({ ctx, input }) => {
