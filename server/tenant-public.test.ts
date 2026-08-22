@@ -61,6 +61,30 @@ describe("tenantPublic.current", () => {
   });
 });
 
+describe("Pedido de oração público por tenant", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("aceita pedido somente quando o slug enviado corresponde ao host resolvido", async () => {
+    vi.spyOn(db, "getChurchBySlug").mockResolvedValue({ id: 21, slug: "igrejaa", active: true } as never);
+    const createLead = vi.spyOn(db, "createVisitorLead").mockResolvedValue({ id: 51 } as never);
+    const caller = appRouter.createCaller(publicContext("igrejaa", 21));
+
+    await caller.visitor.submit({ churchSlug: "igrejaa", name: "Visitante de teste", type: "pedido_oracao", message: "Ore por mim" });
+
+    expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ churchId: 21, churchSlug: "igrejaa", type: "pedido_oracao" }));
+  });
+
+  it("bloqueia tentativa de enviar pedido para outra igreja pelo portal atual", async () => {
+    const getChurch = vi.spyOn(db, "getChurchBySlug");
+    const createLead = vi.spyOn(db, "createVisitorLead");
+    const caller = appRouter.createCaller(publicContext("igrejaa", 21));
+
+    await expect(caller.visitor.submit({ churchSlug: "igrejab", name: "Visitante de teste", type: "pedido_oracao" })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(getChurch).not.toHaveBeenCalled();
+    expect(createLead).not.toHaveBeenCalled();
+  });
+});
+
 describe("tenantPublic administração", () => {
   afterEach(() => vi.restoreAllMocks());
 

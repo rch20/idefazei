@@ -48,4 +48,12 @@ describe("Template Ministerial Base — estabilidade global", () => {
     expect(css).toContain(".tenant-public-gallery-item img { display: block; width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: cover;");
     expect(css).toContain(".tenant-public-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }");
   });
+
+  it("oferece uma ação pública direta de Pedido de Oração no subdomínio da igreja", () => {
+    const page = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
+    const visitorPortal = readFileSync(resolve(process.cwd(), "client/src/pages/PortalVisitante.tsx"), "utf8");
+    expect(page).toContain('href="/visitante?tipo=pedido_oracao"');
+    expect(visitorPortal).toContain("requestedType");
+    expect(visitorPortal).toContain("churchSlug, email: data.email || undefined");
+  });
 });

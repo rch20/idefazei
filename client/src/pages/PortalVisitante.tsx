@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -33,6 +33,7 @@ export default function PortalVisitante() {
   const [submitted, setSubmitted] = useState(false);
   const [selectedType, setSelectedType] = useState<string>("pedido_oracao");
   const churchSlug = useChurchSlug();
+  const tenantPublic = trpc.tenantPublic.current.useQuery();
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<VisitorData>({
     resolver: zodResolver(visitorSchema),
@@ -48,8 +49,20 @@ export default function PortalVisitante() {
     },
   });
 
+  useEffect(() => {
+    const requestedType = new URLSearchParams(window.location.search).get("tipo");
+    if (requestedType && REQUEST_TYPES.some((item) => item.value === requestedType)) {
+      setSelectedType(requestedType);
+      setValue("type", requestedType as VisitorData["type"]);
+    }
+  }, [setValue]);
+
   const onSubmit = (data: VisitorData) => {
-    createLeadMutation.mutate({ ...data, churchSlug: churchSlug ?? "demo", email: data.email || undefined });
+    if (!churchSlug) {
+      toast.error("Abra o portal pelo subdomínio da igreja para enviar sua solicitação.");
+      return;
+    }
+    createLeadMutation.mutate({ ...data, churchSlug, email: data.email || undefined });
   };
 
   if (submitted) {
@@ -92,7 +105,7 @@ export default function PortalVisitante() {
               <span className="text-[#c9a84c] font-bold">✦</span>
             </div>
             <div>
-              <p className="font-bold text-[#1e3a5f] text-base leading-tight">Igreja Viver</p>
+              <p className="font-bold text-[#1e3a5f] text-base leading-tight">{tenantPublic.data?.church.name ?? "Igreja"}</p>
               <p className="text-[#c9a84c] text-[10px] uppercase tracking-widest">Portal do Visitante</p>
             </div>
           </div>

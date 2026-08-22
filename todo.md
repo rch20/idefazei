@@ -881,3 +881,10 @@
 - [x] Aplicar textos alternativos, limites de formato/tamanho, prevenção de escrita cruzada e layout sem overflow
 - [x] Cobrir formatos, autorização, isolamento, estado vazio e estabilidade em múltiplos breakpoints
 - [x] Validar TypeScript, testes, produção e checkpoint
+
+## FASE 91 – Pedido de Oração Público por Tenant
+
+- [x] Mapear o botão, rota, formulário e envio de pedido de oração na página pública
+- [x] Validar churchId derivado do subdomínio, persistência e leitura pela liderança da própria igreja
+- [x] Corrigir navegação, formulário ou feedback se houver alguma lacuna comprovada
+- [ ] Testar o fluxo completo e registrar a confirmação operacional

@@ -1,7 +1,7 @@
 import { TenantPublicShell } from "@/components/TenantPublicShell";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, CalendarDays, Clock3, Images, MapPin, MessageCircle, UsersRound } from "lucide-react";
+import { ArrowRight, CalendarDays, Clock3, HandHeart, Images, MapPin, MessageCircle, UsersRound } from "lucide-react";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type PublicGalleryItem = { url?: string; alt?: string; caption?: string };
@@ -141,6 +141,7 @@ export default function TenantPublicPage() {
           <div className="tenant-public-container tenant-public-contact-grid">
             {data.church.address && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.church.address)}`} className="tenant-public-contact-card"><MapPin aria-hidden="true" /><span><strong>Onde estamos</strong>{data.church.address}</span></a>}
             {data.church.whatsapp && <a href={`https://wa.me/${data.church.whatsapp.replace(/\D/g, "")}`} className="tenant-public-contact-card"><MessageCircle aria-hidden="true" /><span><strong>Fale conosco</strong>{contact?.subtitle ?? "Envie uma mensagem"}</span></a>}
+            <a href="/visitante?tipo=pedido_oracao" className="tenant-public-contact-card"><HandHeart aria-hidden="true" /><span><strong>Pedido de oração</strong>Compartilhe seu pedido com nossa equipe.</span></a>
             <a href="/visitante" className="tenant-public-contact-card"><CalendarDays aria-hidden="true" /><span><strong>{contact?.title ?? "Visite-nos"}</strong>{contact?.subtitle ?? "Estamos prontos para receber você."}</span></a>
           </div>
         </section>

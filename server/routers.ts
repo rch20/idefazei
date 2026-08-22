@@ -2461,7 +2461,10 @@ const visitorRouter = router({
       type: z.enum(["pedido_oracao","visita_pastoral","primeira_visita","interesse_participar"]),
       message: z.string().optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.tenantSlug || ctx.tenantSlug !== input.churchSlug) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Envie sua solicitação pelo portal da igreja correta." });
+      }
       const church = await getChurchBySlug(input.churchSlug);
       if (!church?.active) throw new TRPCError({ code: "NOT_FOUND", message: "Igreja não encontrada" });
       return createVisitorLead({ ...input, churchId: church.id });
