@@ -72,15 +72,15 @@ export default function Oracao() {
                 const contactPhone = formatContactPhone(r.visitorPhone);
                 const whatsappLink = getWhatsAppLink(r.visitorPhone, r.visitorName ?? "");
                 return (
-                  <div key={r.id} className="rounded-xl border border-rose-100 bg-rose-50/50 p-3">
+                  <div key={r.id} className="rounded-xl border border-border/70 bg-background/60 p-3 transition-colors hover:bg-muted/20">
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-sm text-foreground">{r.content}</p>
                       {r.isPrivate && <Lock className="mt-0.5 h-3 w-3 flex-shrink-0 text-muted-foreground" />}
                     </div>
-                    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-rose-100/80 bg-white/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-border/60 bg-muted/20 p-2.5 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0 space-y-1">
                         <p className="flex items-center gap-2 text-sm font-medium text-navy">
-                          <UserRound className="h-4 w-4 shrink-0 text-rose-500" />
+                          <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" />
                           <span className="truncate">{r.visitorName || "Visitante sem nome"}</span>
                         </p>
                         {contactPhone ? (
@@ -98,10 +98,11 @@ export default function Oracao() {
                           target="_blank"
                           rel="noreferrer"
                           aria-label={`Conversar com ${r.visitorName || "o visitante"} pelo WhatsApp`}
-                          className="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-[#25D366] px-3 text-sm font-medium text-white transition-colors hover:bg-[#1fb65a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/60 focus-visible:ring-offset-2"
+                          title="Conversar no WhatsApp"
+                          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#168b45] transition-colors hover:bg-[#25D366]/10 hover:text-[#12763a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/60 focus-visible:ring-offset-2"
                         >
-                          <MessageCircle className="mr-2 h-4 w-4" />
-                          Conversar no WhatsApp
+                          <MessageCircle className="h-5 w-5" />
+                          <span className="sr-only">Conversar no WhatsApp</span>
                         </a>
                       )}
                     </div>
