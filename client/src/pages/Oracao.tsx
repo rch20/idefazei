@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { HandHeart, Lock, Plus } from "lucide-react";
+import { getWhatsAppLink, formatContactPhone } from "@/lib/whatsapp";
+import { HandHeart, Lock, MessageCircle, Phone, Plus, UserRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -67,17 +68,46 @@ export default function Oracao() {
             <p className="text-sm text-muted-foreground text-center py-8">Nenhum pedido registrado</p>
           ) : (
             <div className="space-y-3">
-              {pedidos.map((r) => (
-                <div key={r.id} className="p-3 rounded-xl bg-rose-50/50 border border-rose-100">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm text-foreground">{r.content}</p>
-                    {r.isPrivate && <Lock className="w-3 h-3 text-muted-foreground flex-shrink-0 mt-0.5" />}
+              {pedidos.map((r) => {
+                const contactPhone = formatContactPhone(r.visitorPhone);
+                const whatsappLink = getWhatsAppLink(r.visitorPhone, r.visitorName ?? "");
+                return (
+                  <div key={r.id} className="rounded-xl border border-rose-100 bg-rose-50/50 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm text-foreground">{r.content}</p>
+                      {r.isPrivate && <Lock className="mt-0.5 h-3 w-3 flex-shrink-0 text-muted-foreground" />}
+                    </div>
+                    <div className="mt-3 flex flex-col gap-3 rounded-lg border border-rose-100/80 bg-white/60 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 space-y-1">
+                        <p className="flex items-center gap-2 text-sm font-medium text-navy">
+                          <UserRound className="h-4 w-4 shrink-0 text-rose-500" />
+                          <span className="truncate">{r.visitorName || "Visitante sem nome"}</span>
+                        </p>
+                        {contactPhone ? (
+                          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <Phone className="h-3.5 w-3.5 shrink-0" />
+                            {contactPhone}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Telefone não informado</p>
+                        )}
+                      </div>
+                      {whatsappLink && (
+                        <a
+                          href={whatsappLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`Conversar com ${r.visitorName || "o visitante"} pelo WhatsApp`}
+                          className="inline-flex h-9 shrink-0 items-center justify-center rounded-md bg-[#25D366] px-3 text-sm font-medium text-white transition-colors hover:bg-[#1fb65a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25D366]/60 focus-visible:ring-offset-2"
+                        >
+                          <MessageCircle className="mr-2 h-4 w-4" />
+                          Conversar no WhatsApp
+                        </a>
+                      )}
+                    </div>
                   </div>
-                  {r.visitorName && (
-                    <p className="text-xs text-muted-foreground mt-1">— {r.visitorName}</p>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
