@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Loader2, Eye, EyeOff } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { clearChurchSession } from "@/hooks/useChurchAuth";
@@ -107,15 +107,15 @@ export default function LoginIgreja() {
 
       {/* Header */}
       <header className="relative z-10 py-5 px-6 flex items-center justify-between">
-        <a href="/" className="flex items-center gap-2 min-w-0" aria-label={isTenantLogin ? `Página inicial da ${tenantName}` : "Página inicial da Ide Fazei"}>
-          <div className="tenant-login-brand-mark tenant-login-brand-mark--header">
-            {logoUrl ? <img src={logoUrl} alt={`Logo ${tenantName}`} /> : <span aria-hidden="true">{isTenantLogin ? logoLetters : "✦"}</span>}
-          </div>
-          <div className="min-w-0">
-            <span className="tenant-login-brand-name">{tenantName}</span>
-            <span className="tenant-login-brand-kicker">{isTenantLogin ? "Acesso da igreja" : "Plataforma Ministerial"}</span>
-          </div>
-        </a>
+          <Link href="/" className="flex min-w-0 items-center gap-2" aria-label={isTenantLogin ? `Página inicial da ${tenantName}` : "Página inicial da Ide Fazei"}>
+            <div className="tenant-login-brand-mark tenant-login-brand-mark--header">
+              {logoUrl ? <img src={logoUrl} alt={`Logo ${tenantName}`} /> : <span aria-hidden="true">{isTenantLogin ? logoLetters : "✦"}</span>}
+            </div>
+            <div className="min-w-0">
+              <span className="tenant-login-brand-name">{tenantName}</span>
+              <span className="tenant-login-brand-kicker">{isTenantLogin ? "Acesso da igreja" : "Plataforma Ministerial"}</span>
+            </div>
+          </Link>
         {isCommercialDomain && (
           <a href="/cadastro-igreja" className="text-sm text-[#1e3a5f]/60 hover:text-[#1e3a5f] transition-colors">
             Cadastrar nova igreja →
@@ -133,6 +133,13 @@ export default function LoginIgreja() {
             </div>
             <h1 className="font-serif text-3xl font-bold text-[var(--tenant-login-primary)] mb-1">{isTenantLogin ? `Bem-vindo à ${tenantName}` : "Acesso à Plataforma"}</h1>
             <p className="text-[var(--tenant-login-primary)]/50 text-sm">{isTenantLogin ? "Entre para acessar o painel da sua igreja" : "Entre com seu email e senha cadastrados"}</p>
+          </div>
+
+          <div className="mb-4 flex justify-center">
+            <Link href="/" className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-[var(--tenant-login-primary)]/65 transition-colors hover:bg-white/60 hover:text-[var(--tenant-login-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--tenant-login-accent)]/60 focus-visible:ring-offset-2">
+              <ArrowLeft className="h-4 w-4" />
+              Voltar para a página inicial
+            </Link>
           </div>
 
           <Card className="bg-white/80 backdrop-blur-sm border-[color:color-mix(in_srgb,var(--tenant-login-accent)_25%,transparent)] shadow-xl">

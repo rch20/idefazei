@@ -10,6 +10,13 @@ describe("LoginIgreja", () => {
     expect(source).toContain('href="/cadastro-igreja"');
   });
 
+  it("oferece retorno explícito à página inicial pública", () => {
+    const source = readFileSync(resolve(process.cwd(), "client/src/pages/LoginIgreja.tsx"), "utf8");
+    expect(source).toContain('Link href="/"');
+    expect(source).toContain("Voltar para a página inicial");
+    expect(source).toContain('aria-label={isTenantLogin ? `Página inicial da ${tenantName}`');
+  });
+
   it("carrega a identidade pública somente quando o login pertence a um tenant", () => {
     const source = readFileSync(resolve(process.cwd(), "client/src/pages/LoginIgreja.tsx"), "utf8");
     expect(source).toContain("const { data: tenantPublic } = trpc.tenantPublic.current.useQuery");
