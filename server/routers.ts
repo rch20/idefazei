@@ -2512,6 +2512,18 @@ const visitorRouter = router({
       }
       const church = await getChurchBySlug(input.churchSlug);
       if (!church?.active) throw new TRPCError({ code: "NOT_FOUND", message: "Igreja não encontrada" });
+
+      if (input.type === "pedido_oracao") {
+        return createPrayerRequest({
+          churchId: church.id,
+          visitorName: input.name,
+          visitorPhone: input.phone,
+          type: "pedido",
+          content: input.message?.trim() || "Pedido de oração enviado pelo Portal do Visitante.",
+          isPrivate: false,
+        });
+      }
+
       return createVisitorLead({ ...input, churchId: church.id });
     }),
 

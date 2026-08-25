@@ -64,14 +64,35 @@ describe("tenantPublic.current", () => {
 describe("Pedido de oração público por tenant", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("aceita pedido somente quando o slug enviado corresponde ao host resolvido", async () => {
+  it("encaminha pedido de oração para a caixa administrativa de oração da igreja", async () => {
     vi.spyOn(db, "getChurchBySlug").mockResolvedValue({ id: 21, slug: "igrejaa", active: true } as never);
+    const createPrayer = vi.spyOn(db, "createPrayerRequest").mockResolvedValue({ id: 52 } as never);
     const createLead = vi.spyOn(db, "createVisitorLead").mockResolvedValue({ id: 51 } as never);
     const caller = appRouter.createCaller(publicContext("igrejaa", 21));
 
-    await caller.visitor.submit({ churchSlug: "igrejaa", name: "Visitante de teste", type: "pedido_oracao", message: "Ore por mim" });
+    await caller.visitor.submit({ churchSlug: "igrejaa", name: "Visitante de teste", phone: "11999999999", type: "pedido_oracao", message: "Ore por mim" });
 
-    expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ churchId: 21, churchSlug: "igrejaa", type: "pedido_oracao" }));
+    expect(createPrayer).toHaveBeenCalledWith({
+      churchId: 21,
+      visitorName: "Visitante de teste",
+      visitorPhone: "11999999999",
+      type: "pedido",
+      content: "Ore por mim",
+      isPrivate: false,
+    });
+    expect(createLead).not.toHaveBeenCalled();
+  });
+
+  it("mantém outras solicitações do portal no fluxo de leads", async () => {
+    vi.spyOn(db, "getChurchBySlug").mockResolvedValue({ id: 21, slug: "igrejaa", active: true } as never);
+    const createLead = vi.spyOn(db, "createVisitorLead").mockResolvedValue({ id: 51 } as never);
+    const createPrayer = vi.spyOn(db, "createPrayerRequest").mockResolvedValue({ id: 52 } as never);
+    const caller = appRouter.createCaller(publicContext("igrejaa", 21));
+
+    await caller.visitor.submit({ churchSlug: "igrejaa", name: "Visitante de teste", type: "visita_pastoral", message: "Gostaria de conversar" });
+
+    expect(createLead).toHaveBeenCalledWith(expect.objectContaining({ churchId: 21, churchSlug: "igrejaa", type: "visita_pastoral" }));
+    expect(createPrayer).not.toHaveBeenCalled();
   });
 
   it("bloqueia tentativa de enviar pedido para outra igreja pelo portal atual", async () => {
