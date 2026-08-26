@@ -58,6 +58,7 @@ export default function Celulas() {
   const [open, setOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState<any>(null);
   const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [activeTab, setActiveTab] = useState("lista");
   const [form, setForm] = useState(defaultForm);
   const [attendanceOpen, setAttendanceOpen] = useState(false);
@@ -69,7 +70,8 @@ export default function Celulas() {
   const [publicSettingsOpen, setPublicSettingsOpen] = useState(false);
 
   const { data: cells, isLoading, refetch } = trpc.cells.list.useQuery({ churchId });
-  const { data: people } = trpc.people.list.useQuery({ churchId });
+  const managementAccess = trpc.cells.managementAccess.useQuery({ churchId });
+  const { data: people } = trpc.people.list.useQuery({ churchId }, { enabled: Boolean(managementAccess.data?.canCreateAny) });
   const effectiveRoles = trpc.churchAuth.effectiveRoles.useQuery({ churchId }, { enabled: Boolean(user?.churchId) });
   const memberCounts = trpc.cells.memberCounts.useQuery({ churchId });
   const cellMembers = trpc.cells.members.useQuery(
@@ -84,6 +86,10 @@ export default function Celulas() {
     { churchId, cellId: selectedCell?.id ?? 0 },
     { enabled: Boolean(selectedCell?.id) }
   );
+  const assignmentCandidates = trpc.cells.assignmentCandidates.useQuery(
+    { churchId, cellId: selectedCell?.id ?? 0 },
+    { enabled: Boolean(selectedCell?.id && selectedCell?.canManage) }
+  );
   const currentMemberCare = trpc.care.getCurrent.useQuery(
     { churchId, personId: selectedMember?.person.id ?? 0 },
     { enabled: Boolean(selectedMember?.person.id) }
@@ -96,6 +102,14 @@ export default function Celulas() {
       refetch();
     },
     onError: () => toast.error("Erro ao criar célula"),
+  });
+  const assignPerson = trpc.cells.assignPerson.useMutation({
+    onSuccess: async () => {
+      toast.success("Pessoa integrada à Célula.");
+      setSelectedCandidateId("");
+      await Promise.all([cellMembers.refetch(), assignmentCandidates.refetch(), memberCounts.refetch(), refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível integrar a Pessoa à Célula."),
   });
   const recordMeeting = trpc.cells.recordMeeting.useMutation({
     onSuccess: async () => {
@@ -121,6 +135,7 @@ export default function Celulas() {
   const latestMeeting = meetingHistory.data?.[0];
   const roles = Array.from(new Set([user?.role, ...(effectiveRoles.data ?? [])].filter(Boolean)));
   const canPublishCells = roles.some((role) => role === "pastor_presidente" || role === "pastor_local");
+  const canCreateCell = Boolean(managementAccess.data?.canCreateAny || managementAccess.data?.canCreateOwn);
   const mappedCells = (cells ?? []).flatMap((cell) => {
     const latitude = Number(cell.latitude);
     const longitude = Number(cell.longitude);
@@ -193,10 +208,15 @@ export default function Celulas() {
             label="Exportar"
             onFetch={() => utils.reports.cells.fetch({ churchId })}
           />
-          <Button onClick={() => setOpen(true)} className="bg-navy hover:bg-navy-light text-white gap-2">
+          {canCreateCell && <Button onClick={() => {
+            if (!managementAccess.data?.canCreateAny && managementAccess.data?.actorPersonId) {
+              setForm({ ...defaultForm, leaderId: String(managementAccess.data.actorPersonId) });
+            }
+            setOpen(true);
+          }} className="bg-navy hover:bg-navy-light text-white gap-2">
             <Plus className="w-4 h-4" />
             Nova Célula
-          </Button>
+          </Button>}
         </div>
       </div>
 
@@ -322,6 +342,7 @@ export default function Celulas() {
         if (!nextOpen) {
           setSelectedCell(null);
           setSelectedMember(null);
+          setSelectedCandidateId("");
           setAttendanceOpen(false);
           setPublicSettingsOpen(false);
         }
@@ -374,6 +395,20 @@ export default function Celulas() {
                 <p className="mt-3 text-xs text-muted-foreground">O registro é liberado para o líder, supervisor ou pastor responsável pela Célula.</p>
               )}
             </div>
+            {selectedCell?.canManage && <div className="rounded-xl border border-indigo-200 bg-indigo-50/35 p-4">
+              <p className="text-sm font-semibold text-navy">Adicionar Pessoa sem Célula</p>
+              <p className="mt-1 text-xs text-muted-foreground">Líderes podem incluir novas Pessoas somente na própria Célula. Transferências permanecem sob responsabilidade pastoral.</p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder={assignmentCandidates.isLoading ? "Carregando…" : "Selecione uma Pessoa"} /></SelectTrigger>
+                  <SelectContent>{(assignmentCandidates.data ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                </Select>
+                <Button type="button" className="bg-navy text-white hover:bg-navy-light" disabled={!selectedCandidateId || assignPerson.isPending} onClick={() => assignPerson.mutate({ churchId, cellId: selectedCell.id, personId: Number(selectedCandidateId) })}>
+                  {assignPerson.isPending ? "Integrando…" : "Adicionar"}
+                </Button>
+              </div>
+              {!assignmentCandidates.isLoading && (assignmentCandidates.data ?? []).length === 0 && <p className="mt-2 text-xs text-muted-foreground">Não há Pessoas ativas sem Célula.</p>}
+            </div>}
             <div className="rounded-xl border border-border">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
                 <span className="text-sm font-semibold text-navy">Pessoas na célula</span>
@@ -527,10 +562,10 @@ export default function Celulas() {
               </div>
               <div className="col-span-2">
                 <Label htmlFor="cell-leader">Líder da Célula *</Label>
-                <Select value={form.leaderId} onValueChange={(value) => setForm({ ...form, leaderId: value })}>
+                {managementAccess.data?.canCreateAny ? <Select value={form.leaderId} onValueChange={(value) => setForm({ ...form, leaderId: value })}>
                   <SelectTrigger id="cell-leader"><SelectValue placeholder="Selecione uma Pessoa" /></SelectTrigger>
                   <SelectContent>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
-                </Select>
+                </Select> : <div id="cell-leader" className="mt-1 rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-navy">Você será definido como líder desta Célula.</div>}
               </div>
               <div className="col-span-2">
                 <Label>Endereço</Label>

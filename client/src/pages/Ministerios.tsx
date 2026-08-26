@@ -25,7 +25,7 @@ export default function Ministerios() {
   const { churchId } = useChurch();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", description: "" });
+  const [form, setForm] = useState({ name: "", description: "", type: "outro", leaderId: "" });
   const [selectedMinistry, setSelectedMinistry] = useState<any>(null);
   const [selectedPersonId, setSelectedPersonId] = useState("");
   const [customRoleName, setCustomRoleName] = useState("");
@@ -35,21 +35,37 @@ export default function Ministerios() {
     { churchId: churchId! },
     { enabled: !!churchId }
   );
-  const { data: people } = trpc.people.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const effectiveRoles = trpc.churchAuth.effectiveRoles.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const roles = effectiveRoles.data ?? [];
+  const canManageRoles = roles.some((role) => role === "pastor_presidente" || role === "pastor_local");
+  const canCreateMinistry = roles.some((role) => role === "pastor_presidente" || role === "pastor_local" || role === "secretario");
+  const { data: people } = trpc.people.list.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId && canManageRoles) });
   const ministryMembers = trpc.ministries.members.useQuery(
     { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0 },
     { enabled: Boolean(churchId && selectedMinistry?.id) }
   );
-  const customFunctions = trpc.ministries.customFunctions.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const ministryCandidates = trpc.ministries.candidates.useQuery(
+    { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0 },
+    { enabled: Boolean(churchId && selectedMinistry?.id && selectedMinistry?.canManage) }
+  );
+  const customFunctions = trpc.ministries.customFunctions.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId && canCreateMinistry) });
 
   const createMutation = trpc.ministries.create.useMutation({
     onSuccess: () => {
       toast.success("Ministério criado com sucesso!");
       setOpen(false);
-      setForm({ name: "", description: "" });
+      setForm({ name: "", description: "", type: "outro", leaderId: "" });
       refetch();
     },
     onError: (err: { message: string }) => toast.error(err.message),
+  });
+  const updateLeader = trpc.ministries.updateLeader.useMutation({
+    onSuccess: async (updated) => {
+      toast.success(updated?.leaderId ? "Líder do Ministério atualizado." : "Liderança do Ministério removida.");
+      const refreshed = await refetch();
+      setSelectedMinistry(refreshed.data?.find((ministry) => ministry.id === updated?.id) ?? null);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar o líder do Ministério."),
   });
   const assignPerson = trpc.ministries.assignPerson.useMutation({
     onSuccess: async (result) => {
@@ -67,7 +83,13 @@ export default function Ministerios() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) return toast.error("Nome do ministério é obrigatório");
-    createMutation.mutate({ churchId: churchId!, name: form.name, description: form.description });
+    createMutation.mutate({
+      churchId: churchId!,
+      name: form.name.trim(),
+      description: form.description.trim() || undefined,
+      type: form.type as "louvor" | "infantil" | "recepcao" | "midia" | "intercessao" | "evangelismo" | "casais" | "jovens" | "outro",
+      leaderId: form.leaderId ? Number(form.leaderId) : null,
+    });
   };
 
   const addSelectedPerson = () => {
@@ -96,7 +118,7 @@ export default function Ministerios() {
             <h1 className="text-2xl font-display font-bold text-navy">Ministérios</h1>
             <p className="text-sm text-muted-foreground mt-1">Gerencie os ministérios e equipes da sua igreja</p>
           </div>
-          <Dialog open={open} onOpenChange={setOpen}>
+          {canCreateMinistry && <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
               <Button className="bg-navy text-white hover:bg-navy-light gap-2">
                 <Plus className="w-4 h-4" />
@@ -128,6 +150,22 @@ export default function Ministerios() {
                     className="mt-1"
                   />
                 </div>
+                <div>
+                  <Label htmlFor="ministry-type">Tipo</Label>
+                  <Select value={form.type} onValueChange={(type) => setForm({ ...form, type })}>
+                    <SelectTrigger id="ministry-type" className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="louvor">Louvor</SelectItem><SelectItem value="infantil">Infantil</SelectItem><SelectItem value="recepcao">Recepção</SelectItem><SelectItem value="midia">Mídia</SelectItem><SelectItem value="intercessao">Intercessão</SelectItem><SelectItem value="evangelismo">Evangelismo</SelectItem><SelectItem value="casais">Casais</SelectItem><SelectItem value="jovens">Jovens</SelectItem><SelectItem value="outro">Outro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {canManageRoles && <div>
+                  <Label htmlFor="ministry-leader">Líder responsável</Label>
+                  <Select value={form.leaderId || "none"} onValueChange={(leaderId) => setForm({ ...form, leaderId: leaderId === "none" ? "" : leaderId })}>
+                    <SelectTrigger id="ministry-leader" className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="none">Definir depois</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>}
                 <div className="flex gap-2 justify-end pt-2">
                   <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
                   <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>
@@ -136,7 +174,7 @@ export default function Ministerios() {
                 </div>
               </form>
             </DialogContent>
-          </Dialog>
+          </Dialog>}
         </div>
 
         {/* Stats */}
@@ -219,23 +257,33 @@ export default function Ministerios() {
               <DialogTitle className="font-display text-navy">Equipe: {selectedMinistry?.name}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Adicione Pessoas à equipe. Somente participantes ativos deste Ministério poderão ser incluídos em escalas.</p>
-              <div className="flex flex-col gap-2 sm:flex-row">
+              <p className="text-sm text-muted-foreground">Participantes, liderança e escalas permanecem isolados neste Ministério.</p>
+              {canManageRoles && <div className="rounded-xl border border-gold/30 bg-gold/5 p-3">
+                <Label htmlFor="selected-ministry-leader">Líder responsável</Label>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <Select value={selectedMinistry?.leaderId ? String(selectedMinistry.leaderId) : "none"} onValueChange={(leaderId) => updateLeader.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, leaderId: leaderId === "none" ? null : Number(leaderId) })}>
+                    <SelectTrigger id="selected-ministry-leader" className="flex-1"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="none">Sem líder definido</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {updateLeader.isPending && <span className="self-center text-xs text-muted-foreground">Atualizando…</span>}
+                </div>
+              </div>}
+              {selectedMinistry?.canManage ? <div className="flex flex-col gap-2 sm:flex-row">
                 <Select value={selectedPersonId} onValueChange={setSelectedPersonId}>
                   <SelectTrigger className="flex-1"><SelectValue placeholder="Selecione uma Pessoa" /></SelectTrigger>
-                  <SelectContent>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                  <SelectContent>{(ministryCandidates.data ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                 </Select>
-                <Button type="button" onClick={addSelectedPerson} disabled={assignPerson.isPending} className="bg-navy text-white hover:bg-navy-light">
-                  {assignPerson.isPending ? "Adicionando…" : "Adicionar"}
+                <Button type="button" onClick={addSelectedPerson} disabled={assignPerson.isPending || ministryCandidates.isLoading} className="bg-navy text-white hover:bg-navy-light">
+                  {assignPerson.isPending ? "Adicionando…" : "Adicionar participante"}
                 </Button>
-              </div>
+              </div> : <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">Somente o Pastor, Secretário ou responsável deste Ministério pode alterar a equipe.</p>}
               <div className="rounded-xl border border-border">
                 <div className="border-b border-border px-4 py-3 text-sm font-semibold text-navy">Participantes ativos ({ministryMembers.data?.length ?? 0})</div>
                 {ministryMembers.isLoading ? <div className="p-4 text-sm text-muted-foreground">Carregando equipe…</div> : (ministryMembers.data ?? []).length === 0 ? <div className="p-4 text-sm text-muted-foreground">Nenhuma Pessoa adicionada ainda.</div> : (
                   <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-center gap-3 px-4 py-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><span className="text-sm font-medium text-navy">{item.person.fullName}</span></div>)}</div>
                 )}
               </div>
-              <div className="rounded-xl border border-gold/30 bg-cream/40 p-4 space-y-3">
+              {canCreateMinistry && <div className="rounded-xl border border-gold/30 bg-cream/40 p-4 space-y-3">
                 <p className="text-sm font-semibold text-navy">Funções personalizadas</p>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Input value={customRoleName} onChange={(event) => setCustomRoleName(event.target.value)} placeholder="Ex.: Líder de Louvor" />
@@ -246,7 +294,7 @@ export default function Ministerios() {
                   <Button type="button" onClick={addCustomFunction} disabled={createCustomFunction.isPending}>Criar</Button>
                 </div>
                 <div className="flex flex-wrap gap-2">{(customFunctions.data ?? []).filter((role) => !role.ministryId || role.ministryId === selectedMinistry?.id).map((role) => <Badge key={role.id} variant="outline">{role.name}</Badge>)}</div>
-              </div>
+              </div>}
             </div>
           </DialogContent>
         </Dialog>

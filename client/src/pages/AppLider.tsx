@@ -212,7 +212,7 @@ export default function AppLider() {
                 Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 w-full mb-3" />)
               ) : pendingConsolidations.length > 0 ? (
                 <div className="space-y-3">
-                  {pendingConsolidations.map((c: { id: number; personId?: number | null; phoneCalled?: boolean | null; visited?: boolean | null; bibleGiven?: boolean | null; cellInvited?: boolean | null; status?: string | null }) => (
+                  {pendingConsolidations.map((c: { id: number; personId?: number | null; callMade?: boolean | null; visitMade?: boolean | null; bibleDelivered?: boolean | null; addedToCell?: boolean | null; status?: string | null }) => (
                     <div key={c.id} className="p-4 rounded-xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/30">
                       <div className="flex items-center justify-between mb-3">
                         <p className="text-[#1e3a5f] font-semibold text-sm">Consolidação #{c.id}</p>
@@ -220,13 +220,13 @@ export default function AppLider() {
                       </div>
                       <div className="grid grid-cols-4 gap-2">
                         {[
-                          { key: "phoneCalled", label: "Ligação", done: c.phoneCalled },
-                          { key: "visited", label: "Visita", done: c.visited },
-                          { key: "bibleGiven", label: "Bíblia", done: c.bibleGiven },
+                          { key: "callMade", label: "Ligação", done: c.callMade },
+                          { key: "visitMade", label: "Visita", done: c.visitMade },
+                          { key: "bibleDelivered", label: "Bíblia", done: c.bibleDelivered },
                         ].map(({ key, label, done }) => (
                           <button
                             key={key}
-                            onClick={() => updateConsolidation.mutate({ id: c.id, churchId: churchId!, [key === "phoneCalled" ? "callMade" : key === "visited" ? "visitMade" : key === "bibleGiven" ? "bibleDelivered" : "addedToCell"]: !done })}
+                            onClick={() => updateConsolidation.mutate({ id: c.id, churchId: churchId!, [key]: !done })}
                             className={`p-2 rounded-lg text-center text-xs font-medium transition-all ${
                               done
                                 ? "bg-green-100 text-green-700 border border-green-200"
@@ -238,7 +238,7 @@ export default function AppLider() {
                           </button>
                         ))}
                       </div>
-                      {!c.cellInvited && (
+                      {!c.addedToCell && (
                         <Link href="/app/consolidacao" className="mt-3 inline-flex text-xs font-medium text-navy underline decoration-gold/70 underline-offset-4">
                           Integrar em Célula pela tela de Consolidação
                         </Link>

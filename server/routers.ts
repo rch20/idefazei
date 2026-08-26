@@ -18,10 +18,11 @@ import {
   updateCell,
   assignPersonToCell,
   createChurch,
-  createConsolidation,
   createConsolidationReferral,
+  startConsolidationWorkflow,
   createConsolidationFollowUp,
   createEvent,
+  createMinistry,
   createPerson,
   createPrayerRequest,
   createSoul,
@@ -36,6 +37,7 @@ import {
   getStartupDiagnostics,
   createCellMeetingWithAttendance,
   getActiveCellMembership,
+  getPeopleWithoutActiveCell,
   getCellMembershipHistory,
   getChurchById,
   getChurchBySlug,
@@ -92,6 +94,7 @@ import {
   reopenFinancialPeriod,
   getMinistriesByChurch,
   getMinistryMembers,
+  setMinistryLeader,
   getMinistryMemberCounts,
   isActiveMinistryMember,
   getScheduleTimeConflicts,
@@ -449,6 +452,31 @@ async function getEffectiveChurchRoles(userId: number, churchId: number, actor: 
   const customGrants = new Map(customDefinitions.map((definition) => [definition.key, CUSTOM_PERMISSION_PACKAGE_GRANTS[definition.permissionPackage] ?? []]));
   const ministryGrants = ministryRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
   return Array.from(new Set([actor.role, ...complementary, ...ministryGrants]));
+}
+
+async function getEffectivePersonRoles(personId: number, churchId: number) {
+  const accounts = await getChurchUsersByChurch(churchId);
+  const account = accounts.find((candidate) => candidate.active && candidate.personId === personId);
+  if (!account) return [];
+
+  const [ministryRoleKeys, customDefinitions] = await Promise.all([
+    getActiveMinistryRoleKeysByPerson(personId, churchId),
+    getMinistryRoleDefinitionsByChurch(churchId),
+  ]);
+  const customGrants = new Map(customDefinitions.map((definition) => [definition.key, CUSTOM_PERMISSION_PACKAGE_GRANTS[definition.permissionPackage] ?? []]));
+  const ministryGrants = ministryRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
+  return Array.from(new Set([account.role, ...(account.complementaryRoles ?? []), ...ministryGrants]));
+}
+
+async function requireConsolidatorPerson(personId: number, churchId: number) {
+  const [person, roles] = await Promise.all([
+    getPersonById(personId, churchId),
+    getEffectivePersonRoles(personId, churchId),
+  ]);
+  if (!person || !roles.includes("consolidador")) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma Pessoa com função ativa de Consolidador nesta igreja." });
+  }
+  return person;
 }
 
 async function requireJourneyStagePermission(userId: number, churchId: number, targetPersonId: number) {
@@ -917,9 +945,12 @@ const consolidationRouter = router({
         getPeopleByChurch(input.churchId),
       ]);
       const names = new Map(churchPeople.map((person) => [person.id, person.fullName]));
-      return accounts
-        .filter((account) => account.active && account.personId && (account.role === "consolidador" || account.complementaryRoles.includes("consolidador")))
-        .map((account) => ({ personId: account.personId!, name: names.get(account.personId!) ?? account.name }));
+      const personIds = Array.from(new Set(accounts.filter((account) => account.active && account.personId).map((account) => account.personId!)));
+      const candidates = await Promise.all(personIds.map(async (personId) => {
+        const roles = await getEffectivePersonRoles(personId, input.churchId);
+        return roles.includes("consolidador") ? { personId, name: names.get(personId) ?? "Consolidador" } : null;
+      }));
+      return candidates.filter((candidate): candidate is { personId: number; name: string } => Boolean(candidate));
     }),
   visitors: protectedProcedure
     .input(z.object({ churchId: z.number() }))
@@ -1318,9 +1349,8 @@ const consolidationRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const [soul, consolidator, existing] = await Promise.all([
+      const [soul, existing] = await Promise.all([
         getSoulById(input.soulId, input.churchId),
-        getPersonById(input.consolidatorId, input.churchId),
         getConsolidationsBySoul(input.soulId, input.churchId),
       ]);
       if (!soul) throw new TRPCError({ code: "NOT_FOUND", message: "Nova Alma não encontrada." });
@@ -1328,25 +1358,27 @@ const consolidationRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Esta Nova Alma precisa estar vinculada a uma Pessoa antes da consolidação." });
       }
       await requireJourneyStagePermission(ctx.user.id, input.churchId, soul.personId);
-      if (!consolidator) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um consolidador válido da sua igreja." });
-      }
+      await requireConsolidatorPerson(input.consolidatorId, input.churchId);
       if (existing.length > 0) {
         throw new TRPCError({ code: "CONFLICT", message: "Esta Nova Alma já possui uma consolidação em andamento." });
       }
-      const consolidation = await createConsolidation(input);
-      await updateSoul(soul.id, input.churchId, { status: "em_consolidacao" });
-      if (soul.personId) {
-        await updatePerson(soul.personId, input.churchId, { discipleshipStage: "consolidacao" });
-        await setCurrentCareAssignment({
+      try {
+        return await startConsolidationWorkflow({
           churchId: input.churchId,
+          soulId: soul.id,
           personId: soul.personId,
-          responsiblePersonId: input.consolidatorId,
-          role: "consolidador",
-          notes: "Responsável atualizado ao iniciar a consolidação.",
+          consolidatorId: input.consolidatorId,
         });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("já possui uma consolidação")) {
+          throw new TRPCError({ code: "CONFLICT", message: "Esta Nova Alma já possui uma consolidação em andamento." });
+        }
+        if (message.includes("Nova Alma inválida")) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "A Nova Alma mudou durante a operação. Atualize a tela e tente novamente." });
+        }
+        throw error;
       }
-      return consolidation;
     }),
 
   updateChecklist: protectedProcedure
@@ -1571,11 +1603,29 @@ const careRouter = router({
 });
 
 const cellsRouter = router({
+  managementAccess: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      return {
+        actorPersonId: actor.personId ?? null,
+        canCreateAny: roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor"].includes(role)),
+        canCreateOwn: roles.includes("lider") && Boolean(actor.personId),
+      };
+    }),
   list: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      return getCellsByChurch(input.churchId);
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const canManageAll = roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor"].includes(role));
+      const rows = await getCellsByChurch(input.churchId);
+      return rows.map((cell) => ({
+        ...cell,
+        canManage: canManageAll || Boolean(roles.includes("lider") && actor.personId && cell.leaderId === actor.personId),
+        canTransferMembers: canManageAll,
+      }));
     }),
 
   members: protectedProcedure
@@ -1650,6 +1700,15 @@ const cellsRouter = router({
       });
     }),
 
+  assignmentCandidates: protectedProcedure
+    .input(z.object({ churchId: z.number(), cellId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const cell = await getCellById(input.cellId, input.churchId);
+      if (!cell || !cell.active) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada." });
+      await requireCellManagementPermission(ctx.user.id, input.churchId, cell.leaderId);
+      return getPeopleWithoutActiveCell(input.churchId);
+    }),
+
   personMembership: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))
     .query(async ({ input, ctx }) => {
@@ -1669,19 +1728,22 @@ const cellsRouter = router({
     }),
 
   assignPerson: protectedProcedure
-    .input(z.object({ churchId: z.number(), personId: z.number(), cellId: z.number() }))
+    .input(z.object({ churchId: z.number(), personId: z.number().int().positive(), cellId: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
-      await requireJourneyStagePermission(ctx.user.id, input.churchId, input.personId);
       const [person, cell, previousMembership] = await Promise.all([
         getPersonById(input.personId, input.churchId),
         getCellById(input.cellId, input.churchId),
         getActiveCellMembership(input.personId, input.churchId),
       ]);
-      if (!person || !cell || !cell.active) {
+      if (!person || !person.active || !cell || !cell.active) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou Célula inválida para esta igreja." });
       }
+      const authorization = await requireCellManagementPermission(ctx.user.id, input.churchId, cell.leaderId);
       if (previousMembership?.cellId === input.cellId) {
         return { membership: previousMembership, transferred: false };
+      }
+      if (previousMembership && !authorization.canManageAll) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Transferências entre Células devem ser realizadas por um Pastor ou Supervisor." });
       }
       const membership = await assignPersonToCell(input);
       await updatePerson(person.id, input.churchId, { discipleshipStage: "celula" });
@@ -1905,16 +1967,28 @@ const ministriesRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      const [rows, counts] = await Promise.all([
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const actorRoles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const [rows, counts, churchPeople, assignments, definitions] = await Promise.all([
         getMinistriesByChurch(input.churchId),
         getMinistryMemberCounts(input.churchId),
+        getPeopleByChurch(input.churchId),
+        actor.personId ? getMinistryRoleAssignmentsByPerson(actor.personId, input.churchId) : Promise.resolve([]),
+        getMinistryRoleDefinitionsByChurch(input.churchId),
       ]);
       const countByMinistry = new Map(counts.map((item) => [item.ministryId, Number(item.count)]));
+      const nameByPerson = new Map(churchPeople.map((person) => [person.id, person.fullName]));
+      const definitionByKey = new Map(definitions.map((definition) => [definition.key, definition]));
+      const canManageAll = actorRoles.some((role) => CHURCH_ADMIN_ROLES.has(role));
+      const managedByAssignment = new Set(assignments.filter(({ assignment }) =>
+        MINISTRY_MANAGEMENT_ROLE_KEYS.has(assignment.roleKey)
+        || definitionByKey.get(assignment.roleKey)?.permissionPackage === "ministry_leader"
+      ).map(({ assignment }) => assignment.ministryId));
       return rows.map((m) => ({
         ...m,
         memberCount: countByMinistry.get(m.id) ?? 0,
-        leaderName: null as string | null,
+        leaderName: m.leaderId ? nameByPerson.get(m.leaderId) ?? null : null,
+        canManage: canManageAll || Boolean(actor.personId && m.leaderId === actor.personId) || managedByAssignment.has(m.id),
       }));
     }),
   members: protectedProcedure
@@ -1924,6 +1998,13 @@ const ministriesRouter = router({
       const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
       if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado." });
       return getMinistryMembers(input.ministryId, input.churchId);
+    }),
+  candidates: protectedProcedure
+    .input(z.object({ churchId: z.number(), ministryId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
+      const people = await getPeopleByChurch(input.churchId);
+      return people.map((person) => ({ id: person.id, fullName: person.fullName }));
     }),
   assignPerson: protectedProcedure
     .input(z.object({ churchId: z.number(), ministryId: z.number(), personId: z.number() }))
@@ -2015,21 +2096,38 @@ const ministriesRouter = router({
   create: protectedProcedure
     .input(z.object({
       churchId: z.number(),
-      name: z.string().min(1),
-      description: z.string().optional(),
+      name: z.string().trim().min(2).max(255),
+      description: z.string().trim().max(3000).optional(),
+      type: z.enum(["louvor", "infantil", "recepcao", "midia", "intercessao", "evangelismo", "casais", "jovens", "outro"]).default("outro"),
+      leaderId: z.number().int().positive().nullable().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
-      const db = await import("./db").then((m) => m.getDb());
-      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-      const { ministries: ministriesTable } = await import("../drizzle/schema");
-      await db.insert(ministriesTable).values({
+      if (input.leaderId !== undefined && input.leaderId !== null) {
+        await requireChurchRoleManager(ctx.user.id, input.churchId);
+        const leader = await getPersonById(input.leaderId, input.churchId);
+        if (!leader) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um líder válido desta igreja." });
+      }
+      const ministry = await createMinistry({
         churchId: input.churchId,
         name: input.name,
-        description: input.description ?? null,
-        type: "outro",
+        description: input.description || null,
+        type: input.type,
+        leaderId: input.leaderId ?? null,
       });
-      return { success: true };
+      return ministry;
+    }),
+  updateLeader: protectedProcedure
+    .input(z.object({ churchId: z.number(), ministryId: z.number().int().positive(), leaderId: z.number().int().positive().nullable() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchRoleManager(ctx.user.id, input.churchId);
+      const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
+      if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
+      if (input.leaderId !== null) {
+        const leader = await getPersonById(input.leaderId, input.churchId);
+        if (!leader) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um líder válido desta igreja." });
+      }
+      return setMinistryLeader({ ministryId: input.ministryId, churchId: input.churchId, leaderId: input.leaderId });
     }),
 });
 
