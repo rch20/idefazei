@@ -18,9 +18,10 @@ describe("Tesouraria — regressões de interface e lógica", () => {
     expect(pageSource).toContain("Motivo da reabertura");
   });
 
-  it("usa relatório dedicado e estados pendentes nos botões críticos", () => {
-    expect(pageSource).toContain("buildTreasuryReportHtml");
-    expect(pageSource).toContain("Gerar PDF");
+  it("usa PDF real, prévia interna e estados pendentes nos botões críticos", () => {
+    expect(pageSource).toContain("createTreasuryReportPdf");
+    expect(pageSource).toContain("TreasuryPdfPreview");
+    expect(pageSource).toContain("Preparando PDF");
     expect(pageSource).toContain("confirmTransaction.isPending");
     expect(pageSource).toContain("reverseTransaction.isPending");
   });
