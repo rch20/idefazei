@@ -2,7 +2,7 @@
 
 ## Estado desta etapa
 
-A infraestrutura está preparada, sem credenciais reais e sem chamadas externas ao Cloudinary durante os testes. O modo padrão continua usando o armazenamento atual para não interromper a produção enquanto a conta é configurada. Quando as três variáveis Cloudinary forem preenchidas, o modo `auto` passa a usar Cloudinary automaticamente nos uploads de identidade e mídia pública.
+A integração Cloudinary está ativa na VPS de produção. O runtime usa `MEDIA_PROVIDER=cloudinary`, com os três segredos armazenados somente em `/etc/ide-fazei/runtime` com permissão `root:idefazei 600`. Nenhum segredo foi commitado ou incluído no frontend. O backup pré-ativação foi validado e permanece disponível para rollback.
 
 ## Áreas já conectadas ao adaptador
 
@@ -37,13 +37,15 @@ CLOUDINARY_API_SECRET=...
 
 `auto` usa Cloudinary quando as três credenciais existem; `manus_storage` mantém o storage atual; `cloudinary` exige as três credenciais e falha de forma explícita se alguma estiver ausente.
 
-## Próxima etapa após as credenciais
+## Ativação em produção
 
-Depois de receber as credenciais, validar a conta e a política de pastas, será necessário configurar as variáveis secretas na VPS, mudar o provider para `cloudinary`, executar um upload fictício controlado da logo do tenant, conferir resposta, `public_id`, registro em `media_assets`, URL HTTPS e substituição no painel. Só depois dessa evidência a migração deverá ser considerada ativa para produção.
+As credenciais foram configuradas somente na VPS após backup integral do código, build, runtime e banco. As migrações aditivas `0036_tan_cerebro.sql` e `0037_superb_korg.sql` foram aplicadas com os separadores internos do Drizzle removidos de forma controlada. O backup validado está em `/opt/ide-fazei/backups/cloudinary-activation-deploy-20260826-144927`.
+
+O teste controlado usou uma imagem PNG fictícia de 1×1 no tenant existente, confirmou upload no Cloudinary, `public_id` em `idefazei/1/tenant_pwa_icon/...`, registro multi-tenant, URLs transformadas 192/512 com HTTP 200 e sincronização dos campos do tenant. Ao final, o asset Cloudinary foi destruído, o registro de teste foi removido e os campos do tenant/tema retornaram a `NULL`.
 
 ## Evidência de validação
 
-A preparação foi validada sem credenciais Cloudinary reais. O adaptador foi testado com o fallback do storage atual, os contratos de galeria, endpoint genérico e PWA foram verificados, o TypeScript passou, a suíte completa passou com 245 testes em 31 arquivos e o build de produção foi concluído. As migrações 0036 e 0037 foram geradas e revisadas como aditivas; elas ainda devem ser aplicadas na VPS junto com a configuração das variáveis quando a conta estiver pronta.
+A preparação local foi validada com TypeScript, suíte completa de 245 testes em 31 arquivos e build de produção. Na VPS, o build do commit `33541e6` foi concluído, o serviço reiniciou como PID `33341`, a porta `127.0.0.1:3000` retornou HTTP 200, o domínio HTTPS retornou HTTP 200, o manifest declarou 192×192 e 512×512, as rotas de ícone responderam por fallback, o Nginx passou no teste e não surgiram erros críticos nos logs após o restart. O banco ativo possui a tabela `media_assets`, três colunas PWA no tenant e zero assets ativos após a limpeza do teste.
 
 ## Ícone PWA por tenant
 
@@ -51,4 +53,4 @@ O tenant agora possui `pwaIconAssetId`, `pwaIcon192Url` e `pwaIcon512Url`. A fin
 
 O upload sincroniza o `faviconUrl` do tema público e atualiza o head em todas as rotas relevantes: página pública, Visite-nos, Portal do Visitante, login por subdomínio e painel autenticado. O manifest dinâmico e os endpoints `/api/pwa/icon-192.png` e `/api/pwa/icon-512.png` resolvem a igreja pelo host público ou por slug validado do painel. O service worker foi versionado para `ide-fazei-v5` e as notificações usam o endpoint 192x192 correto.
 
-A produção ainda não deve aplicar as migrações `0036` e `0037` nem ativar `MEDIA_PROVIDER=cloudinary` até que as credenciais sejam fornecidas e um backup seja realizado.
+A produção já está com as migrações aplicadas e `MEDIA_PROVIDER=cloudinary` ativo. Novos uploads de identidade, ícone PWA, galeria, certificados e vídeos públicos usarão o Cloudinary conforme suas finalidades e permissões; comprovantes financeiros continuam protegidos no storage privado atual.
