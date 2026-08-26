@@ -1,6 +1,6 @@
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
-import { createTreasuryReportPdf, treasuryPdfFileName } from "./treasuryPdf";
+import { createTreasuryReportPdf, createTreasurySummaryPdf, treasuryPdfFileName } from "./treasuryPdf";
 
 function reportInput(transactionCount = 0) {
   return {
@@ -42,14 +42,21 @@ describe("PDF compartilhável da Tesouraria", () => {
     expect(bytes.byteLength).toBeGreaterThan(1_000);
   });
 
-  it("pagina livros-caixa extensos sem depender da impressão HTML", async () => {
+  it("mantém o resumo em uma única página mesmo com muitos lançamentos", async () => {
+    const blob = await createTreasurySummaryPdf(reportInput(80));
+    const document = await PDFDocument.load(await blob.arrayBuffer());
+    expect(document.getPageCount()).toBe(1);
+  });
+
+  it("pagina o livro-caixa completo somente no relatório detalhado", async () => {
     const blob = await createTreasuryReportPdf(reportInput(80));
     const document = await PDFDocument.load(await blob.arrayBuffer());
     expect(document.getPageCount()).toBeGreaterThan(1);
   });
 
-  it("cria um nome estável e seguro por competência", () => {
-    expect(treasuryPdfFileName("2026-08")).toBe("relatorio-tesouraria-2026-08.pdf");
-    expect(treasuryPdfFileName("../../segredo")).toMatch(/^relatorio-tesouraria-\d{4}-\d{2}\.pdf$/);
+  it("cria nomes distintos, estáveis e seguros por competência", () => {
+    expect(treasuryPdfFileName("2026-08", "summary")).toBe("resumo-tesouraria-2026-08.pdf");
+    expect(treasuryPdfFileName("2026-08", "detailed")).toBe("relatorio-tesouraria-detalhado-2026-08.pdf");
+    expect(treasuryPdfFileName("../../segredo", "summary")).toMatch(/^resumo-tesouraria-\d{4}-\d{2}\.pdf$/);
   });
 });

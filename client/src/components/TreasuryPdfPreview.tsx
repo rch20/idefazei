@@ -8,6 +8,7 @@ type TreasuryPdfPreviewProps = {
   open: boolean;
   blob: Blob | null;
   fileName: string;
+  title: string;
   onClose: () => void;
 };
 
@@ -22,15 +23,15 @@ export function downloadTreasuryPdf(blob: Blob, fileName: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-export async function shareTreasuryPdf(blob: Blob, fileName: string) {
+export async function shareTreasuryPdf(blob: Blob, fileName: string, title: string) {
   const file = new File([blob], fileName, { type: "application/pdf", lastModified: Date.now() });
-  const shareData: ShareData = { title: "Relatório de Tesouraria", text: "Relatório financeiro da igreja em PDF.", files: [file] };
+  const shareData: ShareData = { title, text: `${title} da igreja em PDF.`, files: [file] };
   if (!navigator.share || (navigator.canShare && !navigator.canShare(shareData))) return false;
   await navigator.share(shareData);
   return true;
 }
 
-export function TreasuryPdfPreview({ open, blob, fileName, onClose }: TreasuryPdfPreviewProps) {
+export function TreasuryPdfPreview({ open, blob, fileName, title, onClose }: TreasuryPdfPreviewProps) {
   const [sharing, setSharing] = useState(false);
   const printFrameRef = useRef<HTMLIFrameElement | null>(null);
   const url = useMemo(() => blob ? URL.createObjectURL(blob) : "", [blob]);
@@ -41,7 +42,7 @@ export function TreasuryPdfPreview({ open, blob, fileName, onClose }: TreasuryPd
     if (!blob) return;
     setSharing(true);
     try {
-      const shared = await shareTreasuryPdf(blob, fileName);
+      const shared = await shareTreasuryPdf(blob, fileName, title);
       if (!shared) {
         downloadTreasuryPdf(blob, fileName);
         toast.info("O compartilhamento de arquivo não está disponível neste navegador. O PDF foi baixado para você enviar manualmente.");
@@ -73,7 +74,7 @@ export function TreasuryPdfPreview({ open, blob, fileName, onClose }: TreasuryPd
         <header className="shrink-0 border-b border-slate-200 bg-white px-3 py-2 shadow-sm sm:flex sm:items-center sm:gap-3 sm:px-4">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={onClose} className="gap-2 text-navy"><ArrowLeft className="h-4 w-4" /> Voltar</Button>
-            <div className="min-w-0 flex-1 sm:flex-none"><p className="truncate text-sm font-semibold text-navy">Relatório de Tesouraria</p><p className="truncate text-[11px] text-muted-foreground">Prévia do arquivo PDF</p></div>
+            <div className="min-w-0 flex-1 sm:flex-none"><p className="truncate text-sm font-semibold text-navy">{title}</p><p className="truncate text-[11px] text-muted-foreground">Prévia do arquivo PDF</p></div>
           </div>
           <div className="mt-2 grid grid-cols-3 gap-2 sm:ml-auto sm:mt-0 sm:flex">
             <Button variant="outline" size="sm" onClick={() => void handleShare()} disabled={!blob || sharing} className="gap-1.5 px-2 sm:px-3">{sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />} Compartilhar</Button>

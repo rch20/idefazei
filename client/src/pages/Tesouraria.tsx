@@ -40,6 +40,7 @@ type TransactionType = "entrada" | "saida";
 type TransactionStatus = "rascunho" | "confirmado";
 type PaymentMethod = "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro";
 type PeriodAction = "close" | "reopen" | null;
+type ReportMode = "summary" | "detailed";
 
 const MAX_FINANCIAL_CENTS = 2_147_483_647;
 const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string }> = [
@@ -93,7 +94,10 @@ export default function Tesouraria() {
   const [structureError, setStructureError] = useState<string | null>(null);
   const [reportBlob, setReportBlob] = useState<Blob | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [reportChoiceOpen, setReportChoiceOpen] = useState(false);
   const [reportGenerating, setReportGenerating] = useState(false);
+  const [reportMode, setReportMode] = useState<ReportMode>("summary");
+  const [reportFileName, setReportFileName] = useState("");
   const [form, setForm] = useState({
     type: "entrada" as TransactionType,
     accountId: "",
@@ -139,7 +143,7 @@ export default function Tesouraria() {
     : (accountsQuery.data ?? [])[0];
   const periodLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   const accountLabel = selectedAccountId ? selectedAccount?.name ?? "Conta selecionada" : "Todas as contas";
-  const reportFileName = `relatorio-tesouraria-${month}.pdf`;
+  const reportTitle = reportMode === "summary" ? "Resumo de Tesouraria" : "Relatório detalhado de Tesouraria";
   const overview = overviewQuery.data;
   const bankBalanceInput = parseBrlToCents(reconciliationForm.bankClosingBalance);
   const reconciliationDifference = bankBalanceInput === null ? null : bankBalanceInput - (reconciliationQuery.data?.bookBalanceCents ?? 0);
@@ -283,13 +287,17 @@ export default function Tesouraria() {
     createAccount.mutate({ churchId, name: newAccount.name.trim(), type: newAccount.type, openingBalanceCents });
   };
 
-  const generateReport = async () => {
+  const generateReport = async (mode: ReportMode) => {
     if (!overview) return toast.error("Aguarde o carregamento do relatório.");
     setReportGenerating(true);
     try {
-      const { createTreasuryReportPdf } = await import("@/lib/treasuryPdf");
-      const blob = await createTreasuryReportPdf({ churchName, periodLabel, startDate, endDate, accountLabel, data: overview });
+      const { createTreasuryReportPdf, createTreasurySummaryPdf, treasuryPdfFileName } = await import("@/lib/treasuryPdf");
+      const input = { churchName, periodLabel, startDate, endDate, accountLabel, data: overview };
+      const blob = mode === "summary" ? await createTreasurySummaryPdf(input) : await createTreasuryReportPdf(input);
+      setReportMode(mode);
+      setReportFileName(treasuryPdfFileName(month, mode));
       setReportBlob(blob);
+      setReportChoiceOpen(false);
       setReportOpen(true);
     } catch (error) {
       toast.error(errorMessage(error, "Não foi possível gerar o PDF. Tente novamente."));
@@ -372,7 +380,7 @@ export default function Tesouraria() {
           <p className="mt-1 text-muted-foreground">Entradas, saídas, conciliação e prestação de contas da igreja.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => void generateReport()} disabled={!overview || overviewQuery.isFetching || reportGenerating} className="gap-2">{reportGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />} {reportGenerating ? "Preparando PDF…" : "Gerar PDF"}</Button>
+          <Button variant="outline" onClick={() => setReportChoiceOpen(true)} disabled={!overview || overviewQuery.isFetching || reportGenerating} className="gap-2">{reportGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />} {reportGenerating ? "Preparando PDF…" : "Gerar PDF"}</Button>
           {bankAccounts.length > 0 && <Button variant="outline" onClick={openReconciliation} className="gap-2"><BookOpenCheck className="h-4 w-4" /> Conciliar banco</Button>}
           <Button variant="outline" onClick={() => openTransaction("saida")} disabled={periodClosed || accountsQuery.isLoading || categoriesQuery.isLoading} title={periodClosed ? "Reabra o período para registrar uma saída." : undefined} className="gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"><ArrowUpCircle className="h-4 w-4" /> Registrar saída</Button>
           <Button onClick={() => openTransaction("entrada")} disabled={periodClosed || accountsQuery.isLoading || categoriesQuery.isLoading} title={periodClosed ? "Reabra o período para registrar uma entrada." : undefined} className="gap-2 bg-navy hover:bg-navy/90"><ArrowDownCircle className="h-4 w-4" /> Registrar entrada</Button>
@@ -426,7 +434,17 @@ export default function Tesouraria() {
         </>
       )}
 
-      <TreasuryPdfPreview open={reportOpen} blob={reportBlob} fileName={reportFileName} onClose={() => setReportOpen(false)} />
+      <Dialog open={reportChoiceOpen} onOpenChange={(open) => { if (!reportGenerating) setReportChoiceOpen(open); }}>
+        <DialogContent className="sm:max-w-xl"><DialogHeader><DialogTitle className="font-display text-2xl text-navy">Escolha o formato do PDF</DialogTitle><DialogDescription>O resumo cabe em uma página; o detalhado inclui todo o livro-caixa do período.</DialogDescription></DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Button type="button" variant="outline" disabled={reportGenerating} onClick={() => void generateReport("summary")} className="h-auto items-start justify-start gap-3 whitespace-normal p-4 text-left"><FileText className="mt-0.5 h-5 w-5 shrink-0 text-gold" /><span><strong className="block text-navy">Resumo · 1 página</strong><span className="mt-1 block text-xs font-normal text-muted-foreground">Indicadores, contas, categorias, movimentação consolidada e assinaturas.</span></span></Button>
+            <Button type="button" variant="outline" disabled={reportGenerating} onClick={() => void generateReport("detailed")} className="h-auto items-start justify-start gap-3 whitespace-normal p-4 text-left"><BookOpenCheck className="mt-0.5 h-5 w-5 shrink-0 text-gold" /><span><strong className="block text-navy">Relatório detalhado</strong><span className="mt-1 block text-xs font-normal text-muted-foreground">Resumo completo mais todas as linhas do livro-caixa, com paginação.</span></span></Button>
+          </div>
+          {reportGenerating && <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Preparando o arquivo selecionado…</p>}
+        </DialogContent>
+      </Dialog>
+
+      <TreasuryPdfPreview open={reportOpen} blob={reportBlob} fileName={reportFileName} title={reportTitle} onClose={() => setReportOpen(false)} />
 
       <Dialog open={transactionOpen} onOpenChange={(open) => { if (!createTransaction.isPending) { setTransactionOpen(open); if (!open) { setFormError(null); createTransaction.reset(); } } }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg"><DialogHeader><DialogTitle className="font-display text-2xl text-navy">{form.type === "entrada" ? "Registrar entrada" : "Registrar saída"}</DialogTitle><DialogDescription>O lançamento será vinculado à conta e à categoria selecionadas.</DialogDescription></DialogHeader>
