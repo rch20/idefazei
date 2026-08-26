@@ -7,11 +7,11 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { getChurchToken } from "@/hooks/useChurchAuth";
+import { uploadChurchMedia } from "@/lib/mediaUpload";
 
 type SectionType = "hero" | "about" | "schedule" | "events" | "ministries" | "gallery" | "contact";
 type PublicService = { day: string; time: string; label?: string; location?: string };
-type PublicGalleryItem = { url: string; alt: string; caption?: string };
+type PublicGalleryItem = { url: string; alt: string; caption?: string; mediaAssetId?: number };
 type EditorSection = { sectionType: SectionType; enabled: boolean; sortOrder: number; content: { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string; services?: PublicService[]; items?: PublicGalleryItem[] } };
 
 const labels: Record<SectionType, string> = { hero: "Hero", about: "Sobre a igreja", schedule: "Horários", events: "Eventos", ministries: "Ministérios", gallery: "Galeria", contact: "Contato" };
@@ -84,15 +84,10 @@ export function TenantPublicSettings() {
     if (!new Set(["image/png", "image/jpeg", "image/webp"]).has(file.type)) return toast.error("Escolha uma imagem PNG, JPEG ou WebP.");
     if (file.size > 4 * 1024 * 1024) return toast.error("A imagem deve ter no máximo 4 MB.");
     if (galleryItems.length >= 8) return toast.error("A galeria permite no máximo oito imagens.");
-    const token = getChurchToken();
-    if (!token) return toast.error("Sua sessão expirou. Entre novamente para enviar imagens.");
     setIsUploadingGallery(true);
     try {
-      const formData = new FormData(); formData.append("file", file);
-      const response = await fetch("/api/tenant-public-media", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
-      const result = await response.json() as { url?: string; error?: string };
-      if (!response.ok || !result.url) throw new Error(result.error ?? "Não foi possível enviar a imagem.");
-      patchSection("gallery", { content: { items: [...galleryItems, { url: result.url, alt: file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "), caption: "" }] } });
+      const result = await uploadChurchMedia(file, { purpose: "tenant_public_gallery", resourceType: "image" });
+      patchSection("gallery", { content: { items: [...galleryItems, { url: result.url, mediaAssetId: result.mediaAssetId ?? undefined, alt: file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "), caption: "" }] } });
       toast.success("Imagem adicionada ao rascunho. Publique a página para exibi-la.");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível enviar a imagem."); }
     finally { setIsUploadingGallery(false); }

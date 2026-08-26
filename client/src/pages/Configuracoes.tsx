@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug } from "lucide-react";
-import { getChurchToken, useChurchAuth } from "@/hooks/useChurchAuth";
+import { useChurchAuth } from "@/hooks/useChurchAuth";
+import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { TenantPublicSettings } from "@/components/TenantPublicSettings";
 
 const ROLES = [
@@ -154,23 +155,10 @@ export default function Configuracoes() {
       toast.error("A imagem deve ter no máximo 2 MB.");
       return;
     }
-    const token = getChurchToken();
-    if (!token) {
-      toast.error("Sua sessão expirou. Entre novamente para enviar a logo.");
-      return;
-    }
     setIsUploadingLogo(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const response = await fetch("/api/upload", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-      const result = await response.json() as { url?: string; error?: string };
-      if (!response.ok || !result.url) throw new Error(result.error ?? "Não foi possível enviar a logo.");
-      setChurchForm((current) => ({ ...current, logoUrl: result.url! }));
+      const result = await uploadChurchMedia(file, { purpose: "tenant_logo", resourceType: "image" });
+      setChurchForm((current) => ({ ...current, logoUrl: result.url }));
       updateMutation.mutate({ id: churchId!, logoUrl: result.url }, { onSuccess: () => { refetch(); toast.success("Logo atualizada com sucesso!"); } });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível enviar a logo.");

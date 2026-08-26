@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Award, BookOpen, Droplets, GraduationCap, Save, Upload, Eye, Loader2 } from "lucide-react";
+import { uploadChurchMedia } from "@/lib/mediaUpload";
 // ─── VERSÍCULOS PADRÃO ────────────────────────────────────────────────────────
 
 const DEFAULT_VERSES = {
@@ -80,12 +81,8 @@ export default function ConfiguracoesCertificados() {
     }
     setUploadingLogo(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      if (!res.ok) throw new Error("Upload falhou");
-      const { url } = await res.json();
-      setLogoUrl(url);
+      const result = await uploadChurchMedia(file, { purpose: "certificate_logo", resourceType: "image" });
+      setLogoUrl(result.url);
       toast.success("Logo enviado com sucesso!");
     } catch {
       toast.error("Erro ao enviar logo");

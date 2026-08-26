@@ -279,15 +279,25 @@ describe("Galeria pública por tenant", () => {
   const routerSource = readFileSync(resolve(process.cwd(), "server/routers.ts"), "utf8");
   const indexSource = readFileSync(resolve(process.cwd(), "server/_core/index.ts"), "utf8");
 
-  it("aceita no máximo oito mídias, exige texto alternativo e confirma a propriedade pelo prefixo da igreja", () => {
+  it("aceita no máximo oito mídias, exige texto alternativo e confirma a propriedade por asset e igreja", () => {
     const saveStart = dbSource.indexOf("export async function saveTenantPublicDraftByChurchId");
     const saveEnd = dbSource.indexOf("export async function publishTenantPublicSiteByChurchId", saveStart);
     const helper = dbSource.slice(saveStart, saveEnd);
 
     expect(helper).toContain("items.length > 8");
     expect(helper).toContain("/manus-storage/churches/${churchId}/public/");
+    expect(helper).toContain("media.mediaAssetId");
+    expect(helper).toContain("eq(mediaAssets.churchId, churchId)");
     expect(helper).toContain("media.alt.trim().length < 3");
     expect(helper).not.toContain("input.churchId");
+  });
+
+  it("prepara um endpoint genérico para imagens e vídeos sem aceitar finalidade arbitrária", () => {
+    expect(indexSource).toContain('app.post("/api/media/upload"');
+    expect(indexSource).toContain('"public_video"');
+    expect(indexSource).toContain('resourceType: MediaResourceType');
+    expect(indexSource).toContain("const imagePurposes = new Set<MediaPurpose>");
+    expect(indexSource).toContain("createMediaAsset");
   });
 
   it("mantém o tenant fora do contrato público de escrita e restringe uploads a pastores", () => {
@@ -302,7 +312,10 @@ describe("Galeria pública por tenant", () => {
     expect(router).toContain("}).strict()).max(8).optional()");
     expect(router).not.toContain("churchId: z.number()");
     expect(upload).toContain('const publisherRoles = new Set(["pastor_presidente", "pastor_local"])');
-    expect(upload).toContain("churches/${churchUser.churchId}/public/gallery/");
+    expect(upload).toContain('purpose: "tenant_public_gallery"');
     expect(upload).toContain("fileSize: 4 * 1024 * 1024");
+    expect(upload).toContain("uploadMedia");
+    expect(upload).toContain("createMediaAsset");
+    expect(router).toContain("mediaAssetId: z.number().int().positive().optional()");
   });
 });

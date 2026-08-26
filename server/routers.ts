@@ -821,7 +821,8 @@ const tenantPublicRouter = router({
           location: z.string().trim().max(160).optional(),
         }).strict()).max(7).optional(),
         items: z.array(z.object({
-          url: z.string().startsWith("/manus-storage/churches/"),
+          url: z.string().trim().max(2048).refine((value) => value.startsWith("/manus-storage/churches/") || /^https:\/\//.test(value), "Informe uma URL HTTPS ou um arquivo interno."),
+          mediaAssetId: z.number().int().positive().optional(),
           alt: z.string().trim().min(3).max(180),
           caption: z.string().trim().max(180).optional(),
         }).strict()).max(8).optional(),

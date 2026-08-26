@@ -9,4 +9,8 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  mediaProvider: process.env.MEDIA_PROVIDER === "cloudinary" ? "cloudinary" as const : process.env.MEDIA_PROVIDER === "manus_storage" ? "manus_storage" as const : "auto" as const,
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? "",
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY ?? "",
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET ?? "",
 };

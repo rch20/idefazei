@@ -102,6 +102,37 @@ export const tenantThemes = mysqlTable("tenant_themes", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [uniqueIndex("tenant_themes_church_unique").on(table.churchId)]);
 
+export const mediaAssets = mysqlTable("media_assets", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  provider: mysqlEnum("provider", ["cloudinary", "manus_storage"]).notNull(),
+  resourceType: mysqlEnum("resourceType", ["image", "video", "raw"]).notNull().default("image"),
+  purpose: mysqlEnum("purpose", ["tenant_logo", "tenant_public_gallery", "certificate_logo", "treasury_attachment", "public_video", "other"]).notNull().default("other"),
+  publicId: varchar("publicId", { length: 512 }),
+  storageKey: varchar("storageKey", { length: 512 }),
+  url: text("url").notNull(),
+  secureUrl: text("secureUrl"),
+  originalFilename: varchar("originalFilename", { length: 255 }),
+  mimeType: varchar("mimeType", { length: 100 }).notNull(),
+  bytes: int("bytes").notNull().default(0),
+  width: int("width"),
+  height: int("height"),
+  durationSeconds: int("durationSeconds"),
+  entityType: varchar("entityType", { length: 80 }),
+  entityId: int("entityId"),
+  uploadedByChurchUserId: int("uploadedByChurchUserId"),
+  status: mysqlEnum("status", ["active", "deleted"]).notNull().default("active"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("media_assets_church_idx").on(table.churchId),
+  index("media_assets_church_purpose_idx").on(table.churchId, table.purpose),
+  index("media_assets_provider_public_id_idx").on(table.provider, table.publicId),
+]);
+
+export type MediaAsset = typeof mediaAssets.$inferSelect;
+export type InsertMediaAsset = typeof mediaAssets.$inferInsert;
+
 export const tenantPageSections = mysqlTable("tenant_page_sections", {
   id: int("id").autoincrement().primaryKey(),
   churchId: int("churchId").notNull(),

@@ -46,6 +46,8 @@ import {
   financialReconciliationAttachments,
   financialReconciliations,
   financialTransactions,
+  mediaAssets,
+  InsertMediaAsset,
   InsertUser,
   leadershipHistory,
   leadershipSchoolClasses,
@@ -85,6 +87,30 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+export async function createMediaAsset(data: InsertMediaAsset) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(mediaAssets).values(data);
+  const id = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+  if (!id) return null;
+  const rows = await db.select().from(mediaAssets).where(and(eq(mediaAssets.id, id), eq(mediaAssets.churchId, data.churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getActiveMediaAssetById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(mediaAssets).where(and(eq(mediaAssets.id, id), eq(mediaAssets.churchId, churchId), eq(mediaAssets.status, "active"))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function markMediaAssetDeleted(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const result = await db.update(mediaAssets).set({ status: "deleted" }).where(and(eq(mediaAssets.id, id), eq(mediaAssets.churchId, churchId), eq(mediaAssets.status, "active")));
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0) > 0;
 }
 
 // ─── NOTIFICAÇÕES MULTI-CANAL ─────────────────────────────────────────────────
@@ -438,9 +464,15 @@ export async function saveTenantPublicDraftByChurchId(churchId: number, input: T
     if (items.length > 8) throw new Error("A galeria permite no máximo oito imagens.");
     for (const item of items) {
       if (!item || typeof item !== "object") throw new Error("Imagem de galeria inválida.");
-      const media = item as { url?: unknown; alt?: unknown; caption?: unknown };
-      const ownedPrefix = `/manus-storage/churches/${churchId}/public/`;
-      if (typeof media.url !== "string" || !media.url.startsWith(ownedPrefix)) throw new Error("A imagem não pertence a esta igreja.");
+      const media = item as { url?: unknown; alt?: unknown; caption?: unknown; mediaAssetId?: unknown };
+      if (typeof media.mediaAssetId === "number" && Number.isInteger(media.mediaAssetId) && media.mediaAssetId > 0) {
+        const assetRows = await db.select({ id: mediaAssets.id, url: mediaAssets.url, secureUrl: mediaAssets.secureUrl, purpose: mediaAssets.purpose, resourceType: mediaAssets.resourceType }).from(mediaAssets).where(and(eq(mediaAssets.id, media.mediaAssetId), eq(mediaAssets.churchId, churchId), eq(mediaAssets.purpose, "tenant_public_gallery"), eq(mediaAssets.resourceType, "image"), eq(mediaAssets.status, "active"))).limit(1);
+        const asset = assetRows[0];
+        if (!asset || typeof media.url !== "string" || (asset.url !== media.url && asset.secureUrl !== media.url)) throw new Error("A imagem não pertence a esta igreja.");
+      } else {
+        const ownedPrefix = `/manus-storage/churches/${churchId}/public/`;
+        if (typeof media.url !== "string" || !media.url.startsWith(ownedPrefix)) throw new Error("A imagem não pertence a esta igreja.");
+      }
       if (typeof media.alt !== "string" || media.alt.trim().length < 3 || media.alt.length > 180) throw new Error("Informe um texto alternativo entre 3 e 180 caracteres.");
       if (media.caption !== undefined && (typeof media.caption !== "string" || media.caption.length > 180)) throw new Error("A legenda da imagem é inválida.");
     }

@@ -13,11 +13,13 @@ import { dailyNotificationsHandler } from "../scheduledNotifications";
 import { scheduleRemindersHandler } from "../scheduleReminders";
 import Busboy from "busboy";
 import { storagePut } from "../storage";
+import { uploadMedia, type MediaPurpose, type MediaResourceType } from "../media";
 import { stripeWebhookHandler } from "../stripe-webhook";
 import { verifyToken } from "../auth";
 import { matchesTreasuryAttachmentSignature, safeTreasuryAttachmentName, TREASURY_ATTACHMENT_MIME_TYPES } from "../treasury-files";
 import {
   createFinancialReconciliationAttachment,
+  createMediaAsset,
   createStartupDiagnostic,
   getActiveChurchUserById,
   getActiveMinistryRoleKeysByPerson,
@@ -153,16 +155,16 @@ async function startServer() {
     const bb = Busboy({ headers: req.headers, limits: { fileSize: 2 * 1024 * 1024 } });
     let fileBuffer: Buffer | null = null;
     let mimeType = "image/png";
+    let originalFilename = "logo";
+    let requestedPurpose: "tenant_logo" | "certificate_logo" = "tenant_logo";
     let limitReached = false;
     let invalidMimeType = false;
     const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
-    const extensions: Record<string, string> = {
-      "image/png": "png",
-      "image/jpeg": "jpg",
-      "image/webp": "webp",
-    };
-
+    bb.on("field", (name, value) => {
+      if (name === "purpose" && value === "certificate_logo") requestedPurpose = "certificate_logo";
+    });
     bb.on("file", (_field, stream, info) => {
+      originalFilename = info.filename || "logo";
       mimeType = info.mimeType || "image/png";
       if (!allowedMimeTypes.has(mimeType)) {
         invalidMimeType = true;
@@ -189,10 +191,35 @@ async function startServer() {
         return;
       }
       try {
-        const ext = extensions[mimeType] ?? "png";
-        const key = `churches/${churchUser.churchId}/logos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        const { url } = await storagePut(key, fileBuffer, mimeType);
-        res.json({ url, key });
+        const uploaded = await uploadMedia({
+          churchId: churchUser.churchId,
+          data: fileBuffer,
+          mimeType,
+          resourceType: "image",
+          purpose: requestedPurpose,
+          originalFilename,
+          uploadedByChurchUserId: churchUser.id,
+        });
+        const asset = await createMediaAsset({
+          churchId: churchUser.churchId,
+          provider: uploaded.provider,
+          resourceType: uploaded.resourceType,
+          purpose: uploaded.purpose,
+          publicId: uploaded.publicId,
+          storageKey: uploaded.provider === "manus_storage" ? uploaded.key : null,
+          url: uploaded.url,
+          secureUrl: uploaded.secureUrl,
+          originalFilename: uploaded.originalFilename,
+          mimeType: uploaded.mimeType,
+          bytes: uploaded.bytes,
+          width: uploaded.width,
+          height: uploaded.height,
+          durationSeconds: uploaded.durationSeconds,
+          entityType: "church",
+          entityId: churchUser.churchId,
+          uploadedByChurchUserId: churchUser.id,
+        });
+        res.json({ url: uploaded.url, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, mediaAssetId: asset?.id ?? null });
       } catch (err) {
         console.error("[Upload] Error:", err);
         res.status(500).json({ error: "Upload failed" });
@@ -223,13 +250,14 @@ async function startServer() {
     if (!(req.headers["content-type"] ?? "").includes("multipart/form-data")) return res.status(400).json({ error: "Expected multipart/form-data" });
 
     const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp"]);
-    const extensions: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
     const bb = Busboy({ headers: req.headers, limits: { fileSize: 4 * 1024 * 1024, files: 1 } });
     let fileBuffer: Buffer | null = null;
     let mimeType = "image/png";
+    let originalFilename = "gallery-image";
     let invalidMimeType = false;
     let limitReached = false;
     bb.on("file", (_field, stream, info) => {
+      originalFilename = info.filename || "gallery-image";
       mimeType = info.mimeType || "image/png";
       if (!allowedMimeTypes.has(mimeType)) { invalidMimeType = true; stream.resume(); return; }
       const chunks: Buffer[] = [];
@@ -242,16 +270,105 @@ async function startServer() {
       if (invalidMimeType) return res.status(415).json({ error: "Only PNG, JPEG and WebP images are allowed" });
       if (!fileBuffer) return res.status(400).json({ error: "No file received" });
       try {
-        const ext = extensions[mimeType] ?? "png";
-        const key = `churches/${churchUser.churchId}/public/gallery/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-        const { key: storedKey, url } = await storagePut(key, fileBuffer, mimeType);
-        return res.json({ url, key: storedKey });
+        const uploaded = await uploadMedia({
+          churchId: churchUser.churchId,
+          data: fileBuffer,
+          mimeType,
+          resourceType: "image",
+          purpose: "tenant_public_gallery",
+          originalFilename,
+          uploadedByChurchUserId: churchUser.id,
+        });
+        const asset = await createMediaAsset({
+          churchId: churchUser.churchId,
+          provider: uploaded.provider,
+          resourceType: uploaded.resourceType,
+          purpose: uploaded.purpose,
+          publicId: uploaded.publicId,
+          storageKey: uploaded.provider === "manus_storage" ? uploaded.key : null,
+          url: uploaded.url,
+          secureUrl: uploaded.secureUrl,
+          originalFilename: uploaded.originalFilename,
+          mimeType: uploaded.mimeType,
+          bytes: uploaded.bytes,
+          width: uploaded.width,
+          height: uploaded.height,
+          durationSeconds: uploaded.durationSeconds,
+          entityType: "tenant_public_site",
+          entityId: churchUser.churchId,
+          uploadedByChurchUserId: churchUser.id,
+        });
+        return res.json({ url: uploaded.url, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, mediaAssetId: asset?.id ?? null });
       } catch (error) {
         console.error("[Tenant public media] Upload failed:", error);
         return res.status(500).json({ error: "Upload failed" });
       }
     });
     bb.on("error", (error) => { console.error("[Tenant public media] Upload error:", error); res.status(500).json({ error: "Upload error" }); });
+    req.pipe(bb);
+  });
+
+  // Endpoint genérico de mídia para as próximas áreas do produto. A finalidade e o tipo
+  // vêm do formulário, mas o tenant e a autorização vêm exclusivamente da sessão.
+  app.post("/api/media/upload", async (req, res) => {
+    const authorization = req.headers.authorization;
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+    const payload = token ? await verifyToken(token) : null;
+    if (!payload || payload.type !== "church") return res.status(401).json({ error: "Authentication required" });
+    const churchUser = await getActiveChurchUserById(Number(payload.sub));
+    if (!churchUser || churchUser.churchId !== payload.churchId || churchUser.role !== payload.role) return res.status(403).json({ error: "Invalid church session" });
+    if (!(req.headers["content-type"] ?? "").includes("multipart/form-data")) return res.status(400).json({ error: "Expected multipart/form-data" });
+
+    let purpose: MediaPurpose = "other";
+    let resourceType: MediaResourceType = "image";
+    let fileBuffer: Buffer | null = null;
+    let mimeType = "application/octet-stream";
+    let originalFilename = "media";
+    let invalidMimeType = false;
+    let limitReached = false;
+    const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp", "video/mp4", "video/webm", "video/quicktime"]);
+    const bb = Busboy({ headers: req.headers, limits: { fileSize: 32 * 1024 * 1024, files: 1 } });
+    bb.on("field", (name, value) => {
+      if (name === "purpose" && ["tenant_logo", "tenant_public_gallery", "certificate_logo", "public_video"].includes(value)) purpose = value as MediaPurpose;
+      if (name === "resourceType" && ["image", "video"].includes(value)) resourceType = value as MediaResourceType;
+    });
+    bb.on("file", (_field, stream, info) => {
+      originalFilename = info.filename || "media";
+      mimeType = info.mimeType || "application/octet-stream";
+      if (!allowedMimeTypes.has(mimeType)) { invalidMimeType = true; stream.resume(); return; }
+      const chunks: Buffer[] = [];
+      stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+      stream.on("limit", () => { limitReached = true; stream.resume(); });
+      stream.on("end", () => { if (!limitReached) fileBuffer = Buffer.concat(chunks); });
+    });
+    bb.on("finish", async () => {
+      if (limitReached) return res.status(413).json({ error: "Arquivo muito grande (máximo 32 MB)" });
+      if (invalidMimeType) return res.status(415).json({ error: "Formato não permitido. Use PNG, JPEG, WebP, MP4, WebM ou MOV." });
+      if (!fileBuffer) return res.status(400).json({ error: "No file received" });
+      const pastorRoles = new Set(["pastor_presidente", "pastor_local"]);
+      const adminRoles = new Set(["pastor_presidente", "pastor_local", "secretario"]);
+      const imagePurposes = new Set<MediaPurpose>(["tenant_logo", "tenant_public_gallery", "certificate_logo"]);
+      if (!imagePurposes.has(purpose) && purpose !== "public_video") return res.status(400).json({ error: "Finalidade de mídia inválida" });
+      if (imagePurposes.has(purpose) && resourceType !== "image") return res.status(400).json({ error: "Esta finalidade aceita somente imagens" });
+      if (purpose === "public_video" && resourceType !== "video") return res.status(400).json({ error: "Vídeos públicos exigem resourceType=video" });
+      if (purpose === "tenant_logo" || purpose === "certificate_logo") {
+        if (!adminRoles.has(churchUser.role)) return res.status(403).json({ error: "Permissão administrativa necessária" });
+        if (fileBuffer.length > 2 * 1024 * 1024) return res.status(413).json({ error: "Logo deve ter no máximo 2 MB" });
+      }
+      if (purpose === "tenant_public_gallery" || purpose === "public_video") {
+        if (!pastorRoles.has(churchUser.role)) return res.status(403).json({ error: "Somente Pastores podem enviar esta mídia" });
+        if (resourceType === "image" && fileBuffer.length > 4 * 1024 * 1024) return res.status(413).json({ error: "Imagem deve ter no máximo 4 MB" });
+      }
+      try {
+        const uploaded = await uploadMedia({ churchId: churchUser.churchId, data: fileBuffer, mimeType, resourceType, purpose, originalFilename, uploadedByChurchUserId: churchUser.id });
+        const asset = await createMediaAsset({ churchId: churchUser.churchId, provider: uploaded.provider, resourceType: uploaded.resourceType, purpose: uploaded.purpose, publicId: uploaded.publicId, storageKey: uploaded.provider === "manus_storage" ? uploaded.key : null, url: uploaded.url, secureUrl: uploaded.secureUrl, originalFilename: uploaded.originalFilename, mimeType: uploaded.mimeType, bytes: uploaded.bytes, width: uploaded.width, height: uploaded.height, durationSeconds: uploaded.durationSeconds, entityType: purpose, entityId: churchUser.churchId, uploadedByChurchUserId: churchUser.id });
+        return res.json({ url: uploaded.url, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, resourceType: uploaded.resourceType, purpose: uploaded.purpose, mediaAssetId: asset?.id ?? null });
+      } catch (error) {
+        console.error("[Media] Upload failed:", error);
+        return res.status(500).json({ error: "Upload failed" });
+      }
+    });
+    bb.on("error", (error) => { console.error("[Media] Busboy error:", error); res.status(500).json({ error: "Upload error" }); });
     req.pipe(bb);
   });
 
