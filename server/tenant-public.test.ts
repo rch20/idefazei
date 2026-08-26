@@ -298,9 +298,10 @@ describe("Galeria pública por tenant", () => {
     expect(indexSource).toContain('"/api/pwa/icon-192.png"');
     expect(indexSource).toContain('"/api/pwa/icon-512.png"');
     expect(indexSource).toContain("pwaIcon192Url");
-    expect(indexSource).toContain('const fallbackPwaIcon = "/ide-fazei-pwa-fallback.png";');
+    expect(indexSource).toContain('const fallbackPwaIcons = { 192: "/ide-fazei-pwa-fallback-192.png", 512: "/ide-fazei-pwa-fallback-512.png" } as const;');
     expect(indexSource).not.toContain("/manus-storage/ide-fazei-symbol_59bf82d4.png");
-    expect(existsSync(resolve(process.cwd(), "client/public/ide-fazei-pwa-fallback.png"))).toBe(true);
+    expect(existsSync(resolve(process.cwd(), "client/public/ide-fazei-pwa-fallback-192.png"))).toBe(true);
+    expect(existsSync(resolve(process.cwd(), "client/public/ide-fazei-pwa-fallback-512.png"))).toBe(true);
     expect(indexSource).toContain("no-cache, max-age=0, must-revalidate");
     expect(dbSource).toContain("faviconUrl: church.pwaIcon192Url || church.logoUrl");
   });

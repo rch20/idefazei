@@ -83,7 +83,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
 
-  const fallbackPwaIcon = "/ide-fazei-pwa-fallback.png";
+  const fallbackPwaIcons = { 192: "/ide-fazei-pwa-fallback-192.png", 512: "/ide-fazei-pwa-fallback-512.png" } as const;
   const resolvePwaChurch = async (req: express.Request) => {
     const requestedTenant = typeof req.query.tenant === "string" && /^[a-z0-9-]{2,100}$/.test(req.query.tenant) ? req.query.tenant : null;
     const tenantSlug = requestedTenant || getTenantSlugFromHost(req.headers.host);
@@ -119,6 +119,7 @@ async function startServer() {
   app.get("/api/pwa/icon-:size(192|512).png", async (req, res) => {
     const church = await resolvePwaChurch(req);
     const size = req.params.size === "512" ? 512 : 192;
+    const fallbackPwaIcon = fallbackPwaIcons[size];
     const iconUrl = size === 512 ? (church?.pwaIcon512Url || church?.pwaIcon192Url || church?.logoUrl || fallbackPwaIcon) : (church?.pwaIcon192Url || church?.logoUrl || fallbackPwaIcon);
     res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
     return res.redirect(302, iconUrl);
