@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX } from "lucide-react";
+import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug } from "lucide-react";
 import { getChurchToken, useChurchAuth } from "@/hooks/useChurchAuth";
 import { TenantPublicSettings } from "@/components/TenantPublicSettings";
 
@@ -59,6 +59,7 @@ export default function Configuracoes() {
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [activeTab, setActiveTab] = useState("geral");
 
   useEffect(() => {
     if (!church) return;
@@ -186,26 +187,34 @@ export default function Configuracoes() {
     );
   }
 
-  return (
-      <div className="p-6 max-w-4xl mx-auto animate-fade-in-up">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-          <div>
-            <h1 className="text-2xl font-display font-bold text-navy">Configurações da Igreja</h1>
-            <p className="text-sm text-muted-foreground mt-1">Personalize sua identidade e dados institucionais</p>
-          </div>
-          <Button
-            className="bg-navy text-white hover:bg-navy-light gap-2"
-            onClick={handleSave}
-            disabled={updateMutation.isPending}
-          >
-            <Save className="w-4 h-4" />
-            {updateMutation.isPending ? "Salvando..." : "Salvar Alterações"}
-          </Button>
-        </div>
+  const canSaveChurchSettings = activeTab === "geral" || activeTab === "identidade";
 
-        <Tabs defaultValue="geral">
-          <TabsList className="mb-6">
+  return (
+    <div className="mx-auto w-full max-w-6xl space-y-6 p-4 animate-fade-in-up sm:p-6 lg:p-8">
+      <header className="relative overflow-hidden rounded-3xl border border-navy/10 bg-gradient-to-br from-navy via-[#244d76] to-[#17324f] p-5 text-white shadow-lg sm:p-7">
+        <div className="relative z-10 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/70"><span className="rounded-full bg-white/10 px-2.5 py-1">Centro de configuração</span><span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" />Tenant da igreja</span></div>
+            <h1 className="font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">Configurações da Igreja</h1>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/75">Organize os dados institucionais, a marca, os acessos e a presença pública da sua igreja em um só lugar.</p>
+          </div>
+          {canSaveChurchSettings ? <Button className="w-full gap-2 bg-white text-navy shadow-sm hover:bg-white/90 sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar alterações"}</Button> : activeTab === "pagina-publica" ? <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white/80"><Globe className="h-4 w-4" />Salve e publique dentro do editor público</div> : <p className="text-xs text-white/70">Cada seção possui suas próprias ações.</p>}
+        </div>
+        <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full border border-white/10" />
+        <div className="pointer-events-none absolute -bottom-28 right-16 h-64 w-64 rounded-full border border-white/10" />
+      </header>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <ConfigQuickCard icon={Building2} title="Dados institucionais" description="Contato, endereço, visão e missão" active={activeTab === "geral"} onClick={() => setActiveTab("geral")} />
+        <ConfigQuickCard icon={Palette} title="Marca da igreja" description="Logo, cores e pré-visualização" active={activeTab === "identidade"} onClick={() => setActiveTab("identidade")} />
+        {canManageRoles && <ConfigQuickCard icon={Globe} title="Presença pública" description="Site, blocos, SEO e publicação" active={activeTab === "pagina-publica"} onClick={() => setActiveTab("pagina-publica")} />}
+        <ConfigQuickCard icon={Users} title="Pessoas e acessos" description="Vínculos, perfis e funções" active={activeTab === "membros"} onClick={() => setActiveTab("membros")} />
+        <ConfigQuickCard icon={Plug} title="Integrações" description="Conexões e automações futuras" active={activeTab === "integracao"} onClick={() => setActiveTab("integracao")} />
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="min-w-0 overflow-x-auto rounded-2xl" role="region" aria-label="Seções da configuração">
+          <TabsList className="h-auto min-w-max gap-1 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
             <TabsTrigger value="geral" className="gap-2">
               <Building2 className="w-4 h-4" /> Geral
             </TabsTrigger>
@@ -222,214 +231,60 @@ export default function Configuracoes() {
               <Globe className="w-4 h-4" /> Integração
             </TabsTrigger>
           </TabsList>
+        </div>
+        <p className="mt-1 text-[11px] text-muted-foreground sm:hidden">Deslize horizontalmente para acessar todas as seções.</p>
 
           {/* Geral */}
           <TabsContent value="geral">
-            <div className="card-sacred p-6 space-y-5">
-              <h2 className="font-semibold text-navy text-base border-b border-border pb-2">Dados da Igreja</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="name">Nome da Igreja *</Label>
-                  <Input
-                    id="name"
-                    value={churchForm.name}
-                    onChange={(e) => setChurchForm({ ...churchForm, name: e.target.value })}
-                    className="mt-1"
-                    placeholder="Ex: Igreja Batista Central"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="slug">Subdomínio (slug) *</Label>
-                  <div className="flex items-center mt-1">
-                    <Input
-                      id="slug"
-                      value={churchForm.slug}
-                      onChange={(e) => setChurchForm({ ...churchForm, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })}
-                      placeholder="minha-igreja"
-                    />
-                    <span className="ml-2 text-xs text-muted-foreground whitespace-nowrap">.igrejaapp.com</span>
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="phone">Telefone</Label>
-                  <Input
-                    id="phone"
-                    value={churchForm.phone}
-                    onChange={(e) => setChurchForm({ ...churchForm, phone: e.target.value })}
-                    className="mt-1"
-                    placeholder="(11) 3333-4444"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="whatsapp">WhatsApp</Label>
-                  <Input
-                    id="whatsapp"
-                    value={churchForm.whatsapp}
-                    onChange={(e) => setChurchForm({ ...churchForm, whatsapp: e.target.value })}
-                    className="mt-1"
-                    placeholder="(11) 99999-8888"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="email">E-mail</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={churchForm.email}
-                    onChange={(e) => setChurchForm({ ...churchForm, email: e.target.value })}
-                    className="mt-1"
-                    placeholder="contato@minhaigreia.com"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="website">Website</Label>
-                  <Input
-                    id="website"
-                    value={churchForm.website}
-                    onChange={(e) => setChurchForm({ ...churchForm, website: e.target.value })}
-                    className="mt-1"
-                    placeholder="https://minhaigreia.com"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="address">Endereço</Label>
-                  <Input
-                    id="address"
-                    value={churchForm.address}
-                    onChange={(e) => setChurchForm({ ...churchForm, address: e.target.value })}
-                    className="mt-1"
-                    placeholder="Rua das Flores, 123"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label htmlFor="city">Cidade</Label>
-                    <Input
-                      id="city"
-                      value={churchForm.city}
-                      onChange={(e) => setChurchForm({ ...churchForm, city: e.target.value })}
-                      className="mt-1"
-                      placeholder="São Paulo"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="state">Estado</Label>
-                    <Input
-                      id="state"
-                      value={churchForm.state}
-                      onChange={(e) => setChurchForm({ ...churchForm, state: e.target.value.toUpperCase().slice(0, 2) })}
-                      className="mt-1"
-                      placeholder="SP"
-                      maxLength={2}
-                    />
-                  </div>
-                </div>
+            <div className="space-y-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><div className="flex items-center gap-2"><Building2 className="h-5 w-5 text-gold" /><h2 className="font-display text-2xl font-bold text-navy">Dados institucionais</h2></div><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Mantenha as informações que identificam sua igreja e aparecem nos canais de atendimento.</p></div><span className="w-fit rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Somente esta igreja</span></div>
+              <div className="grid gap-5 lg:grid-cols-2">
+                <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Identificação</h3><p className="mt-1 text-sm text-muted-foreground">Nome e endereço público do seu tenant.</p></div><div className="mt-5 grid gap-4"><div><Label htmlFor="name">Nome da Igreja *</Label><Input id="name" value={churchForm.name} onChange={(e) => setChurchForm({ ...churchForm, name: e.target.value })} className="mt-1" placeholder="Ex.: Igreja Batista Central" /></div><div><Label htmlFor="slug">Subdomínio (slug) *</Label><div className="mt-1 flex min-w-0 items-center gap-2"><Input id="slug" value={churchForm.slug} onChange={(e) => setChurchForm({ ...churchForm, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })} placeholder="minha-igreja" /><span className="shrink-0 text-xs text-muted-foreground">.igrejaapp.com</span></div></div><div><Label htmlFor="address">Endereço</Label><Input id="address" value={churchForm.address} onChange={(e) => setChurchForm({ ...churchForm, address: e.target.value })} className="mt-1" placeholder="Rua das Flores, 123" /></div><div className="grid grid-cols-[minmax(0,1fr)_88px] gap-3"><div><Label htmlFor="city">Cidade</Label><Input id="city" value={churchForm.city} onChange={(e) => setChurchForm({ ...churchForm, city: e.target.value })} className="mt-1" placeholder="São Paulo" /></div><div><Label htmlFor="state">Estado</Label><Input id="state" value={churchForm.state} onChange={(e) => setChurchForm({ ...churchForm, state: e.target.value.toUpperCase().slice(0, 2) })} className="mt-1 uppercase" placeholder="SP" maxLength={2} /></div></div></div></section>
+                <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Canais de contato</h3><p className="mt-1 text-sm text-muted-foreground">Facilite o contato entre sua igreja e a comunidade.</p></div><div className="mt-5 grid gap-4"><div><Label htmlFor="phone">Telefone</Label><Input id="phone" value={churchForm.phone} onChange={(e) => setChurchForm({ ...churchForm, phone: e.target.value })} className="mt-1" placeholder="(11) 3333-4444" /></div><div><Label htmlFor="whatsapp">WhatsApp</Label><Input id="whatsapp" value={churchForm.whatsapp} onChange={(e) => setChurchForm({ ...churchForm, whatsapp: e.target.value })} className="mt-1" placeholder="(11) 99999-8888" /></div><div><Label htmlFor="email">E-mail</Label><Input id="email" type="email" value={churchForm.email} onChange={(e) => setChurchForm({ ...churchForm, email: e.target.value })} className="mt-1" placeholder="contato@minhaigreja.com" /></div><div><Label htmlFor="website">Website</Label><Input id="website" value={churchForm.website} onChange={(e) => setChurchForm({ ...churchForm, website: e.target.value })} className="mt-1" placeholder="https://minhaigreja.com" /></div></div></section>
               </div>
-              <div>
-                <Label htmlFor="vision">Visão</Label>
-                <Textarea
-                  id="vision"
-                  value={churchForm.vision}
-                  onChange={(e) => setChurchForm({ ...churchForm, vision: e.target.value })}
-                  className="mt-1"
-                  placeholder="A visão da sua igreja..."
-                  rows={3}
-                />
-              </div>
-              <div>
-                <Label htmlFor="mission">Missão</Label>
-                <Textarea
-                  id="mission"
-                  value={churchForm.mission}
-                  onChange={(e) => setChurchForm({ ...churchForm, mission: e.target.value })}
-                  className="mt-1"
-                  placeholder="A missão da sua igreja..."
-                  rows={3}
-                />
-              </div>
+              <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Mensagem da igreja</h3><p className="mt-1 text-sm text-muted-foreground">Registre a visão e a missão que orientam sua comunidade.</p></div><div className="mt-5 grid gap-4 lg:grid-cols-2"><div><Label htmlFor="vision">Visão</Label><Textarea id="vision" value={churchForm.vision} onChange={(e) => setChurchForm({ ...churchForm, vision: e.target.value })} className="mt-1" placeholder="A visão da sua igreja..." rows={5} /></div><div><Label htmlFor="mission">Missão</Label><Textarea id="mission" value={churchForm.mission} onChange={(e) => setChurchForm({ ...churchForm, mission: e.target.value })} className="mt-1" placeholder="A missão da sua igreja..." rows={5} /></div></div></section>
             </div>
           </TabsContent>
 
           {/* Identidade Visual */}
           <TabsContent value="identidade">
-            <div className="card-sacred p-6 space-y-6">
-              <h2 className="font-semibold text-navy text-base border-b border-border pb-2">Identidade Visual</h2>
-
-              {/* Logo upload */}
-              <div>
-                <Label>Logo da Igreja</Label>
-                <div role="button" tabIndex={0} onClick={() => logoInputRef.current?.click()} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); logoInputRef.current?.click(); } }} className="mt-2 border-2 border-dashed border-border rounded-xl p-8 flex flex-col items-center gap-3 cursor-pointer hover:border-gold/50 focus:outline-none focus:ring-2 focus:ring-gold/40 transition-colors">
-                  <input ref={logoInputRef} aria-label="Selecionar logo da igreja" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={handleLogoUpload} />
-                  {churchForm.logoUrl ? <img src={churchForm.logoUrl} alt="Logo atual da igreja" className="h-16 w-16 rounded-xl object-contain" /> : <Upload className="w-8 h-8 text-muted-foreground" />}
-                  <p className="text-sm text-muted-foreground">Clique para enviar ou substituir a logo</p>
-                  <p className="text-xs text-muted-foreground">PNG, JPG ou WebP — máx. 2 MB</p>
-                  <Button type="button" variant="outline" size="sm" disabled={isUploadingLogo} onClick={(event) => { event.stopPropagation(); logoInputRef.current?.click(); }}>
-                    {isUploadingLogo ? "Enviando..." : "Selecionar Arquivo"}
-                  </Button>
-                </div>
-              </div>
-
-              {/* Colors */}
-              <div className="grid grid-cols-2 gap-6">
+            <div className="space-y-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
-                  <Label htmlFor="primaryColor">Cor Primária</Label>
-                  <div className="flex items-center gap-3 mt-2">
-                    <input
-                      type="color"
-                      id="primaryColor"
-                      value={churchForm.primaryColor}
-                      onChange={(e) => setChurchForm({ ...churchForm, primaryColor: e.target.value })}
-                      className="w-12 h-10 rounded cursor-pointer border border-border"
-                    />
-                    <Input
-                      value={churchForm.primaryColor}
-                      onChange={(e) => setChurchForm({ ...churchForm, primaryColor: e.target.value })}
-                      placeholder="#1e3a5f"
-                      className="font-mono"
-                    />
-                  </div>
+                  <div className="flex items-center gap-2"><Palette className="h-5 w-5 text-gold" /><h2 className="font-display text-2xl font-bold text-navy">Identidade Visual</h2></div>
+                  <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Defina a aparência principal do painel e dos materiais da sua igreja. As mudanças ficam no rascunho até você salvar.</p>
                 </div>
-                <div>
-                  <Label htmlFor="secondaryColor">Cor Secundária (Destaque)</Label>
-                  <div className="flex items-center gap-3 mt-2">
-                    <input
-                      type="color"
-                      id="secondaryColor"
-                      value={churchForm.secondaryColor}
-                      onChange={(e) => setChurchForm({ ...churchForm, secondaryColor: e.target.value })}
-                      className="w-12 h-10 rounded cursor-pointer border border-border"
-                    />
-                    <Input
-                      value={churchForm.secondaryColor}
-                      onChange={(e) => setChurchForm({ ...churchForm, secondaryColor: e.target.value })}
-                      placeholder="#c9a84c"
-                      className="font-mono"
-                    />
-                  </div>
-                </div>
+                <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700"><ShieldCheck className="h-3.5 w-3.5" />Configuração por igreja</span>
               </div>
 
-              {/* Preview */}
-              <div>
-                <Label>Pré-visualização</Label>
-                <div
-                  className="mt-2 rounded-xl p-5 flex items-center gap-3"
-                  style={{ backgroundColor: churchForm.primaryColor }}
-                >
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white"
-                    style={{ backgroundColor: churchForm.secondaryColor }}
-                  >
-                    {churchForm.name?.[0] ?? "I"}
+              <div className="grid gap-5 lg:grid-cols-[minmax(0,1.12fr)_minmax(280px,0.88fr)]">
+                <section className="card-sacred p-5 sm:p-6">
+                  <div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Marca principal</h3><p className="mt-1 text-sm text-muted-foreground">Use uma logo nítida para identificar sua igreja em todos os espaços.</p></div>
+                  <div className="mt-5">
+                    <Label htmlFor="church-logo-trigger">Logo da Igreja</Label>
+                    <input ref={logoInputRef} aria-label="Selecionar logo da igreja" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={handleLogoUpload} />
+                    <button id="church-logo-trigger" type="button" onClick={() => logoInputRef.current?.click()} disabled={isUploadingLogo} className="mt-2 flex w-full min-w-0 flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-6 text-center transition-colors hover:border-gold/60 hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 disabled:cursor-wait disabled:opacity-70 sm:p-8">
+                      {churchForm.logoUrl ? <img src={churchForm.logoUrl} alt="Logo atual da igreja" className="h-20 w-20 rounded-2xl object-contain shadow-sm" /> : <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-sm"><Upload className="h-8 w-8" /></span>}
+                      <span className="text-sm font-semibold text-navy">{isUploadingLogo ? "Enviando logo..." : churchForm.logoUrl ? "Clique para substituir a logo" : "Clique para enviar a logo"}</span>
+                      <span className="text-xs text-muted-foreground">PNG, JPG ou WebP · máximo de 2 MB</span>
+                    </button>
+                    <div className="mt-3 flex justify-end"><Button type="button" variant="outline" size="sm" disabled={isUploadingLogo} onClick={() => logoInputRef.current?.click()}>{isUploadingLogo ? "Enviando..." : churchForm.logoUrl ? "Substituir arquivo" : "Selecionar arquivo"}</Button></div>
                   </div>
-                  <div>
-                    <p className="font-semibold text-white text-sm">{churchForm.name || "Nome da Igreja"}</p>
-                    <p className="text-xs" style={{ color: churchForm.secondaryColor }}>
-                      {churchForm.slug || "slug"}.igrejaapp.com
-                    </p>
+                </section>
+
+                <section className="card-sacred p-5 sm:p-6">
+                  <div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Paleta da igreja</h3><p className="mt-1 text-sm text-muted-foreground">Escolha uma cor principal e uma cor de destaque para a interface.</p></div>
+                  <div className="mt-5 grid gap-3">
+                    <label className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4"><span className="text-sm font-semibold text-navy">Cor primária</span><span className="mt-1 block text-xs text-muted-foreground">Navegação e superfícies principais</span><div className="mt-3 flex min-w-0 items-center gap-3"><input type="color" aria-label="Selecionar cor primária" value={churchForm.primaryColor} onChange={(event) => setChurchForm({ ...churchForm, primaryColor: event.target.value })} className="h-11 w-14 shrink-0 cursor-pointer rounded-lg border border-slate-200 bg-white p-1" /><Input aria-label="Código hexadecimal da cor primária" value={churchForm.primaryColor} onChange={(event) => setChurchForm({ ...churchForm, primaryColor: event.target.value })} placeholder="#1e3a5f" className="min-w-0 font-mono uppercase" /></div></label>
+                    <label className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4"><span className="text-sm font-semibold text-navy">Cor de destaque</span><span className="mt-1 block text-xs text-muted-foreground">Botões, detalhes e chamadas</span><div className="mt-3 flex min-w-0 items-center gap-3"><input type="color" aria-label="Selecionar cor de destaque" value={churchForm.secondaryColor} onChange={(event) => setChurchForm({ ...churchForm, secondaryColor: event.target.value })} className="h-11 w-14 shrink-0 cursor-pointer rounded-lg border border-slate-200 bg-white p-1" /><Input aria-label="Código hexadecimal da cor de destaque" value={churchForm.secondaryColor} onChange={(event) => setChurchForm({ ...churchForm, secondaryColor: event.target.value })} placeholder="#c9a84c" className="min-w-0 font-mono uppercase" /></div></label>
                   </div>
-                </div>
+                </section>
               </div>
+
+              <section className="overflow-hidden rounded-2xl border border-navy/10 bg-gradient-to-br from-navy via-[#244d76] to-[#17324f] p-5 shadow-md sm:p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><div className="flex items-center gap-2 text-white"><Eye className="h-4 w-4 text-white/70" /><h3 className="text-base font-semibold">Prévia da identidade</h3></div><p className="mt-1 text-sm text-white/70">Veja como a combinação de logo, nome e cores aparece no painel.</p></div><span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/70">Ao vivo</span></div>
+                <div className="mt-5 flex min-w-0 items-center gap-3 rounded-2xl bg-white/10 p-4 sm:p-5"><div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/95 text-lg font-bold text-navy">{churchForm.logoUrl ? <img src={churchForm.logoUrl} alt="Prévia da logo da igreja" className="h-full w-full object-contain p-1" /> : churchForm.name?.[0] ?? "I"}</div><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{churchForm.name || "Nome da Igreja"}</p><p className="truncate text-xs" style={{ color: churchForm.secondaryColor }}>{churchForm.slug || "slug"}.igrejaapp.com</p></div><div className="ml-auto hidden h-8 w-8 shrink-0 rounded-full sm:block" style={{ backgroundColor: churchForm.secondaryColor }} /></div>
+              </section>
             </div>
           </TabsContent>
 
@@ -609,24 +464,18 @@ export default function Configuracoes() {
 
           {/* Integração */}
           <TabsContent value="integracao">
-            <div className="card-sacred p-6 space-y-4">
-              <h2 className="font-semibold text-navy text-base border-b border-border pb-2">Integrações e API</h2>
-              <div className="space-y-3">
+            <div className="space-y-5">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><div className="flex items-center gap-2"><Plug className="h-5 w-5 text-gold" /><h2 className="font-display text-2xl font-bold text-navy">Integrações</h2></div><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Acompanhe as conexões previstas para ampliar os canais da sua igreja.</p></div><span className="w-fit rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Planejamento</span></div>
+              <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Conexões disponíveis</h3><p className="mt-1 text-sm text-muted-foreground">Estas integrações ainda não estão ativas. Quando liberadas, a configuração continuará isolada por igreja.</p></div><div className="mt-5 grid gap-3 md:grid-cols-2">
                 {[
-                  { name: "WhatsApp Business API", desc: "Envio automático de mensagens e notificações", status: "Planejado" },
-                  { name: "YouTube Live", desc: "Transmissão ao vivo integrada ao canal da igreja", status: "Planejado" },
-                  { name: "PagSeguro / Mercado Pago", desc: "Recebimento de dízimos e ofertas online", status: "Planejado" },
-                  { name: "Google Calendar", desc: "Sincronização de eventos com o Google Calendar", status: "Planejado" },
+                  { name: "WhatsApp Business API", desc: "Envio automático de mensagens e notificações" },
+                  { name: "YouTube Live", desc: "Transmissão ao vivo integrada ao canal da igreja" },
+                  { name: "PagSeguro / Mercado Pago", desc: "Recebimento de dízimos e ofertas online" },
+                  { name: "Google Calendar", desc: "Sincronização de eventos com o Google Calendar" },
                 ].map((integration) => (
-                  <div key={integration.name} className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/30">
-                    <div>
-                      <p className="font-medium text-navy text-sm">{integration.name}</p>
-                      <p className="text-xs text-muted-foreground">{integration.desc}</p>
-                    </div>
-                    <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">{integration.status}</span>
-                  </div>
+                  <article key={integration.name} className="flex min-w-0 items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-400 shadow-sm"><Plug className="h-4 w-4" /></span><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold text-navy">{integration.name}</p><span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">Planejado</span></div><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{integration.desc}</p></div></article>
                 ))}
-              </div>
+              </div></section>
             </div>
           </TabsContent>
         </Tabs>
@@ -651,4 +500,8 @@ export default function Configuracoes() {
         </Dialog>
       </div>
   );
+}
+
+function ConfigQuickCard({ icon: Icon, title, description, active, onClick }: { icon: typeof Building2; title: string; description: string; active: boolean; onClick: () => void }) {
+  return <button type="button" onClick={onClick} aria-current={active ? "page" : undefined} className={`group flex min-h-[116px] min-w-0 flex-col justify-between rounded-2xl border p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 ${active ? "border-navy bg-navy text-white shadow-md" : "border-slate-200 bg-white text-navy"}`}><span className={`flex h-9 w-9 items-center justify-center rounded-xl ${active ? "bg-white/15 text-white" : "bg-gold/10 text-gold"}`}><Icon className="h-4 w-4" /></span><span className="mt-3 flex min-w-0 items-end justify-between gap-2"><span className="min-w-0"><strong className={`block truncate text-sm ${active ? "text-white" : "text-navy"}`}>{title}</strong><span className={`mt-1 block line-clamp-2 text-xs leading-relaxed ${active ? "text-white/70" : "text-slate-500"}`}>{description}</span></span><ChevronRight className={`h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5 ${active ? "text-white/70" : "text-slate-400"}`} /></span></button>;
 }
