@@ -14,8 +14,18 @@ describe("Tesouraria — regressões de interface e lógica", () => {
   it("substitui prompts nativos por modais controlados e roláveis", () => {
     expect(pageSource).not.toContain("window.prompt");
     expect(pageSource).toContain("periodAction");
-    expect(pageSource).toContain('max-h-[90vh] overflow-y-auto');
+    expect(pageSource).toContain("TREASURY_DIALOG_CLASS");
+    expect(pageSource).toContain("TreasuryDialogBody");
     expect(pageSource).toContain("Motivo da reabertura");
+  });
+
+  it("mantém uma única área de scroll interno, sem overflow horizontal ou mudança de gutter", () => {
+    expect(pageSource).toContain('max-h-[calc(100dvh-1rem)]');
+    expect(pageSource).toContain("overflow-hidden");
+    expect(pageSource).toContain("overflow-x-hidden overflow-y-auto overscroll-contain");
+    expect(pageSource).toContain('scrollbarGutter: "stable"');
+    expect(pageSource).not.toContain('max-h-[90vh] overflow-y-auto');
+    expect(pageSource).toContain('DialogHeader className="shrink-0 pr-8"');
   });
 
   it("oferece resumo e detalhado com PDF real, prévia interna e estados pendentes", () => {

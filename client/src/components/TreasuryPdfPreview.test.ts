@@ -23,4 +23,11 @@ describe("prévia móvel do PDF da Tesouraria", () => {
     expect(source).toContain("Prévia do relatório de Tesouraria em PDF");
     expect(source).not.toContain('window.open("", "_blank"');
   });
+
+  it("bloqueia overflow horizontal e mantém ações acessíveis em mobile", () => {
+    expect(source).toContain("min-w-0 max-w-none");
+    expect(source).toContain("overflow-hidden");
+    expect(source).toContain('aria-label="Compartilhar"');
+    expect(source).toContain('className="sr-only sm:not-sr-only"');
+  });
 });

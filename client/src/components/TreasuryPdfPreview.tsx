@@ -70,19 +70,19 @@ export function TreasuryPdfPreview({ open, blob, fileName, title, onClose }: Tre
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
-      <DialogContent showCloseButton={false} className="flex h-[100dvh] w-screen max-w-none flex-col gap-0 rounded-none border-0 p-0 sm:h-[96vh] sm:w-[96vw] sm:max-w-6xl sm:rounded-2xl sm:border">
-        <header className="shrink-0 border-b border-slate-200 bg-white px-3 py-2 shadow-sm sm:flex sm:items-center sm:gap-3 sm:px-4">
+      <DialogContent showCloseButton={false} className="!flex h-[100dvh] w-screen min-w-0 max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 p-0 sm:h-[96vh] sm:w-[96vw] sm:max-w-6xl sm:rounded-2xl sm:border">
+        <header className="min-w-0 shrink-0 overflow-hidden border-b border-slate-200 bg-white px-3 py-2 shadow-sm sm:flex sm:items-center sm:gap-3 sm:px-4">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={onClose} className="gap-2 text-navy"><ArrowLeft className="h-4 w-4" /> Voltar</Button>
             <div className="min-w-0 flex-1 sm:flex-none"><p className="truncate text-sm font-semibold text-navy">{title}</p><p className="truncate text-[11px] text-muted-foreground">Prévia do arquivo PDF</p></div>
           </div>
-          <div className="mt-2 grid grid-cols-3 gap-2 sm:ml-auto sm:mt-0 sm:flex">
-            <Button variant="outline" size="sm" onClick={() => void handleShare()} disabled={!blob || sharing} className="gap-1.5 px-2 sm:px-3">{sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />} Compartilhar</Button>
-            <Button variant="outline" size="sm" onClick={() => blob && downloadTreasuryPdf(blob, fileName)} disabled={!blob} className="gap-1.5 px-2 sm:px-3"><Download className="h-4 w-4" /> Baixar</Button>
-            <Button variant="outline" size="sm" onClick={handlePrint} disabled={!blob} className="gap-1.5 px-2 sm:px-3"><Printer className="h-4 w-4" /> Imprimir</Button>
+          <div className="mt-2 grid min-w-0 grid-cols-3 gap-2 sm:ml-auto sm:mt-0 sm:flex">
+            <Button variant="outline" size="sm" aria-label="Compartilhar" onClick={() => void handleShare()} disabled={!blob || sharing} className="min-w-0 gap-1.5 px-2 sm:px-3">{sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}<span className="sr-only sm:not-sr-only">Compartilhar</span></Button>
+            <Button variant="outline" size="sm" aria-label="Baixar" onClick={() => blob && downloadTreasuryPdf(blob, fileName)} disabled={!blob} className="min-w-0 gap-1.5 px-2 sm:px-3"><Download className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Baixar</span></Button>
+            <Button variant="outline" size="sm" aria-label="Imprimir" onClick={handlePrint} disabled={!blob} className="min-w-0 gap-1.5 px-2 sm:px-3"><Printer className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Imprimir</span></Button>
           </div>
         </header>
-        <main className="min-h-0 flex-1 bg-slate-100 p-1.5 sm:p-3">
+        <main className="min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-100 p-1.5 sm:p-3">
           {url ? <iframe ref={printFrameRef} title="Prévia do relatório de Tesouraria em PDF" src={`${url}#toolbar=0&navpanes=0&view=FitH`} className="h-full w-full rounded-lg border border-slate-300 bg-white shadow-sm" /> : <div className="flex h-full items-center justify-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Preparando relatório…</div>}
         </main>
       </DialogContent>
