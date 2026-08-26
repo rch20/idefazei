@@ -3561,13 +3561,27 @@ const certificatesRouter = router({
 });
 
 // ─── TESOURARIA ────────────────────────────────────────────────────────────────
-const financialDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida.");
+const MAX_FINANCIAL_CENTS = 2_147_483_647;
+const financialDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida.").refine((value) => {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}, "Informe uma data existente no calendário.");
+
+function assertFinancialDateRange(startDate: string, endDate: string) {
+  if (endDate < startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "O término do período deve ser posterior ou igual ao início." });
+}
+
+function isDuplicateFinancialRecord(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "ER_DUP_ENTRY";
+}
+
 const financialTransactionInput = z.object({
   churchId: z.number().int().positive(),
   accountId: z.number().int().positive(),
   categoryId: z.number().int().positive(),
   type: z.enum(["entrada", "saida"]),
-  amountCents: z.number().int().positive("O valor deve ser maior que zero."),
+  amountCents: z.number().int().positive("O valor deve ser maior que zero.").max(MAX_FINANCIAL_CENTS, "O valor excede o limite permitido."),
   transactionDate: financialDateInput,
   paymentMethod: z.enum(["dinheiro", "pix", "transferencia", "cartao", "cheque", "outro"]),
   contributorPersonId: z.number().int().positive().optional(),
@@ -3605,6 +3619,10 @@ const treasuryRouter = router({
     .input(z.object({ churchId: z.number().int().positive(), startDate: financialDateInput, endDate: financialDateInput, accountId: z.number().int().positive().optional() }))
     .query(async ({ input, ctx }) => {
       await requireTreasuryAccess(ctx.user.id, input.churchId);
+      assertFinancialDateRange(input.startDate, input.endDate);
+      if (input.accountId && !await getFinancialAccountById(input.accountId, input.churchId)) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Conta financeira não encontrada nesta igreja." });
+      }
       return getTreasuryOverview(input);
     }),
 
@@ -3645,6 +3663,7 @@ const treasuryRouter = router({
     .input(z.object({ churchId: z.number().int().positive(), accountId: z.number().int().positive(), periodStart: financialDateInput, periodEnd: financialDateInput }))
     .query(async ({ input, ctx }) => {
       await requireTreasuryAccess(ctx.user.id, input.churchId);
+      assertFinancialDateRange(input.periodStart, input.periodEnd);
       const account = await getFinancialAccountById(input.accountId, input.churchId);
       if (!account || account.type !== "banco") throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma conta bancária desta igreja." });
       const bookBalanceCents = await getBookBalanceAt({ churchId: input.churchId, accountId: input.accountId, endDate: input.periodEnd });
@@ -3672,10 +3691,10 @@ const treasuryRouter = router({
     }),
 
   saveReconciliation: protectedProcedure
-    .input(z.object({ churchId: z.number().int().positive(), accountId: z.number().int().positive(), periodStart: financialDateInput, periodEnd: financialDateInput, bankClosingBalanceCents: z.number().int(), notes: z.string().trim().max(2000).optional() }))
+    .input(z.object({ churchId: z.number().int().positive(), accountId: z.number().int().positive(), periodStart: financialDateInput, periodEnd: financialDateInput, bankClosingBalanceCents: z.number().int().min(-MAX_FINANCIAL_CENTS).max(MAX_FINANCIAL_CENTS), notes: z.string().trim().max(2000).optional() }))
     .mutation(async ({ input, ctx }) => {
       const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
-      if (input.periodEnd < input.periodStart) throw new TRPCError({ code: "BAD_REQUEST", message: "O término do período deve ser posterior ao início." });
+      assertFinancialDateRange(input.periodStart, input.periodEnd);
       const account = await getFinancialAccountById(input.accountId, input.churchId);
       if (!account || account.type !== "banco") throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma conta bancária desta igreja." });
       const bookBalanceCents = await getBookBalanceAt({ churchId: input.churchId, accountId: input.accountId, endDate: input.periodEnd });
@@ -3685,11 +3704,16 @@ const treasuryRouter = router({
     }),
 
   createAccount: protectedProcedure
-    .input(z.object({ churchId: z.number().int().positive(), name: z.string().trim().min(2).max(120), type: z.enum(["caixa", "banco", "outro"]), openingBalanceCents: z.number().int().min(0).default(0) }))
+    .input(z.object({ churchId: z.number().int().positive(), name: z.string().trim().min(2).max(120), type: z.enum(["caixa", "banco", "outro"]), openingBalanceCents: z.number().int().min(0).max(MAX_FINANCIAL_CENTS).default(0) }))
     .mutation(async ({ input, ctx }) => {
       const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
       if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem criar contas financeiras." });
-      return createFinancialAccount(input);
+      try {
+        return await createFinancialAccount(input);
+      } catch (error) {
+        if (isDuplicateFinancialRecord(error)) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma conta financeira com esse nome nesta igreja." });
+        throw error;
+      }
     }),
 
   createCategory: protectedProcedure
@@ -3698,7 +3722,12 @@ const treasuryRouter = router({
       const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
       if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem criar categorias financeiras." });
       const key = `custom_${input.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`;
-      return createFinancialCategory({ ...input, key });
+      try {
+        return await createFinancialCategory({ ...input, key });
+      } catch (error) {
+        if (isDuplicateFinancialRecord(error)) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma categoria equivalente para este tipo de lançamento." });
+        throw error;
+      }
     }),
 
   createTransaction: protectedProcedure
@@ -3752,7 +3781,7 @@ const treasuryRouter = router({
     .mutation(async ({ input, ctx }) => {
       const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
       if (!access.canClosePeriod) throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor Presidente pode fechar um período financeiro." });
-      if (input.periodEnd < input.periodStart) throw new TRPCError({ code: "BAD_REQUEST", message: "O término do período deve ser posterior ao início." });
+      assertFinancialDateRange(input.periodStart, input.periodEnd);
       const existing = await getFinancialPeriodClosure(input.churchId, input.periodStart);
       if (existing?.status === "fechado") throw new TRPCError({ code: "CONFLICT", message: "Este período já está fechado." });
       const overview = await getTreasuryOverview({

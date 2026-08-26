@@ -2794,11 +2794,12 @@ export async function getFinancialTransactions(filters: FinancialTransactionFilt
 }
 
 export async function getTreasuryOverview(data: { churchId: number; startDate: string; endDate: string; accountId?: number }) {
-  const [accounts, periodRows, allRows] = await Promise.all([
+  const [allAccounts, periodRows, allRows] = await Promise.all([
     getFinancialAccountsByChurch(data.churchId),
     getFinancialTransactions({ churchId: data.churchId, startDate: data.startDate, endDate: data.endDate, accountId: data.accountId, includeDrafts: true }),
-    getFinancialTransactions({ churchId: data.churchId, accountId: data.accountId }),
+    getFinancialTransactions({ churchId: data.churchId, endDate: data.endDate, accountId: data.accountId }),
   ]);
+  const accounts = data.accountId ? allAccounts.filter((account) => account.id === data.accountId) : allAccounts;
   const confirmedPeriodRows = periodRows.filter((row) => row.transaction.status === "confirmado");
   const sumByType = (type: "entrada" | "saida", rows: typeof confirmedPeriodRows) => rows.filter((row) => row.transaction.type === type).reduce((total, row) => total + row.transaction.amountCents, 0);
   const entriesCents = sumByType("entrada", confirmedPeriodRows);
@@ -2869,42 +2870,57 @@ export async function updateFinancialDraft(data: {
   id: number; churchId: number; accountId: number; categoryId: number; type: "entrada" | "saida"; amountCents: number; transactionDate: string;
   paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; contributorPersonId?: number; contributorName?: string; description?: string; reference?: string; actorChurchUserId: number;
 }) {
-  const previous = await getFinancialTransactionById(data.id, data.churchId);
-  if (!previous) return null;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(financialTransactions).set({ accountId: data.accountId, categoryId: data.categoryId, type: data.type, amountCents: data.amountCents, transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, contributorPersonId: data.contributorPersonId ?? null, contributorName: data.contributorName ?? null, description: data.description ?? null, reference: data.reference ?? null })
-    .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")));
-  const updated = await getFinancialTransactionById(data.id, data.churchId);
-  if (!updated) return null;
-  await writeFinancialAuditLog({ churchId: data.churchId, transactionId: data.id, actorChurchUserId: data.actorChurchUserId, action: "atualizado", beforeData: previous, afterData: updated });
-  return updated;
+  return db.transaction(async (tx) => {
+    const previousRows = await tx.select().from(financialTransactions).where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho"))).limit(1);
+    const previous = previousRows[0];
+    if (!previous) return null;
+    const result = await tx.update(financialTransactions).set({ accountId: data.accountId, categoryId: data.categoryId, type: data.type, amountCents: data.amountCents, transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, contributorPersonId: data.contributorPersonId ?? null, contributorName: data.contributorName ?? null, description: data.description ?? null, reference: data.reference ?? null })
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")));
+    if (Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) return null;
+    const updatedRows = await tx.select().from(financialTransactions).where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId))).limit(1);
+    const updated = updatedRows[0];
+    if (!updated) return null;
+    await tx.insert(financialAuditLogs).values({ churchId: data.churchId, transactionId: data.id, actorChurchUserId: data.actorChurchUserId, action: "atualizado", beforeData: previous, afterData: updated });
+    return updated;
+  });
 }
 
 export async function confirmFinancialTransaction(data: { id: number; churchId: number; actorChurchUserId: number }) {
-  const previous = await getFinancialTransactionById(data.id, data.churchId);
-  if (!previous) return null;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(financialTransactions).set({ status: "confirmado", confirmedByChurchUserId: data.actorChurchUserId, confirmedAt: new Date() })
-    .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")));
-  const updated = await getFinancialTransactionById(data.id, data.churchId);
-  if (!updated || updated.status !== "confirmado") return null;
-  await writeFinancialAuditLog({ churchId: data.churchId, transactionId: data.id, actorChurchUserId: data.actorChurchUserId, action: "confirmado", beforeData: previous, afterData: updated });
-  return updated;
+  return db.transaction(async (tx) => {
+    const previousRows = await tx.select().from(financialTransactions).where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho"))).limit(1);
+    const previous = previousRows[0];
+    if (!previous) return null;
+    const result = await tx.update(financialTransactions).set({ status: "confirmado", confirmedByChurchUserId: data.actorChurchUserId, confirmedAt: new Date() })
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")));
+    if (Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) return null;
+    const updatedRows = await tx.select().from(financialTransactions).where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId))).limit(1);
+    const updated = updatedRows[0];
+    if (!updated || updated.status !== "confirmado") return null;
+    await tx.insert(financialAuditLogs).values({ churchId: data.churchId, transactionId: data.id, actorChurchUserId: data.actorChurchUserId, action: "confirmado", beforeData: previous, afterData: updated });
+    return updated;
+  });
 }
 
 export async function reverseFinancialTransaction(data: { id: number; churchId: number; actorChurchUserId: number; reason: string }) {
-  const previous = await getFinancialTransactionById(data.id, data.churchId);
-  if (!previous || previous.status !== "confirmado") return null;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(financialTransactions).set({ status: "estornado", reversedByChurchUserId: data.actorChurchUserId, reversedAt: new Date(), reversalReason: data.reason })
-    .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "confirmado")));
-  const updated = await getFinancialTransactionById(data.id, data.churchId);
-  if (!updated || updated.status !== "estornado") return null;
-  await writeFinancialAuditLog({ churchId: data.churchId, transactionId: data.id, actorChurchUserId: data.actorChurchUserId, action: "estornado", beforeData: previous, afterData: updated, note: data.reason });
-  return updated;
+  return db.transaction(async (tx) => {
+    const previousRows = await tx.select().from(financialTransactions).where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "confirmado"))).limit(1);
+    const previous = previousRows[0];
+    if (!previous) return null;
+    const result = await tx.update(financialTransactions).set({ status: "estornado", reversedByChurchUserId: data.actorChurchUserId, reversedAt: new Date(), reversalReason: data.reason })
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "confirmado")));
+    if (Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) return null;
+    const updatedRows = await tx.select().from(financialTransactions).where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId))).limit(1);
+    const updated = updatedRows[0];
+    if (!updated || updated.status !== "estornado") return null;
+    await tx.insert(financialAuditLogs).values({ churchId: data.churchId, transactionId: data.id, actorChurchUserId: data.actorChurchUserId, action: "estornado", beforeData: previous, afterData: updated, note: data.reason });
+    return updated;
+  });
 }
 
 export async function getFinancialPeriodClosure(churchId: number, periodStart: string) {
@@ -2917,13 +2933,17 @@ export async function getFinancialPeriodClosure(churchId: number, periodStart: s
 export async function getFinancialReceiptData(transactionId: number, churchId: number) {
   const transaction = await getFinancialTransactionById(transactionId, churchId);
   if (!transaction) return null;
-  const [account, category, contributor] = await Promise.all([
+  const db = await getDb();
+  if (!db) return null;
+  const [account, category, contributorRows] = await Promise.all([
     getFinancialAccountById(transaction.accountId, churchId),
     getFinancialCategoryById(transaction.categoryId, churchId),
-    transaction.contributorPersonId ? getPersonById(transaction.contributorPersonId, churchId) : Promise.resolve(null),
+    transaction.contributorPersonId
+      ? db.select({ id: people.id, fullName: people.fullName }).from(people).where(and(eq(people.id, transaction.contributorPersonId), eq(people.churchId, churchId))).limit(1)
+      : Promise.resolve([]),
   ]);
   if (!account || !category) return null;
-  return { transaction, account, category, contributor };
+  return { transaction, account, category, contributor: contributorRows[0] ?? null };
 }
 
 export async function getFinancialReconciliation(data: { churchId: number; accountId: number; periodStart: string }) {

@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getEventAttendanceReport, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getEventAttendanceReport, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -1511,6 +1511,41 @@ describe("Fluxo completo de discipulado", () => {
       const caller = appRouter.createCaller(createMemberContext());
       await expect(caller.treasury.removeReconciliationAttachment({ churchId: CHURCH_ID, reconciliationId: 4, attachmentId: 9 })).resolves.toEqual({ success: true });
       expect(removeFinancialReconciliationAttachment).toHaveBeenCalledWith({ id: 9, reconciliationId: 4, churchId: CHURCH_ID });
+    });
+
+    it("rejeita uma data inexistente no calendário", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.treasury.overview({ churchId: CHURCH_ID, startDate: "2026-02-30", endDate: "2026-02-28" })).rejects.toThrow("calendário");
+    });
+
+    it("rejeita um intervalo financeiro invertido", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.treasury.overview({ churchId: CHURCH_ID, startDate: "2026-09-01", endDate: "2026-08-31" })).rejects.toThrow("posterior ou igual");
+    });
+
+    it("rejeita filtro de conta que não pertence à igreja", async () => {
+      (getTreasuryOverview as ReturnType<typeof vi.fn>).mockClear();
+      (getFinancialAccountById as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.treasury.overview({ churchId: CHURCH_ID, startDate: "2026-08-01", endDate: "2026-08-31", accountId: 999 })).rejects.toThrow("Conta financeira não encontrada");
+      expect(getTreasuryOverview).not.toHaveBeenCalled();
+    });
+
+    it("rejeita valor acima do limite inteiro persistido", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.treasury.createTransaction({ ...validEntry, amountCents: 2_147_483_648 })).rejects.toThrow("limite permitido");
+    });
+
+    it("traduz conflito de conta duplicada para uma mensagem segura", async () => {
+      (createFinancialAccount as ReturnType<typeof vi.fn>).mockRejectedValueOnce(Object.assign(new Error("duplicate"), { code: "ER_DUP_ENTRY" }));
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.treasury.createAccount({ churchId: CHURCH_ID, name: "Caixa", type: "caixa", openingBalanceCents: 0 })).rejects.toThrow("Já existe uma conta financeira");
+    });
+
+    it("traduz conflito de categoria duplicada para uma mensagem segura", async () => {
+      (createFinancialCategory as ReturnType<typeof vi.fn>).mockRejectedValueOnce(Object.assign(new Error("duplicate"), { code: "ER_DUP_ENTRY" }));
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.treasury.createCategory({ churchId: CHURCH_ID, name: "Oferta especial", type: "entrada" })).rejects.toThrow("Já existe uma categoria equivalente");
     });
   });
 

@@ -15,6 +15,7 @@ import Busboy from "busboy";
 import { storagePut } from "../storage";
 import { stripeWebhookHandler } from "../stripe-webhook";
 import { verifyToken } from "../auth";
+import { matchesTreasuryAttachmentSignature, safeTreasuryAttachmentName, TREASURY_ATTACHMENT_MIME_TYPES } from "../treasury-files";
 import {
   createFinancialReconciliationAttachment,
   createStartupDiagnostic,
@@ -293,8 +294,6 @@ async function startServer() {
     let originalFileName = "comprovante";
     let limitReached = false;
     let invalidMimeType = false;
-    const allowedMimeTypes = new Set(["application/pdf", "image/png", "image/jpeg", "image/webp"]);
-    const extensions: Record<string, string> = { "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
 
     bb.on("field", (name, value) => {
       if (name === "reconciliationId" && /^\d+$/.test(value)) reconciliationId = Number(value);
@@ -302,7 +301,7 @@ async function startServer() {
     bb.on("file", (_field, stream, info) => {
       mimeType = info.mimeType || "application/pdf";
       originalFileName = info.filename || "comprovante";
-      if (!allowedMimeTypes.has(mimeType)) {
+      if (!TREASURY_ATTACHMENT_MIME_TYPES.has(mimeType)) {
         invalidMimeType = true;
         stream.resume();
         return;
@@ -318,15 +317,16 @@ async function startServer() {
       if (limitReached) return res.status(413).json({ error: "File too large (max 8MB)" });
       if (invalidMimeType) return res.status(415).json({ error: "Only PDF, PNG, JPEG and WebP files are allowed" });
       if (!fileBuffer) return res.status(400).json({ error: "No file received" });
+      if (!matchesTreasuryAttachmentSignature(fileBuffer, mimeType)) return res.status(415).json({ error: "O conteúdo do arquivo não corresponde ao formato informado." });
       const reconciliation = await getFinancialReconciliationById(reconciliationId, churchUser.churchId);
       if (!reconciliation) return res.status(404).json({ error: "Reconciliation not found" });
       try {
-        const safeName = originalFileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "comprovante";
-        const key = `churches/${churchUser.churchId}/treasury/reconciliations/${reconciliation.id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}.${extensions[mimeType]}`;
+        const safeName = safeTreasuryAttachmentName(originalFileName, mimeType);
+        const key = `churches/${churchUser.churchId}/treasury/reconciliations/${reconciliation.id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}`;
         const { url } = await storagePut(key, fileBuffer, mimeType);
         const attachment = await createFinancialReconciliationAttachment({
           churchId: churchUser.churchId, reconciliationId: reconciliation.id, fileKey: key, url,
-          fileName: originalFileName.slice(0, 255), mimeType, sizeBytes: fileBuffer.length, uploadedByChurchUserId: churchUser.id,
+          fileName: safeName, mimeType, sizeBytes: fileBuffer.length, uploadedByChurchUserId: churchUser.id,
         });
         return res.json({ attachment });
       } catch (error) {
