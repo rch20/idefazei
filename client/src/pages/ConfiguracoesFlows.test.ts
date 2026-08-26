@@ -23,6 +23,9 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain('role="region" aria-label="Seções da configuração"');
     expect(settingsSource).toContain("Deslize horizontalmente para acessar todas as seções.");
     expect(settingsSource).toContain('Tabs value={activeTab} onValueChange={setActiveTab}');
+    expect(settingsSource).toContain("ConfigMetricCard");
+    expect(settingsSource).toContain("flex-none gap-2 px-3");
+    expect(settingsSource).toContain("Salvar identidade");
   });
 
   it("mantém a ação de salvar contextual e evita confundir publicação com configuração geral", () => {
@@ -42,6 +45,7 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("Configurações da Igreja");
     expect(settingsSource).toContain("Dados institucionais");
     expect(settingsSource).toContain("Canais de contato");
+    expect(settingsSource).toContain("A logo, cores e ícone só ficam ativos após salvar.");
   });
 
   it("oferece um único upload do ícone PWA com os tamanhos iOS e instalação", () => {
@@ -78,6 +82,8 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(publicSettingsSource).toContain("sticky bottom-3");
     expect(publicSettingsSource).toContain("Ver prévia");
     expect(publicSettingsSource).toContain('id="tenant-public-preview"');
+    expect(publicSettingsSource).toContain("PublicMetricCard");
+    expect(publicSettingsSource).toContain("grid grid-cols-2 gap-2 sm:flex");
   });
 
   it("agrupa ordenação e visibilidade dos blocos com controles acessíveis", () => {
@@ -88,6 +94,8 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(publicSettingsSource).toContain("Exibir bloco ${labels[section.sectionType]}");
     expect(publicSettingsSource).not.toContain(">Subir</Button>");
     expect(publicSettingsSource).not.toContain(">Descer</Button>");
+    expect(settingsSource).toContain("Conexões ativas");
+    expect(settingsSource).toContain("Em planejamento");
   });
 });
 

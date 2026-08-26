@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone } from "lucide-react";
+import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, Settings2 } from "lucide-react";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { TenantPublicSettings } from "@/components/TenantPublicSettings";
@@ -215,13 +215,13 @@ export default function Configuracoes() {
             <h1 className="font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">Configurações da Igreja</h1>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/75">Organize os dados institucionais, a marca, os acessos e a presença pública da sua igreja em um só lugar.</p>
           </div>
-          {canSaveChurchSettings ? <Button className="w-full gap-2 bg-white text-navy shadow-sm hover:bg-white/90 sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar alterações"}</Button> : activeTab === "pagina-publica" ? <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white/80"><Globe className="h-4 w-4" />Salve e publique dentro do editor público</div> : <p className="text-xs text-white/70">Cada seção possui suas próprias ações.</p>}
+          {canSaveChurchSettings ? <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white/80"><Settings2 className="h-4 w-4 shrink-0" /><span>Salvamento no final desta seção</span></div> : activeTab === "pagina-publica" ? <div className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-xs text-white/80"><Globe className="h-4 w-4 shrink-0" /><span>Salve e publique dentro do editor público</span></div> : <p className="text-xs text-white/70">Cada seção possui suas próprias ações.</p>}
         </div>
         <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full border border-white/10" />
         <div className="pointer-events-none absolute -bottom-28 right-16 h-64 w-64 rounded-full border border-white/10" />
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
         <ConfigQuickCard icon={Building2} title="Dados institucionais" description="Contato, endereço, visão e missão" active={activeTab === "geral"} onClick={() => setActiveTab("geral")} />
         <ConfigQuickCard icon={Palette} title="Marca da igreja" description="Logo, cores e pré-visualização" active={activeTab === "identidade"} onClick={() => setActiveTab("identidade")} />
         {canManageRoles && <ConfigQuickCard icon={Globe} title="Presença pública" description="Site, blocos, SEO e publicação" active={activeTab === "pagina-publica"} onClick={() => setActiveTab("pagina-publica")} />}
@@ -232,20 +232,20 @@ export default function Configuracoes() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="min-w-0 overflow-x-auto rounded-2xl" role="region" aria-label="Seções da configuração">
           <TabsList className="h-auto min-w-max gap-1 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
-            <TabsTrigger value="geral" className="gap-2">
+            <TabsTrigger value="geral" className="flex-none gap-2 px-3">
               <Building2 className="w-4 h-4" /> Geral
             </TabsTrigger>
-            <TabsTrigger value="identidade" className="gap-2">
+            <TabsTrigger value="identidade" className="flex-none gap-2 px-3">
               <Palette className="w-4 h-4" /> Identidade Visual
             </TabsTrigger>
-            {canManageRoles && <TabsTrigger value="pagina-publica" className="gap-2">
+            {canManageRoles && <TabsTrigger value="pagina-publica" className="flex-none gap-2 px-3">
               <Globe className="w-4 h-4" /> Página Pública
             </TabsTrigger>}
-            <TabsTrigger value="membros" className="gap-2">
+            <TabsTrigger value="membros" className="flex-none gap-2 px-3">
               <Users className="w-4 h-4" /> Perfis e Hierarquia
             </TabsTrigger>
-            <TabsTrigger value="integracao" className="gap-2">
-              <Globe className="w-4 h-4" /> Integração
+            <TabsTrigger value="integracao" className="flex-none gap-2 px-3">
+              <Plug className="w-4 h-4" /> Integração
             </TabsTrigger>
           </TabsList>
         </div>
@@ -260,6 +260,7 @@ export default function Configuracoes() {
                 <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Canais de contato</h3><p className="mt-1 text-sm text-muted-foreground">Facilite o contato entre sua igreja e a comunidade.</p></div><div className="mt-5 grid gap-4"><div><Label htmlFor="phone">Telefone</Label><Input id="phone" value={churchForm.phone} onChange={(e) => setChurchForm({ ...churchForm, phone: e.target.value })} className="mt-1" placeholder="(11) 3333-4444" /></div><div><Label htmlFor="whatsapp">WhatsApp</Label><Input id="whatsapp" value={churchForm.whatsapp} onChange={(e) => setChurchForm({ ...churchForm, whatsapp: e.target.value })} className="mt-1" placeholder="(11) 99999-8888" /></div><div><Label htmlFor="email">E-mail</Label><Input id="email" type="email" value={churchForm.email} onChange={(e) => setChurchForm({ ...churchForm, email: e.target.value })} className="mt-1" placeholder="contato@minhaigreja.com" /></div><div><Label htmlFor="website">Website</Label><Input id="website" value={churchForm.website} onChange={(e) => setChurchForm({ ...churchForm, website: e.target.value })} className="mt-1" placeholder="https://minhaigreja.com" /></div></div></section>
               </div>
               <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Mensagem da igreja</h3><p className="mt-1 text-sm text-muted-foreground">Registre a visão e a missão que orientam sua comunidade.</p></div><div className="mt-5 grid gap-4 lg:grid-cols-2"><div><Label htmlFor="vision">Visão</Label><Textarea id="vision" value={churchForm.vision} onChange={(e) => setChurchForm({ ...churchForm, vision: e.target.value })} className="mt-1" placeholder="A visão da sua igreja..." rows={5} /></div><div><Label htmlFor="mission">Missão</Label><Textarea id="mission" value={churchForm.mission} onChange={(e) => setChurchForm({ ...churchForm, mission: e.target.value })} className="mt-1" placeholder="A missão da sua igreja..." rows={5} /></div></div></section>
+              <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">Revise os dados e salve somente esta seção.</p><Button className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar alterações"}</Button></div>
             </div>
           </TabsContent>
 
@@ -285,7 +286,6 @@ export default function Configuracoes() {
                       <span className="text-sm font-semibold text-navy">{isUploadingLogo ? "Enviando logo..." : churchForm.logoUrl ? "Clique para substituir a logo" : "Clique para enviar a logo"}</span>
                       <span className="text-xs text-muted-foreground">PNG, JPG ou WebP · máximo de 2 MB</span>
                     </button>
-                    <div className="mt-3 flex justify-end"><Button type="button" variant="outline" size="sm" disabled={isUploadingLogo} onClick={() => logoInputRef.current?.click()}>{isUploadingLogo ? "Enviando..." : churchForm.logoUrl ? "Substituir arquivo" : "Selecionar arquivo"}</Button></div>
                   </div>
                 </section>
 
@@ -297,7 +297,7 @@ export default function Configuracoes() {
                       {pwaIconPreviewUrl || churchForm.logoUrl ? <img src={pwaIconPreviewUrl ?? churchForm.logoUrl} alt="Prévia do ícone PWA" className="h-16 w-16 shrink-0 rounded-2xl object-cover shadow-sm" /> : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-navy text-gold shadow-sm"><Smartphone className="h-7 w-7" /></span>}
                       <span className="min-w-0"><strong className="block text-sm font-semibold text-navy">{isUploadingPwaIcon ? "Enviando ícone..." : pwaIconPreviewUrl ? "Clique para substituir o ícone" : "Clique para enviar o ícone"}</strong><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">PNG, JPG ou WebP · máximo de 2 MB · prefira uma imagem quadrada</span></span>
                     </button>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><span className="text-[11px] text-muted-foreground">iOS: 192×192 · PWA: 192×192 e 512×512</span><Button type="button" variant="outline" size="sm" disabled={isUploadingPwaIcon} onClick={() => pwaIconInputRef.current?.click()}>{isUploadingPwaIcon ? "Enviando..." : "Selecionar ícone"}</Button></div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />iOS: 192×192 · PWA: 192×192 e 512×512 · um upload, todos os destinos</div>
                   </div>
                 </section>
 
@@ -314,6 +314,7 @@ export default function Configuracoes() {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><div className="flex items-center gap-2 text-white"><Eye className="h-4 w-4 text-white/70" /><h3 className="text-base font-semibold">Prévia da identidade</h3></div><p className="mt-1 text-sm text-white/70">Veja como a combinação de logo, nome e cores aparece no painel.</p></div><span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/70">Ao vivo</span></div>
                 <div className="mt-5 flex min-w-0 items-center gap-3 rounded-2xl bg-white/10 p-4 sm:p-5"><div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/95 text-lg font-bold text-navy">{churchForm.logoUrl ? <img src={churchForm.logoUrl} alt="Prévia da logo da igreja" className="h-full w-full object-contain p-1" /> : churchForm.name?.[0] ?? "I"}</div><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{churchForm.name || "Nome da Igreja"}</p><p className="truncate text-xs" style={{ color: churchForm.secondaryColor }}>{churchForm.slug || "slug"}.igrejaapp.com</p></div><div className="ml-auto hidden h-8 w-8 shrink-0 rounded-full sm:block" style={{ backgroundColor: churchForm.secondaryColor }} /></div>
               </section>
+              <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">A logo, cores e ícone só ficam ativos após salvar.</p><Button className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar identidade"}</Button></div>
             </div>
           </TabsContent>
 
@@ -323,29 +324,25 @@ export default function Configuracoes() {
 
           {/* Perfis e Hierarquia */}
           <TabsContent value="membros">
-            <div className="card-sacred p-6">
-              <h2 className="font-semibold text-navy text-base border-b border-border pb-2 mb-4">Hierarquia de Perfis</h2>
-              <p className="text-sm text-muted-foreground mb-4">
-                Estes são os perfis disponíveis na sua plataforma. Cada perfil tem acesso diferenciado aos módulos.
-              </p>
-              <div className="space-y-2">
+            <div className="mb-5 grid gap-3 sm:grid-cols-3">
+              <ConfigMetricCard icon={Users} label="Contas de acesso" value={String(churchUsers?.length ?? 0)} detail="Usuários vinculados à igreja" />
+              <ConfigMetricCard icon={UserCheck} label="Pessoas cadastradas" value={String(people.length)} detail="Fichas disponíveis para vínculo" />
+              <ConfigMetricCard icon={ShieldCheck} label="Pendências" value={String(pendingRegistrationsQuery.data?.length ?? 0)} detail="Cadastros aguardando aprovação" tone={(pendingRegistrationsQuery.data?.length ?? 0) > 0 ? "warning" : "success"} />
+            </div>
+            <div className="card-sacred p-5 sm:p-6">
+              <div className="flex flex-col gap-2 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="font-semibold text-navy text-base">Hierarquia de Perfis</h2><p className="mt-1 text-sm text-muted-foreground">Use os perfis como referência para distribuir responsabilidades com segurança.</p></div><span className="w-fit rounded-full bg-navy/5 px-2.5 py-1 text-xs font-semibold text-navy">{ROLES.length} perfis disponíveis</span></div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {ROLES.map((role, i) => (
-                  <div key={role.value} className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border border-border/50">
-                    <div className="flex items-center gap-3">
-                      <div className="w-6 h-6 rounded-full bg-navy/10 flex items-center justify-center text-xs font-bold text-navy">
-                        {i + 1}
-                      </div>
-                      <span className="text-sm font-medium text-navy">{role.label}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground font-mono">{role.value}</span>
+                  <div key={role.value} className="flex min-w-0 items-center gap-3 rounded-2xl border border-border/70 bg-muted/20 p-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-navy/10 text-xs font-bold text-navy">{i + 1}</div>
+                    <div className="min-w-0"><span className="block truncate text-sm font-medium text-navy">{role.label}</span><span className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground">{role.value}</span></div>
                   </div>
                 ))}
               </div>
             </div>
 
             <div className="card-sacred mt-5 p-6">
-              <h2 className="mb-2 border-b border-border pb-2 text-base font-semibold text-navy">Atribuição de Pessoas e Funções</h2>
-              <p className="mb-4 text-sm text-muted-foreground">Selecione a Pessoa e defina a função que ela exercerá no sistema. A função e o vínculo determinam o escopo de atuação no Funil de Discipulado.</p>
+              <div className="flex flex-col gap-2 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-base font-semibold text-navy">Atribuição de Pessoas e Funções</h2><p className="mt-1 text-sm text-muted-foreground">Selecione a Pessoa e defina a função que ela exercerá no sistema. A função e o vínculo determinam o escopo de atuação no Funil de Discipulado.</p></div><span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Escopo por conta</span></div>
 
               {(churchUsers ?? []).some((churchUser) => !churchUser.personId) && (
                 <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -458,7 +455,7 @@ export default function Configuracoes() {
                           <p className="truncate text-sm font-semibold text-navy">{registration.name}</p>
                           <p className="truncate text-xs text-muted-foreground">{registration.email}</p>
                         </div>
-                        <div className="flex shrink-0 gap-2">
+                        <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:w-auto sm:flex">
                           <Button size="sm" variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50" disabled={resolveRegistrationMutation.isPending} onClick={() => { setRejectionTarget({ id: registration.id, name: registration.name }); setRejectionReason(""); }}>
                             <UserX className="mr-1.5 h-4 w-4" />Rejeitar
                           </Button>
@@ -495,6 +492,7 @@ export default function Configuracoes() {
           <TabsContent value="integracao">
             <div className="space-y-5">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><div className="flex items-center gap-2"><Plug className="h-5 w-5 text-gold" /><h2 className="font-display text-2xl font-bold text-navy">Integrações</h2></div><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Acompanhe as conexões previstas para ampliar os canais da sua igreja.</p></div><span className="w-fit rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Planejamento</span></div>
+              <div className="grid gap-3 sm:grid-cols-3"><ConfigMetricCard icon={Plug} label="Conexões ativas" value="0" detail="Nenhuma integração conectada" tone="success" /><ConfigMetricCard icon={Settings2} label="Em planejamento" value="4" detail="Conexões previstas para a plataforma" /><ConfigMetricCard icon={ShieldCheck} label="Escopo" value="1 igreja" detail="Configurações isoladas por tenant" /></div>
               <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Conexões disponíveis</h3><p className="mt-1 text-sm text-muted-foreground">Estas integrações ainda não estão ativas. Quando liberadas, a configuração continuará isolada por igreja.</p></div><div className="mt-5 grid gap-3 md:grid-cols-2">
                 {[
                   { name: "WhatsApp Business API", desc: "Envio automático de mensagens e notificações" },
@@ -529,6 +527,11 @@ export default function Configuracoes() {
         </Dialog>
       </div>
   );
+}
+
+function ConfigMetricCard({ icon: Icon, label, value, detail, tone = "default" }: { icon: typeof Building2; label: string; value: string; detail: string; tone?: "default" | "warning" | "success" }) {
+  const toneClass = tone === "warning" ? "bg-amber-50 text-amber-700" : tone === "success" ? "bg-emerald-50 text-emerald-700" : "bg-navy/5 text-navy";
+  return <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-start justify-between gap-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${toneClass}`}><Icon className="h-4 w-4" /></span><strong className="text-2xl font-bold tracking-tight text-navy">{value}</strong></div><p className="mt-3 truncate text-sm font-semibold text-navy">{label}</p><p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{detail}</p></article>;
 }
 
 function ConfigQuickCard({ icon: Icon, title, description, active, onClick }: { icon: typeof Building2; title: string; description: string; active: boolean; onClick: () => void }) {
