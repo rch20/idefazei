@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { TrpcContext } from "./_core/context";
 import * as db from "./db";
@@ -298,6 +298,9 @@ describe("Galeria pública por tenant", () => {
     expect(indexSource).toContain('"/api/pwa/icon-192.png"');
     expect(indexSource).toContain('"/api/pwa/icon-512.png"');
     expect(indexSource).toContain("pwaIcon192Url");
+    expect(indexSource).toContain('const fallbackPwaIcon = "/ide-fazei-pwa-fallback.png";');
+    expect(indexSource).not.toContain("/manus-storage/ide-fazei-symbol_59bf82d4.png");
+    expect(existsSync(resolve(process.cwd(), "client/public/ide-fazei-pwa-fallback.png"))).toBe(true);
     expect(indexSource).toContain("no-cache, max-age=0, must-revalidate");
     expect(dbSource).toContain("faviconUrl: church.pwaIcon192Url || church.logoUrl");
   });

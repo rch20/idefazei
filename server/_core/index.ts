@@ -83,7 +83,7 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
 
-  const fallbackPwaIcon = "/manus-storage/ide-fazei-symbol_59bf82d4.png";
+  const fallbackPwaIcon = "/ide-fazei-pwa-fallback.png";
   const resolvePwaChurch = async (req: express.Request) => {
     const requestedTenant = typeof req.query.tenant === "string" && /^[a-z0-9-]{2,100}$/.test(req.query.tenant) ? req.query.tenant : null;
     const tenantSlug = requestedTenant || getTenantSlugFromHost(req.headers.host);
