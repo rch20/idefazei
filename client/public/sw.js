@@ -1,7 +1,7 @@
 // Service Worker — Ide Fazei
 // Estratégia: Cache-First para assets estáticos, Network-First para API
 
-const CACHE_NAME = "ide-fazei-v4";
+const CACHE_NAME = "ide-fazei-v5";
 
 // Instalar
 self.addEventListener("install", (event) => {
@@ -95,8 +95,8 @@ self.addEventListener("push", (event) => {
   }
   const options = {
     body: data.body || "Nova notificação da sua igreja",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
+    icon: "/api/pwa/icon-192.png",
+    badge: "/api/pwa/icon-192.png",
     data: { url: data.url || "/" },
     vibrate: [100, 50, 100],
   };

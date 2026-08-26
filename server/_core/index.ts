@@ -13,7 +13,7 @@ import { dailyNotificationsHandler } from "../scheduledNotifications";
 import { scheduleRemindersHandler } from "../scheduleReminders";
 import Busboy from "busboy";
 import { storagePut } from "../storage";
-import { uploadMedia, type MediaPurpose, type MediaResourceType } from "../media";
+import { getPwaIconUrls, uploadMedia, type MediaPurpose, type MediaResourceType } from "../media";
 import { stripeWebhookHandler } from "../stripe-webhook";
 import { verifyToken } from "../auth";
 import { matchesTreasuryAttachmentSignature, safeTreasuryAttachmentName, TREASURY_ATTACHMENT_MIME_TYPES } from "../treasury-files";
@@ -27,6 +27,7 @@ import {
   getFinancialReconciliationById,
   getChurchBySlug,
   getMinistryRoleDefinitionsByChurch,
+  updateChurchPwaIcon,
 } from "../db";
 
 const STARTUP_DIAGNOSTIC_INTERVAL_MS = 60_000;
@@ -44,7 +45,8 @@ function sanitizeDiagnosticText(value: unknown, maxLength: number) {
 }
 
 function getTenantSlugFromHost(host: string | undefined) {
-  const hostname = host?.split(":")[0] ?? "";
+  const hostname = host?.split(":")[0]?.toLowerCase() ?? "";
+  if (["idefazei.com.br", "www.idefazei.com.br", "admin.idefazei.com.br"].includes(hostname)) return null;
   const parts = hostname.split(".");
   return parts.length >= 3 && !["www", "admin"].includes(parts[0]) ? parts[0] : null;
 }
@@ -80,6 +82,47 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+
+  const fallbackPwaIcon = "/manus-storage/ide-fazei-symbol_59bf82d4.png";
+  const resolvePwaChurch = async (req: express.Request) => {
+    const requestedTenant = typeof req.query.tenant === "string" && /^[a-z0-9-]{2,100}$/.test(req.query.tenant) ? req.query.tenant : null;
+    const tenantSlug = requestedTenant || getTenantSlugFromHost(req.headers.host);
+    return tenantSlug ? getChurchBySlug(tenantSlug) : null;
+  };
+  app.get("/manifest.json", async (req, res) => {
+    const church = await resolvePwaChurch(req);
+    res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
+    res.type("application/manifest+json").json({
+      id: "/",
+      name: church ? `${church.name} — Ide Fazei` : "Ide Fazei — Plataforma de Discipulado",
+      short_name: church?.name?.slice(0, 12) || "Ide Fazei",
+      description: "Plataforma ministerial completa para igrejas que desejam crescer com propósito, precisão e excelência espiritual.",
+      start_url: "/",
+      scope: "/",
+      display: "standalone",
+      background_color: "#f5f0e8",
+      theme_color: church?.primaryColor || "#1e3a5f",
+      orientation: "portrait-primary",
+      lang: "pt-BR",
+      icons: [
+        { src: "/api/pwa/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+        { src: "/api/pwa/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+      ],
+      categories: ["productivity", "lifestyle"],
+      shortcuts: [
+        { name: "Dashboard", short_name: "Dashboard", description: "Visão geral da sua igreja", url: "/app/dashboard", icons: [{ src: "/api/pwa/icon-192.png", sizes: "192x192", type: "image/png" }] },
+        { name: "Ganhar Almas", short_name: "Almas", description: "Registrar nova conversão", url: "/app/almas", icons: [{ src: "/api/pwa/icon-192.png", sizes: "192x192", type: "image/png" }] },
+        { name: "Funil de Discipulado", short_name: "Funil", description: "Acompanhar o funil de discipulado", url: "/app/funil", icons: [{ src: "/api/pwa/icon-192.png", sizes: "192x192", type: "image/png" }] },
+      ],
+    });
+  });
+  app.get("/api/pwa/icon-:size(192|512).png", async (req, res) => {
+    const church = await resolvePwaChurch(req);
+    const size = req.params.size === "512" ? 512 : 192;
+    const iconUrl = size === 512 ? (church?.pwaIcon512Url || church?.pwaIcon192Url || church?.logoUrl || fallbackPwaIcon) : (church?.pwaIcon192Url || church?.logoUrl || fallbackPwaIcon);
+    res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
+    return res.redirect(302, iconUrl);
+  });
 
   // Scheduled heartbeat endpoints
   app.post("/api/scheduled/daily-notifications", dailyNotificationsHandler);
@@ -329,7 +372,7 @@ async function startServer() {
     const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp", "video/mp4", "video/webm", "video/quicktime"]);
     const bb = Busboy({ headers: req.headers, limits: { fileSize: 32 * 1024 * 1024, files: 1 } });
     bb.on("field", (name, value) => {
-      if (name === "purpose" && ["tenant_logo", "tenant_public_gallery", "certificate_logo", "public_video"].includes(value)) purpose = value as MediaPurpose;
+      if (name === "purpose" && ["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "certificate_logo", "public_video"].includes(value)) purpose = value as MediaPurpose;
       if (name === "resourceType" && ["image", "video"].includes(value)) resourceType = value as MediaResourceType;
     });
     bb.on("file", (_field, stream, info) => {
@@ -347,11 +390,11 @@ async function startServer() {
       if (!fileBuffer) return res.status(400).json({ error: "No file received" });
       const pastorRoles = new Set(["pastor_presidente", "pastor_local"]);
       const adminRoles = new Set(["pastor_presidente", "pastor_local", "secretario"]);
-      const imagePurposes = new Set<MediaPurpose>(["tenant_logo", "tenant_public_gallery", "certificate_logo"]);
+      const imagePurposes = new Set<MediaPurpose>(["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "certificate_logo"]);
       if (!imagePurposes.has(purpose) && purpose !== "public_video") return res.status(400).json({ error: "Finalidade de mídia inválida" });
       if (imagePurposes.has(purpose) && resourceType !== "image") return res.status(400).json({ error: "Esta finalidade aceita somente imagens" });
       if (purpose === "public_video" && resourceType !== "video") return res.status(400).json({ error: "Vídeos públicos exigem resourceType=video" });
-      if (purpose === "tenant_logo" || purpose === "certificate_logo") {
+      if (purpose === "tenant_logo" || purpose === "tenant_pwa_icon" || purpose === "certificate_logo") {
         if (!adminRoles.has(churchUser.role)) return res.status(403).json({ error: "Permissão administrativa necessária" });
         if (fileBuffer.length > 2 * 1024 * 1024) return res.status(413).json({ error: "Logo deve ter no máximo 2 MB" });
       }
@@ -362,7 +405,9 @@ async function startServer() {
       try {
         const uploaded = await uploadMedia({ churchId: churchUser.churchId, data: fileBuffer, mimeType, resourceType, purpose, originalFilename, uploadedByChurchUserId: churchUser.id });
         const asset = await createMediaAsset({ churchId: churchUser.churchId, provider: uploaded.provider, resourceType: uploaded.resourceType, purpose: uploaded.purpose, publicId: uploaded.publicId, storageKey: uploaded.provider === "manus_storage" ? uploaded.key : null, url: uploaded.url, secureUrl: uploaded.secureUrl, originalFilename: uploaded.originalFilename, mimeType: uploaded.mimeType, bytes: uploaded.bytes, width: uploaded.width, height: uploaded.height, durationSeconds: uploaded.durationSeconds, entityType: purpose, entityId: churchUser.churchId, uploadedByChurchUserId: churchUser.id });
-        return res.json({ url: uploaded.url, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, resourceType: uploaded.resourceType, purpose: uploaded.purpose, mediaAssetId: asset?.id ?? null });
+        const pwaUrls = purpose === "tenant_pwa_icon" ? getPwaIconUrls(uploaded) : null;
+        if (pwaUrls) await updateChurchPwaIcon(churchUser.churchId, { assetId: asset?.id ?? null, ...pwaUrls });
+        return res.json({ url: uploaded.url, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, resourceType: uploaded.resourceType, purpose: uploaded.purpose, mediaAssetId: asset?.id ?? null, icon192Url: pwaUrls?.icon192Url ?? null, icon512Url: pwaUrls?.icon512Url ?? null });
       } catch (error) {
         console.error("[Media] Upload failed:", error);
         return res.status(500).json({ error: "Upload failed" });

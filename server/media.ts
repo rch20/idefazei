@@ -7,6 +7,7 @@ export type MediaProvider = "cloudinary" | "manus_storage";
 export type MediaResourceType = "image" | "video" | "raw";
 export type MediaPurpose =
   | "tenant_logo"
+  | "tenant_pwa_icon"
   | "tenant_public_gallery"
   | "certificate_logo"
   | "treasury_attachment"
@@ -146,6 +147,21 @@ export async function uploadMedia(input: UploadMediaInput): Promise<UploadedMedi
     throw new Error("MEDIA_PROVIDER=cloudinary exige CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY e CLOUDINARY_API_SECRET.");
   }
   return isCloudinaryEnabled() ? uploadToCloudinary(input) : uploadToManusStorage(input);
+}
+
+export function getPwaIconUrls(media: Pick<UploadedMedia, "provider" | "publicId" | "url">) {
+  if (media.provider !== "cloudinary" || !media.publicId || !hasCloudinaryConfig()) {
+    return { icon192Url: media.url, icon512Url: media.url };
+  }
+  const client = configureCloudinary();
+  const buildUrl = (size: number) => client.url(media.publicId!, {
+    secure: true,
+    resource_type: "image",
+    type: "upload",
+    format: "png",
+    transformation: [{ width: size, height: size, crop: "fill", gravity: "auto", quality: "auto:good" }],
+  });
+  return { icon192Url: buildUrl(192), icon512Url: buildUrl(512) };
 }
 
 export async function destroyCloudinaryAsset(publicId: string, resourceType: MediaResourceType) {

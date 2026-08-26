@@ -11,6 +11,7 @@ import { Loader2, Heart, Home, BookOpen, UserPlus, CheckCircle2 } from "lucide-r
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useChurchSlug } from "@/hooks/useTenant";
+import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 
 const visitorSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
@@ -34,6 +35,7 @@ export default function PortalVisitante() {
   const [selectedType, setSelectedType] = useState<string>("pedido_oracao");
   const churchSlug = useChurchSlug();
   const tenantPublic = trpc.tenantPublic.current.useQuery();
+  useTenantPwaMeta({ tenantSlug: tenantPublic.data?.church.slug, tenantName: tenantPublic.data?.church.name, primaryColor: tenantPublic.data?.theme?.primaryColor ?? tenantPublic.data?.church.primaryColor, pwaIconAssetId: tenantPublic.data?.church.pwaIconAssetId });
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<VisitorData>({
     resolver: zodResolver(visitorSchema),

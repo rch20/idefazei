@@ -43,12 +43,15 @@ import {
 } from "lucide-react";
 import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 
 // ─── CHURCH CONTEXT ───────────────────────────────────────────────────────────
 
 interface ChurchContextType {
   churchId: number;
   churchName: string;
+  churchSlug?: string | null;
+  pwaIconAssetId?: number | null;
   primaryColor: string;
   secondaryColor: string;
   logoUrl?: string | null;
@@ -57,6 +60,8 @@ interface ChurchContextType {
 const ChurchContext = createContext<ChurchContextType>({
   churchId: 1,
   churchName: "Minha Igreja",
+  churchSlug: null,
+  pwaIconAssetId: null,
   primaryColor: "#1e3a5f",
   secondaryColor: "#c9a84c",
 });
@@ -357,6 +362,7 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
     { id: churchId ?? 0 },
     { enabled: isAuthenticated && churchId !== null }
   );
+  useTenantPwaMeta({ tenantSlug: church?.slug, tenantName: church?.name, primaryColor: church?.primaryColor, pwaIconAssetId: church?.pwaIconAssetId });
 
   if (loading) {
     return (
@@ -376,6 +382,8 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
   const churchContext: ChurchContextType = {
     churchId,
     churchName: church?.name ?? "Minha Igreja",
+    churchSlug: church?.slug,
+    pwaIconAssetId: church?.pwaIconAssetId,
     primaryColor: church?.primaryColor ?? "#1e3a5f",
     secondaryColor: church?.secondaryColor ?? "#c9a84c",
     logoUrl: church?.logoUrl,

@@ -292,6 +292,16 @@ describe("Galeria pública por tenant", () => {
     expect(helper).not.toContain("input.churchId");
   });
 
+  it("resolve manifest e ícones PWA por tenant com fallback e cache controlado", () => {
+    expect(indexSource).toContain('app.get("/manifest.json"');
+    expect(indexSource).toContain('app.get("/api/pwa/icon-:size(192|512).png"');
+    expect(indexSource).toContain('"/api/pwa/icon-192.png"');
+    expect(indexSource).toContain('"/api/pwa/icon-512.png"');
+    expect(indexSource).toContain("pwaIcon192Url");
+    expect(indexSource).toContain("no-cache, max-age=0, must-revalidate");
+    expect(dbSource).toContain("faviconUrl: church.pwaIcon192Url || church.logoUrl");
+  });
+
   it("prepara um endpoint genérico para imagens e vídeos sem aceitar finalidade arbitrária", () => {
     expect(indexSource).toContain('app.post("/api/media/upload"');
     expect(indexSource).toContain('"public_video"');

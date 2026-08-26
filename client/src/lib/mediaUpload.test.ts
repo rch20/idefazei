@@ -9,6 +9,6 @@ describe("Contrato frontend de mídia", () => {
     expect(source).toContain('formData.append("purpose", options.purpose)');
     expect(source).toContain('formData.append("resourceType", options.resourceType)');
     expect(source).toContain("Authorization: `Bearer ${token}`");
-    expect(source).toContain('"tenant_logo" | "tenant_public_gallery" | "certificate_logo" | "public_video"');
+    expect(source).toContain('"tenant_logo" | "tenant_pwa_icon" | "tenant_public_gallery" | "certificate_logo" | "public_video"');
   });
 });

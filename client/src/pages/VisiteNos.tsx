@@ -6,6 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { getWhatsAppLinkWithMessage } from "@/lib/whatsapp";
 import { ArrowLeft, CalendarDays, Clock3, LocateFixed, MapPin, MessageCircle, Navigation, ShieldCheck, UsersRound } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type SectionContent = { title?: string; body?: string; services?: PublicService[] };
@@ -52,6 +53,7 @@ function meetingLabel(cell: PublicCell) {
 
 export default function VisiteNos() {
   const { data, isLoading } = trpc.tenantPublic.current.useQuery();
+  useTenantPwaMeta({ tenantSlug: data?.church.slug, tenantName: data?.church.name, primaryColor: data?.theme?.primaryColor ?? data?.church.primaryColor, pwaIconAssetId: data?.church.pwaIconAssetId });
   const [selectedCellId, setSelectedCellId] = useState<number | null>(null);
   const [visitorLocation, setVisitorLocation] = useState<Coordinates | null>(null);
   const [locationError, setLocationError] = useState("");

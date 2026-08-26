@@ -315,6 +315,15 @@ export async function updateChurch(id: number, data: Partial<typeof churches.$in
   await db.update(churches).set(data).where(eq(churches.id, id));
 }
 
+export async function updateChurchPwaIcon(churchId: number, data: { assetId: number | null; icon192Url: string; icon512Url: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.transaction(async (tx) => {
+    await tx.update(churches).set({ pwaIconAssetId: data.assetId, pwaIcon192Url: data.icon192Url, pwaIcon512Url: data.icon512Url }).where(eq(churches.id, churchId));
+    await tx.update(tenantThemes).set({ faviconUrl: data.icon192Url }).where(eq(tenantThemes.churchId, churchId));
+  });
+}
+
 // ─── SITE PÚBLICO MULTI-TENANT ─────────────────────────────────────────────────
 
 /**
@@ -376,6 +385,7 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
       name: church.name,
       slug: church.slug,
       logoUrl: church.logoUrl,
+      pwaIconAssetId: church.pwaIconAssetId,
       primaryColor: church.primaryColor,
       secondaryColor: church.secondaryColor,
       city: church.city,
@@ -440,7 +450,7 @@ async function ensureTenantPublicSiteByChurchId(churchId: number) {
   const siteRows = await db.select().from(tenantPublicSites).where(eq(tenantPublicSites.churchId, churchId)).limit(1);
   const site = siteRows[0];
   if (!site) return null;
-  await db.insert(tenantThemes).values({ churchId, primaryColor: church.primaryColor || "#1e3a5f", secondaryColor: church.secondaryColor || "#c9a84c", logoUrl: church.logoUrl }).onDuplicateKeyUpdate({ set: { churchId: sql`churchId` } });
+  await db.insert(tenantThemes).values({ churchId, primaryColor: church.primaryColor || "#1e3a5f", secondaryColor: church.secondaryColor || "#c9a84c", logoUrl: church.logoUrl, faviconUrl: church.pwaIcon192Url || church.logoUrl }).onDuplicateKeyUpdate({ set: { churchId: sql`churchId` } });
   for (const section of DEFAULT_PUBLIC_SECTIONS) {
     const content = section.sectionType === "hero"
       ? { ...section.content, title: `Bem-vindo à ${church.name}`, subtitle: church.mission || "Uma igreja comprometida com pessoas, fé e propósito." }

@@ -7,6 +7,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../..");
 const settingsSource = readFileSync(resolve(root, "client/src/pages/Configuracoes.tsx"), "utf8");
 const publicSettingsSource = readFileSync(resolve(root, "client/src/components/TenantPublicSettings.tsx"), "utf8");
+const publicPageSource = readFileSync(resolve(root, "client/src/pages/TenantPublicPage.tsx"), "utf8");
+const manifestSource = readFileSync(resolve(root, "client/public/manifest.json"), "utf8");
+const serviceWorkerSource = readFileSync(resolve(root, "client/public/sw.js"), "utf8");
+const pwaHookSource = readFileSync(resolve(root, "client/src/hooks/useTenantPwaMeta.ts"), "utf8");
+const visiteNosSource = readFileSync(resolve(root, "client/src/pages/VisiteNos.tsx"), "utf8");
+const portalVisitanteSource = readFileSync(resolve(root, "client/src/pages/PortalVisitante.tsx"), "utf8");
+const loginIgrejaSource = readFileSync(resolve(root, "client/src/pages/LoginIgreja.tsx"), "utf8");
+const churchLayoutSource = readFileSync(resolve(root, "client/src/components/ChurchLayout.tsx"), "utf8");
 
 describe("Fluxo estrutural da Configuração da Igreja", () => {
   it("organiza a configuração por seções com cartões de acesso rápido e navegação acessível", () => {
@@ -34,6 +42,32 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("Configurações da Igreja");
     expect(settingsSource).toContain("Dados institucionais");
     expect(settingsSource).toContain("Canais de contato");
+  });
+
+  it("oferece um único upload do ícone PWA com os tamanhos iOS e instalação", () => {
+    expect(settingsSource).toContain("tenant_pwa_icon");
+    expect(settingsSource).toContain("Ícone do aplicativo");
+    expect(settingsSource).toContain("iOS: 192×192 · PWA: 192×192 e 512×512");
+    expect(settingsSource).toContain("Ícone PWA atualizado em todos os destinos.");
+  });
+
+  it("propaga o tenant para head, manifest, notificações e cache do service worker", () => {
+    expect(publicPageSource).toContain("useTenantPwaMeta");
+    expect(manifestSource).toContain("/api/pwa/icon-192.png");
+    expect(manifestSource).toContain("192x192");
+    expect(manifestSource).toContain("512x512");
+    expect(serviceWorkerSource).toContain('const CACHE_NAME = "ide-fazei-v5"');
+    expect(serviceWorkerSource).toContain("/api/pwa/icon-192.png");
+  });
+
+  it("usa o mesmo contrato de identidade nas rotas públicas e no painel autenticado", () => {
+    expect(pwaHookSource).toContain("apple-touch-icon");
+    expect(pwaHookSource).toContain("manifest.json");
+    expect(pwaHookSource).toContain("theme-color");
+    expect(visiteNosSource).toContain("useTenantPwaMeta");
+    expect(portalVisitanteSource).toContain("useTenantPwaMeta");
+    expect(loginIgrejaSource).toContain("useTenantPwaMeta");
+    expect(churchLayoutSource).toContain("useTenantPwaMeta");
   });
 
   it("diferencia o tema do site público da identidade do painel e mantém o fluxo de rascunho/publicação", () => {

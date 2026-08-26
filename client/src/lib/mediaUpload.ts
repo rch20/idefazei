@@ -1,6 +1,6 @@
 import { getChurchToken } from "@/hooks/useChurchAuth";
 
-export type ClientMediaPurpose = "tenant_logo" | "tenant_public_gallery" | "certificate_logo" | "public_video";
+export type ClientMediaPurpose = "tenant_logo" | "tenant_pwa_icon" | "tenant_public_gallery" | "certificate_logo" | "public_video";
 export type ClientMediaResourceType = "image" | "video";
 
 export type UploadedMediaResult = {
@@ -11,6 +11,8 @@ export type UploadedMediaResult = {
   resourceType: ClientMediaResourceType;
   purpose: ClientMediaPurpose;
   mediaAssetId: number | null;
+  icon192Url?: string | null;
+  icon512Url?: string | null;
 };
 
 export async function uploadChurchMedia(file: File, options: { purpose: ClientMediaPurpose; resourceType: ClientMediaResourceType }) {

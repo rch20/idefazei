@@ -36,6 +36,8 @@ describe("Adaptador de mídia", () => {
     expect(source).toContain('export type MediaResourceType = "image" | "video" | "raw";');
     expect(source).toContain('export type MediaPurpose =');
     expect(source).toContain('"tenant_logo"');
+    expect(source).toContain('"tenant_pwa_icon"');
+    expect(source).toContain("getPwaIconUrls");
     expect(source).toContain('resource_type: resourceTypeForCloudinary(input.resourceType)');
     expect(source).toContain("CLOUDINARY_CLOUD_NAME");
   });
@@ -43,7 +45,13 @@ describe("Adaptador de mídia", () => {
   it("mantém o registro de assets isolado por igreja e preparado para a migração aditiva", () => {
     const schema = readFileSync(resolve(process.cwd(), "drizzle/schema.ts"), "utf8");
     const migration = readFileSync(resolve(process.cwd(), "drizzle/0036_tan_cerebro.sql"), "utf8");
+    const pwaMigration = readFileSync(resolve(process.cwd(), "drizzle/0037_superb_korg.sql"), "utf8");
     expect(schema).toContain('export const mediaAssets = mysqlTable("media_assets"');
+    expect(schema).toContain('pwaIcon192Url: text("pwaIcon192Url")');
+    expect(schema).toContain('pwaIcon512Url: text("pwaIcon512Url")');
+    expect(pwaMigration).toContain("tenant_pwa_icon");
+    expect(pwaMigration).toContain("pwaIcon192Url");
+    expect(pwaMigration).toContain("pwaIcon512Url");
     expect(schema).toContain('index("media_assets_church_idx").on(table.churchId)');
     expect(migration).toContain("CREATE TABLE `media_assets`");
     expect(migration).toContain("enum('cloudinary','manus_storage')");

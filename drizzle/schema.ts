@@ -37,6 +37,9 @@ export const churches = mysqlTable("churches", {
   name: varchar("name", { length: 255 }).notNull(),
   slug: varchar("slug", { length: 100 }).notNull().unique(), // subdomínio
   logoUrl: text("logoUrl"),
+  pwaIconAssetId: int("pwaIconAssetId"),
+  pwaIcon192Url: text("pwaIcon192Url"),
+  pwaIcon512Url: text("pwaIcon512Url"),
   primaryColor: varchar("primaryColor", { length: 7 }).default("#1e3a5f"),
   secondaryColor: varchar("secondaryColor", { length: 7 }).default("#c9a84c"),
   address: text("address"),
@@ -107,7 +110,7 @@ export const mediaAssets = mysqlTable("media_assets", {
   churchId: int("churchId").notNull(),
   provider: mysqlEnum("provider", ["cloudinary", "manus_storage"]).notNull(),
   resourceType: mysqlEnum("resourceType", ["image", "video", "raw"]).notNull().default("image"),
-  purpose: mysqlEnum("purpose", ["tenant_logo", "tenant_public_gallery", "certificate_logo", "treasury_attachment", "public_video", "other"]).notNull().default("other"),
+  purpose: mysqlEnum("purpose", ["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "certificate_logo", "treasury_attachment", "public_video", "other"]).notNull().default("other"),
   publicId: varchar("publicId", { length: 512 }),
   storageKey: varchar("storageKey", { length: 512 }),
   url: text("url").notNull(),

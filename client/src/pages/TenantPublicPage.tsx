@@ -2,6 +2,7 @@ import { TenantPublicShell } from "@/components/TenantPublicShell";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
 import { ArrowRight, CalendarDays, Clock3, HandHeart, Images, MapPin, MessageCircle, UsersRound } from "lucide-react";
+import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type PublicGalleryItem = { url?: string; alt?: string; caption?: string };
@@ -14,6 +15,7 @@ function findContent(sections: Array<{ sectionType: string; content: unknown }>,
 
 export default function TenantPublicPage() {
   const { data, isLoading } = trpc.tenantPublic.current.useQuery();
+  useTenantPwaMeta({ tenantSlug: data?.church.slug, tenantName: data?.church.name, primaryColor: data?.theme?.primaryColor ?? data?.church.primaryColor, pwaIconAssetId: data?.church.pwaIconAssetId });
 
   if (isLoading) {
     return <div className="tenant-public-root tenant-public-loading" aria-live="polite">Carregando a igreja...</div>;

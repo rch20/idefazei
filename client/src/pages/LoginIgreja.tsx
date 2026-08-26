@@ -12,6 +12,7 @@ import { ArrowLeft, Loader2, Eye, EyeOff } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { clearChurchSession } from "@/hooks/useChurchAuth";
+import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -44,6 +45,7 @@ export default function LoginIgreja() {
   });
   const tenantName = tenantPublic?.church.name ?? "Ide Fazei";
   const primaryColor = tenantPublic?.theme?.primaryColor ?? tenantPublic?.church.primaryColor ?? "#1e3a5f";
+  useTenantPwaMeta({ tenantSlug: tenantPublic?.church.slug, tenantName: tenantPublic?.church.name, primaryColor, pwaIconAssetId: tenantPublic?.church.pwaIconAssetId });
   const accentColor = tenantPublic?.theme?.secondaryColor ?? tenantPublic?.church.secondaryColor ?? "#c9a84c";
   const logoUrl = tenantPublic?.theme?.logoUrl ?? tenantPublic?.church.logoUrl ?? null;
   const logoLetters = tenantName
