@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, Building2, Plus, ShieldCheck, Trash2, UserMinus, Users } from "lucide-react";
 import { toast } from "sonner";
+import { ConsolidationReferralBox } from "@/components/ConsolidationReferralBox";
 import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -153,6 +154,8 @@ export function DepartmentsPanel({ churchId, ministry, canCreateDepartment, canA
           <div className="flex items-center justify-between border-b border-border px-4 py-3"><span className="text-sm font-semibold text-navy">Participantes ({members.data?.length ?? 0})</span><Users className="h-4 w-4 text-muted-foreground" /></div>
           {members.isLoading ? <p className="p-4 text-sm text-muted-foreground">Carregando…</p> : (members.data ?? []).length === 0 ? <p className="p-4 text-sm text-muted-foreground">Nenhum participante ativo.</p> : <div className="divide-y divide-border">{(members.data ?? []).map((item) => <div key={item.membership.id} className="flex items-center justify-between gap-3 px-4 py-3"><div><p className="text-sm font-medium text-navy">{item.person.fullName}</p>{selectedDepartment.leaderId === item.person.id && <Badge className="mt-1" variant="secondary">Líder</Badge>}</div>{selectedDepartment.canManage && selectedDepartment.leaderId !== item.person.id && <Button type="button" variant="ghost" size="icon" aria-label={`Remover ${item.person.fullName}`} onClick={() => removeMember.mutate({ churchId, departmentId: selectedDepartment.id, personId: item.person.id })}><UserMinus className="h-4 w-4 text-rose-600" /></Button>}</div>)}</div>}
         </div>
+
+        {selectedDepartment.canManage && <ConsolidationReferralBox churchId={churchId} candidates={(members.data ?? []).map((item) => ({ id: item.person.id, fullName: item.person.fullName }))} sourceLabel={`Departamento ${selectedDepartment.name}`} />}
 
         {selectedDepartment.canManage && <div className="space-y-3 rounded-xl border border-border p-3">
           <div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-gold-dark" /><p className="text-sm font-semibold text-navy">Funções no Departamento</p></div>

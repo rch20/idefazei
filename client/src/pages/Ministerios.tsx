@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useChurch } from "@/components/ChurchLayout";
 import { DepartmentsPanel } from "@/components/DepartmentsPanel";
+import { ConsolidationReferralBox } from "@/components/ConsolidationReferralBox";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -284,6 +285,7 @@ export default function Ministerios() {
                   <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-center gap-3 px-4 py-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><span className="text-sm font-medium text-navy">{item.person.fullName}</span></div>)}</div>
                 )}
               </div>
+              {selectedMinistry?.canManage && <ConsolidationReferralBox churchId={churchId!} candidates={(ministryMembers.data ?? []).map((item) => ({ id: item.person.id, fullName: item.person.fullName }))} sourceLabel={`Ministério ${selectedMinistry.name}`} />}
               {selectedMinistry && churchId && <DepartmentsPanel churchId={churchId} ministry={{ id: selectedMinistry.id, name: selectedMinistry.name }} canCreateDepartment={canCreateMinistry} canAssignLeader={canManageRoles} people={people ?? []} />}
               {canCreateMinistry && <div className="rounded-xl border border-gold/30 bg-cream/40 p-4 space-y-3">
                 <p className="text-sm font-semibold text-navy">Funções personalizadas</p>

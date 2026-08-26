@@ -17,8 +17,11 @@ import {
   churches,
   communicationLogs,
   consolidations,
+  consolidationCaseAssignments,
   consolidationFollowUps,
   consolidationReferrals,
+  careVisitEvents,
+  careVisits,
   counselingNotes,
   counselingSessions,
   courseEnrollments,
@@ -1091,6 +1094,71 @@ export async function createConsolidationReferral(data: typeof consolidationRefe
   return result[0];
 }
 
+export async function createConsolidationReferralCase(data: typeof consolidationReferrals.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const target = await tx.select({ id: people.id }).from(people).where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true))).limit(1).for("update");
+    if (target.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
+    const active = await tx.select({ id: consolidationReferrals.id }).from(consolidationReferrals).where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.personId, data.personId), or(eq(consolidationReferrals.status, "pendente"), eq(consolidationReferrals.status, "aceito"), eq(consolidationReferrals.status, "em_acompanhamento")))).limit(1);
+    if (active.length > 0) throw new Error("Esta Pessoa já possui um caso ativo na Consolidação.");
+    const result = await tx.insert(consolidationReferrals).values(data);
+    const referralId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!referralId) throw new Error("Não foi possível criar o caso de Consolidação.");
+    if (data.assignedToPersonId) {
+      await tx.insert(consolidationCaseAssignments).values({ churchId: data.churchId, referralId, action: "atribuido", toPersonId: data.assignedToPersonId, performedByChurchUserId: data.assignedByChurchUserId ?? null });
+    }
+    const rows = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function assignConsolidationCase(data: { churchId: number; referralId: number; toPersonId: number | null; performedByChurchUserId: number | null; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1).for("update");
+    const referral = rows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (["encerrado", "cancelado"].includes(referral.status)) throw new Error("Não é possível alterar a atribuição de um caso encerrado.");
+    if (data.toPersonId) {
+      const person = await tx.select({ id: people.id }).from(people).where(and(eq(people.id, data.toPersonId), eq(people.churchId, data.churchId), eq(people.active, true))).limit(1);
+      if (person.length === 0) throw new Error("Consolidador inválido para esta igreja.");
+    }
+    const fromPersonId = referral.assignedToPersonId ?? referral.acceptedByPersonId ?? null;
+    const action = data.toPersonId ? (fromPersonId ? "reatribuido" : "atribuido") : "devolvido_fila";
+    await tx.update(consolidationReferrals).set({ assignedToPersonId: data.toPersonId, assignedByChurchUserId: data.toPersonId ? data.performedByChurchUserId : null, assignedAt: data.toPersonId ? new Date() : null, acceptedByPersonId: data.toPersonId === referral.acceptedByPersonId ? referral.acceptedByPersonId : null, acceptedAt: data.toPersonId === referral.acceptedByPersonId ? referral.acceptedAt : null, status: data.toPersonId === referral.acceptedByPersonId ? referral.status : "pendente" }).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
+    await tx.insert(consolidationCaseAssignments).values({ churchId: data.churchId, referralId: data.referralId, action, fromPersonId, toPersonId: data.toPersonId, performedByChurchUserId: data.performedByChurchUserId, notes: data.notes ?? null });
+    const updated = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function acceptConsolidationCase(data: { churchId: number; referralId: number; personId: number; churchUserId: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1).for("update");
+    const referral = rows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (referral.status !== "pendente") throw new Error("Este caso não está mais disponível para aceite.");
+    if (referral.assignedToPersonId && referral.assignedToPersonId !== data.personId) throw new Error("Este caso está atribuído a outro Consolidador.");
+    const now = new Date();
+    await tx.update(consolidationReferrals).set({ assignedToPersonId: data.personId, assignedByChurchUserId: referral.assignedByChurchUserId ?? data.churchUserId, assignedAt: referral.assignedAt ?? now, acceptedByPersonId: data.personId, acceptedAt: now, status: "aceito" }).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.status, "pendente")));
+    await tx.update(careAssignments).set({ active: false, endedAt: now }).where(and(eq(careAssignments.personId, referral.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.active, true)));
+    await tx.insert(careAssignments).values({ churchId: data.churchId, personId: referral.personId, responsiblePersonId: data.personId, role: "consolidador", notes: `Caso de Consolidação aceito: ${referral.reason}`, active: true, startedAt: now });
+    await tx.insert(consolidationCaseAssignments).values({ churchId: data.churchId, referralId: data.referralId, action: "aceito", fromPersonId: referral.assignedToPersonId, toPersonId: data.personId, performedByChurchUserId: data.churchUserId });
+    const updated = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function getConsolidationCaseAssignments(referralId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(consolidationCaseAssignments).where(and(eq(consolidationCaseAssignments.referralId, referralId), eq(consolidationCaseAssignments.churchId, churchId))).orderBy(desc(consolidationCaseAssignments.createdAt));
+}
+
 export async function updateConsolidationReferral(
   id: number,
   churchId: number,
@@ -1130,6 +1198,94 @@ export async function createConsolidationFollowUp(data: typeof consolidationFoll
   if (!db) throw new Error("DB not available");
   const result = await db.insert(consolidationFollowUps).values(data);
   return result[0];
+}
+
+export async function getCareVisitsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(careVisits).where(eq(careVisits.churchId, churchId)).orderBy(desc(careVisits.createdAt));
+}
+
+export async function getCareVisitById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(careVisits).where(and(eq(careVisits.id, id), eq(careVisits.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCareVisitEvents(visitId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(careVisitEvents).where(and(eq(careVisitEvents.visitId, visitId), eq(careVisitEvents.churchId, churchId))).orderBy(desc(careVisitEvents.createdAt));
+}
+
+export async function createCareVisit(data: typeof careVisits.$inferInsert & { performedByChurchUserId?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const referral = await tx.select({ id: consolidationReferrals.id, status: consolidationReferrals.status }).from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1).for("update");
+    if (referral.length === 0 || ["encerrado", "cancelado"].includes(referral[0].status)) throw new Error("Caso de Consolidação inválido para solicitar Visita.");
+    const status = data.scheduledAt ? "agendada" : "solicitada";
+    const result = await tx.insert(careVisits).values({ churchId: data.churchId, referralId: data.referralId, departmentId: data.departmentId ?? null, requestedByPersonId: data.requestedByPersonId, assignedToPersonId: data.assignedToPersonId ?? null, assignedByChurchUserId: data.assignedByChurchUserId ?? null, priority: data.priority ?? "normal", status, reason: data.reason, address: data.address ?? null, scheduledAt: data.scheduledAt ?? null, assignedAt: data.assignedToPersonId ? new Date() : null });
+    const visitId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!visitId) throw new Error("Não foi possível criar a Visita.");
+    await tx.insert(careVisitEvents).values({ churchId: data.churchId, visitId, action: "criada", toPersonId: data.assignedToPersonId ?? null, performedByChurchUserId: data.performedByChurchUserId ?? null, notes: data.reason });
+    if (data.assignedToPersonId) await tx.insert(careVisitEvents).values({ churchId: data.churchId, visitId, action: "atribuida", toPersonId: data.assignedToPersonId, performedByChurchUserId: data.performedByChurchUserId ?? null });
+    if (data.scheduledAt) await tx.insert(careVisitEvents).values({ churchId: data.churchId, visitId, action: "agendada", toPersonId: data.assignedToPersonId ?? null, performedByChurchUserId: data.performedByChurchUserId ?? null });
+    const rows = await tx.select().from(careVisits).where(and(eq(careVisits.id, visitId), eq(careVisits.churchId, data.churchId))).limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function assignCareVisit(data: { churchId: number; visitId: number; toPersonId: number | null; performedByChurchUserId: number | null; scheduledAt?: Date | null; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(careVisits).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId))).limit(1).for("update");
+    const visit = rows[0];
+    if (!visit) throw new Error("Visita não encontrada.");
+    if (["realizada", "cancelada"].includes(visit.status)) throw new Error("Esta Visita não pode mais ser atribuída.");
+    const action = visit.assignedToPersonId || data.toPersonId === null ? "reatribuida" : "atribuida";
+    const nextStatus = data.scheduledAt ?? visit.scheduledAt ? "agendada" : "solicitada";
+    await tx.update(careVisits).set({ assignedToPersonId: data.toPersonId, assignedByChurchUserId: data.toPersonId ? data.performedByChurchUserId : null, assignedAt: data.toPersonId ? new Date() : null, scheduledAt: data.scheduledAt === undefined ? visit.scheduledAt : data.scheduledAt, status: nextStatus }).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)));
+    await tx.insert(careVisitEvents).values({ churchId: data.churchId, visitId: data.visitId, action, fromPersonId: visit.assignedToPersonId, toPersonId: data.toPersonId, performedByChurchUserId: data.performedByChurchUserId, notes: data.notes ?? null });
+    if (data.scheduledAt && data.scheduledAt.getTime() !== visit.scheduledAt?.getTime()) await tx.insert(careVisitEvents).values({ churchId: data.churchId, visitId: data.visitId, action: visit.scheduledAt ? "reagendada" : "agendada", toPersonId: data.toPersonId, performedByChurchUserId: data.performedByChurchUserId });
+    const updated = await tx.select().from(careVisits).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId))).limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function completeCareVisit(data: { churchId: number; visitId: number; performedByChurchUserId: number | null; notes: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(careVisits).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId))).limit(1).for("update");
+    const visit = rows[0];
+    if (!visit) throw new Error("Visita não encontrada.");
+    if (visit.status === "realizada") return visit;
+    if (visit.status === "cancelada") throw new Error("Uma Visita cancelada não pode ser concluída.");
+    const completedAt = new Date();
+    await tx.update(careVisits).set({ status: "realizada", completedAt, completionNotes: data.notes }).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)));
+    await tx.insert(careVisitEvents).values({ churchId: data.churchId, visitId: data.visitId, action: "concluida", toPersonId: visit.assignedToPersonId, performedByChurchUserId: data.performedByChurchUserId, notes: data.notes });
+    const updated = await tx.select().from(careVisits).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId))).limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function cancelCareVisit(data: { churchId: number; visitId: number; performedByChurchUserId: number | null; reason: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(careVisits).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId))).limit(1).for("update");
+    const visit = rows[0];
+    if (!visit) throw new Error("Visita não encontrada.");
+    if (visit.status === "realizada") throw new Error("Uma Visita realizada não pode ser cancelada.");
+    if (visit.status === "cancelada") return visit;
+    await tx.update(careVisits).set({ status: "cancelada", cancelledAt: new Date(), cancellationReason: data.reason }).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)));
+    await tx.insert(careVisitEvents).values({ churchId: data.churchId, visitId: data.visitId, action: "cancelada", toPersonId: visit.assignedToPersonId, performedByChurchUserId: data.performedByChurchUserId, notes: data.reason });
+    const updated = await tx.select().from(careVisits).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId))).limit(1);
+    return updated[0] ?? null;
+  });
 }
 
 // ─── CELLS ────────────────────────────────────────────────────────────────────
@@ -1584,23 +1740,24 @@ export async function getDepartmentById(id: number, churchId: number) {
   return rows[0] ?? null;
 }
 
-export async function createDepartment(data: { churchId: number; ministryId: number; name: string; description?: string | null; leaderId?: number | null }) {
+export async function createDepartment(data: { churchId: number; ministryId: number; name: string; description?: string | null; systemKey?: "consolidacao" | "visitas" | null; leaderId?: number | null; supervisorId?: number | null }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   return db.transaction(async (tx) => {
     const ministryRows = await tx.select({ id: ministries.id }).from(ministries).where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId), eq(ministries.active, true))).limit(1).for("update");
     if (ministryRows.length === 0) throw new Error("Ministério não encontrado nesta igreja.");
-    if (data.leaderId) {
-      const peopleRows = await tx.select({ id: people.id }).from(people).where(and(eq(people.id, data.leaderId), eq(people.churchId, data.churchId), eq(people.active, true))).limit(1);
-      if (peopleRows.length === 0) throw new Error("Líder inválido para esta igreja.");
+    const responsibleIds = Array.from(new Set([data.leaderId, data.supervisorId].filter((id): id is number => Boolean(id))));
+    for (const personId of responsibleIds) {
+      const peopleRows = await tx.select({ id: people.id }).from(people).where(and(eq(people.id, personId), eq(people.churchId, data.churchId), eq(people.active, true))).limit(1);
+      if (peopleRows.length === 0) throw new Error("Responsável inválido para esta igreja.");
     }
-    const result = await tx.insert(departments).values({ churchId: data.churchId, ministryId: data.ministryId, name: data.name, description: data.description ?? null, leaderId: data.leaderId ?? null });
+    const result = await tx.insert(departments).values({ churchId: data.churchId, ministryId: data.ministryId, name: data.name, description: data.description ?? null, systemKey: data.systemKey ?? null, leaderId: data.leaderId ?? null, supervisorId: data.supervisorId ?? null });
     const departmentId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
     if (!departmentId) throw new Error("Não foi possível criar o Departamento.");
-    if (data.leaderId) {
-      const ministryMembership = await tx.select({ id: ministryMembers.id }).from(ministryMembers).where(and(eq(ministryMembers.ministryId, data.ministryId), eq(ministryMembers.personId, data.leaderId), eq(ministryMembers.active, true))).limit(1);
-      if (ministryMembership.length === 0) await tx.insert(ministryMembers).values({ ministryId: data.ministryId, personId: data.leaderId, active: true });
-      await tx.insert(departmentMembers).values({ churchId: data.churchId, departmentId, personId: data.leaderId, active: true });
+    for (const personId of responsibleIds) {
+      const ministryMembership = await tx.select({ id: ministryMembers.id }).from(ministryMembers).where(and(eq(ministryMembers.ministryId, data.ministryId), eq(ministryMembers.personId, personId), eq(ministryMembers.active, true))).limit(1);
+      if (ministryMembership.length === 0) await tx.insert(ministryMembers).values({ ministryId: data.ministryId, personId, active: true });
+      await tx.insert(departmentMembers).values({ churchId: data.churchId, departmentId, personId, active: true });
     }
     const rows = await tx.select().from(departments).where(and(eq(departments.id, departmentId), eq(departments.churchId, data.churchId))).limit(1);
     return rows[0] ?? null;
@@ -1633,6 +1790,104 @@ export async function setDepartmentLeader(data: { departmentId: number; churchId
     const rows = await tx.select().from(departments).where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId))).limit(1);
     return rows[0] ?? null;
   });
+}
+
+export async function setDepartmentSupervisor(data: { departmentId: number; churchId: number; supervisorId: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const departmentRows = await tx.select().from(departments).where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId), eq(departments.active, true))).limit(1).for("update");
+    const department = departmentRows[0];
+    if (!department) return null;
+    if (data.supervisorId) {
+      const peopleRows = await tx.select({ id: people.id }).from(people).where(and(eq(people.id, data.supervisorId), eq(people.churchId, data.churchId), eq(people.active, true))).limit(1);
+      if (peopleRows.length === 0) throw new Error("Supervisor inválido para esta igreja.");
+      const ministryMembership = await tx.select({ id: ministryMembers.id }).from(ministryMembers).where(and(eq(ministryMembers.ministryId, department.ministryId), eq(ministryMembers.personId, data.supervisorId), eq(ministryMembers.active, true))).limit(1);
+      if (ministryMembership.length === 0) await tx.insert(ministryMembers).values({ ministryId: department.ministryId, personId: data.supervisorId, active: true });
+      const departmentMembership = await tx.select({ id: departmentMembers.id }).from(departmentMembers).where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.personId, data.supervisorId), eq(departmentMembers.active, true))).limit(1);
+      if (departmentMembership.length === 0) await tx.insert(departmentMembers).values({ churchId: data.churchId, departmentId: data.departmentId, personId: data.supervisorId, active: true });
+    }
+    await tx.update(departments).set({ supervisorId: data.supervisorId }).where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId)));
+    const rows = await tx.select().from(departments).where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId))).limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function setConsolidationDepartmentLeadership(data: { churchId: number; departmentId: number; leaderId: number | null; supervisorId: number | null; assignedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const departmentRows = await tx.select().from(departments).where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId), eq(departments.active, true))).limit(1).for("update");
+    const department = departmentRows[0];
+    if (!department || !department.systemKey) throw new Error("Departamento sistêmico não encontrado nesta igreja.");
+
+    const roleKeys = department.systemKey === "consolidacao"
+      ? { leader: "lider_consolidacao", supervisor: "supervisor_consolidacao" }
+      : { leader: "lider_visitas", supervisor: "supervisor_visitas" };
+    const responsibleIds = Array.from(new Set([data.leaderId, data.supervisorId].filter((id): id is number => Boolean(id))));
+
+    for (const personId of responsibleIds) {
+      const personRows = await tx.select({ id: people.id }).from(people).where(and(eq(people.id, personId), eq(people.churchId, data.churchId), eq(people.active, true))).limit(1);
+      if (personRows.length === 0) throw new Error("Responsável inválido para esta igreja.");
+      const ministryMembership = await tx.select({ id: ministryMembers.id }).from(ministryMembers).where(and(eq(ministryMembers.ministryId, department.ministryId), eq(ministryMembers.personId, personId), eq(ministryMembers.active, true))).limit(1);
+      if (ministryMembership.length === 0) await tx.insert(ministryMembers).values({ ministryId: department.ministryId, personId, active: true });
+      const departmentMembership = await tx.select({ id: departmentMembers.id }).from(departmentMembers).where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.personId, personId), eq(departmentMembers.active, true))).limit(1);
+      if (departmentMembership.length === 0) await tx.insert(departmentMembers).values({ churchId: data.churchId, departmentId: data.departmentId, personId, active: true });
+    }
+
+    const assignments = await tx.select().from(departmentRoleAssignments).where(and(eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, data.departmentId), eq(departmentRoleAssignments.active, true))).for("update");
+    for (const assignment of assignments) {
+      const removeLeaderRole = assignment.roleKey === roleKeys.leader && assignment.personId !== data.leaderId;
+      const removeSupervisorRole = assignment.roleKey === roleKeys.supervisor && assignment.personId !== data.supervisorId;
+      if (removeLeaderRole || removeSupervisorRole) {
+        await tx.update(departmentRoleAssignments).set({ active: false, endedAt: new Date() }).where(and(eq(departmentRoleAssignments.id, assignment.id), eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, data.departmentId), eq(departmentRoleAssignments.active, true)));
+      }
+    }
+
+    await tx.update(departments).set({ leaderId: data.leaderId, supervisorId: data.supervisorId }).where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId)));
+    for (const assignment of [
+      data.leaderId ? { personId: data.leaderId, roleKey: roleKeys.leader } : null,
+      data.supervisorId ? { personId: data.supervisorId, roleKey: roleKeys.supervisor } : null,
+    ].filter((item): item is { personId: number; roleKey: string } => Boolean(item))) {
+      const existing = await tx.select({ id: departmentRoleAssignments.id }).from(departmentRoleAssignments).where(and(eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, data.departmentId), eq(departmentRoleAssignments.personId, assignment.personId), eq(departmentRoleAssignments.roleKey, assignment.roleKey), eq(departmentRoleAssignments.active, true))).limit(1);
+      if (existing.length === 0) await tx.insert(departmentRoleAssignments).values({ churchId: data.churchId, departmentId: data.departmentId, personId: assignment.personId, roleKey: assignment.roleKey, assignedByChurchUserId: data.assignedByChurchUserId, active: true });
+    }
+
+    const updated = await tx.select().from(departments).where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId))).limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function ensureConsolidationMinistryStructure(churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    let ministry = (await tx.select().from(ministries).where(and(eq(ministries.churchId, churchId), eq(ministries.type, "consolidacao"), eq(ministries.active, true))).limit(1).for("update"))[0];
+    if (!ministry) {
+      const result = await tx.insert(ministries).values({ churchId, name: "Consolidação e Visitas", type: "consolidacao", description: "Cuidado, acompanhamento e visitas da igreja.", active: true });
+      const ministryId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      ministry = (await tx.select().from(ministries).where(and(eq(ministries.id, ministryId), eq(ministries.churchId, churchId))).limit(1))[0];
+    }
+    if (!ministry) throw new Error("Não foi possível estruturar o Ministério de Consolidação.");
+
+    for (const definition of [
+      { systemKey: "consolidacao" as const, name: "Consolidação", description: "Acompanhamento e integração de Pessoas." },
+      { systemKey: "visitas" as const, name: "Visitas", description: "Planejamento e execução de visitas de cuidado." },
+    ]) {
+      const existing = await tx.select({ id: departments.id }).from(departments).where(and(eq(departments.churchId, churchId), eq(departments.ministryId, ministry.id), eq(departments.systemKey, definition.systemKey))).limit(1);
+      if (existing.length === 0) await tx.insert(departments).values({ churchId, ministryId: ministry.id, name: definition.name, description: definition.description, systemKey: definition.systemKey, active: true });
+    }
+
+    const departmentRows = await tx.select().from(departments).where(and(eq(departments.churchId, churchId), eq(departments.ministryId, ministry.id), eq(departments.active, true))).orderBy(departments.name);
+    return { ministry, departments: departmentRows };
+  });
+}
+
+export async function getActiveDepartmentRoleKeysByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ roleKey: departmentRoleAssignments.roleKey }).from(departmentRoleAssignments).innerJoin(departments, eq(departments.id, departmentRoleAssignments.departmentId)).where(and(eq(departmentRoleAssignments.churchId, churchId), eq(departmentRoleAssignments.personId, personId), eq(departmentRoleAssignments.active, true), eq(departments.churchId, churchId), eq(departments.active, true)));
+  return Array.from(new Set(rows.map((row) => row.roleKey)));
 }
 
 export async function getDepartmentMembers(departmentId: number, churchId: number) {
@@ -1682,6 +1937,7 @@ export async function removePersonFromDepartment(data: { churchId: number; depar
     const department = departmentRows[0];
     if (!department) return false;
     if (department.leaderId === data.personId) throw new Error("Defina outro líder antes de remover a liderança do Departamento.");
+    if (department.supervisorId === data.personId) throw new Error("Defina outro supervisor antes de remover a supervisão do Departamento.");
     const result = await tx.update(departmentMembers).set({ active: false, leftAt: new Date() }).where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.personId, data.personId), eq(departmentMembers.active, true)));
     await tx.update(departmentRoleAssignments).set({ active: false, endedAt: new Date() }).where(and(eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, data.departmentId), eq(departmentRoleAssignments.personId, data.personId), eq(departmentRoleAssignments.active, true)));
     return Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0;

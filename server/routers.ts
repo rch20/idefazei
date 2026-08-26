@@ -19,8 +19,19 @@ import {
   assignPersonToCell,
   createChurch,
   createConsolidationReferral,
+  createConsolidationReferralCase,
+  assignConsolidationCase,
+  acceptConsolidationCase,
+  getConsolidationCaseAssignments,
   startConsolidationWorkflow,
   createConsolidationFollowUp,
+  createCareVisit,
+  assignCareVisit,
+  completeCareVisit,
+  cancelCareVisit,
+  getCareVisitById,
+  getCareVisitEvents,
+  getCareVisitsByChurch,
   createEvent,
   createMinistry,
   createPerson,
@@ -101,6 +112,10 @@ import {
   createDepartment,
   updateDepartment,
   setDepartmentLeader,
+  setDepartmentSupervisor,
+  setConsolidationDepartmentLeadership,
+  ensureConsolidationMinistryStructure,
+  getActiveDepartmentRoleKeysByPerson,
   getDepartmentMembers,
   getDepartmentCandidates,
   isActiveDepartmentMember,
@@ -245,7 +260,7 @@ const COUNSELING_ROLES = new Set(["pastor_presidente", "pastor_local", "supervis
 const PASTORAL_ACTION_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"]);
 const TREASURY_ROLES = new Set(["pastor_presidente", "pastor_local", "tesoureiro"]);
 const VISIT_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor", "consolidador", "visitador"]);
-const MINISTRY_MANAGEMENT_ROLE_KEYS = new Set(["lider_louvor"]);
+const MINISTRY_MANAGEMENT_ROLE_KEYS = new Set(["lider_louvor", "lider_consolidacao", "supervisor_consolidacao", "lider_visitas", "supervisor_visitas"]);
 
 /**
  * Catálogo central: a igreja atribui uma função, nunca permissões isoladas por pessoa.
@@ -253,8 +268,10 @@ const MINISTRY_MANAGEMENT_ROLE_KEYS = new Set(["lider_louvor"]);
  */
 const MINISTRY_FUNCTION_CATALOG = [
   { key: "visitador", label: "Visitador", ministryTypes: ["consolidacao"], grants: ["visitador"] },
-  { key: "lider_consolidacao", label: "Líder de Consolidação", ministryTypes: ["consolidacao"], grants: ["consolidador"] },
-  { key: "supervisor_consolidacao", label: "Supervisor de Consolidação", ministryTypes: ["consolidacao"], grants: ["consolidador", "supervisor_consolidacao"] },
+  { key: "lider_consolidacao", label: "Líder de Consolidação", ministryTypes: ["consolidacao"], grants: ["consolidador", "lider_consolidacao"] },
+  { key: "supervisor_consolidacao", label: "Supervisor de Consolidação", ministryTypes: ["consolidacao"], grants: ["consolidador", "lider_consolidacao", "supervisor_consolidacao"] },
+  { key: "lider_visitas", label: "Líder de Visitas", ministryTypes: ["consolidacao"], grants: ["visitador", "lider_visitas"] },
+  { key: "supervisor_visitas", label: "Supervisor de Visitas", ministryTypes: ["consolidacao"], grants: ["visitador", "lider_visitas", "supervisor_visitas"] },
   { key: "lider_celula", label: "Líder de Célula", ministryTypes: ["celulas"], grants: ["lider"] },
   { key: "supervisor_celulas", label: "Supervisor de Células", ministryTypes: ["celulas"], grants: ["supervisor"] },
   { key: "musico", label: "Músico", ministryTypes: ["louvor"], grants: [] },
@@ -465,7 +482,8 @@ async function requireDepartmentManagementPermission(userId: number, churchId: n
   if (!department) throw new TRPCError({ code: "NOT_FOUND", message: "Departamento não encontrado nesta igreja." });
 
   const isDepartmentLeader = Boolean(actor.personId && department.leaderId === actor.personId);
-  if (isDepartmentLeader) return { actor, roles, department, canManageAll: false, isDepartmentLeader: true };
+  const isDepartmentSupervisor = Boolean(actor.personId && department.supervisorId === actor.personId);
+  if (isDepartmentLeader || isDepartmentSupervisor) return { actor, roles, department, canManageAll: false, isDepartmentLeader, isDepartmentSupervisor };
 
   const ministryAuthorization = await requireMinistryManagementPermission(userId, churchId, department.ministryId);
   return {
@@ -474,6 +492,7 @@ async function requireDepartmentManagementPermission(userId: number, churchId: n
     department,
     canManageAll: ministryAuthorization.canManageAll,
     isDepartmentLeader: false,
+    isDepartmentSupervisor: false,
   };
 }
 
@@ -501,11 +520,15 @@ async function requireScheduleParticipant(churchId: number, ministryId: number, 
 async function getEffectiveChurchRoles(userId: number, churchId: number, actor: { role: string; personId?: number | null }) {
   if (userId >= 0) return [actor.role];
   const complementary = await getComplementaryRolesByChurchUser(Math.abs(userId), churchId);
-  const ministryRoleKeys = actor.personId ? await getActiveMinistryRoleKeysByPerson(actor.personId, churchId) : [];
-  const customDefinitions = await getMinistryRoleDefinitionsByChurch(churchId);
+  const [ministryRoleKeys, departmentRoleKeys, customDefinitions] = await Promise.all([
+    actor.personId ? getActiveMinistryRoleKeysByPerson(actor.personId, churchId) : Promise.resolve([]),
+    actor.personId ? getActiveDepartmentRoleKeysByPerson(actor.personId, churchId) : Promise.resolve([]),
+    getMinistryRoleDefinitionsByChurch(churchId),
+  ]);
   const customGrants = new Map(customDefinitions.map((definition) => [definition.key, CUSTOM_PERMISSION_PACKAGE_GRANTS[definition.permissionPackage] ?? []]));
   const ministryGrants = ministryRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
-  return Array.from(new Set([actor.role, ...complementary, ...ministryGrants]));
+  const departmentGrants = departmentRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
+  return Array.from(new Set([actor.role, ...complementary, ...ministryGrants, ...departmentGrants]));
 }
 
 async function getEffectivePersonRoles(personId: number, churchId: number) {
@@ -513,13 +536,15 @@ async function getEffectivePersonRoles(personId: number, churchId: number) {
   const account = accounts.find((candidate) => candidate.active && candidate.personId === personId);
   if (!account) return [];
 
-  const [ministryRoleKeys, customDefinitions] = await Promise.all([
+  const [ministryRoleKeys, departmentRoleKeys, customDefinitions] = await Promise.all([
     getActiveMinistryRoleKeysByPerson(personId, churchId),
+    getActiveDepartmentRoleKeysByPerson(personId, churchId),
     getMinistryRoleDefinitionsByChurch(churchId),
   ]);
   const customGrants = new Map(customDefinitions.map((definition) => [definition.key, CUSTOM_PERMISSION_PACKAGE_GRANTS[definition.permissionPackage] ?? []]));
   const ministryGrants = ministryRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
-  return Array.from(new Set([account.role, ...(account.complementaryRoles ?? []), ...ministryGrants]));
+  const departmentGrants = departmentRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
+  return Array.from(new Set([account.role, ...(account.complementaryRoles ?? []), ...ministryGrants, ...departmentGrants]));
 }
 
 async function requireConsolidatorPerson(personId: number, churchId: number) {
@@ -531,6 +556,86 @@ async function requireConsolidatorPerson(personId: number, churchId: number) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma Pessoa com função ativa de Consolidador nesta igreja." });
   }
   return person;
+}
+
+async function requireVisitorPerson(personId: number, churchId: number) {
+  const [person, roles] = await Promise.all([
+    getPersonById(personId, churchId),
+    getEffectivePersonRoles(personId, churchId),
+  ]);
+  if (!person || !roles.includes("visitador")) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma Pessoa com função ativa de Visitador nesta igreja." });
+  }
+  return person;
+}
+
+async function getConsolidationMinistryContext(userId: number, churchId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, actor);
+  const [ministries, departments, cells] = await Promise.all([
+    getMinistriesByChurch(churchId),
+    getDepartmentsByChurch(churchId),
+    getCellsByChurch(churchId),
+  ]);
+  const ministry = ministries.find((item) => item.type === "consolidacao") ?? null;
+  const consolidationDepartment = ministry ? departments.find((item) => item.ministryId === ministry.id && item.systemKey === "consolidacao" && item.active) ?? null : null;
+  const visitsDepartment = ministry ? departments.find((item) => item.ministryId === ministry.id && item.systemKey === "visitas" && item.active) ?? null : null;
+  const isPastor = roles.some((role) => CHURCH_ROLE_MANAGER_ROLES.has(role));
+  const isMinistryLeader = Boolean(actor.personId && ministry?.leaderId === actor.personId);
+  const leadsAnyMinistry = Boolean(actor.personId && ministries.some((item) => item.leaderId === actor.personId));
+  const leadsAnyDepartment = Boolean(actor.personId && departments.some((item) => item.active && [item.leaderId, item.supervisorId].includes(actor.personId)));
+  const leadsAnyCell = Boolean(actor.personId && cells.some((item) => [item.leaderId, item.supervisorId].includes(actor.personId)));
+  const managesConsolidation = Boolean(isPastor || isMinistryLeader || (actor.personId && consolidationDepartment && [consolidationDepartment.leaderId, consolidationDepartment.supervisorId].includes(actor.personId)));
+  const managesVisits = Boolean(isPastor || isMinistryLeader || (actor.personId && visitsDepartment && [visitsDepartment.leaderId, visitsDepartment.supervisorId].includes(actor.personId)));
+  return {
+    actor,
+    roles,
+    ministry,
+    consolidationDepartment,
+    visitsDepartment,
+    capabilities: {
+      canConfigure: isPastor,
+      canManageConsolidation: managesConsolidation,
+      canManageVisits: managesVisits,
+      canWorkConsolidation: managesConsolidation || roles.includes("consolidador"),
+      canWorkVisits: managesVisits || roles.includes("visitador"),
+      canRefer: isPastor || leadsAnyMinistry || leadsAnyDepartment || leadsAnyCell,
+    },
+  };
+}
+
+async function requireConsolidationDepartmentManager(userId: number, churchId: number, kind: "consolidacao" | "visitas") {
+  const context = await getConsolidationMinistryContext(userId, churchId);
+  const allowed = kind === "consolidacao" ? context.capabilities.canManageConsolidation : context.capabilities.canManageVisits;
+  if (!allowed) throw new TRPCError({ code: "FORBIDDEN", message: `Somente Pastores, Líderes ou Supervisores de ${kind === "consolidacao" ? "Consolidação" : "Visitas"} podem executar esta ação.` });
+  return context;
+}
+
+async function resolveReferralSource(userId: number, churchId: number, targetPersonId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  if (!actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Vincule sua conta a uma Pessoa antes de indicar alguém para Consolidação." });
+  const roles = await getEffectiveChurchRoles(userId, churchId, actor);
+  const target = await getPersonById(targetPersonId, churchId);
+  if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada nesta igreja." });
+  if (roles.some((role) => CHURCH_ROLE_MANAGER_ROLES.has(role))) return { actor, sourceType: "pastoral" as const, sourceCellId: null, sourceMinistryId: null, sourceDepartmentId: null };
+
+  const [targetCell, cells, ministries, departments] = await Promise.all([
+    getActiveCellMembership(targetPersonId, churchId),
+    getCellsByChurch(churchId),
+    getMinistriesByChurch(churchId),
+    getDepartmentsByChurch(churchId),
+  ]);
+  if (targetCell) {
+    const cell = cells.find((item) => item.id === targetCell.cellId);
+    if (cell && [cell.leaderId, cell.supervisorId].includes(actor.personId)) return { actor, sourceType: "celula" as const, sourceCellId: cell.id, sourceMinistryId: null, sourceDepartmentId: null };
+  }
+  for (const department of departments.filter((item) => item.active && [item.leaderId, item.supervisorId].includes(actor.personId))) {
+    if (await isActiveDepartmentMember(department.id, targetPersonId, churchId)) return { actor, sourceType: "departamento" as const, sourceCellId: null, sourceMinistryId: department.ministryId, sourceDepartmentId: department.id };
+  }
+  for (const ministry of ministries.filter((item) => item.active && item.leaderId === actor.personId)) {
+    if (await isActiveMinistryMember(ministry.id, targetPersonId, churchId)) return { actor, sourceType: "ministerio" as const, sourceCellId: null, sourceMinistryId: ministry.id, sourceDepartmentId: null };
+  }
+  throw new TRPCError({ code: "FORBIDDEN", message: "Você só pode indicar Pessoas vinculadas à sua Célula, Ministério ou Departamento." });
 }
 
 async function requireJourneyStagePermission(userId: number, churchId: number, targetPersonId: number) {
@@ -990,10 +1095,60 @@ const soulsRouter = router({
 });
 
 const consolidationRouter = router({
+  structure: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      const people = context.capabilities.canConfigure || context.capabilities.canManageConsolidation || context.capabilities.canManageVisits
+        ? await getPeopleByChurch(input.churchId)
+        : [];
+      const names = new Map(people.map((person) => [person.id, person.fullName]));
+      const departmentRows = [context.consolidationDepartment, context.visitsDepartment].filter((department): department is NonNullable<typeof department> => Boolean(department));
+      const departments = await Promise.all(departmentRows.map(async (department) => ({
+        ...department,
+        leaderName: department.leaderId ? names.get(department.leaderId) ?? "Líder definido" : null,
+        supervisorName: department.supervisorId ? names.get(department.supervisorId) ?? "Supervisor definido" : null,
+        memberCount: (await getDepartmentMembers(department.id, input.churchId)).length,
+      })));
+      return {
+        ministry: context.ministry,
+        consolidationDepartment: departments.find((department) => department.systemKey === "consolidacao") ?? null,
+        visitsDepartment: departments.find((department) => department.systemKey === "visitas") ?? null,
+        departments,
+        canConfigure: context.capabilities.canConfigure,
+        capabilities: context.capabilities,
+        people: people.map((person) => ({ id: person.id, fullName: person.fullName })),
+      };
+    }),
+
+  setupMinistry: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      if (!roles.some((role) => CHURCH_ROLE_MANAGER_ROLES.has(role))) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem estruturar o Ministério de Consolidação e Visitas." });
+      return ensureConsolidationMinistryStructure(input.churchId);
+    }),
+
+  setDepartmentLeadership: protectedProcedure
+    .input(z.object({ churchId: z.number(), departmentId: z.number(), leaderId: z.number().nullable(), supervisorId: z.number().nullable() }))
+    .mutation(async ({ input, ctx }) => {
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      if (!context.capabilities.canConfigure || !context.ministry) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem definir Líder e Supervisor." });
+      const department = await getDepartmentById(input.departmentId, input.churchId);
+      if (!department || department.ministryId !== context.ministry.id || !department.systemKey) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um Departamento do Ministério de Consolidação e Visitas." });
+      const actorChurchUserId = ctx.user.id < 0 ? Math.abs(ctx.user.id) : null;
+      if (!actorChurchUserId) throw new TRPCError({ code: "FORBIDDEN", message: "Use uma conta pastoral da igreja para definir a liderança." });
+      const updated = await setConsolidationDepartmentLeadership({ churchId: input.churchId, departmentId: department.id, leaderId: input.leaderId, supervisorId: input.supervisorId, assignedByChurchUserId: actorChurchUserId });
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "Departamento não encontrado." });
+      return updated;
+    }),
+
   consolidators: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requirePastoralAction(ctx.user.id, input.churchId);
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      if (!context.capabilities.canWorkConsolidation) throw new TRPCError({ code: "FORBIDDEN", message: "Sua função não possui acesso à equipe de Consolidação." });
       const [accounts, churchPeople] = await Promise.all([
         getChurchUsersByChurch(input.churchId),
         getPeopleByChurch(input.churchId),
@@ -1009,16 +1164,15 @@ const consolidationRouter = router({
   visitors: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requirePastoralAction(ctx.user.id, input.churchId);
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      if (!context.capabilities.canWorkVisits && !context.capabilities.canWorkConsolidation) throw new TRPCError({ code: "FORBIDDEN", message: "Sua função não possui acesso à equipe de Visitas." });
       const [accounts, churchPeople] = await Promise.all([
         getChurchUsersByChurch(input.churchId),
         getPeopleByChurch(input.churchId),
       ]);
       const names = new Map(churchPeople.map((person) => [person.id, person.fullName]));
       const candidates = await Promise.all(accounts.filter((account) => account.active && account.personId).map(async (account) => {
-        const roleKeys = await getActiveMinistryRoleKeysByPerson(account.personId!, input.churchId);
-        const grants = roleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? []);
-        const roles = new Set([account.role, ...account.complementaryRoles, ...grants]);
+        const roles = new Set(await getEffectivePersonRoles(account.personId!, input.churchId));
         return roles.has("visitador") || roles.has("pastor_presidente") || roles.has("pastor_local") || roles.has("supervisor")
           ? { personId: account.personId!, name: names.get(account.personId!) ?? account.name }
           : null;
@@ -1029,85 +1183,73 @@ const consolidationRouter = router({
   referrals: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
-      const canViewAll = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
-      const hasPastoralResponsibility = roles.some((role) => PASTORAL_ACTION_ROLES.has(role));
-      if (!hasPastoralResponsibility) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Encaminhamentos de consolidação são restritos a responsáveis pastorais." });
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      const actor = context.actor;
+      if (!context.capabilities.canManageConsolidation && !context.capabilities.canWorkConsolidation && !context.capabilities.canRefer) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Sua função não possui acesso aos casos de Consolidação." });
       }
-
+      const canViewAll = context.capabilities.canManageConsolidation;
       const [referrals, managedPersonIds, churchPeople] = await Promise.all([
         getConsolidationReferralsByChurch(input.churchId),
-        canViewAll
+        canViewAll || !actor.personId
           ? Promise.resolve<number[]>([])
-          : getJourneyManagedPersonIds({ churchId: input.churchId, actorPersonId: actor.personId ?? null, actorRoles: roles }),
+          : getJourneyManagedPersonIds({ churchId: input.churchId, actorPersonId: actor.personId, actorRoles: context.roles }),
         getPeopleByChurch(input.churchId),
       ]);
       const managedIds = new Set(managedPersonIds);
       const visible = canViewAll
         ? referrals
-        : referrals.filter((referral) => referral.referredByPersonId === actor.personId || referral.preferredConsolidatorId === actor.personId || referral.acceptedByPersonId === actor.personId || managedIds.has(referral.personId));
+        : referrals.filter((referral) => referral.referredByPersonId === actor.personId || referral.preferredConsolidatorId === actor.personId || referral.assignedToPersonId === actor.personId || referral.acceptedByPersonId === actor.personId || managedIds.has(referral.personId));
       const peopleById = new Map(churchPeople.map((person) => [person.id, person]));
       return visible.map((referral) => {
         const person = peopleById.get(referral.personId);
-        const canViewContact = canViewAll || (referral.acceptedByPersonId === actor.personId && referral.status !== "pendente");
+        const canViewContact = canViewAll || ((referral.assignedToPersonId === actor.personId || referral.acceptedByPersonId === actor.personId) && referral.status !== "pendente");
         return {
           ...referral,
           ...getReferralCareDueState(referral),
           personName: person?.fullName ?? "Pessoa vinculada",
           contactNumber: canViewContact ? (person?.whatsapp || person?.phone || null) : null,
           referredByName: peopleById.get(referral.referredByPersonId)?.fullName ?? "Liderança",
+          sourceName: referral.sourceType === "celula" ? "Célula" : referral.sourceType === "ministerio" ? "Ministério" : referral.sourceType === "departamento" ? "Departamento" : referral.sourceType === "pastoral" ? "Pastoral" : "Liderança",
           preferredConsolidatorName: referral.preferredConsolidatorId ? peopleById.get(referral.preferredConsolidatorId)?.fullName ?? "Consolidador indicado" : null,
+          assignedToName: referral.assignedToPersonId ? peopleById.get(referral.assignedToPersonId)?.fullName ?? "Consolidador atribuído" : null,
           acceptedByName: referral.acceptedByPersonId ? peopleById.get(referral.acceptedByPersonId)?.fullName ?? "Consolidador" : null,
+          canAssign: canViewAll,
+          canAccept: Boolean(context.capabilities.canWorkConsolidation && actor.personId && referral.status === "pendente" && (!referral.assignedToPersonId || referral.assignedToPersonId === actor.personId)),
         };
       });
     }),
   visits: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      if (!actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Vincule sua conta a uma Pessoa para acessar Visitas." });
-      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
-      if (!roles.some((role) => VISIT_ROLES.has(role))) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Sua função não possui acesso à aba Visitas." });
-      }
-      const [followUps, referrals, churchPeople] = await Promise.all([
-        getConsolidationFollowUpsByChurch(input.churchId),
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      if (!context.capabilities.canWorkVisits && !context.capabilities.canManageConsolidation) throw new TRPCError({ code: "FORBIDDEN", message: "Sua função não possui acesso à aba Visitas." });
+      const [visits, referrals, churchPeople] = await Promise.all([
+        getCareVisitsByChurch(input.churchId),
         getConsolidationReferralsByChurch(input.churchId),
         getPeopleByChurch(input.churchId),
       ]);
       const referralsById = new Map(referrals.map((referral) => [referral.id, referral]));
       const peopleById = new Map(churchPeople.map((person) => [person.id, person]));
-      const latestByReferral = new Map<number, typeof followUps[number]>();
-      for (const followUp of followUps) {
-        if (followUp.visitStatus === "nao_necessaria") continue;
-        const current = latestByReferral.get(followUp.referralId);
-        if (!current || new Date(followUp.createdAt).getTime() > new Date(current.createdAt).getTime()) latestByReferral.set(followUp.referralId, followUp);
-      }
-      const canMonitorAll = roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor", "supervisor_consolidacao"].includes(role));
-      return Array.from(latestByReferral.values())
-        .filter((followUp) => ["solicitada", "agendada"].includes(followUp.visitStatus))
-        .filter((followUp) => {
-          const referral = referralsById.get(followUp.referralId);
-          return canMonitorAll || followUp.visitAssigneePersonId === actor.personId || referral?.acceptedByPersonId === actor.personId;
-        })
-        .map((followUp) => {
-          const referral = referralsById.get(followUp.referralId)!;
-          const person = peopleById.get(referral.personId);
+      const canMonitorAll = context.capabilities.canManageVisits;
+      return visits
+        .filter((visit) => canMonitorAll || visit.assignedToPersonId === context.actor.personId || visit.requestedByPersonId === context.actor.personId)
+        .map((visit) => {
+          const referral = referralsById.get(visit.referralId);
+          const person = referral ? peopleById.get(referral.personId) : null;
+          const canViewContact = canMonitorAll || visit.assignedToPersonId === context.actor.personId;
           return {
-            id: followUp.id,
-            referralId: referral.id,
-            personId: referral.personId,
+            ...visit,
+            personId: referral?.personId ?? null,
             personName: person?.fullName ?? "Pessoa vinculada",
-            contactNumber: person?.whatsapp || person?.phone || null,
-            address: [person?.street, person?.number, person?.neighborhood, person?.city, person?.state].filter(Boolean).join(", ") || null,
-            reason: referral.reason,
-            notes: followUp.notes,
-            status: followUp.visitStatus,
-            scheduledAt: followUp.visitScheduledAt,
-            assignedToName: followUp.visitAssigneePersonId ? peopleById.get(followUp.visitAssigneePersonId)?.fullName ?? "Visitador designado" : null,
-            requestedByName: peopleById.get(followUp.recordedByPersonId)?.fullName ?? "Consolidador",
+            contactNumber: canViewContact ? (person?.whatsapp || person?.phone || null) : null,
+            address: visit.address || (canViewContact ? [person?.street, person?.number, person?.neighborhood, person?.city, person?.state].filter(Boolean).join(", ") || null : null),
+            caseReason: referral?.reason ?? visit.reason,
+            notes: visit.completionNotes ?? visit.cancellationReason ?? null,
+            assignedToName: visit.assignedToPersonId ? peopleById.get(visit.assignedToPersonId)?.fullName ?? "Visitador designado" : null,
+            requestedByName: peopleById.get(visit.requestedByPersonId)?.fullName ?? "Responsável de cuidado",
+            canAssign: context.capabilities.canManageVisits,
+            canComplete: Boolean(context.capabilities.canManageVisits || visit.assignedToPersonId === context.actor.personId),
           };
         });
     }),
@@ -1118,39 +1260,77 @@ const consolidationRouter = router({
       personId: z.number(),
       reason: z.string().trim().min(3).max(255),
       notes: z.string().trim().max(2000).optional(),
+      priority: z.enum(["baixa", "normal", "alta", "urgente"]).default("normal"),
       preferredConsolidatorId: z.number().optional(),
       careDueInDays: z.number().int().min(1).max(14).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const actor = await requireJourneyStagePermission(ctx.user.id, input.churchId, input.personId);
-      if (!actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Vincule sua conta a uma Pessoa antes de encaminhar para consolidação." });
-      if (input.preferredConsolidatorId) {
-        const accounts = await getChurchUsersByChurch(input.churchId);
-        const selected = accounts.find((account) => account.active && account.personId === input.preferredConsolidatorId && (account.role === "consolidador" || account.complementaryRoles.includes("consolidador")));
-        if (!selected) throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa indicada não possui uma função ativa de Consolidador nesta igreja." });
+      const source = await resolveReferralSource(ctx.user.id, input.churchId, input.personId);
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      if (input.preferredConsolidatorId) await requireConsolidatorPerson(input.preferredConsolidatorId, input.churchId);
+      const churchUserId = ctx.user.id < 0 ? Math.abs(ctx.user.id) : null;
+      try {
+        return await createConsolidationReferralCase({
+          churchId: input.churchId,
+          personId: input.personId,
+          referredByPersonId: source.actor.personId!,
+          preferredConsolidatorId: input.preferredConsolidatorId ?? null,
+          assignedToPersonId: input.preferredConsolidatorId ?? null,
+          assignedByChurchUserId: input.preferredConsolidatorId ? churchUserId : null,
+          assignedAt: input.preferredConsolidatorId ? new Date() : null,
+          departmentId: context.consolidationDepartment?.id ?? null,
+          sourceType: source.sourceType,
+          sourceCellId: source.sourceCellId,
+          sourceMinistryId: source.sourceMinistryId,
+          sourceDepartmentId: source.sourceDepartmentId,
+          priority: input.priority,
+          reason: input.reason,
+          notes: input.notes || null,
+          status: "pendente",
+          careDueAt: new Date(Date.now() + (input.careDueInDays ?? DEFAULT_REFERRAL_CARE_DUE_DAYS) * 24 * 60 * 60 * 1000),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("já possui um caso ativo")) throw new TRPCError({ code: "CONFLICT", message: "Esta Pessoa já possui um caso ativo na Consolidação." });
+        throw error;
       }
-      return createConsolidationReferral({
+    }),
+
+  assignReferral: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number(), consolidatorId: z.number().nullable(), notes: z.string().trim().max(1000).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireConsolidationDepartmentManager(ctx.user.id, input.churchId, "consolidacao");
+      if (input.consolidatorId) await requireConsolidatorPerson(input.consolidatorId, input.churchId);
+      return assignConsolidationCase({
         churchId: input.churchId,
-        personId: input.personId,
-        referredByPersonId: actor.personId,
-        preferredConsolidatorId: input.preferredConsolidatorId,
-        reason: input.reason,
+        referralId: input.id,
+        toPersonId: input.consolidatorId,
+        performedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null,
         notes: input.notes || null,
-        status: "pendente",
-        careDueAt: new Date(Date.now() + (input.careDueInDays ?? DEFAULT_REFERRAL_CARE_DUE_DAYS) * 24 * 60 * 60 * 1000),
       });
+    }),
+
+  assignmentHistory: protectedProcedure
+    .input(z.object({ churchId: z.number(), referralId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      const referral = await getConsolidationReferralById(input.referralId, input.churchId);
+      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Caso de Consolidação não encontrado." });
+      const canView = context.capabilities.canManageConsolidation || referral.assignedToPersonId === context.actor.personId || referral.acceptedByPersonId === context.actor.personId;
+      if (!canView) throw new TRPCError({ code: "FORBIDDEN", message: "Você não possui acesso ao histórico deste caso." });
+      const [events, people] = await Promise.all([getConsolidationCaseAssignments(input.referralId, input.churchId), getPeopleByChurch(input.churchId)]);
+      const names = new Map(people.map((person) => [person.id, person.fullName]));
+      return events.map((event) => ({ ...event, fromName: event.fromPersonId ? names.get(event.fromPersonId) ?? "Responsável anterior" : null, toName: event.toPersonId ? names.get(event.toPersonId) ?? "Novo responsável" : null }));
     }),
 
   updateReferralCareDue: protectedProcedure
     .input(z.object({ churchId: z.number(), id: z.number(), careDueAt: z.string().datetime() }))
     .mutation(async ({ input, ctx }) => {
-      const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
       const referral = await getConsolidationReferralById(input.id, input.churchId);
-      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Encaminhamento não encontrado." });
-      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
-      if (!canOverride && referral.acceptedByPersonId !== actor.personId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável ou Pastores podem ajustar este prazo." });
+      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Caso de Consolidação não encontrado." });
+      if (!context.capabilities.canManageConsolidation && referral.acceptedByPersonId !== context.actor.personId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável, Líder ou Supervisor pode ajustar este prazo." });
       }
       if (["encerrado", "cancelado"].includes(referral.status)) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível alterar o prazo de um encaminhamento encerrado." });
@@ -1163,40 +1343,31 @@ const consolidationRouter = router({
   acceptReferral: protectedProcedure
     .input(z.object({ churchId: z.number(), id: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
-      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
-      const canConsolidate = roles.includes("consolidador") || canOverride;
-      if (!canConsolidate || !actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Consolidadores ou Pastores podem assumir este encaminhamento." });
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      const actor = context.actor;
+      if (!actor.personId || !context.roles.includes("consolidador")) throw new TRPCError({ code: "FORBIDDEN", message: "Somente uma Pessoa com função ativa de Consolidador pode assumir este caso." });
       const referral = await getConsolidationReferralById(input.id, input.churchId);
-      if (!referral || referral.status !== "pendente") throw new TRPCError({ code: "BAD_REQUEST", message: "Este encaminhamento não está disponível para aceite." });
-      if (referral.preferredConsolidatorId && referral.preferredConsolidatorId !== actor.personId && !canOverride) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Este encaminhamento foi indicado para outro Consolidador." });
+      if (!referral || referral.status !== "pendente") throw new TRPCError({ code: "BAD_REQUEST", message: "Este caso não está disponível para aceite." });
+      if ((referral.assignedToPersonId || referral.preferredConsolidatorId) && (referral.assignedToPersonId ?? referral.preferredConsolidatorId) !== actor.personId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Este caso está atribuído a outro Consolidador." });
       }
-      await setCurrentCareAssignment({
-        churchId: input.churchId,
-        personId: referral.personId,
-        responsiblePersonId: actor.personId,
-        role: "consolidador",
-        notes: `Encaminhamento de resgate aceito: ${referral.reason}`,
-      });
-      return updateConsolidationReferral(input.id, input.churchId, {
-        status: "aceito",
-        acceptedByPersonId: actor.personId,
-        acceptedAt: new Date(),
-      });
+      try {
+        return await acceptConsolidationCase({ churchId: input.churchId, referralId: input.id, personId: actor.personId, churchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("não está mais disponível")) throw new TRPCError({ code: "CONFLICT", message: "Este caso já foi assumido por outra Pessoa. Atualize a fila." });
+        throw error;
+      }
     }),
 
   registerReferralContact: protectedProcedure
     .input(z.object({ churchId: z.number(), id: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
       const referral = await getConsolidationReferralById(input.id, input.churchId);
-      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Encaminhamento não encontrado." });
-      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
-      if (!canOverride && referral.acceptedByPersonId !== actor.personId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável pode registrar este contato." });
+      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Caso de Consolidação não encontrado." });
+      if (!context.capabilities.canManageConsolidation && referral.acceptedByPersonId !== context.actor.personId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável, Líder ou Supervisor pode registrar este contato." });
       }
       return updateConsolidationReferral(input.id, input.churchId, {
         status: "em_acompanhamento",
@@ -1207,15 +1378,12 @@ const consolidationRouter = router({
   followUps: protectedProcedure
     .input(z.object({ churchId: z.number(), referralId: z.number() }))
     .query(async ({ input, ctx }) => {
-      const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
       const referral = await getConsolidationReferralById(input.referralId, input.churchId);
-      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Encaminhamento não encontrado." });
-      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
-      const isResponsible = referral.acceptedByPersonId === actor.personId;
-      if (!canOverride && !isResponsible) {
-        await requireJourneyStagePermission(ctx.user.id, input.churchId, referral.personId);
-      }
+      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Caso de Consolidação não encontrado." });
+      const isResponsible = referral.acceptedByPersonId === context.actor.personId;
+      const isReferrer = referral.referredByPersonId === context.actor.personId;
+      if (!context.capabilities.canManageConsolidation && !isResponsible && !isReferrer) throw new TRPCError({ code: "FORBIDDEN", message: "Você não possui acesso ao histórico deste caso." });
       const [followUps, churchPeople] = await Promise.all([
         getConsolidationFollowUpsByReferral(input.referralId, input.churchId),
         getPeopleByChurch(input.churchId),
@@ -1242,23 +1410,13 @@ const consolidationRouter = router({
       visitScheduledAt: z.string().datetime().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      const actor = context.actor;
       if (!actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Vincule sua conta a uma Pessoa antes de registrar acompanhamento." });
-      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
       const referral = await getConsolidationReferralById(input.referralId, input.churchId);
-      if (!referral || !referral.acceptedByPersonId) throw new TRPCError({ code: "BAD_REQUEST", message: "O encaminhamento precisa ser assumido antes do acompanhamento." });
-      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
-      if (!canOverride && referral.acceptedByPersonId !== actor.personId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável pode registrar este acompanhamento." });
-      }
-      if (input.visitAssigneePersonId) {
-        const visitorRoles = await getActiveMinistryRoleKeysByPerson(input.visitAssigneePersonId, input.churchId);
-        const visitorGrants = visitorRoles.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? []);
-        const visitorAccount = (await getChurchUsersByChurch(input.churchId)).find((account) => account.active && account.personId === input.visitAssigneePersonId);
-        const targetRoles = new Set(visitorAccount ? [visitorAccount.role, ...visitorAccount.complementaryRoles, ...visitorGrants] : []);
-        const isVisitor = Boolean(visitorAccount && (["visitador", "pastor_presidente", "pastor_local", "supervisor"].some((role) => targetRoles.has(role))));
-        if (!isVisitor) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma Pessoa autorizada como Visitador." });
-      }
+      if (!referral || !referral.acceptedByPersonId) throw new TRPCError({ code: "BAD_REQUEST", message: "O caso precisa ser assumido antes do acompanhamento." });
+      if (!context.capabilities.canManageConsolidation && referral.acceptedByPersonId !== actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável, Líder ou Supervisor pode registrar este acompanhamento." });
+      if (input.visitAssigneePersonId) await requireVisitorPerson(input.visitAssigneePersonId, input.churchId);
       const followUp = await createConsolidationFollowUp({
         churchId: input.churchId,
         referralId: input.referralId,
@@ -1272,56 +1430,76 @@ const consolidationRouter = router({
         visitAssigneePersonId: input.visitAssigneePersonId ?? null,
         visitScheduledAt: input.visitScheduledAt ? new Date(input.visitScheduledAt) : null,
       });
-      await updateConsolidationReferral(input.referralId, input.churchId, {
-        status: "em_acompanhamento",
-        firstContactAt: referral.firstContactAt ?? new Date(),
-      });
-      return followUp;
-    }),
-  completeVisit: protectedProcedure
-    .input(z.object({ churchId: z.number(), referralId: z.number(), notes: z.string().trim().min(3).max(3000) }))
-    .mutation(async ({ input, ctx }) => {
-      const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      if (!actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Vincule sua conta a uma Pessoa antes de registrar a visita." });
-      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
-      if (!roles.some((role) => VISIT_ROLES.has(role))) throw new TRPCError({ code: "FORBIDDEN", message: "Sua função não possui permissão para registrar visitas." });
-      const referral = await getConsolidationReferralById(input.referralId, input.churchId);
-      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Encaminhamento não encontrado." });
-      const followUps = await getConsolidationFollowUpsByReferral(input.referralId, input.churchId);
-      const latestVisit = followUps
-        .filter((followUp) => ["solicitada", "agendada"].includes(followUp.visitStatus))
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-      const canMonitorAll = roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor", "supervisor_consolidacao"].includes(role));
-      if (!latestVisit || (!canMonitorAll && latestVisit.visitAssigneePersonId !== actor.personId)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Esta visita não está atribuída à sua função." });
+      let visit = null;
+      if (["solicitada", "agendada"].includes(input.visitStatus)) {
+        visit = await createCareVisit({
+          churchId: input.churchId,
+          referralId: input.referralId,
+          departmentId: context.visitsDepartment?.id ?? null,
+          requestedByPersonId: actor.personId,
+          assignedToPersonId: input.visitAssigneePersonId ?? null,
+          assignedByChurchUserId: input.visitAssigneePersonId ? (ctx.user.id < 0 ? Math.abs(ctx.user.id) : null) : null,
+          assignedAt: input.visitAssigneePersonId ? new Date() : null,
+          reason: (input.nextAction || "Visita solicitada pela Consolidação").slice(0, 255),
+          address: null,
+          priority: referral.priority,
+          status: input.visitScheduledAt ? "agendada" : "solicitada",
+          scheduledAt: input.visitScheduledAt ? new Date(input.visitScheduledAt) : null,
+          performedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null,
+        });
       }
-      const created = await createConsolidationFollowUp({
-        churchId: input.churchId,
-        referralId: input.referralId,
-        recordedByPersonId: actor.personId,
-        contactChannel: "visita",
-        outcome: "visitou",
-        notes: input.notes,
-        visitStatus: "realizada",
-        visitAssigneePersonId: actor.personId,
-      });
-      await updateConsolidationReferral(input.referralId, input.churchId, {
-        status: "em_acompanhamento",
-        firstContactAt: referral.firstContactAt ?? new Date(),
-      });
-      return created;
+      await updateConsolidationReferral(input.referralId, input.churchId, { status: "em_acompanhamento", firstContactAt: referral.firstContactAt ?? new Date() });
+      return { followUp, visit };
+    }),
+  assignVisit: protectedProcedure
+    .input(z.object({ churchId: z.number(), visitId: z.number(), visitorId: z.number().nullable(), scheduledAt: z.string().datetime().nullable().optional(), notes: z.string().trim().max(1000).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireConsolidationDepartmentManager(ctx.user.id, input.churchId, "visitas");
+      if (input.visitorId) await requireVisitorPerson(input.visitorId, input.churchId);
+      return assignCareVisit({ churchId: input.churchId, visitId: input.visitId, toPersonId: input.visitorId, performedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null, scheduledAt: input.scheduledAt === undefined ? undefined : input.scheduledAt ? new Date(input.scheduledAt) : null, notes: input.notes || null });
+    }),
+
+  completeVisit: protectedProcedure
+    .input(z.object({ churchId: z.number(), visitId: z.number(), notes: z.string().trim().min(3).max(3000) }))
+    .mutation(async ({ input, ctx }) => {
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      const visit = await getCareVisitById(input.visitId, input.churchId);
+      if (!visit) throw new TRPCError({ code: "NOT_FOUND", message: "Visita não encontrada." });
+      if (!context.capabilities.canManageVisits && visit.assignedToPersonId !== context.actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Esta Visita não está atribuída à sua função." });
+      const completed = await completeCareVisit({ churchId: input.churchId, visitId: input.visitId, performedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null, notes: input.notes });
+      if (context.actor.personId) {
+        await createConsolidationFollowUp({ churchId: input.churchId, referralId: visit.referralId, recordedByPersonId: context.actor.personId, contactChannel: "visita", outcome: "visitou", notes: input.notes, visitStatus: "realizada", visitAssigneePersonId: visit.assignedToPersonId });
+      }
+      const referral = await getConsolidationReferralById(visit.referralId, input.churchId);
+      if (referral) await updateConsolidationReferral(referral.id, input.churchId, { status: "em_acompanhamento", firstContactAt: referral.firstContactAt ?? new Date() });
+      return completed;
+    }),
+
+  cancelVisit: protectedProcedure
+    .input(z.object({ churchId: z.number(), visitId: z.number(), reason: z.string().trim().min(3).max(1000) }))
+    .mutation(async ({ input, ctx }) => {
+      await requireConsolidationDepartmentManager(ctx.user.id, input.churchId, "visitas");
+      return cancelCareVisit({ churchId: input.churchId, visitId: input.visitId, performedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null, reason: input.reason });
+    }),
+
+  visitHistory: protectedProcedure
+    .input(z.object({ churchId: z.number(), visitId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      const visit = await getCareVisitById(input.visitId, input.churchId);
+      if (!visit) throw new TRPCError({ code: "NOT_FOUND", message: "Visita não encontrada." });
+      if (!context.capabilities.canManageVisits && visit.assignedToPersonId !== context.actor.personId && visit.requestedByPersonId !== context.actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Você não possui acesso ao histórico desta Visita." });
+      return getCareVisitEvents(input.visitId, input.churchId);
     }),
 
   closeReferral: protectedProcedure
     .input(z.object({ churchId: z.number(), id: z.number(), closeNotes: z.string().trim().min(3).max(2000) }))
     .mutation(async ({ input, ctx }) => {
-      const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
       const referral = await getConsolidationReferralById(input.id, input.churchId);
-      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Encaminhamento não encontrado." });
-      const canOverride = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
-      if (!canOverride && referral.acceptedByPersonId !== actor.personId) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável pode encerrar este acompanhamento." });
+      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Caso de Consolidação não encontrado." });
+      if (!context.capabilities.canManageConsolidation && referral.acceptedByPersonId !== context.actor.personId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável, Líder ou Supervisor pode encerrar este acompanhamento." });
       }
       return updateConsolidationReferral(input.id, input.churchId, {
         status: "encerrado",
@@ -1524,8 +1702,8 @@ const careRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "A fila de visitas é restrita à liderança de cuidado." });
       }
 
-      const [followUps, referrals, people, managedPersonIds] = await Promise.all([
-        getConsolidationFollowUpsByChurch(input.churchId),
+      const [visits, referrals, people, managedPersonIds] = await Promise.all([
+        getCareVisitsByChurch(input.churchId),
         getConsolidationReferralsByChurch(input.churchId),
         getPeopleByChurch(input.churchId),
         canManageAll
@@ -1539,36 +1717,29 @@ const careRouter = router({
       const referralsById = new Map(referrals.map((referral) => [referral.id, referral]));
       const peopleById = new Map(people.map((person) => [person.id, person]));
       const managedIds = new Set(managedPersonIds);
-      const latestVisitByReferral = new Map<number, (typeof followUps)[number]>();
 
-      for (const followUp of followUps) {
-        if (followUp.visitStatus === "nao_necessaria" || latestVisitByReferral.has(followUp.referralId)) continue;
-        latestVisitByReferral.set(followUp.referralId, followUp);
-      }
-
-      return Array.from(latestVisitByReferral.values())
-        .map((followUp) => {
-          const referral = referralsById.get(followUp.referralId);
+      return visits
+        .map((visit) => {
+          const referral = referralsById.get(visit.referralId);
           if (!referral || referral.status === "encerrado") return null;
-          const canSee = canManageAll || referral.acceptedByPersonId === actor.personId || referral.referredByPersonId === actor.personId || managedIds.has(referral.personId);
+          const canSee = canManageAll || visit.assignedToPersonId === actor.personId || visit.requestedByPersonId === actor.personId || referral.acceptedByPersonId === actor.personId || referral.referredByPersonId === actor.personId || managedIds.has(referral.personId);
           if (!canSee) return null;
           const person = peopleById.get(referral.personId);
+          const canViewContact = canManageAll || visit.assignedToPersonId === actor.personId || referral.acceptedByPersonId === actor.personId;
           return {
-            referralId: referral.id,
+            ...visit,
+            visitId: visit.id,
             personId: referral.personId,
             personName: person?.fullName ?? "Pessoa vinculada",
-            contactNumber: canManageAll || referral.acceptedByPersonId === actor.personId ? (person?.whatsapp || person?.phone || null) : null,
-            reason: referral.reason,
-            visitStatus: followUp.visitStatus,
-            notes: followUp.notes,
-            requestedAt: followUp.createdAt,
-            nextAction: followUp.nextAction,
-            nextActionAt: followUp.nextActionAt,
+            contactNumber: canViewContact ? (person?.whatsapp || person?.phone || null) : null,
+            caseReason: referral.reason,
+            assignedToName: visit.assignedToPersonId ? peopleById.get(visit.assignedToPersonId)?.fullName ?? "Visitador designado" : null,
+            notes: visit.completionNotes ?? visit.cancellationReason ?? null,
             consolidatorId: referral.acceptedByPersonId,
           };
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)
-        .sort((a, b) => Number(new Date(a.requestedAt)) - Number(new Date(b.requestedAt)));
+        .sort((a, b) => Number(new Date(a.createdAt)) - Number(new Date(b.createdAt)));
     }),
 
   myQueue: protectedProcedure
@@ -3081,10 +3252,15 @@ const reportsRouter = router({
     .query(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
       const church = await getChurchById(input.churchId);
-      const cons = await getConsolidationsByChurch(input.churchId);
+      const [referrals, visits, people] = await Promise.all([getConsolidationReferralsByChurch(input.churchId), getCareVisitsByChurch(input.churchId), getPeopleByChurch(input.churchId)]);
+      const peopleById = new Map(people.map((person) => [person.id, person.fullName]));
+      const currentTime = Date.now();
+      const activeCases = referrals.filter((referral) => referral.status !== "encerrado");
+      const overdueCases = activeCases.filter((referral) => referral.careDueAt && new Date(referral.careDueAt).getTime() < currentTime);
+      const unassignedCases = activeCases.filter((referral) => !referral.assignedToPersonId && !referral.acceptedByPersonId);
+      const pendingVisits = visits.filter((visit) => !["realizada", "cancelada"].includes(visit.status));
+      const completedVisits = visits.filter((visit) => visit.status === "realizada");
       const now = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
-      const done = (cons ?? []).filter((c: { status: string }) => c.status === "concluido").length;
-      const pending = (cons ?? []).filter((c: { status: string }) => c.status === "em_andamento").length;
       const html = generateReportHTML({
         churchName: church?.name || "Igreja",
         generatedAt: now,
@@ -3095,25 +3271,29 @@ const reportsRouter = router({
             title: "Indicadores",
             type: "kpi",
             kpis: [
-              { label: "Total", value: cons?.length ?? 0, color: "#1e3a5f" },
-              { label: "Concluídos", value: done, color: "#16a34a" },
-              { label: "Em Andamento", value: pending, color: "#c9a84c" },
+              { label: "Casos ativos", value: activeCases.length, color: "#1e3a5f" },
+              { label: "Sem responsável", value: unassignedCases.length, color: "#c9a84c" },
+              { label: "Atrasados", value: overdueCases.length, color: "#dc2626" },
+              { label: "Visitas pendentes", value: pendingVisits.length, color: "#b45309" },
+              { label: "Visitas realizadas", value: completedVisits.length, color: "#16a34a" },
             ],
           },
           {
-            title: "Detalhamento",
+            title: "Fila de casos",
             type: "table",
-            headers: ["Nova Alma", "Consolidador", "Status", "Etapa"],
-            rows: (cons ?? []).slice(0, 50).map((c) => [
-              c.soulId?.toString() || "-",
-              c.consolidatorId?.toString() || "-",
-              c.status || "-",
-              c.callMade ? "Ligou" : "Pendente",
+            headers: ["Pessoa", "Origem", "Prioridade", "Responsável", "Status", "Prazo"],
+            rows: referrals.slice(0, 50).map((referral) => [
+              peopleById.get(referral.personId) ?? `Pessoa #${referral.personId}`,
+              referral.sourceType.replace(/_/g, " "),
+              referral.priority,
+              peopleById.get(referral.assignedToPersonId ?? referral.acceptedByPersonId ?? 0) ?? "Fila",
+              referral.status.replace(/_/g, " "),
+              referral.careDueAt ? new Date(referral.careDueAt).toLocaleDateString("pt-BR") : "-",
             ]),
           },
         ],
       });
-      return { base64: htmlToBase64(html), filename: `relatorio-consolidacao-${Date.now()}.html` };
+      return { base64: htmlToBase64(html), filename: `relatorio-consolidacao-visitas-${Date.now()}.html` };
     }),
 });
 

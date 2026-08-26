@@ -457,6 +457,7 @@ export const ministries = mysqlTable("ministries", {
     "evangelismo",
     "casais",
     "jovens",
+    "consolidacao",
     "outro",
   ]).notNull(),
   leaderId: int("leaderId"),
@@ -499,7 +500,9 @@ export const departments = mysqlTable("departments", {
   ministryId: int("ministryId").notNull(),
   name: varchar("name", { length: 160 }).notNull(),
   description: text("description"),
+  systemKey: mysqlEnum("systemKey", ["consolidacao", "visitas"]),
   leaderId: int("leaderId"),
+  supervisorId: int("supervisorId"),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -507,6 +510,8 @@ export const departments = mysqlTable("departments", {
   uniqueIndex("department_ministry_name_idx").on(table.ministryId, table.name),
   index("department_church_ministry_idx").on(table.churchId, table.ministryId),
   index("department_church_leader_idx").on(table.churchId, table.leaderId),
+  index("department_church_supervisor_idx").on(table.churchId, table.supervisorId),
+  uniqueIndex("department_ministry_system_key_idx").on(table.ministryId, table.systemKey),
 ]);
 
 export type Department = typeof departments.$inferSelect;
@@ -849,7 +854,16 @@ export const consolidationReferrals = mysqlTable("consolidation_referrals", {
   personId: int("personId").notNull(),
   referredByPersonId: int("referredByPersonId").notNull(),
   preferredConsolidatorId: int("preferredConsolidatorId"),
+  assignedToPersonId: int("assignedToPersonId"),
+  assignedByChurchUserId: int("assignedByChurchUserId"),
+  assignedAt: timestamp("assignedAt"),
   acceptedByPersonId: int("acceptedByPersonId"),
+  departmentId: int("departmentId"),
+  sourceType: mysqlEnum("sourceType", ["pastoral", "celula", "ministerio", "departamento"]).default("pastoral").notNull(),
+  sourceCellId: int("sourceCellId"),
+  sourceMinistryId: int("sourceMinistryId"),
+  sourceDepartmentId: int("sourceDepartmentId"),
+  priority: mysqlEnum("priority", ["baixa", "normal", "alta", "urgente"]).default("normal").notNull(),
   reason: varchar("reason", { length: 255 }).notNull(),
   notes: text("notes"),
   status: mysqlEnum("status", ["pendente", "aceito", "em_acompanhamento", "encerrado", "cancelado"])
@@ -863,9 +877,29 @@ export const consolidationReferrals = mysqlTable("consolidation_referrals", {
   closeNotes: text("closeNotes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => [
+  index("consolidation_referral_queue_idx").on(table.churchId, table.status, table.careDueAt),
+  index("consolidation_referral_assignee_idx").on(table.churchId, table.assignedToPersonId, table.status),
+  index("consolidation_referral_department_idx").on(table.churchId, table.departmentId, table.status),
+  index("consolidation_referral_person_idx").on(table.churchId, table.personId, table.status),
+]);
 
 export type ConsolidationReferral = typeof consolidationReferrals.$inferSelect;
+
+/** Histórico imutável de atribuição e reatribuição dos casos de Consolidação. */
+export const consolidationCaseAssignments = mysqlTable("consolidation_case_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  referralId: int("referralId").notNull(),
+  action: mysqlEnum("action", ["atribuido", "reatribuido", "aceito", "devolvido_fila"]).notNull(),
+  fromPersonId: int("fromPersonId"),
+  toPersonId: int("toPersonId"),
+  performedByChurchUserId: int("performedByChurchUserId"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("consolidation_case_assignment_referral_idx").on(table.churchId, table.referralId, table.createdAt),
+]);
 
 /** Histórico imutável de contatos e ações executadas durante um encaminhamento de resgate. */
 export const consolidationFollowUps = mysqlTable("consolidation_follow_ups", {
@@ -885,6 +919,54 @@ export const consolidationFollowUps = mysqlTable("consolidation_follow_ups", {
 });
 
 export type ConsolidationFollowUp = typeof consolidationFollowUps.$inferSelect;
+
+// ─── VISITAS DO CUIDADO ────────────────────────────────────────────────────────
+
+/** Visita pastoral ou de Consolidação com identidade e ciclo de vida próprios. */
+export const careVisits = mysqlTable("care_visits", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  referralId: int("referralId").notNull(),
+  departmentId: int("departmentId"),
+  requestedByPersonId: int("requestedByPersonId").notNull(),
+  assignedToPersonId: int("assignedToPersonId"),
+  assignedByChurchUserId: int("assignedByChurchUserId"),
+  priority: mysqlEnum("priority", ["baixa", "normal", "alta", "urgente"]).default("normal").notNull(),
+  status: mysqlEnum("status", ["solicitada", "agendada", "em_andamento", "realizada", "cancelada"]).default("solicitada").notNull(),
+  reason: varchar("reason", { length: 255 }).notNull(),
+  address: text("address"),
+  scheduledAt: timestamp("scheduledAt"),
+  assignedAt: timestamp("assignedAt"),
+  startedAt: timestamp("startedAt"),
+  completedAt: timestamp("completedAt"),
+  cancelledAt: timestamp("cancelledAt"),
+  completionNotes: text("completionNotes"),
+  cancellationReason: text("cancellationReason"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("care_visit_queue_idx").on(table.churchId, table.status, table.scheduledAt),
+  index("care_visit_assignee_idx").on(table.churchId, table.assignedToPersonId, table.status),
+  index("care_visit_referral_idx").on(table.churchId, table.referralId),
+  index("care_visit_department_idx").on(table.churchId, table.departmentId, table.status),
+]);
+
+export type CareVisit = typeof careVisits.$inferSelect;
+
+/** Trilha imutável de atribuição, agenda, cancelamento e conclusão da Visita. */
+export const careVisitEvents = mysqlTable("care_visit_events", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  visitId: int("visitId").notNull(),
+  action: mysqlEnum("action", ["criada", "atribuida", "reatribuida", "agendada", "reagendada", "iniciada", "concluida", "cancelada"]).notNull(),
+  fromPersonId: int("fromPersonId"),
+  toPersonId: int("toPersonId"),
+  performedByChurchUserId: int("performedByChurchUserId"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("care_visit_event_visit_idx").on(table.churchId, table.visitId, table.createdAt),
+]);
 
 // ─── STATUS DE APROVAÇÃO DA IGREJA ───────────────────────────────────────────
 

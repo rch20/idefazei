@@ -1,4 +1,7 @@
 import { useChurch } from "@/components/ChurchLayout";
+import { ConsolidationMinistryPanel } from "@/components/ConsolidationMinistryPanel";
+import { ConsolidationAssignmentControl } from "@/components/ConsolidationAssignmentControl";
+import { VisitAssignmentControl } from "@/components/VisitAssignmentControl";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -70,17 +73,22 @@ export default function Consolidacao() {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
   const utils = trpc.useUtils();
+  const [caseFilter, setCaseFilter] = useState<"ativos" | "fila" | "atrasados" | "encerrados" | "todos">("ativos");
+  const [visitFilter, setVisitFilter] = useState<"pendentes" | "agendadas" | "realizadas" | "todas">("pendentes");
   const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery(
     { churchId },
     { enabled: Boolean(churchId && user) }
   );
   const effectiveRoles = effectiveRolesQuery.data ?? [];
   const rolesReady = effectiveRolesQuery.isFetched;
-  const isVisitOnly = rolesReady && effectiveRoles.includes("visitador") && !effectiveRoles.some((role) => ["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"].includes(role));
-  const canAccessVisits = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local", "supervisor", "consolidador", "visitador", "supervisor_consolidacao"].includes(role));
+  const ministryStructureQuery = trpc.consolidation.structure.useQuery({ churchId }, { enabled: rolesReady });
+  const capabilities = ministryStructureQuery.data?.capabilities;
+  const isVisitOnly = rolesReady && Boolean(capabilities?.canWorkVisits) && !Boolean(capabilities?.canWorkConsolidation);
+  const canAccessVisits = Boolean(capabilities?.canWorkVisits || capabilities?.canManageVisits);
   const { data: consolidations, isLoading, refetch } = trpc.consolidation.list.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
   const { data: souls } = trpc.consolidation.souls.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
   const referralsQuery = trpc.consolidation.referrals.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
+  const consolidatorsQuery = trpc.consolidation.consolidators.useQuery({ churchId }, { enabled: rolesReady && Boolean(capabilities?.canManageConsolidation) });
   const visitorsQuery = trpc.consolidation.visitors.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
   const visitsQuery = trpc.consolidation.visits.useQuery({ churchId }, { enabled: rolesReady && canAccessVisits });
   const { data: cells = [] } = trpc.cells.list.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
@@ -101,7 +109,7 @@ export default function Consolidacao() {
     { churchId, referralId: trackingReferralId ?? 0 },
     { enabled: Boolean(trackingReferralId) }
   );
-  const hasFullOverview = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+  const hasFullOverview = Boolean(capabilities?.canManageConsolidation);
 
   const updateChecklist = trpc.consolidation.updateChecklist.useMutation({
     onSuccess: () => refetch(),
@@ -155,8 +163,14 @@ export default function Consolidacao() {
   });
 
   const soulsMap = new Map((souls ?? []).map((s) => [s.id, s]));
-  const referralAlerts = (referralsQuery.data ?? []).filter((referral) => ["atrasado", "proximo"].includes(referral.careDueStatus));
+  const allReferrals = referralsQuery.data ?? [];
+  const referralAlerts = allReferrals.filter((referral) => ["atrasado", "proximo"].includes(referral.careDueStatus));
   const overdueReferrals = referralAlerts.filter((referral) => referral.careDueStatus === "atrasado");
+  const activeReferrals = allReferrals.filter((referral) => referral.status !== "encerrado");
+  const unassignedReferrals = activeReferrals.filter((referral) => !referral.assignedToPersonId && !referral.acceptedByPersonId);
+  const filteredReferrals = allReferrals.filter((referral) => caseFilter === "todos" || (caseFilter === "ativos" && referral.status !== "encerrado") || (caseFilter === "fila" && referral.status !== "encerrado" && !referral.assignedToPersonId && !referral.acceptedByPersonId) || (caseFilter === "atrasados" && referral.careDueStatus === "atrasado") || (caseFilter === "encerrados" && referral.status === "encerrado"));
+  const allVisits = visitsQuery.data ?? [];
+  const filteredVisits = allVisits.filter((visit) => visitFilter === "todas" || (visitFilter === "pendentes" && !["realizada", "cancelada"].includes(visit.status)) || (visitFilter === "agendadas" && visit.status === "agendada") || (visitFilter === "realizadas" && visit.status === "realizada"));
 
   function toggleItem(consolidationId: number, key: ChecklistKey, current: boolean) {
     updateChecklist.mutate({
@@ -197,7 +211,7 @@ export default function Consolidacao() {
   }
 
   if (activeSection === "visitas" && canAccessVisits) {
-    const visits = visitsQuery.data ?? [];
+    const visits = filteredVisits;
     const monthDays = getMonthDays(visitCalendarMonth);
     const scheduledVisitsByDay = new Map<string, typeof visits>();
     visits.filter((visit) => visit.scheduledAt).forEach((visit) => {
@@ -209,7 +223,7 @@ export default function Consolidacao() {
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div><h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1><p className="mt-1 text-sm text-muted-foreground">Visitas atribuídas à sua função ministerial.</p></div>
-          <div className="inline-flex rounded-lg border border-border bg-background p-1"><Button size="sm" variant="ghost" onClick={() => setActiveSection("consolidacao")}>Consolidação</Button><Button size="sm" className="bg-navy text-white hover:bg-navy-light">Visitas</Button></div>
+          <div className="flex flex-col gap-2 sm:items-end"><div className="inline-flex rounded-lg border border-border bg-background p-1"><Button size="sm" variant="ghost" onClick={() => setActiveSection("consolidacao")}>Consolidação</Button><Button size="sm" className="bg-navy text-white hover:bg-navy-light">Visitas</Button></div><Select value={visitFilter} onValueChange={(value) => setVisitFilter(value as typeof visitFilter)}><SelectTrigger className="w-full bg-background sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendentes">Visitas pendentes</SelectItem><SelectItem value="agendadas">Agendadas</SelectItem><SelectItem value="realizadas">Realizadas</SelectItem><SelectItem value="todas">Todas as Visitas</SelectItem></SelectContent></Select></div>
         </div>
         {visitsQuery.isLoading ? <div className="h-44 animate-pulse rounded-xl bg-muted" /> : visits.length === 0 ? (
           <div className="card-sacred p-12 text-center"><MapPinned className="mx-auto h-8 w-8 text-amber-600" /><p className="mt-3 font-semibold text-navy">Nenhuma visita pendente</p><p className="mt-1 text-sm text-muted-foreground">Quando uma visita for atribuída a você, ela aparecerá aqui.</p></div>
@@ -231,11 +245,12 @@ export default function Consolidacao() {
           </section>
           <div className="space-y-4">{visits.map((visit) => (
           <article key={visit.id} className="card-sacred p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-navy">{visit.personName}</p><p className="mt-1 text-xs text-muted-foreground">Solicitado por {visit.requestedByName} · {visit.status === "agendada" ? "Agendada" : "Solicitada"}</p></div><Badge variant="outline" className="w-fit border-amber-200 bg-amber-50 text-amber-800">{visit.scheduledAt ? new Date(visit.scheduledAt).toLocaleString("pt-BR") : "Aguardando agendamento"}</Badge></div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-navy">{visit.personName}</p><Badge variant="outline">Visita #{visit.id}</Badge></div><p className="mt-1 text-xs text-muted-foreground">Solicitada por {visit.requestedByName}{visit.assignedToName ? ` · Visitador: ${visit.assignedToName}` : " · Aguardando atribuição"}</p></div><Badge variant="outline" className="w-fit border-amber-200 bg-amber-50 text-amber-800">{visit.scheduledAt ? new Date(visit.scheduledAt).toLocaleString("pt-BR") : "Aguardando agendamento"}</Badge></div>
             <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50/50 p-3 text-sm"><p><strong>Motivo:</strong> {visit.reason}</p>{visit.notes && <p className="mt-1 text-muted-foreground">{visit.notes}</p>}</div>
             {visit.contactNumber && <a href={getWhatsAppLink(visit.contactNumber, visit.personName)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center text-sm font-medium text-green-700 hover:underline"><MessageCircle className="mr-2 h-4 w-4" />Conversar no WhatsApp</a>}
             {visit.address && <p className="mt-2 flex items-start gap-2 text-sm text-muted-foreground"><MapPinned className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />{visit.address}</p>}
-            <div className="mt-4 border-t border-border pt-3"><Label htmlFor={`visit-notes-${visit.id}`}>Registro da visita *</Label><Textarea id={`visit-notes-${visit.id}`} rows={3} className="mt-1" value={visitNotesById[visit.id] ?? ""} onChange={(event) => setVisitNotesById((current) => ({ ...current, [visit.id]: event.target.value }))} placeholder="Como foi a visita, necessidades identificadas e próximos cuidados." /><div className="mt-2 flex justify-end"><Button type="button" className="bg-green-600 text-white hover:bg-green-700" disabled={completeVisit.isPending || (visitNotesById[visit.id]?.trim().length ?? 0) < 3} onClick={() => completeVisit.mutate({ churchId, referralId: visit.referralId, notes: visitNotesById[visit.id].trim() })}><CheckCircle2 className="mr-2 h-4 w-4" />Registrar visita realizada</Button></div></div>
+            {visit.canAssign && <VisitAssignmentControl churchId={churchId} visit={{ id: visit.id, assignedToPersonId: visit.assignedToPersonId, scheduledAt: visit.scheduledAt, status: visit.status }} visitors={visitorsQuery.data ?? []} onSaved={async () => { await visitsQuery.refetch(); }} />}
+            {visit.canComplete && <div className="mt-4 border-t border-border pt-3"><Label htmlFor={`visit-notes-${visit.id}`}>Registro da visita *</Label><Textarea id={`visit-notes-${visit.id}`} rows={3} className="mt-1" value={visitNotesById[visit.id] ?? ""} onChange={(event) => setVisitNotesById((current) => ({ ...current, [visit.id]: event.target.value }))} placeholder="Como foi a visita, necessidades identificadas e próximos cuidados." /><div className="mt-2 flex justify-end"><Button type="button" className="bg-green-600 text-white hover:bg-green-700" disabled={completeVisit.isPending || (visitNotesById[visit.id]?.trim().length ?? 0) < 3} onClick={() => completeVisit.mutate({ churchId, visitId: visit.id, notes: visitNotesById[visit.id].trim() })}><CheckCircle2 className="mr-2 h-4 w-4" />Registrar visita realizada</Button></div></div>}
           </article>
         ))}</div>
         </>}
@@ -260,23 +275,26 @@ export default function Consolidacao() {
 
       {canAccessVisits && <div className="inline-flex rounded-lg border border-border bg-background p-1"><Button size="sm" className="bg-navy text-white hover:bg-navy-light">Consolidação</Button><Button size="sm" variant="ghost" onClick={() => setActiveSection("visitas")}><MapPinned className="mr-2 h-4 w-4" />Visitas</Button></div>}
 
+      <ConsolidationMinistryPanel churchId={churchId} />
+
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><div className="metric-card"><p className="text-2xl font-bold text-navy">{activeReferrals.length}</p><p className="text-sm text-muted-foreground">Casos ativos</p></div><div className="metric-card"><p className="text-2xl font-bold text-amber-700">{unassignedReferrals.length}</p><p className="text-sm text-muted-foreground">Sem responsável</p></div><div className="metric-card"><p className="text-2xl font-bold text-rose-700">{overdueReferrals.length}</p><p className="text-sm text-muted-foreground">Com prazo vencido</p></div><div className="metric-card"><p className="text-2xl font-bold text-indigo-700">{allVisits.filter((visit) => !["realizada", "cancelada"].includes(visit.status)).length}</p><p className="text-sm text-muted-foreground">Visitas pendentes</p></div></section>
+
       {referralAlerts.length > 0 && <section className={`rounded-2xl border p-4 sm:p-5 ${overdueReferrals.length > 0 ? "border-rose-200 bg-rose-50" : "border-amber-200 bg-amber-50"}`}><div className="flex items-start gap-3"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${overdueReferrals.length > 0 ? "bg-rose-100" : "bg-amber-100"}`}><AlertTriangle className={`h-5 w-5 ${overdueReferrals.length > 0 ? "text-rose-700" : "text-amber-700"}`} /></div><div><h2 className="font-display text-lg font-semibold text-navy">Atenção aos prazos de cuidado</h2><p className="mt-1 text-sm text-muted-foreground">{overdueReferrals.length > 0 ? `${overdueReferrals.length} caso${overdueReferrals.length === 1 ? "" : "s"} está${overdueReferrals.length === 1 ? "" : "ão"} atrasado${overdueReferrals.length === 1 ? "" : "s"}. ` : ""}{referralAlerts.length - overdueReferrals.length > 0 ? `${referralAlerts.length - overdueReferrals.length} caso${referralAlerts.length - overdueReferrals.length === 1 ? "" : "s"} vence${referralAlerts.length - overdueReferrals.length === 1 ? "" : "m"} nas próximas 48 horas.` : ""}</p></div></div></section>}
 
       <section className="rounded-2xl border border-rose-200 bg-rose-50/40 p-4 sm:p-5">
-        <div className="flex items-start gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100">
             <Send className="h-5 w-5 text-rose-600" />
           </div>
           <div>
             <h2 className="font-display text-lg font-semibold text-navy">Encaminhamentos para Consolidação</h2>
             <p className="mt-1 text-xs text-muted-foreground">Pessoas enviadas pela liderança porque precisam de resgate e acompanhamento. Aceite um encaminhamento para iniciar o cuidado.</p>
-          </div>
-        </div>
-        {(referralsQuery.data ?? []).length === 0 ? (
+          </div></div><Select value={caseFilter} onValueChange={(value) => setCaseFilter(value as typeof caseFilter)}><SelectTrigger className="w-full bg-background sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ativos">Casos ativos</SelectItem><SelectItem value="fila">Sem responsável</SelectItem><SelectItem value="atrasados">Atrasados</SelectItem><SelectItem value="encerrados">Encerrados</SelectItem><SelectItem value="todos">Todos os casos</SelectItem></SelectContent></Select></div>
+        {filteredReferrals.length === 0 ? (
           <p className="mt-4 rounded-lg border border-dashed border-rose-200 bg-background/70 p-3 text-sm text-muted-foreground">Não há encaminhamentos de resgate na sua fila neste momento.</p>
         ) : (
           <div className="mt-4 space-y-3">
-            {(referralsQuery.data ?? []).map((referral) => {
+            {filteredReferrals.map((referral) => {
               const isPending = referral.status === "pendente";
               const isAccepted = referral.status === "aceito";
               const isInFollowUp = referral.status === "em_acompanhamento";
@@ -289,12 +307,13 @@ export default function Consolidacao() {
                         <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${referral.status === "encerrado" ? "border-green-200 bg-green-50 text-green-700" : referral.status === "em_acompanhamento" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{referral.status === "pendente" ? "Aguardando aceite" : referral.status === "aceito" ? "Aceito" : referral.status === "em_acompanhamento" ? "Em acompanhamento" : "Encerrado"}</span>
                         {referral.careDueStatus !== "encerrado" && <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${referral.careDueStatus === "atrasado" ? "border-rose-200 bg-rose-50 text-rose-700" : referral.careDueStatus === "proximo" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}><Clock3 className="h-3 w-3" />{getCareDueLabel(referral)}</span>}
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">Encaminhado por {referral.referredByName} em {new Date(referral.referredAt).toLocaleDateString("pt-BR")}{referral.preferredConsolidatorName ? ` · Indicado para ${referral.preferredConsolidatorName}` : ""}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Indicado por {referral.referredByName} · origem: {referral.sourceName} · {new Date(referral.referredAt).toLocaleDateString("pt-BR")}{referral.preferredConsolidatorName ? ` · Preferência: ${referral.preferredConsolidatorName}` : ""}</p>
                       <p className="mt-3 text-sm font-medium text-navy">Motivo: <span className="font-normal text-foreground">{referral.reason}</span></p>
                       {referral.notes && <p className="mt-1 text-sm text-muted-foreground">{referral.notes}</p>}
                     </div>
                     <div className="flex shrink-0 flex-col gap-2 sm:w-44">
-                      {isPending && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
+                      {referral.canAssign && <ConsolidationAssignmentControl churchId={churchId} referral={referral} candidates={consolidatorsQuery.data ?? []} canAssign={Boolean(referral.canAssign)} onSaved={async () => { await referralsQuery.refetch(); }} />}
+                      {isPending && referral.canAccept && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
                       {!isPending && referral.status !== "encerrado" && <Button size="sm" variant="outline" onClick={() => openTracking(referral.id)}><ClipboardCheck className="mr-2 h-4 w-4" />{trackingReferralId === referral.id ? "Fechar painel" : "Acompanhar caso"}</Button>}
                       {isInFollowUp && <Button size="sm" variant="outline" onClick={() => setClosingReferralId(referral.id)}>Encerrar cuidado</Button>}
                       {referral.acceptedByName && <p className="text-center text-[11px] text-muted-foreground">Responsável: {referral.acceptedByName}</p>}

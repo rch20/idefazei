@@ -104,20 +104,21 @@ export default function CentralCuidado() {
               const statusLabel = {
                 solicitada: "Visita solicitada",
                 agendada: "Visita agendada",
+                em_andamento: "Visita em andamento",
                 realizada: "Visita realizada",
                 cancelada: "Visita cancelada",
-                nao_necessaria: "Sem visita",
-              }[visit.visitStatus];
-              const isOpen = visit.visitStatus === "solicitada" || visit.visitStatus === "agendada";
+              }[visit.status];
+              const isOpen = ["solicitada", "agendada", "em_andamento"].includes(visit.status);
               return (
-                <article key={visit.referralId} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                <article key={visit.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-semibold text-navy">{visit.personName}</h3>
+                      <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700">Visita #{visit.id}</Badge>
                       <Badge variant="outline" className={isOpen ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-700"}>{statusLabel}</Badge>
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">Motivo do encaminhamento: {visit.reason}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{visit.notes}{visit.nextAction ? ` · Próxima ação: ${visit.nextAction}` : ""}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Motivo do encaminhamento: {visit.caseReason}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{visit.assignedToName ? `Responsável: ${visit.assignedToName}` : "Aguardando responsável"}{visit.scheduledAt ? ` · ${new Date(visit.scheduledAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : ""}{visit.notes ? ` · ${visit.notes}` : ""}</p>
                   </div>
                   <Button variant="outline" className="w-full gap-2 sm:w-auto" onClick={() => navigate("/app/consolidacao")}>Acompanhar caso <ChevronRight className="h-4 w-4" /></Button>
                 </article>

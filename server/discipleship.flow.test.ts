@@ -56,13 +56,36 @@ vi.mock("./db", () => ({
   createConsolidation: vi.fn().mockResolvedValue({ id: 1, soulId: 1, churchId: 100 }),
   startConsolidationWorkflow: vi.fn().mockResolvedValue({ id: 1, soulId: 1, churchId: 100, consolidatorId: 10 }),
   updateConsolidation: vi.fn().mockResolvedValue({ id: 1, callMade: true, status: "consolidado" }),
+  ensureConsolidationMinistryStructure: vi.fn().mockResolvedValue({
+    ministry: { id: 7, churchId: 100, name: "Ministério de Consolidação e Visitas", type: "consolidacao", active: true },
+    consolidationDepartment: { id: 31, churchId: 100, ministryId: 7, name: "Consolidação", systemKey: "consolidacao", active: true },
+    visitsDepartment: { id: 32, churchId: 100, ministryId: 7, name: "Visitas", systemKey: "visitas", active: true },
+  }),
+  getConsolidationMinistryStructure: vi.fn().mockResolvedValue({
+    ministry: { id: 7, churchId: 100, name: "Ministério de Consolidação e Visitas", type: "consolidacao", active: true },
+    consolidationDepartment: { id: 31, churchId: 100, ministryId: 7, name: "Consolidação", systemKey: "consolidacao", active: true },
+    visitsDepartment: { id: 32, churchId: 100, ministryId: 7, name: "Visitas", systemKey: "visitas", active: true },
+  }),
+  setDepartmentSupervisor: vi.fn().mockResolvedValue({ id: 31, churchId: 100, supervisorPersonId: 11 }),
+  setConsolidationDepartmentLeadership: vi.fn().mockResolvedValue({ id: 31, churchId: 100, ministryId: 7, systemKey: "consolidacao", leaderId: 10, supervisorId: 11, active: true }),
   getConsolidationReferralsByChurch: vi.fn().mockResolvedValue([]),
   getConsolidationReferralById: vi.fn().mockResolvedValue({ id: 51, churchId: 100, personId: 1, referredByPersonId: 10, status: "pendente" }),
   createConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "pendente" }),
+  createConsolidationReferralCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, status: "pendente" }, assignment: null }),
   updateConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "aceito" }),
+  assignConsolidationCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, assignedToPersonId: 10 }, assignment: { id: 1, action: "atribuido" } }),
+  acceptConsolidationCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, acceptedByPersonId: 10, status: "aceito" }, assignment: { id: 2, action: "aceito" } }),
+  getConsolidationCaseAssignments: vi.fn().mockResolvedValue([]),
   getConsolidationFollowUpsByReferral: vi.fn().mockResolvedValue([]),
   getConsolidationFollowUpsByChurch: vi.fn().mockResolvedValue([]),
   createConsolidationFollowUp: vi.fn().mockResolvedValue({ id: 91, churchId: 100, referralId: 51 }),
+  getCareVisitsByChurch: vi.fn().mockResolvedValue([]),
+  getCareVisitById: vi.fn().mockResolvedValue({ id: 401, churchId: 100, referralId: 51, personId: 1, status: "solicitada", assignedToPersonId: null }),
+  getCareVisitEvents: vi.fn().mockResolvedValue([]),
+  createCareVisit: vi.fn().mockResolvedValue({ visit: { id: 401, churchId: 100, referralId: 51, personId: 1, status: "solicitada" }, event: { id: 1, action: "criada" } }),
+  assignCareVisit: vi.fn().mockResolvedValue({ id: 401, churchId: 100, referralId: 51, personId: 1, status: "solicitada", assignedToPersonId: 10 }),
+  completeCareVisit: vi.fn().mockResolvedValue({ visit: { id: 401, churchId: 100, referralId: 51, personId: 1, status: "realizada" }, event: { id: 3, action: "realizada" } }),
+  cancelCareVisit: vi.fn().mockResolvedValue({ visit: { id: 401, churchId: 100, referralId: 51, personId: 1, status: "cancelada" }, event: { id: 4, action: "cancelada" } }),
   getCellsByChurch: vi.fn().mockResolvedValue([]),
   getCellMembersCount: vi.fn().mockResolvedValue([]),
   getActiveMembersByCell: vi.fn().mockResolvedValue([]),
@@ -113,6 +136,7 @@ vi.mock("./db", () => ({
   updateChurchUserAssignment: vi.fn().mockResolvedValue({ id: 2, personId: 10, role: "lider" }),
   getComplementaryRolesByChurchUser: vi.fn().mockResolvedValue([]),
   getActiveMinistryRoleKeysByPerson: vi.fn().mockResolvedValue([]),
+  getActiveDepartmentRoleKeysByPerson: vi.fn().mockResolvedValue([]),
   getMinistryRoleDefinitionsByChurch: vi.fn().mockResolvedValue([]),
   getMinistryRoleAssignmentsByPerson: vi.fn().mockResolvedValue([]),
   assignMinistryRole: vi.fn().mockResolvedValue({ id: 1, alreadyAssigned: false }),
@@ -1233,7 +1257,7 @@ describe("Fluxo completo de discipulado", () => {
 
   describe("Consolidação — encaminhamento de resgate", () => {
     it("permite que a liderança encaminhe uma Pessoa da sua responsabilidade com motivo", async () => {
-      const { createConsolidationReferral } = await import("./db");
+      const { createConsolidationReferralCase } = await import("./db");
       const caller = appRouter.createCaller(createMemberContext(-2));
 
       await caller.consolidation.createReferral({
@@ -1243,7 +1267,7 @@ describe("Fluxo completo de discipulado", () => {
         notes: "Líder tentou contato por WhatsApp.",
       });
 
-      expect(createConsolidationReferral).toHaveBeenCalledWith(expect.objectContaining({
+      expect(createConsolidationReferralCase).toHaveBeenCalledWith(expect.objectContaining({
         churchId: CHURCH_ID,
         personId: 1,
         referredByPersonId: 10,
@@ -1273,7 +1297,7 @@ describe("Fluxo completo de discipulado", () => {
     });
 
     it("permite que um Consolidador assuma o encaminhamento e registre o cuidado", async () => {
-      const { getConsolidationReferralById, setCurrentCareAssignment, updateConsolidationReferral } = await import("./db");
+      const { acceptConsolidationCase, getConsolidationReferralById } = await import("./db");
       (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
       vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({
         id: 51,
@@ -1287,14 +1311,10 @@ describe("Fluxo completo de discipulado", () => {
 
       await caller.consolidation.acceptReferral({ churchId: CHURCH_ID, id: 51 });
 
-      expect(setCurrentCareAssignment).toHaveBeenCalledWith(expect.objectContaining({
-        personId: 1,
-        responsiblePersonId: 10,
-        role: "consolidador",
-      }));
-      expect(updateConsolidationReferral).toHaveBeenCalledWith(51, CHURCH_ID, expect.objectContaining({
-        status: "aceito",
-        acceptedByPersonId: 10,
+      expect(acceptConsolidationCase).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        referralId: 51,
+        personId: 10,
       }));
     });
 
@@ -1461,15 +1481,17 @@ describe("Fluxo completo de discipulado", () => {
     });
 
     it("reflete uma visita solicitada na fila de cuidado com o histórico do encaminhamento", async () => {
-      (getConsolidationFollowUpsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      const { getCareVisitsByChurch } = await import("./db");
+      (getCareVisitsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
         {
-          id: 91,
+          id: 401,
           churchId: CHURCH_ID,
           referralId: 51,
-          visitStatus: "solicitada",
-          notes: "A família pediu uma visita nesta semana.",
-          nextAction: "Confirmar horário com a família",
-          nextActionAt: new Date("2026-08-22T14:00:00.000Z"),
+          requestedByPersonId: 10,
+          assignedToPersonId: null,
+          priority: "normal",
+          status: "solicitada",
+          reason: "Confirmar horário com a família",
           createdAt: new Date("2026-08-20T12:00:00.000Z"),
         },
       ]);
@@ -1485,10 +1507,11 @@ describe("Fluxo completo de discipulado", () => {
 
       expect(visits).toHaveLength(1);
       expect(visits[0]).toEqual(expect.objectContaining({
+        id: 401,
         referralId: 51,
         personName: "Discípulo Teste",
-        visitStatus: "solicitada",
-        nextAction: "Confirmar horário com a família",
+        status: "solicitada",
+        caseReason: "Ausência recorrente na Célula",
       }));
     });
   });
@@ -1716,7 +1739,8 @@ describe("Fluxo completo de discipulado", () => {
     it("permite ao Visitador ver somente a visita atribuída à sua função", async () => {
       (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "membro", active: true });
       (getActiveMinistryRoleKeysByPerson as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["visitador"]);
-      (getConsolidationFollowUpsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 301, churchId: CHURCH_ID, referralId: 51, recordedByPersonId: 12, visitStatus: "agendada", visitAssigneePersonId: 10, visitScheduledAt: new Date("2026-08-25T19:00:00Z"), notes: "Visita de acolhimento", createdAt: new Date("2026-08-20T12:00:00Z") }]);
+      const { getCareVisitsByChurch } = await import("./db");
+      (getCareVisitsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 401, churchId: CHURCH_ID, referralId: 51, personId: 1, assignedToPersonId: 10, requestedByPersonId: 12, status: "agendada", scheduledAt: new Date("2026-08-25T19:00:00Z"), reason: "Visita de acolhimento", createdAt: new Date("2026-08-20T12:00:00Z") }]);
       (getConsolidationReferralsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 51, churchId: CHURCH_ID, personId: 1, acceptedByPersonId: 12, reason: "Ausência recorrente" }]);
       (getPeopleByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 1, churchId: CHURCH_ID, fullName: "Pessoa Visitada", phone: "11999999999", street: "Rua da Paz", number: "20", neighborhood: "Centro", city: "São Paulo", state: "SP" }, { id: 10, churchId: CHURCH_ID, fullName: "Visitador" }, { id: 12, churchId: CHURCH_ID, fullName: "Consolidador" }]);
       const caller = appRouter.createCaller(createMemberContext(-2));
@@ -1815,6 +1839,122 @@ describe("Fluxo completo de discipulado", () => {
 
       await expect(caller.escolaFundamentos.attachStudyMaterial({ churchId: CHURCH_ID, studyId: 90, libraryItemId: 301 })).rejects.toThrow("gestão de estudos é restrita");
       expect(attachFoundationStudyMaterial).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Ministério de Consolidação e Visitas — governança e filas", () => {
+    it("mantém a criação da estrutura idempotente quando o Pastor executa novamente", async () => {
+      const { ensureConsolidationMinistryStructure } = await import("./db");
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const first = await caller.consolidation.setupMinistry({ churchId: CHURCH_ID });
+      const second = await caller.consolidation.setupMinistry({ churchId: CHURCH_ID });
+
+      expect(first.ministry.id).toBe(7);
+      expect(second.ministry.id).toBe(7);
+      expect(ensureConsolidationMinistryStructure).toHaveBeenCalledTimes(2);
+    });
+
+    it("permite ao Pastor definir Líder e Supervisor no Departamento sistêmico", async () => {
+      const { getActiveChurchUserById, getMinistriesByChurch, getDepartmentsByChurch, getDepartmentById, setConsolidationDepartmentLeadership } = await import("./db");
+      vi.mocked(getActiveChurchUserById).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "pastor_presidente", active: true } as any);
+      const ministry = { id: 7, churchId: CHURCH_ID, name: "Ministério de Consolidação e Visitas", type: "consolidacao", active: true };
+      const department = { id: 31, churchId: CHURCH_ID, ministryId: 7, name: "Consolidação", systemKey: "consolidacao", leaderId: null, supervisorId: null, active: true };
+      vi.mocked(getMinistriesByChurch).mockResolvedValueOnce([ministry] as any);
+      vi.mocked(getDepartmentsByChurch).mockResolvedValueOnce([department] as any);
+      vi.mocked(getDepartmentById).mockResolvedValueOnce(department as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.consolidation.setDepartmentLeadership({ churchId: CHURCH_ID, departmentId: 31, leaderId: 10, supervisorId: 11 });
+
+      expect(setConsolidationDepartmentLeadership).toHaveBeenCalledWith({ churchId: CHURCH_ID, departmentId: 31, leaderId: 10, supervisorId: 11, assignedByChurchUserId: 2 });
+    });
+
+    it("registra origem, prioridade e motivo quando o Líder indica membro da própria Célula", async () => {
+      const { getActiveChurchUserById, getActiveCellMembership, getCellsByChurch, getMinistriesByChurch, getDepartmentsByChurch, createConsolidationReferralCase } = await import("./db");
+      vi.mocked(getActiveChurchUserById).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "lider", active: true } as any).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "lider", active: true } as any);
+      vi.mocked(getActiveCellMembership).mockResolvedValueOnce({ id: 8, churchId: CHURCH_ID, cellId: 2, personId: 1, active: true } as any);
+      vi.mocked(getCellsByChurch).mockResolvedValueOnce([{ id: 2, churchId: CHURCH_ID, name: "Célula Vida", leaderId: 10, supervisorId: null, active: true }] as any).mockResolvedValueOnce([{ id: 2, churchId: CHURCH_ID, name: "Célula Vida", leaderId: 10, supervisorId: null, active: true }] as any);
+      vi.mocked(getMinistriesByChurch).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      vi.mocked(getDepartmentsByChurch).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.consolidation.createReferral({ churchId: CHURCH_ID, personId: 1, reason: "Ausência recorrente na Célula", priority: "urgente" });
+
+      expect(createConsolidationReferralCase).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, personId: 1, referredByPersonId: 10, sourceType: "celula", sourceCellId: 2, priority: "urgente", reason: "Ausência recorrente na Célula" }));
+    });
+
+    it("impede Líder de Célula de indicar Pessoa fora da própria equipe", async () => {
+      const { getActiveChurchUserById, getActiveCellMembership, getCellsByChurch, getMinistriesByChurch, getDepartmentsByChurch, createConsolidationReferralCase } = await import("./db");
+      vi.mocked(getActiveChurchUserById).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "lider", active: true } as any);
+      vi.mocked(getActiveCellMembership).mockResolvedValueOnce({ id: 9, churchId: CHURCH_ID, cellId: 3, personId: 1, active: true } as any);
+      vi.mocked(getCellsByChurch).mockResolvedValueOnce([{ id: 3, churchId: CHURCH_ID, name: "Outra Célula", leaderId: 99, supervisorId: null, active: true }] as any);
+      vi.mocked(getMinistriesByChurch).mockResolvedValueOnce([]);
+      vi.mocked(getDepartmentsByChurch).mockResolvedValueOnce([]);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await expect(caller.consolidation.createReferral({ churchId: CHURCH_ID, personId: 1, reason: "Precisa de acompanhamento" })).rejects.toThrow("só pode indicar Pessoas vinculadas");
+      expect(createConsolidationReferralCase).not.toHaveBeenCalled();
+    });
+
+    it("traduz a duplicidade de caso ativo para conflito seguro", async () => {
+      const { createConsolidationReferralCase } = await import("./db");
+      vi.mocked(createConsolidationReferralCase).mockRejectedValueOnce(new Error("Esta Pessoa já possui um caso ativo"));
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await expect(caller.consolidation.createReferral({ churchId: CHURCH_ID, personId: 1, reason: "Novo pedido de cuidado" })).rejects.toThrow("já possui um caso ativo");
+    });
+
+    it("permite ao Líder de Consolidação atribuir e devolver um caso à fila com histórico", async () => {
+      const { getActiveChurchUserById, getMinistriesByChurch, getDepartmentsByChurch, assignConsolidationCase } = await import("./db");
+      const ministry = { id: 7, churchId: CHURCH_ID, name: "Ministério de Consolidação e Visitas", type: "consolidacao", active: true };
+      const department = { id: 31, churchId: CHURCH_ID, ministryId: 7, name: "Consolidação", systemKey: "consolidacao", leaderId: 10, supervisorId: null, active: true };
+      vi.mocked(getActiveChurchUserById).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "membro", active: true } as any).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "membro", active: true } as any);
+      vi.mocked(getMinistriesByChurch).mockResolvedValueOnce([ministry] as any).mockResolvedValueOnce([ministry] as any);
+      vi.mocked(getDepartmentsByChurch).mockResolvedValueOnce([department] as any).mockResolvedValueOnce([department] as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.consolidation.assignReferral({ churchId: CHURCH_ID, id: 51, consolidatorId: null, notes: "Retorno para redistribuição" });
+
+      expect(assignConsolidationCase).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, referralId: 51, toPersonId: null, performedByChurchUserId: 2, notes: "Retorno para redistribuição" }));
+    });
+
+    it("permite ao Líder de Visitas atribuir e devolver uma Visita à fila sem perder o ID", async () => {
+      const { getActiveChurchUserById, getMinistriesByChurch, getDepartmentsByChurch, assignCareVisit } = await import("./db");
+      const ministry = { id: 7, churchId: CHURCH_ID, name: "Ministério de Consolidação e Visitas", type: "consolidacao", active: true };
+      const department = { id: 32, churchId: CHURCH_ID, ministryId: 7, name: "Visitas", systemKey: "visitas", leaderId: 10, supervisorId: null, active: true };
+      vi.mocked(getActiveChurchUserById).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "membro", active: true } as any);
+      vi.mocked(getMinistriesByChurch).mockResolvedValueOnce([ministry] as any);
+      vi.mocked(getDepartmentsByChurch).mockResolvedValueOnce([department] as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.consolidation.assignVisit({ churchId: CHURCH_ID, visitId: 401, visitorId: null, scheduledAt: null, notes: "Aguardando nova escala" });
+
+      expect(assignCareVisit).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, visitId: 401, toPersonId: null, scheduledAt: null, performedByChurchUserId: 2 }));
+    });
+
+    it("permite somente ao Visitador atribuído concluir a Visita e preserva o histórico do caso", async () => {
+      const { getActiveChurchUserById, getActiveMinistryRoleKeysByPerson, getCareVisitById, completeCareVisit, createConsolidationFollowUp } = await import("./db");
+      vi.mocked(getActiveChurchUserById).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "membro", active: true } as any);
+      vi.mocked(getActiveMinistryRoleKeysByPerson).mockResolvedValueOnce(["visitador"]);
+      vi.mocked(getCareVisitById).mockResolvedValueOnce({ id: 401, churchId: CHURCH_ID, referralId: 51, assignedToPersonId: 10, status: "agendada" } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.consolidation.completeVisit({ churchId: CHURCH_ID, visitId: 401, notes: "Família acolhida e retorno combinado." });
+
+      expect(completeCareVisit).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, visitId: 401, performedByChurchUserId: 2 }));
+      expect(createConsolidationFollowUp).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, referralId: 51, recordedByPersonId: 10, visitStatus: "realizada" }));
+    });
+
+    it("bloqueia outro Visitador de concluir uma Visita que não lhe foi atribuída", async () => {
+      const { getActiveChurchUserById, getActiveMinistryRoleKeysByPerson, getCareVisitById, completeCareVisit } = await import("./db");
+      vi.mocked(getActiveChurchUserById).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "membro", active: true } as any);
+      vi.mocked(getActiveMinistryRoleKeysByPerson).mockResolvedValueOnce(["visitador"]);
+      vi.mocked(getCareVisitById).mockResolvedValueOnce({ id: 401, churchId: CHURCH_ID, referralId: 51, assignedToPersonId: 99, status: "agendada" } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await expect(caller.consolidation.completeVisit({ churchId: CHURCH_ID, visitId: 401, notes: "Tentativa indevida de conclusão." })).rejects.toThrow("não está atribuída à sua função");
+      expect(completeCareVisit).not.toHaveBeenCalled();
     });
   });
 });

@@ -30,7 +30,7 @@ const STAGE_COLORS: Record<string, string> = {
 export default function AppLider() {
   const { churchId } = useChurch();
   const [activeTab, setActiveTab] = useState("celula");
-  const [referralByCell, setReferralByCell] = useState<Record<number, { personId: string; reason: string }>>({});
+  const [referralByCell, setReferralByCell] = useState<Record<number, { personId: string; reason: string; priority: "normal" | "alta" | "urgente" }>>({});
 
   const { data: overview, isLoading: loadingOverview, refetch: refetchOverview } = trpc.leader.overview.useQuery(
     { churchId: churchId! },
@@ -159,19 +159,20 @@ export default function AppLider() {
                         </div>
                       </div>
                       <div className="mt-3 grid gap-2">
-                        <Select value={referralByCell[myCell.id]?.personId ?? ""} onValueChange={(personId) => setReferralByCell((current) => ({ ...current, [myCell.id]: { personId, reason: current[myCell.id]?.reason ?? "" } }))}>
+                        <Select value={referralByCell[myCell.id]?.personId ?? ""} onValueChange={(personId) => setReferralByCell((current) => ({ ...current, [myCell.id]: { personId, reason: current[myCell.id]?.reason ?? "", priority: current[myCell.id]?.priority ?? "normal" } }))}>
                           <SelectTrigger className="bg-background text-sm"><SelectValue placeholder="Selecione um discípulo" /></SelectTrigger>
                           <SelectContent>
                             {myCell.members.map((member: any) => <SelectItem key={member.person.id} value={String(member.person.id)}>{member.person.fullName}</SelectItem>)}
                           </SelectContent>
                         </Select>
-                        <Textarea rows={2} className="resize-none bg-background text-sm" value={referralByCell[myCell.id]?.reason ?? ""} onChange={(event) => setReferralByCell((current) => ({ ...current, [myCell.id]: { personId: current[myCell.id]?.personId ?? "", reason: event.target.value } }))} placeholder="Ex.: faltou às últimas reuniões e não responde às mensagens" />
+                        <Select value={referralByCell[myCell.id]?.priority ?? "normal"} onValueChange={(priority: "normal" | "alta" | "urgente") => setReferralByCell((current) => ({ ...current, [myCell.id]: { personId: current[myCell.id]?.personId ?? "", reason: current[myCell.id]?.reason ?? "", priority } }))}><SelectTrigger className="bg-background text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="normal">Prioridade normal</SelectItem><SelectItem value="alta">Prioridade alta</SelectItem><SelectItem value="urgente">Prioridade urgente</SelectItem></SelectContent></Select>
+                        <Textarea rows={2} className="resize-none bg-background text-sm" value={referralByCell[myCell.id]?.reason ?? ""} onChange={(event) => setReferralByCell((current) => ({ ...current, [myCell.id]: { personId: current[myCell.id]?.personId ?? "", reason: event.target.value, priority: current[myCell.id]?.priority ?? "normal" } }))} placeholder="Ex.: faltou às últimas reuniões e não responde às mensagens" />
                         <Button
                           type="button"
                           size="sm"
                           className="bg-rose-600 text-white hover:bg-rose-700"
                           disabled={createReferral.isPending || !(referralByCell[myCell.id]?.personId) || (referralByCell[myCell.id]?.reason.trim().length ?? 0) < 3}
-                          onClick={() => createReferral.mutate({ churchId: churchId!, personId: Number(referralByCell[myCell.id].personId), reason: referralByCell[myCell.id].reason.trim() } as any)}
+                          onClick={() => createReferral.mutate({ churchId: churchId!, personId: Number(referralByCell[myCell.id].personId), reason: referralByCell[myCell.id].reason.trim(), priority: referralByCell[myCell.id].priority ?? "normal" })}
                         >
                           <Send className="mr-2 h-3.5 w-3.5" />{createReferral.isPending ? "Enviando…" : "Enviar para Consolidação"}
                         </Button>
