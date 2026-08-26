@@ -1,4 +1,6 @@
 import { useChurch } from "@/components/ChurchLayout";
+import { CellPublicSettingsDialog } from "@/components/CellPublicSettingsDialog";
+import { OpenStreetMap } from "@/components/OpenStreetMap";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,9 +10,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { MapView } from "@/components/Map";
+import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { trpc } from "@/lib/trpc";
-import { CalendarCheck2, CheckCircle2, Globe, HeartHandshake, MapPin, Phone, Plus, Send, Users, UserRound } from "lucide-react";
+import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, MapPin, Phone, Plus, Send, Settings2, Users, UserRound } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -51,6 +53,7 @@ function formatMeetingDate(value: Date | string) {
 
 export default function Celulas() {
   const { churchId } = useChurch();
+  const { user } = useChurchAuth();
   const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState<any>(null);
@@ -63,11 +66,11 @@ export default function Celulas() {
   const [meetingNotes, setMeetingNotes] = useState("");
   const [presentByPersonId, setPresentByPersonId] = useState<Record<number, boolean>>({});
   const [memberReferralReason, setMemberReferralReason] = useState("");
-  const [mapReady, setMapReady] = useState(false);
-  const [markers, setMarkers] = useState<google.maps.Marker[]>([]);
+  const [publicSettingsOpen, setPublicSettingsOpen] = useState(false);
 
   const { data: cells, isLoading, refetch } = trpc.cells.list.useQuery({ churchId });
   const { data: people } = trpc.people.list.useQuery({ churchId });
+  const effectiveRoles = trpc.churchAuth.effectiveRoles.useQuery({ churchId }, { enabled: Boolean(user?.churchId) });
   const memberCounts = trpc.cells.memberCounts.useQuery({ churchId });
   const cellMembers = trpc.cells.members.useQuery(
     { churchId, cellId: selectedCell?.id ?? 0 },
@@ -116,44 +119,15 @@ export default function Celulas() {
   const membersInSelectedCell = cellMembers.data ?? [];
   const presentCount = membersInSelectedCell.filter((item) => presentByPersonId[item.person.id]).length;
   const latestMeeting = meetingHistory.data?.[0];
-
-  function handleMapReady(map: google.maps.Map) {
-    setMapReady(true);
-    // Plot existing cells on map
-    (cells ?? []).forEach((cell) => {
-      if (cell.latitude && cell.longitude) {
-        const marker = new google.maps.Marker({
-          position: {
-            lat: parseFloat(String(cell.latitude)),
-            lng: parseFloat(String(cell.longitude)),
-          },
-          map,
-          title: cell.name,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 10,
-            fillColor: "#c9a84c",
-            fillOpacity: 0.9,
-            strokeColor: "#1e3a5f",
-            strokeWeight: 2,
-          },
-        });
-
-        const infoWindow = new google.maps.InfoWindow({
-          content: `
-            <div style="font-family: Inter, sans-serif; padding: 4px;">
-              <strong style="color: #1e3a5f;">${cell.name}</strong><br/>
-              <span style="font-size: 12px; color: #666;">${cell.neighborhood ?? ""} · ${cell.city ?? ""}</span><br/>
-              <span style="font-size: 12px; color: #c9a84c;">${DAYS.find(d => d.value === cell.meetingDay)?.label ?? ""} ${cell.meetingTime ?? ""}</span>
-            </div>
-          `,
-        });
-
-        marker.addListener("click", () => infoWindow.open(map, marker));
-        setMarkers((prev) => [...prev, marker]);
-      }
-    });
-  }
+  const roles = Array.from(new Set([user?.role, ...(effectiveRoles.data ?? [])].filter(Boolean)));
+  const canPublishCells = roles.some((role) => role === "pastor_presidente" || role === "pastor_local");
+  const mappedCells = (cells ?? []).flatMap((cell) => {
+    const latitude = Number(cell.latitude);
+    const longitude = Number(cell.longitude);
+    return Number.isFinite(latitude) && Number.isFinite(longitude)
+      ? [{ id: cell.id, title: cell.name, latitude, longitude }]
+      : [];
+  });
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -298,11 +272,18 @@ export default function Celulas() {
                       )}
                     </div>
                   </div>
-                  {cell.latitude && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200 font-medium">
-                      No mapa
-                    </span>
-                  )}
+                  <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                    {cell.publicVisible && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
+                        <Eye className="h-3 w-3" /> Pública
+                      </span>
+                    )}
+                    {cell.latitude && (
+                      <span className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                        No mapa
+                      </span>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
@@ -318,13 +299,14 @@ export default function Celulas() {
                 {(cells ?? []).filter((c) => c.latitude).length} células mapeadas
               </span>
             </div>
-            <div className="rounded-xl overflow-hidden" style={{ height: "450px" }}>
-              <MapView
-                onMapReady={handleMapReady}
-                initialCenter={{ lat: -15.7801, lng: -47.9292 }}
-                initialZoom={5}
-              />
-            </div>
+            <OpenStreetMap
+              className="h-[450px]"
+              markers={mappedCells}
+              selectedId={selectedCell?.id ?? null}
+              initialZoom={5}
+              onSelect={(id) => setSelectedCell((cells ?? []).find((cell) => cell.id === id) ?? null)}
+              ariaLabel="Mapa administrativo das células"
+            />
             <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded-full bg-gold border-2 border-navy" />
@@ -341,6 +323,7 @@ export default function Celulas() {
           setSelectedCell(null);
           setSelectedMember(null);
           setAttendanceOpen(false);
+          setPublicSettingsOpen(false);
         }
       }}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
@@ -352,6 +335,19 @@ export default function Celulas() {
               <p>{selectedCell?.meetingDay ? `${DAYS.find((day) => day.value === selectedCell.meetingDay)?.label} às ${selectedCell.meetingTime ?? "—"}` : "Horário ainda não definido"}</p>
               {selectedCell?.neighborhood && <p className="mt-1">{selectedCell.neighborhood}{selectedCell.city ? ` · ${selectedCell.city}` : ""}</p>}
             </div>
+            {canPublishCells && (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="flex items-center gap-2 text-sm font-semibold text-navy"><Eye className="h-4 w-4 text-indigo-600" />Página pública</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{selectedCell?.publicVisible ? "Esta Célula está publicada em Visite-nos." : "Esta Célula permanece privada."}</p>
+                  </div>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setPublicSettingsOpen(true)}>
+                    <Settings2 className="mr-1.5 h-4 w-4" />Configurar
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="rounded-xl border border-gold/30 bg-gold/5 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-start gap-3">
@@ -415,6 +411,14 @@ export default function Celulas() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <CellPublicSettingsDialog
+        churchId={churchId}
+        cell={selectedCell}
+        open={publicSettingsOpen}
+        onOpenChange={setPublicSettingsOpen}
+        onSaved={(saved) => setSelectedCell(saved)}
+      />
 
       <Dialog open={Boolean(selectedMember)} onOpenChange={(nextOpen) => !nextOpen && setSelectedMember(null)}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-md">

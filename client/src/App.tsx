@@ -15,6 +15,7 @@ const LoginIgreja = lazy(() => import("./pages/LoginIgreja"));
 const CadastroIgreja = lazy(() => import("./pages/CadastroIgreja"));
 const CadastroDiscipulo = lazy(() => import("./pages/CadastroDiscipulo"));
 const PortalVisitante = lazy(() => import("./pages/PortalVisitante"));
+const VisiteNos = lazy(() => import("./pages/VisiteNos"));
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
 const Planos = lazy(() => import("./pages/Planos"));
 const Recursos = lazy(() => import("./pages/Recursos"));
@@ -97,6 +98,7 @@ function Router() {
       {/* ── Login e Portal da Igreja ── */}
       <Route path="/login" component={LoginIgreja} />
       <Route path="/cadastro" component={CadastroDiscipulo} />
+      <Route path="/visite-nos" component={VisiteNos} />
       <Route path="/visitante" component={PortalVisitante} />
       <Route path="/cadastro-sucesso" component={CadastroSucesso} />
 

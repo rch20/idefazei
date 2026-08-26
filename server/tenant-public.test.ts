@@ -196,6 +196,84 @@ describe("Horários públicos por tenant", () => {
   });
 });
 
+describe("Células públicas por tenant", () => {
+  const dbSource = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("seleciona apenas células ativas, publicadas e geolocalizadas da própria igreja", () => {
+    const helperStart = dbSource.indexOf("export async function getPublicCellsByChurchId");
+    const helperEnd = dbSource.indexOf("export async function getCellById", helperStart);
+    const helper = dbSource.slice(helperStart, helperEnd);
+
+    expect(helper).toContain("eq(cells.churchId, churchId)");
+    expect(helper).toContain("eq(cells.active, true)");
+    expect(helper).toContain("eq(cells.publicVisible, true)");
+    expect(helper).toContain("isNotNull(cells.latitude)");
+    expect(helper).toContain("isNotNull(cells.longitude)");
+    expect(helper).toContain("Math.round(latitude * 100) / 100");
+    expect(helper).toContain("address: exactLocation ? row.address : null");
+    expect(helper).toContain("row.publicLeaderContact");
+    expect(helper).not.toContain("supervisorId:");
+    expect(helper).not.toContain("hostId:");
+    expect(helper).not.toContain("pastoralNotes");
+  });
+
+  it("permite somente pastor da própria igreja configurar a publicação", async () => {
+    vi.spyOn(db, "getChurchMemberByUserId").mockResolvedValue({ id: 1, userId: 10, churchId: 100, role: "pastor_presidente", active: true } as never);
+    vi.spyOn(db, "getCellById").mockResolvedValue({ id: 7, churchId: 100, leaderId: 22 } as never);
+    vi.spyOn(db, "getPersonById").mockResolvedValue({ id: 22, churchId: 100, whatsapp: "11999999999" } as never);
+    const update = vi.spyOn(db, "updateCell").mockResolvedValue({ id: 7 } as never);
+    const caller = appRouter.createCaller(churchContext());
+
+    await caller.cells.updatePublicSettings({
+      churchId: 100,
+      cellId: 7,
+      address: "Rua de teste, 10",
+      city: "São Paulo",
+      neighborhood: "Centro",
+      latitude: -23.5505,
+      longitude: -46.6333,
+      meetingDay: "quarta",
+      meetingTime: "19:30",
+      publicVisible: true,
+      publicLocationMode: "approximate",
+      publicLeaderContact: true,
+    });
+
+    expect(update).toHaveBeenCalledWith(7, 100, expect.objectContaining({
+      publicVisible: true,
+      publicLocationMode: "approximate",
+      publicLeaderContact: true,
+      latitude: "-23.5505",
+      longitude: "-46.6333",
+    }));
+  });
+
+  it("não publica célula sem coordenadas", async () => {
+    vi.spyOn(db, "getChurchMemberByUserId").mockResolvedValue({ id: 1, userId: 10, churchId: 100, role: "pastor_local", active: true } as never);
+    vi.spyOn(db, "getCellById").mockResolvedValue({ id: 7, churchId: 100, leaderId: 22 } as never);
+    const update = vi.spyOn(db, "updateCell");
+    const caller = appRouter.createCaller(churchContext("pastor_local"));
+
+    await expect(caller.cells.updatePublicSettings({
+      churchId: 100,
+      cellId: 7,
+      address: null,
+      city: null,
+      neighborhood: null,
+      latitude: null,
+      longitude: null,
+      meetingDay: null,
+      meetingTime: null,
+      publicVisible: true,
+      publicLocationMode: "approximate",
+      publicLeaderContact: false,
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(update).not.toHaveBeenCalled();
+  });
+});
+
 describe("Galeria pública por tenant", () => {
   const dbSource = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
   const routerSource = readFileSync(resolve(process.cwd(), "server/routers.ts"), "utf8");

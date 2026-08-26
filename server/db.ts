@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   announcements,
@@ -324,7 +324,7 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
     const snapshot = revisionRows[0]?.snapshot as { theme?: unknown; sections?: unknown } | undefined;
     if (snapshot?.theme && Array.isArray(snapshot.sections)) {
       publishedTheme = snapshot.theme as typeof theme;
-      publishedSections = snapshot.sections as typeof sections;
+      publishedSections = (snapshot.sections as typeof sections).filter((section) => section.enabled);
     }
   }
 
@@ -333,6 +333,9 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
     : [];
   const publicMinistries = site?.status === "published"
     ? await getPublicMinistriesByChurchId(church.id)
+    : [];
+  const publicCells = site?.status === "published"
+    ? await getPublicCellsByChurchId(church.id)
     : [];
 
   return {
@@ -359,6 +362,7 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
     sections: publishedSections,
     upcomingEvents,
     publicMinistries,
+    publicCells,
   };
 }
 
@@ -1102,6 +1106,65 @@ export async function getCellsByChurch(churchId: number) {
     .orderBy(cells.name);
 }
 
+/**
+ * Consulta pública mínima de Células. A chamada externa é resolvida pelo slug do
+ * host e só ocorre quando a página pública do tenant está publicada.
+ */
+export async function getPublicCellsByChurchId(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      id: cells.id,
+      name: cells.name,
+      address: cells.address,
+      city: cells.city,
+      neighborhood: cells.neighborhood,
+      latitude: cells.latitude,
+      longitude: cells.longitude,
+      meetingDay: cells.meetingDay,
+      meetingTime: cells.meetingTime,
+      publicLocationMode: cells.publicLocationMode,
+      publicLeaderContact: cells.publicLeaderContact,
+      leaderName: people.fullName,
+      leaderWhatsapp: people.whatsapp,
+      leaderPhone: people.phone,
+    })
+    .from(cells)
+    .innerJoin(people, and(eq(people.id, cells.leaderId), eq(people.churchId, cells.churchId)))
+    .where(and(
+      eq(cells.churchId, churchId),
+      eq(cells.active, true),
+      eq(cells.publicVisible, true),
+      isNotNull(cells.latitude),
+      isNotNull(cells.longitude),
+    ))
+    .orderBy(cells.name)
+    .limit(100);
+
+  return rows.map((row) => {
+    const exactLocation = row.publicLocationMode === "exact";
+    const latitude = Number(row.latitude);
+    const longitude = Number(row.longitude);
+    return {
+      id: row.id,
+      name: row.name,
+      city: row.city,
+      neighborhood: row.neighborhood,
+      latitude: exactLocation ? latitude : Math.round(latitude * 100) / 100,
+      longitude: exactLocation ? longitude : Math.round(longitude * 100) / 100,
+      locationMode: row.publicLocationMode,
+      address: exactLocation ? row.address : null,
+      meetingDay: row.meetingDay,
+      meetingTime: row.meetingTime,
+      leaderName: row.leaderName,
+      leaderWhatsapp: row.publicLeaderContact
+        ? (row.leaderWhatsapp?.trim() || row.leaderPhone?.trim() || null)
+        : null,
+    };
+  });
+}
+
 export async function getCellById(id: number, churchId: number) {
   const db = await getDb();
   if (!db) return null;
@@ -1118,6 +1181,13 @@ export async function createCell(data: typeof cells.$inferInsert) {
   if (!db) throw new Error("DB not available");
   const result = await db.insert(cells).values(data);
   return result[0];
+}
+
+export async function updateCell(id: number, churchId: number, data: Partial<typeof cells.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(cells).set(data).where(and(eq(cells.id, id), eq(cells.churchId, churchId)));
+  return getCellById(id, churchId);
 }
 
 export async function getCellMembersCount(churchId: number) {

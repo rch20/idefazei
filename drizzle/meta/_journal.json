@@ -232,6 +232,13 @@
       "when": 1787421665750,
       "tag": "0032_loose_shriek",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1787711993541,
+      "tag": "0033_noisy_living_tribunal",
+      "breakpoints": true
     }
   ]
 }

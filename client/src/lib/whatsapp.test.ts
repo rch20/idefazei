@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatContactPhone, getWhatsAppLink } from "./whatsapp";
+import { formatContactPhone, getWhatsAppLink, getWhatsAppLinkWithMessage } from "./whatsapp";
 
 describe("contato WhatsApp de pedidos", () => {
   it("converte telefone brasileiro formatado para link internacional", () => {
@@ -18,6 +18,12 @@ describe("contato WhatsApp de pedidos", () => {
   it("não oferece link para telefone ausente ou curto demais", () => {
     expect(getWhatsAppLink(undefined, "Maria")).toBeNull();
     expect(getWhatsAppLink("123456789", "Maria")).toBeNull();
+  });
+
+  it("gera um link com mensagem contextual para contato de célula", () => {
+    const link = getWhatsAppLinkWithMessage("(11) 98888-7777", "Olá! Gostaria de conhecer a Célula Esperança.");
+    expect(link).toMatch(/^https:\/\/wa\.me\/5511988887777\?text=/);
+    expect(decodeURIComponent(link!.split("text=")[1])).toBe("Olá! Gostaria de conhecer a Célula Esperança.");
   });
 
   it("preserva o telefone exibido sem espaços nas extremidades", () => {

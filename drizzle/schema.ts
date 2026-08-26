@@ -368,6 +368,9 @@ export const cells = mysqlTable("cells", {
     "domingo",
   ]),
   meetingTime: varchar("meetingTime", { length: 5 }), // HH:MM
+  publicVisible: boolean("publicVisible").default(false).notNull(),
+  publicLocationMode: mysqlEnum("publicLocationMode", ["approximate", "exact"]).default("approximate").notNull(),
+  publicLeaderContact: boolean("publicLeaderContact").default(false).notNull(),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

@@ -455,3 +455,9 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-login-brand-mark--hero { width: 4.5rem; height: 4.5rem; border-radius: 1.25rem; font-size: 1.5rem; }
 .tenant-login-brand-name { display: block; max-width: min(48vw, 16rem); overflow: hidden; color: var(--tenant-login-primary, #1e3a5f); font-size: 1rem; font-weight: 700; letter-spacing: -.025em; text-overflow: ellipsis; white-space: nowrap; }
 .tenant-login-brand-kicker { display: block; color: var(--tenant-login-accent, #c9a84c); font-size: .625rem; line-height: 1.1; letter-spacing: .14em; text-transform: uppercase; }
+
+/* Mapa público e administrativo de Células */
+.cell-map-marker-shell { background: transparent; border: 0; }
+.cell-map-marker { display: block; width: 24px; height: 24px; border: 3px solid #fff; border-radius: 9999px; background: var(--tenant-primary, #1e3a5f); box-shadow: 0 5px 16px rgba(15, 39, 71, .3); transition: transform 160ms cubic-bezier(.23, 1, .32, 1), background-color 160ms cubic-bezier(.23, 1, .32, 1); }
+.cell-map-marker--selected { width: 30px; height: 30px; background: var(--tenant-secondary, #c9a84c); transform: scale(1.06); }
+.leaflet-container { z-index: 0; font-family: inherit; }

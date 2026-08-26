@@ -15,6 +15,7 @@ import {
 import {
   createAnnouncement,
   createCell,
+  updateCell,
   assignPersonToCell,
   createChurch,
   createConsolidation,
@@ -1718,6 +1719,48 @@ const cellsRouter = router({
       const leader = await getPersonById(input.leaderId, input.churchId);
       if (!leader) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um líder válido da sua igreja." });
       return createCell(input as any);
+    }),
+
+  updatePublicSettings: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      cellId: z.number(),
+      address: z.string().trim().max(500).nullable(),
+      city: z.string().trim().max(100).nullable(),
+      neighborhood: z.string().trim().max(100).nullable(),
+      latitude: z.number().min(-90).max(90).nullable(),
+      longitude: z.number().min(-180).max(180).nullable(),
+      meetingDay: z.enum(["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]).nullable(),
+      meetingTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário válido.").nullable(),
+      publicVisible: z.boolean(),
+      publicLocationMode: z.enum(["approximate", "exact"]),
+      publicLeaderContact: z.boolean(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchPublicSitePublisher(ctx.user.id, input.churchId);
+      const cell = await getCellById(input.cellId, input.churchId);
+      if (!cell) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada nesta igreja." });
+      if (input.publicVisible && (input.latitude === null || input.longitude === null)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Defina a localização no mapa antes de publicar a Célula." });
+      }
+      if (input.publicLeaderContact) {
+        const leader = await getPersonById(cell.leaderId, input.churchId);
+        if (!leader?.whatsapp?.trim() && !leader?.phone?.trim()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "O líder precisa ter telefone ou WhatsApp cadastrado antes da publicação do contato." });
+        }
+      }
+      return updateCell(input.cellId, input.churchId, {
+        address: input.address || null,
+        city: input.city || null,
+        neighborhood: input.neighborhood || null,
+        latitude: input.latitude === null ? null : String(input.latitude),
+        longitude: input.longitude === null ? null : String(input.longitude),
+        meetingDay: input.meetingDay,
+        meetingTime: input.meetingTime,
+        publicVisible: input.publicVisible,
+        publicLocationMode: input.publicLocationMode,
+        publicLeaderContact: input.publicLeaderContact,
+      });
     }),
 });
 
