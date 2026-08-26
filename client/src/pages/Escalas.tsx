@@ -16,9 +16,9 @@ const MONTHS = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
-type ScheduleForm = { ministryId: string; personId: string; scheduledDate: string; startTime: string; endTime: string; role: string };
-type ScheduleItem = { id: number; ministryId: number; personId: number; scheduledDate: Date | string; startTime: string | null; endTime: string | null; role: string | null; status: "agendada" | "cancelada"; cancelReason?: string | null; hasTimeConflict?: boolean };
-const EMPTY_FORM: ScheduleForm = { ministryId: "", personId: "", scheduledDate: "", startTime: "", endTime: "", role: "" };
+type ScheduleForm = { ministryId: string; departmentId: string; personId: string; scheduledDate: string; startTime: string; endTime: string; role: string };
+type ScheduleItem = { id: number; ministryId: number; departmentId?: number | null; personId: number; scheduledDate: Date | string; startTime: string | null; endTime: string | null; role: string | null; status: "agendada" | "cancelada"; cancelReason?: string | null; hasTimeConflict?: boolean };
+const EMPTY_FORM: ScheduleForm = { ministryId: "", departmentId: "", personId: "", scheduledDate: "", startTime: "", endTime: "", role: "" };
 
 export default function Escalas() {
   const { churchId } = useChurch();
@@ -43,6 +43,18 @@ export default function Escalas() {
   const { data: people = [] } = trpc.people.list.useQuery(
     { churchId: churchId! },
     { enabled: !!churchId }
+  );
+  const { data: departments = [] } = trpc.departments.listByChurch.useQuery(
+    { churchId: churchId! },
+    { enabled: !!churchId }
+  );
+  const ministryMembers = trpc.ministries.members.useQuery(
+    { churchId: churchId!, ministryId: Number(form.ministryId) || 0 },
+    { enabled: Boolean(churchId && form.ministryId && !form.departmentId) }
+  );
+  const departmentMembers = trpc.departments.members.useQuery(
+    { churchId: churchId!, departmentId: Number(form.departmentId) || 0 },
+    { enabled: Boolean(churchId && form.departmentId) }
   );
   const createMutation = trpc.schedules.create.useMutation({
     onSuccess: () => {
@@ -118,6 +130,14 @@ export default function Escalas() {
   const conflictsThisMonth = activeScales.filter((scale) => scale.hasTimeConflict).length;
   const peopleById = new Map(people.map((person) => [person.id, person.fullName]));
   const ministriesById = new Map(ministries.map((ministry) => [ministry.id, ministry.name]));
+  const departmentsById = new Map(departments.map((department) => [department.id, department.name]));
+  const schedulableDepartments = departments.filter((department) => department.active && department.canManage);
+  const schedulableMinistries = ministries.filter((ministry) => ministry.canManage || schedulableDepartments.some((department) => department.ministryId === ministry.id));
+  const selectedMinistryCanManage = ministries.find((ministry) => String(ministry.id) === form.ministryId)?.canManage ?? false;
+  const departmentsForMinistry = schedulableDepartments.filter((department) => String(department.ministryId) === form.ministryId);
+  const eligiblePeople = form.departmentId
+    ? (departmentMembers.data ?? []).map((item) => item.person)
+    : (ministryMembers.data ?? []).map((item) => item.person);
   const formConflict = Boolean(form.personId && form.scheduledDate && form.startTime && form.endTime && activeScales.some((scale) => {
     const date = new Date(scale.scheduledDate);
     const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -135,10 +155,17 @@ export default function Escalas() {
     setScheduleOpen(true);
   }
 
+  function handleMinistryChange(ministryId: string) {
+    const ministryCanManage = ministries.find((ministry) => String(ministry.id) === ministryId)?.canManage ?? false;
+    const firstManagedDepartment = schedulableDepartments.find((department) => String(department.ministryId) === ministryId);
+    setForm({ ...form, ministryId, departmentId: ministryCanManage ? "" : firstManagedDepartment ? String(firstManagedDepartment.id) : "", personId: "" });
+  }
+
   function openEditDialog(scale: ScheduleItem) {
     setEditingSchedule(scale);
     setForm({
       ministryId: String(scale.ministryId),
+      departmentId: scale.departmentId ? String(scale.departmentId) : "",
       personId: String(scale.personId),
       scheduledDate: toDateInput(scale.scheduledDate),
       startTime: scale.startTime ?? "",
@@ -157,6 +184,7 @@ export default function Escalas() {
     const payload = {
       churchId,
       ministryId: Number(form.ministryId),
+      departmentId: form.departmentId ? Number(form.departmentId) : null,
       personId: Number(form.personId),
       scheduledDate: form.scheduledDate,
       startTime: form.startTime,
@@ -178,7 +206,7 @@ export default function Escalas() {
             <h1 className="text-2xl font-display font-bold text-navy">Escalas</h1>
             <p className="text-sm text-muted-foreground mt-1">Escalonamento de voluntários e ministérios</p>
           </div>
-          <Dialog open={scheduleOpen} onOpenChange={(open) => {
+          {schedulableMinistries.length > 0 && <Dialog open={scheduleOpen} onOpenChange={(open) => {
             setScheduleOpen(open);
             if (!open) {
               setEditingSchedule(null);
@@ -195,16 +223,24 @@ export default function Escalas() {
               <form onSubmit={handleSave} className="space-y-4 pt-2">
                 <div>
                   <Label htmlFor="schedule-ministry">Ministério *</Label>
-                  <select id="schedule-ministry" value={form.ministryId} onChange={(event) => setForm({ ...form, ministryId: event.target.value })} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <select id="schedule-ministry" value={form.ministryId} onChange={(event) => handleMinistryChange(event.target.value)} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
                     <option value="">Selecione o ministério</option>
-                    {ministries.map((ministry) => <option key={ministry.id} value={ministry.id}>{ministry.name}</option>)}
+                    {schedulableMinistries.map((ministry) => <option key={ministry.id} value={ministry.id}>{ministry.name}</option>)}
                   </select>
                 </div>
                 <div>
+                  <Label htmlFor="schedule-department">Departamento</Label>
+                  <select id="schedule-department" value={form.departmentId} disabled={!form.ministryId} onChange={(event) => setForm({ ...form, departmentId: event.target.value, personId: "" })} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60">
+                    <option value="" disabled={!selectedMinistryCanManage}>Escala geral do Ministério</option>
+                    {departmentsForMinistry.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground">Opcional. Ao selecionar, somente participantes ativos do Departamento poderão ser escalados.</p>
+                </div>
+                <div>
                   <Label htmlFor="schedule-person">Pessoa escalada *</Label>
-                  <select id="schedule-person" value={form.personId} onChange={(event) => setForm({ ...form, personId: event.target.value })} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <select id="schedule-person" value={form.personId} disabled={!form.ministryId || ministryMembers.isLoading || departmentMembers.isLoading} onChange={(event) => setForm({ ...form, personId: event.target.value })} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60">
                     <option value="">Selecione a pessoa</option>
-                    {people.map((person) => <option key={person.id} value={person.id}>{person.fullName}</option>)}
+                    {eligiblePeople.map((person) => <option key={person.id} value={person.id}>{person.fullName}</option>)}
                   </select>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -232,7 +268,7 @@ export default function Escalas() {
                 </div>
               </form>
             </DialogContent>
-          </Dialog>
+          </Dialog>}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -328,7 +364,7 @@ export default function Escalas() {
                   {selectedScales.map((scale) => (
                     <div key={scale.id} className={`p-2 rounded-lg border ${scale.status === "cancelada" ? "border-slate-200 bg-slate-50 opacity-75" : scale.hasTimeConflict ? "border-rose-200 bg-rose-50" : "border-border/50 bg-muted/50"}`}>
                       <div className="flex items-center justify-between mb-1">
-                        <Badge variant="outline" className="text-xs">{ministriesById.get(scale.ministryId) ?? `Min. ${scale.ministryId}`}</Badge>
+                        <div className="flex flex-wrap gap-1"><Badge variant="outline" className="text-xs">{ministriesById.get(scale.ministryId) ?? `Min. ${scale.ministryId}`}</Badge>{scale.departmentId && <Badge variant="secondary" className="text-xs">{departmentsById.get(scale.departmentId) ?? `Departamento ${scale.departmentId}`}</Badge>}</div>
                         <span className="text-xs text-muted-foreground">
                           {new Date(scale.scheduledDate).toLocaleDateString("pt-BR")}
                         </span>

@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignMinistryRole, assignPersonToCell, canChurchUserManageJourney, closeFinancialPeriod, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getEventAttendanceReport, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveMinistryMember, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getEventAttendanceReport, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -87,6 +87,8 @@ vi.mock("./db", () => ({
     limit: vi.fn().mockResolvedValue([{ id: 1 }]), // pessoa existe na igreja
     update: vi.fn().mockReturnThis(),
     set: vi.fn().mockReturnThis(),
+    insert: vi.fn().mockReturnThis(),
+    values: vi.fn().mockResolvedValue([{ insertId: 1 }]),
   }),
   // helpers adicionais usados por outros routers
   getAllChurches: vi.fn().mockResolvedValue([]),
@@ -153,6 +155,20 @@ vi.mock("./db", () => ({
   setMinistryLeader: vi.fn().mockResolvedValue({ id: 7, churchId: 100, name: "Ministério de Consolidação", type: "outro", leaderId: 10, active: true }),
   getMinistryMembers: vi.fn().mockResolvedValue([]),
   getMinistryMemberCounts: vi.fn().mockResolvedValue([]),
+  getDepartmentsByMinistry: vi.fn().mockResolvedValue([{ id: 31, churchId: 100, ministryId: 7, name: "Vocal", leaderId: 10, active: true }]),
+  getDepartmentsByChurch: vi.fn().mockResolvedValue([{ id: 31, churchId: 100, ministryId: 7, name: "Vocal", leaderId: 10, active: true }]),
+  getDepartmentById: vi.fn().mockResolvedValue({ id: 31, churchId: 100, ministryId: 7, name: "Vocal", leaderId: 10, active: true }),
+  getDepartmentMembers: vi.fn().mockResolvedValue([]),
+  getDepartmentCandidates: vi.fn().mockResolvedValue([{ id: 11, fullName: "Participante Teste" }]),
+  getDepartmentRoleAssignments: vi.fn().mockResolvedValue([]),
+  createDepartment: vi.fn().mockResolvedValue({ id: 31, churchId: 100, ministryId: 7, name: "Vocal", leaderId: 10, active: true }),
+  updateDepartment: vi.fn().mockResolvedValue({ id: 31, churchId: 100, ministryId: 7, name: "Vocal", leaderId: 10, active: true }),
+  setDepartmentLeader: vi.fn().mockResolvedValue({ id: 31, churchId: 100, ministryId: 7, name: "Vocal", leaderId: 10, active: true }),
+  assignPersonToDepartment: vi.fn().mockResolvedValue({ id: 71, churchId: 100, departmentId: 31, personId: 11, active: true }),
+  removePersonFromDepartment: vi.fn().mockResolvedValue(true),
+  isActiveDepartmentMember: vi.fn().mockResolvedValue(true),
+  assignDepartmentRole: vi.fn().mockResolvedValue({ id: 81, churchId: 100, departmentId: 31, personId: 10, roleKey: "coordenador_vocal", active: true }),
+  endDepartmentRole: vi.fn().mockResolvedValue(true),
   isActiveMinistryMember: vi.fn().mockResolvedValue(true),
   getScheduleTimeConflicts: vi.fn().mockResolvedValue([]),
   getScheduleItemById: vi.fn().mockResolvedValue({ id: 41, churchId: 100, ministryId: 7, personId: 10, scheduledDate: new Date("2026-06-28T12:00:00.000Z"), startTime: "09:00", endTime: "11:00", role: "Recepção", status: "agendada" }),
@@ -292,6 +308,15 @@ describe("Fluxo completo de discipulado", () => {
       active: true,
     });
     (getComplementaryRolesByChurchUser as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (getMinistriesByChurch as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([{ id: 7, churchId: CHURCH_ID, name: "Ministério de Consolidação", type: "outro", leaderId: null, active: true }]);
+    (getDepartmentById as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue({ id: 31, churchId: CHURCH_ID, ministryId: 7, name: "Vocal", leaderId: 10, active: true });
+    (getDepartmentsByMinistry as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([{ id: 31, churchId: CHURCH_ID, ministryId: 7, name: "Vocal", leaderId: 10, active: true }]);
+    (getDepartmentsByChurch as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([{ id: 31, churchId: CHURCH_ID, ministryId: 7, name: "Vocal", leaderId: 10, active: true }]);
+    (getDepartmentMembers as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (getDepartmentCandidates as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([{ id: 11, fullName: "Participante Teste" }]);
+    (getDepartmentRoleAssignments as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (isActiveMinistryMember as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(true);
+    (isActiveDepartmentMember as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(true);
   });
 
   describe("Diagnósticos de inicialização", () => {
@@ -842,6 +867,67 @@ describe("Fluxo completo de discipulado", () => {
 
       expect(updateScheduleItem).not.toHaveBeenCalled();
       expect(cancelScheduleItem).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── Etapa 2.7: Departamentos ────────────────────────────────────────────────
+  describe("Etapa 2.7 — Departamentos", () => {
+    it("permite ao Pastor criar Departamento subordinado ao Ministério com líder", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const department = await caller.departments.create({ churchId: CHURCH_ID, ministryId: 7, name: "Vocal", leaderId: 10 });
+
+      expect(department).toMatchObject({ id: 31, ministryId: 7, leaderId: 10 });
+      expect(createDepartment).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, ministryId: 7, name: "Vocal", leaderId: 10 }));
+    });
+
+    it("permite ao Pastor trocar a liderança departamental", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.departments.updateLeader({ churchId: CHURCH_ID, departmentId: 31, leaderId: 10 })).resolves.toMatchObject({ leaderId: 10 });
+      expect(setDepartmentLeader).toHaveBeenCalledWith({ churchId: CHURCH_ID, departmentId: 31, leaderId: 10 });
+    });
+
+    it("permite ao líder do Departamento adicionar participante do Ministério e atribuir função", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 13, userId: 45, churchId: CHURCH_ID, personId: 10, role: "membro", active: true });
+      (getDepartmentById as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 31, churchId: CHURCH_ID, ministryId: 7, name: "Vocal", leaderId: 10, active: true });
+      const caller = appRouter.createCaller(createMemberContext(45));
+
+      await expect(caller.departments.addMember({ churchId: CHURCH_ID, departmentId: 31, personId: 11 })).resolves.toMatchObject({ departmentId: 31, personId: 11 });
+      await expect(caller.departments.assignRole({ churchId: CHURCH_ID, departmentId: 31, personId: 10, roleKey: "coordenador_vocal" })).resolves.toMatchObject({ roleKey: "coordenador_vocal" });
+
+      expect(assignPersonToDepartment).toHaveBeenCalledWith({ churchId: CHURCH_ID, departmentId: 31, personId: 11 });
+      expect(assignDepartmentRole).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, departmentId: 31, personId: 10, assignedByChurchUserId: 13 }));
+    });
+
+    it("bloqueia membro sem responsabilidade sobre o Departamento ou Ministério", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 14, userId: 46, churchId: CHURCH_ID, personId: 46, role: "membro", active: true });
+      (getDepartmentById as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 31, churchId: CHURCH_ID, ministryId: 7, name: "Vocal", leaderId: 10, active: true });
+      const caller = appRouter.createCaller(createMemberContext(46));
+
+      await expect(caller.departments.addMember({ churchId: CHURCH_ID, departmentId: 31, personId: 11 })).rejects.toThrow("responsáveis por este Ministério");
+      expect(assignPersonToDepartment).not.toHaveBeenCalled();
+    });
+
+    it("permite Escala departamental somente para participante ativo do Departamento", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.schedules.create({ churchId: CHURCH_ID, ministryId: 7, departmentId: 31, personId: 10, scheduledDate: "2026-06-28", startTime: "09:00", endTime: "11:00", role: "Vocal" })).resolves.toMatchObject({ success: true });
+      expect(isActiveDepartmentMember).toHaveBeenCalledWith(31, 10, CHURCH_ID);
+    });
+
+    it("bloqueia Escala quando o Departamento não pertence ao Ministério informado", async () => {
+      (getDepartmentById as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 31, churchId: CHURCH_ID, ministryId: 8, name: "Vocal", leaderId: 10, active: true });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.schedules.create({ churchId: CHURCH_ID, ministryId: 7, departmentId: 31, personId: 10, scheduledDate: "2026-06-28", startTime: "09:00", endTime: "11:00" })).rejects.toThrow("não pertence a este Ministério");
+    });
+
+    it("bloqueia Escala departamental para Pessoa fora da equipe", async () => {
+      (isActiveDepartmentMember as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.schedules.create({ churchId: CHURCH_ID, ministryId: 7, departmentId: 31, personId: 10, scheduledDate: "2026-06-28", startTime: "09:00", endTime: "11:00" })).rejects.toThrow("participar ativamente deste Departamento");
     });
   });
 

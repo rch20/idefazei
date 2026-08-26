@@ -491,6 +491,55 @@ export const ministryRoleAssignments = mysqlTable("ministry_role_assignments", {
 
 export type MinistryRoleAssignment = typeof ministryRoleAssignments.$inferSelect;
 
+// ─── DEPARTAMENTOS ────────────────────────────────────────────────────────────
+
+export const departments = mysqlTable("departments", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  ministryId: int("ministryId").notNull(),
+  name: varchar("name", { length: 160 }).notNull(),
+  description: text("description"),
+  leaderId: int("leaderId"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("department_ministry_name_idx").on(table.ministryId, table.name),
+  index("department_church_ministry_idx").on(table.churchId, table.ministryId),
+  index("department_church_leader_idx").on(table.churchId, table.leaderId),
+]);
+
+export type Department = typeof departments.$inferSelect;
+export type InsertDepartment = typeof departments.$inferInsert;
+
+export const departmentMembers = mysqlTable("department_members", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  departmentId: int("departmentId").notNull(),
+  personId: int("personId").notNull(),
+  joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+  leftAt: timestamp("leftAt"),
+  active: boolean("active").default(true).notNull(),
+}, (table) => [
+  index("department_member_department_idx").on(table.churchId, table.departmentId, table.active),
+  index("department_member_person_idx").on(table.churchId, table.personId, table.active),
+]);
+
+export const departmentRoleAssignments = mysqlTable("department_role_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  departmentId: int("departmentId").notNull(),
+  personId: int("personId").notNull(),
+  roleKey: varchar("roleKey", { length: 100 }).notNull(),
+  active: boolean("active").default(true).notNull(),
+  assignedByChurchUserId: int("assignedByChurchUserId"),
+  assignedAt: timestamp("assignedAt").defaultNow().notNull(),
+  endedAt: timestamp("endedAt"),
+}, (table) => [
+  index("department_role_department_idx").on(table.churchId, table.departmentId, table.active),
+  index("department_role_person_idx").on(table.churchId, table.personId, table.active),
+]);
+
 export const ministryRoleDefinitions = mysqlTable("ministry_role_definitions", {
   id: int("id").autoincrement().primaryKey(),
   churchId: int("churchId").notNull(),
@@ -510,6 +559,7 @@ export const scheduleItems = mysqlTable("schedule_items", {
   id: int("id").autoincrement().primaryKey(),
   churchId: int("churchId").notNull(),
   ministryId: int("ministryId").notNull(),
+  departmentId: int("departmentId"),
   personId: int("personId").notNull(),
   scheduledDate: date("scheduledDate").notNull(),
   startTime: varchar("startTime", { length: 5 }),

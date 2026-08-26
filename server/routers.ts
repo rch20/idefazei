@@ -95,6 +95,20 @@ import {
   getMinistriesByChurch,
   getMinistryMembers,
   setMinistryLeader,
+  getDepartmentsByMinistry,
+  getDepartmentsByChurch,
+  getDepartmentById,
+  createDepartment,
+  updateDepartment,
+  setDepartmentLeader,
+  getDepartmentMembers,
+  getDepartmentCandidates,
+  isActiveDepartmentMember,
+  assignPersonToDepartment,
+  removePersonFromDepartment,
+  getDepartmentRoleAssignments,
+  assignDepartmentRole,
+  endDepartmentRole,
   getMinistryMemberCounts,
   isActiveMinistryMember,
   getScheduleTimeConflicts,
@@ -442,6 +456,46 @@ async function requireMinistryManagementPermission(userId: number, churchId: num
   }
 
   return { actor, roles, ministry, canManageAll };
+}
+
+async function requireDepartmentManagementPermission(userId: number, churchId: number, departmentId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, actor);
+  const department = await getDepartmentById(departmentId, churchId);
+  if (!department) throw new TRPCError({ code: "NOT_FOUND", message: "Departamento não encontrado nesta igreja." });
+
+  const isDepartmentLeader = Boolean(actor.personId && department.leaderId === actor.personId);
+  if (isDepartmentLeader) return { actor, roles, department, canManageAll: false, isDepartmentLeader: true };
+
+  const ministryAuthorization = await requireMinistryManagementPermission(userId, churchId, department.ministryId);
+  return {
+    actor: ministryAuthorization.actor,
+    roles: ministryAuthorization.roles,
+    department,
+    canManageAll: ministryAuthorization.canManageAll,
+    isDepartmentLeader: false,
+  };
+}
+
+async function requireScheduleManagementPermission(userId: number, churchId: number, ministryId: number, departmentId?: number | null) {
+  if (!departmentId) return requireMinistryManagementPermission(userId, churchId, ministryId);
+  const department = await getDepartmentById(departmentId, churchId);
+  if (!department) throw new TRPCError({ code: "NOT_FOUND", message: "Departamento não encontrado nesta igreja." });
+  if (department.ministryId !== ministryId) throw new TRPCError({ code: "BAD_REQUEST", message: "O Departamento selecionado não pertence a este Ministério." });
+  return requireDepartmentManagementPermission(userId, churchId, departmentId);
+}
+
+async function requireScheduleParticipant(churchId: number, ministryId: number, departmentId: number | null | undefined, personId: number) {
+  const person = await getPersonById(personId, churchId);
+  if (!person) throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa não encontrada nesta igreja." });
+  if (departmentId) {
+    const department = await getDepartmentById(departmentId, churchId);
+    if (!department || department.ministryId !== ministryId) throw new TRPCError({ code: "BAD_REQUEST", message: "O Departamento selecionado não pertence a este Ministério." });
+    if (!(await isActiveDepartmentMember(departmentId, personId, churchId))) throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa precisa participar ativamente deste Departamento antes de entrar na Escala." });
+    return person;
+  }
+  if (!(await isActiveMinistryMember(ministryId, personId, churchId))) throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa precisa ser participante ativa deste Ministério antes de entrar na Escala." });
+  return person;
 }
 
 async function getEffectiveChurchRoles(userId: number, churchId: number, actor: { role: string; personId?: number | null }) {
@@ -2131,6 +2185,170 @@ const ministriesRouter = router({
     }),
 });
 
+const departmentsRouter = router({
+  list: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), ministryId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
+      if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
+      let canManageMinistry = false;
+      try {
+        await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
+        canManageMinistry = true;
+      } catch (error) {
+        if (!(error instanceof TRPCError) || error.code !== "FORBIDDEN") throw error;
+      }
+      const [items, peopleRows] = await Promise.all([getDepartmentsByMinistry(input.ministryId, input.churchId), getPeopleByChurch(input.churchId)]);
+      const nameByPerson = new Map(peopleRows.map((person) => [person.id, person.fullName]));
+      return Promise.all(items.map(async (department) => ({
+        ...department,
+        leaderName: department.leaderId ? nameByPerson.get(department.leaderId) ?? null : null,
+        memberCount: (await getDepartmentMembers(department.id, input.churchId)).length,
+        canManage: canManageMinistry || Boolean(actor.personId && department.leaderId === actor.personId),
+        canAssignLeader: roles.some((role) => CHURCH_ROLE_MANAGER_ROLES.has(role)),
+      })));
+    }),
+  listByChurch: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const items = await getDepartmentsByChurch(input.churchId);
+      return Promise.all(items.map(async (department) => {
+        let canManage = false;
+        if (department.active) {
+          try {
+            await requireDepartmentManagementPermission(ctx.user.id, input.churchId, department.id);
+            canManage = true;
+          } catch (error) {
+            if (!(error instanceof TRPCError) || !["FORBIDDEN", "NOT_FOUND"].includes(error.code)) throw error;
+          }
+        }
+        return { id: department.id, ministryId: department.ministryId, name: department.name, active: department.active, canManage };
+      }));
+    }),
+  members: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const department = await getDepartmentById(input.departmentId, input.churchId);
+      if (!department) throw new TRPCError({ code: "NOT_FOUND", message: "Departamento não encontrado nesta igreja." });
+      return (await getDepartmentMembers(input.departmentId, input.churchId)).map(({ membership, person }) => ({ membership, person: { id: person.id, fullName: person.fullName } }));
+    }),
+  candidates: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireDepartmentManagementPermission(ctx.user.id, input.churchId, input.departmentId);
+      return getDepartmentCandidates(input.departmentId, input.churchId);
+    }),
+  roles: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const department = await getDepartmentById(input.departmentId, input.churchId);
+      if (!department) throw new TRPCError({ code: "NOT_FOUND", message: "Departamento não encontrado nesta igreja." });
+      return getDepartmentRoleAssignments(input.departmentId, input.churchId);
+    }),
+  create: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      ministryId: z.number().int().positive(),
+      name: z.string().trim().min(2).max(160),
+      description: z.string().trim().max(1000).optional(),
+      leaderId: z.number().int().positive().nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      if (!roles.some((role) => CHURCH_ADMIN_ROLES.has(role))) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores ou Secretários podem criar Departamentos." });
+      const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
+      if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
+      if (input.leaderId !== undefined && input.leaderId !== null) {
+        await requireChurchRoleManager(ctx.user.id, input.churchId);
+        const leader = await getPersonById(input.leaderId, input.churchId);
+        if (!leader) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um líder válido desta igreja." });
+      }
+      try {
+        return await createDepartment({ ...input, description: input.description || null, leaderId: input.leaderId ?? null });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (/duplicate/i.test(message)) throw new TRPCError({ code: "CONFLICT", message: "Já existe um Departamento com este nome no Ministério." });
+        throw error;
+      }
+    }),
+  update: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive(), name: z.string().trim().min(2).max(160), description: z.string().trim().max(1000).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireDepartmentManagementPermission(ctx.user.id, input.churchId, input.departmentId);
+      try {
+        return await updateDepartment({ id: input.departmentId, churchId: input.churchId, name: input.name, description: input.description || null });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (/duplicate/i.test(message)) throw new TRPCError({ code: "CONFLICT", message: "Já existe um Departamento com este nome no Ministério." });
+        throw error;
+      }
+    }),
+  updateLeader: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive(), leaderId: z.number().int().positive().nullable() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchRoleManager(ctx.user.id, input.churchId);
+      if (input.leaderId !== null) {
+        const leader = await getPersonById(input.leaderId, input.churchId);
+        if (!leader) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um líder válido desta igreja." });
+      }
+      const department = await setDepartmentLeader(input);
+      if (!department) throw new TRPCError({ code: "NOT_FOUND", message: "Departamento não encontrado nesta igreja." });
+      return department;
+    }),
+  addMember: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive(), personId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireDepartmentManagementPermission(ctx.user.id, input.churchId, input.departmentId);
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa não encontrada nesta igreja." });
+      try {
+        return await assignPersonToDepartment(input);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("participar do Ministério")) throw new TRPCError({ code: "BAD_REQUEST", message });
+        throw error;
+      }
+    }),
+  removeMember: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive(), personId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireDepartmentManagementPermission(ctx.user.id, input.churchId, input.departmentId);
+      try {
+        return { success: await removePersonFromDepartment(input) };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("outro líder")) throw new TRPCError({ code: "CONFLICT", message });
+        throw error;
+      }
+    }),
+  assignRole: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive(), personId: z.number().int().positive(), roleKey: z.string().trim().min(2).max(100).regex(/^[a-z0-9_]+$/, "Use somente letras minúsculas, números e sublinhado.") }))
+    .mutation(async ({ input, ctx }) => {
+      const authorization = await requireDepartmentManagementPermission(ctx.user.id, input.churchId, input.departmentId);
+      if (!(await isActiveDepartmentMember(input.departmentId, input.personId, input.churchId))) throw new TRPCError({ code: "BAD_REQUEST", message: "A função só pode ser atribuída a participante ativo do Departamento." });
+      return assignDepartmentRole({ ...input, assignedByChurchUserId: authorization.actor.id });
+    }),
+  endRole: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive(), assignmentId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireDepartmentManagementPermission(ctx.user.id, input.churchId, input.departmentId);
+      return { success: await endDepartmentRole({ id: input.assignmentId, churchId: input.churchId, departmentId: input.departmentId }) };
+    }),
+  deactivate: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireDepartmentManagementPermission(ctx.user.id, input.churchId, input.departmentId);
+      await updateDepartment({ id: input.departmentId, churchId: input.churchId, active: false });
+      return { success: true };
+    }),
+});
+
 const schedulesRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number(), month: z.number().optional(), year: z.number().optional() }))
@@ -2161,6 +2379,7 @@ const schedulesRouter = router({
     .input(z.object({
       churchId: z.number(),
       ministryId: z.number(),
+      departmentId: z.number().int().positive().nullable().optional(),
       personId: z.number(),
       scheduledDate: z.string(),
       startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário inicial válido."),
@@ -2168,17 +2387,8 @@ const schedulesRouter = router({
       role: z.string().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
-      const [person, eligible] = await Promise.all([
-        getPersonById(input.personId, input.churchId),
-        isActiveMinistryMember(input.ministryId, input.personId, input.churchId),
-      ]);
-      if (!person || !eligible) {
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "A pessoa precisa ser participante ativa deste Ministério antes de entrar na escala.",
-        });
-      }
+      await requireScheduleManagementPermission(ctx.user.id, input.churchId, input.ministryId, input.departmentId);
+      await requireScheduleParticipant(input.churchId, input.ministryId, input.departmentId, input.personId);
       if (input.endTime <= input.startTime) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser posterior ao horário inicial." });
       }
@@ -2192,6 +2402,7 @@ const schedulesRouter = router({
       await db.insert(scheduleItems).values({
         churchId: input.churchId,
         ministryId: input.ministryId,
+        departmentId: input.departmentId ?? null,
         personId: input.personId,
         scheduledDate: new Date(input.scheduledDate + "T12:00:00"),
         startTime: input.startTime,
@@ -2205,6 +2416,7 @@ const schedulesRouter = router({
       id: z.number().int().positive(),
       churchId: z.number().int().positive(),
       ministryId: z.number().int().positive(),
+      departmentId: z.number().int().positive().nullable().optional(),
       personId: z.number().int().positive(),
       scheduledDate: z.string(),
       startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário inicial válido."),
@@ -2216,17 +2428,9 @@ const schedulesRouter = router({
       if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Escala não encontrada nesta igreja." });
       if (existing.status === "cancelada") throw new TRPCError({ code: "BAD_REQUEST", message: "Uma Escala cancelada não pode ser editada. Crie uma nova Escala se necessário." });
 
-      await requireMinistryManagementPermission(ctx.user.id, input.churchId, existing.ministryId);
-      if (input.ministryId !== existing.ministryId) {
-        await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
-      }
-      const [person, eligible] = await Promise.all([
-        getPersonById(input.personId, input.churchId),
-        isActiveMinistryMember(input.ministryId, input.personId, input.churchId),
-      ]);
-      if (!person || !eligible) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "A pessoa precisa ser participante ativa deste Ministério antes de entrar na escala." });
-      }
+      await requireScheduleManagementPermission(ctx.user.id, input.churchId, existing.ministryId, existing.departmentId);
+      await requireScheduleManagementPermission(ctx.user.id, input.churchId, input.ministryId, input.departmentId);
+      await requireScheduleParticipant(input.churchId, input.ministryId, input.departmentId, input.personId);
       if (input.endTime <= input.startTime) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "O horário final precisa ser posterior ao horário inicial." });
       }
@@ -2253,8 +2457,8 @@ const schedulesRouter = router({
         body: `A Escala de ${ministryName} para ${input.scheduledDate.split("-").reverse().join("/")} foi atualizada. Confira os novos detalhes no calendário.`,
         entityType: "schedule_item",
         entityId: updated.id,
-        metadata: { ministryId: updated.ministryId, personId: updated.personId, scheduledDate: input.scheduledDate, startTime: updated.startTime, endTime: updated.endTime },
-        dedupeKey: `escala-alterada:${updated.id}:${updated.ministryId}:${updated.personId}:${input.scheduledDate}:${updated.startTime}:${updated.endTime}:${updated.role ?? ""}`,
+        metadata: { ministryId: updated.ministryId, departmentId: updated.departmentId, personId: updated.personId, scheduledDate: input.scheduledDate, startTime: updated.startTime, endTime: updated.endTime },
+        dedupeKey: `escala-alterada:${updated.id}:${updated.ministryId}:${updated.departmentId ?? "ministerio"}:${updated.personId}:${input.scheduledDate}:${updated.startTime}:${updated.endTime}:${updated.role ?? ""}`,
       });
       return updated;
     }),
@@ -2268,7 +2472,7 @@ const schedulesRouter = router({
       const existing = await getScheduleItemById(input.id, input.churchId);
       if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Escala não encontrada nesta igreja." });
       if (existing.status === "cancelada") throw new TRPCError({ code: "CONFLICT", message: "Esta Escala já foi cancelada." });
-      const authorization = await requireMinistryManagementPermission(ctx.user.id, input.churchId, existing.ministryId);
+      const authorization = await requireScheduleManagementPermission(ctx.user.id, input.churchId, existing.ministryId, existing.departmentId);
       const cancelled = await cancelScheduleItem({
         id: input.id,
         churchId: input.churchId,
@@ -2288,7 +2492,7 @@ const schedulesRouter = router({
         body: `A Escala de ${ministryName} para ${new Date(existing.scheduledDate).toLocaleDateString("pt-BR")} foi cancelada. Motivo: ${input.reason}`,
         entityType: "schedule_item",
         entityId: cancelled.id,
-        metadata: { ministryId: existing.ministryId, personId: existing.personId, scheduledDate: existing.scheduledDate, cancelReason: input.reason },
+        metadata: { ministryId: existing.ministryId, departmentId: existing.departmentId, personId: existing.personId, scheduledDate: existing.scheduledDate, cancelReason: input.reason },
         dedupeKey: `escala-cancelada:${cancelled.id}`,
       });
       return cancelled;
@@ -4089,6 +4293,7 @@ export const appRouter = router({
   cells: cellsRouter,
   events: eventsRouter,
   ministries: ministriesRouter,
+  departments: departmentsRouter,
   announcements: announcementsRouter,
   prayer: prayerRouter,
   dashboard: dashboardRouter,
