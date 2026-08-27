@@ -14,7 +14,7 @@ import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { TenantPublicSettings } from "@/components/TenantPublicSettings";
 import { SOCIAL_PLATFORM_KEYS, SOCIAL_PLATFORM_META, type SocialPlatform } from "../../../shared/socialMedia";
-import { normalizePastoralSupportConfig, DEFAULT_PASTORAL_SUPPORT_LABEL, DEFAULT_PASTORAL_SUPPORT_URL, type PastoralSupportConfig } from "../../../shared/pastoralSupport";
+import { normalizePastoralSupportConfig, normalizePastoralSupportUrl, DEFAULT_PASTORAL_SUPPORT_LABEL, DEFAULT_PASTORAL_SUPPORT_URL, type PastoralSupportConfig } from "../../../shared/pastoralSupport";
 
 const ROLES = [
   { value: "pastor_presidente", label: "Pastor Presidente" },
@@ -48,6 +48,13 @@ function socialMediaFormFromValue(value: unknown): SocialMediaForm {
 function pastoralSupportFormFromValue(value: unknown): PastoralSupportForm {
   const config = normalizePastoralSupportConfig(value);
   return { ...config, url: config.url ?? "" };
+}
+
+function normalizePastoralSupportInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  return normalizePastoralSupportUrl(candidate);
 }
 
 const COMPLEMENTARY_ROLES = [
@@ -196,7 +203,20 @@ export default function Configuracoes() {
   });
 
   const handleSave = () => {
-    updateMutation.mutate({ id: churchId!, ...churchForm });
+    const normalizedPastoralUrl = normalizePastoralSupportInput(churchForm.pastoralSupport.url);
+    if (churchForm.pastoralSupport.url.trim() && !normalizedPastoralUrl) {
+      toast.error(`Informe exatamente uma URL HTTPS válida do Dedo de Prosa: ${DEFAULT_PASTORAL_SUPPORT_URL}`);
+      setActiveTab("integracao");
+      return;
+    }
+    updateMutation.mutate({
+      id: churchId!,
+      ...churchForm,
+      pastoralSupport: {
+        ...churchForm.pastoralSupport,
+        url: normalizedPastoralUrl ?? "",
+      },
+    });
   };
 
   async function handleLogoUpload(event: React.ChangeEvent<HTMLInputElement>) {
@@ -264,7 +284,9 @@ export default function Configuracoes() {
 
   const canSaveChurchSettings = activeTab === "geral" || activeTab === "identidade" || activeTab === "integracao";
   const pastoralSupport = churchForm.pastoralSupport;
-  const pastoralSupportConfigured = Boolean(pastoralSupport.url.trim());
+  const pastoralSupportUrl = normalizePastoralSupportUrl(pastoralSupport.url);
+  const pastoralSupportConfigured = Boolean(pastoralSupportUrl);
+  const pastoralSupportUrlInvalid = Boolean(pastoralSupport.url.trim()) && !pastoralSupportConfigured;
   const hasCustomPwaIcon = Boolean(church?.pwaIconAssetId) || church?.pwaIconSource === "custom";
   const effectivePwaIconUrl = pwaIconPreviewUrl ?? churchForm.logoUrl ?? null;
 
@@ -572,18 +594,19 @@ export default function Configuracoes() {
                 <div className="flex items-start gap-3 border-b border-border pb-4"><span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold"><MessageCircle className="h-5 w-5" /></span><div><h3 className="text-base font-semibold text-navy">Atendimento pastoral externo</h3><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Use o Dedo de Prosa para receber conversas e agendamentos. O Ide Fazei apenas encaminha o visitante, sem incorporar o serviço nem armazenar a conversa.</p></div></div>
                 <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(260px,.95fr)]">
                   <div className="min-w-0 space-y-4">
-                    <div><Label htmlFor="pastoral-support-url">Link de atendimento *</Label><Input id="pastoral-support-url" type="url" inputMode="url" value={pastoralSupport.url} onChange={(event) => setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, url: event.target.value } })} className="mt-1" placeholder={DEFAULT_PASTORAL_SUPPORT_URL} autoComplete="url" /><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Aceitamos somente o endereço seguro do Dedo de Prosa: {DEFAULT_PASTORAL_SUPPORT_URL}</p></div>
+                    <div><Label htmlFor="pastoral-support-url">Link de atendimento *</Label><Input id="pastoral-support-url" type="url" inputMode="url" value={pastoralSupport.url} onChange={(event) => setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, url: event.target.value } })} onBlur={() => { const value = pastoralSupport.url.trim(); if (!value) return; const normalized = normalizePastoralSupportInput(value); if (normalized) setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, url: normalized } }); }} className={`mt-1 ${pastoralSupportUrlInvalid ? "border-rose-400 focus-visible:ring-rose-400" : ""}`} placeholder={DEFAULT_PASTORAL_SUPPORT_URL} autoComplete="url" aria-invalid={pastoralSupportUrlInvalid} /><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Aceitamos somente o endereço seguro do Dedo de Prosa: {DEFAULT_PASTORAL_SUPPORT_URL}. Se colar apenas o domínio, o HTTPS será completado automaticamente.</p>{pastoralSupportUrlInvalid && <p className="mt-1 text-xs font-medium text-rose-700">Use exatamente uma URL HTTPS do Dedo de Prosa, começando por https://.</p>}</div>
                     <div><Label htmlFor="pastoral-support-label">Nome do botão</Label><Input id="pastoral-support-label" value={pastoralSupport.label} maxLength={80} onChange={(event) => setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, label: event.target.value } })} className="mt-1" placeholder={DEFAULT_PASTORAL_SUPPORT_LABEL} /><p className="mt-1 text-xs text-muted-foreground">Ex.: “Converse com o Pastor” ou “Fale com nossa equipe”.</p></div>
                     <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex items-start justify-between gap-4"><div><Label htmlFor="pastoral-support-enabled" className="cursor-pointer text-sm font-semibold text-navy">Ativar atendimento pastoral</Label><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Quando desativado, o botão não aparece em nenhum ambiente.</p></div><Switch id="pastoral-support-enabled" checked={pastoralSupport.enabled} onCheckedChange={(enabled) => setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, enabled } })} aria-label="Ativar atendimento pastoral externo" /></div></div>
                   </div>
                   <div className="min-w-0 space-y-4">
                     <div className="rounded-2xl border border-gold/25 bg-gold/5 p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-gold" /><div><p className="text-sm font-semibold text-navy">Onde o botão aparece?</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">As visibilidades são independentes. Você pode exibir o atendimento somente para visitantes, somente para usuários logados ou nos dois ambientes.</p></div></div><div className="mt-4 space-y-3"><div className="flex items-start justify-between gap-4 rounded-xl border border-white/70 bg-white/70 p-3"><div><Label htmlFor="pastoral-support-public" className="cursor-pointer text-sm font-semibold text-navy">Exibir para visitantes</Label><p className="mt-1 text-xs text-muted-foreground">Rodapé das páginas públicas</p></div><Switch id="pastoral-support-public" checked={pastoralSupport.showPublic} onCheckedChange={(showPublic) => setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, showPublic } })} aria-label="Exibir atendimento para visitantes" /></div><div className="flex items-start justify-between gap-4 rounded-xl border border-white/70 bg-white/70 p-3"><div><Label htmlFor="pastoral-support-authenticated" className="cursor-pointer text-sm font-semibold text-navy">Exibir para discípulos/membros logados</Label><p className="mt-1 text-xs text-muted-foreground">Botão no cabeçalho da plataforma</p></div><Switch id="pastoral-support-authenticated" checked={pastoralSupport.showAuthenticated} onCheckedChange={(showAuthenticated) => setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, showAuthenticated } })} aria-label="Exibir atendimento para usuários logados" /></div></div></div>
                     {pastoralSupport.enabled && !pastoralSupportConfigured && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">Informe um link válido antes de ativar o atendimento. O endereço será validado no servidor.</p>}
-                    {pastoralSupportConfigured && <a href={pastoralSupport.url} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-2 rounded-full border border-navy/15 bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition-colors hover:bg-navy/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"><MessageCircle className="h-4 w-4 text-gold" /><span className="min-w-0 truncate">Prévia: {pastoralSupport.label || DEFAULT_PASTORAL_SUPPORT_LABEL}</span><ExternalLink className="h-3.5 w-3.5 shrink-0" /></a>}
+                    {pastoralSupportUrlInvalid && <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-relaxed text-rose-900">O link informado não será aberto nem salvo. Corrija-o para o endereço HTTPS oficial do Dedo de Prosa.</p>}
+                    {pastoralSupportConfigured && <a href={pastoralSupportUrl ?? undefined} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-2 rounded-full border border-navy/15 bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition-colors hover:bg-navy/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"><MessageCircle className="h-4 w-4 text-gold" /><span className="min-w-0 truncate">Prévia: {pastoralSupport.label || DEFAULT_PASTORAL_SUPPORT_LABEL}</span><ExternalLink className="h-3.5 w-3.5 shrink-0" /></a>}
                   </div>
                 </div>
               </section>
-              <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between"><p className="text-xs leading-relaxed text-muted-foreground">O botão abre o Dedo de Prosa em uma nova aba e preserva a sessão do Ide Fazei.</p><Button className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending || (pastoralSupport.enabled && !pastoralSupportConfigured)}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar integração"}</Button></div>
+              <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between"><p className="text-xs leading-relaxed text-muted-foreground">O botão abre o Dedo de Prosa em uma nova aba e preserva a sessão do Ide Fazei.</p><Button className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending || pastoralSupportUrlInvalid || (pastoralSupport.enabled && !pastoralSupportConfigured)}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar integração"}</Button></div>
             </div>
           </TabsContent>
         </Tabs>

@@ -161,6 +161,10 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(publicSettingsSource).not.toContain(">Descer</Button>");
     expect(settingsSource).toContain("Atendimento pastoral externo");
     expect(settingsSource).toContain("O botão abre o Dedo de Prosa em uma nova aba");
+    expect(settingsSource).toContain("normalizePastoralSupportInput");
+    expect(settingsSource).toContain("https://${trimmed}");
+    expect(settingsSource).toContain("pastoralSupportUrlInvalid");
+    expect(settingsSource).toContain("rel=\"noopener noreferrer\"");
   });
 });
 
