@@ -397,6 +397,7 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-contact-card svg { width: 1.35rem; height: 1.35rem; flex: 0 0 auto; color: var(--tenant-secondary, #c9a84c); }
 .tenant-public-contact-card span { display: grid; gap: .2rem; font-size: .9rem; }
 .tenant-public-events-section { background: color-mix(in srgb, var(--tenant-primary) 5%, #f8f4ed); }
+.tenant-public-announcements-section { background: color-mix(in srgb, var(--tenant-secondary) 6%, #fffdf9); }
 .tenant-public-events-heading { margin-bottom: 1.5rem; }
 .tenant-public-events-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 .tenant-public-event-card { min-width: 0; display: flex; gap: 1rem; align-items: flex-start; border: 1px solid color-mix(in srgb, var(--tenant-primary) 16%, transparent); border-radius: 1rem; background: #fffdf9; padding: 1rem; box-shadow: 0 .65rem 1.8rem rgba(15, 34, 58, .06); }
@@ -409,6 +410,17 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-event-meta { display: grid; gap: .35rem; margin-top: .8rem; color: color-mix(in srgb, var(--tenant-primary) 68%, white); font-size: .78rem; }
 .tenant-public-event-meta span { min-width: 0; display: flex; gap: .35rem; align-items: center; overflow-wrap: anywhere; }
 .tenant-public-event-meta svg { flex: 0 0 auto; width: .9rem; height: .9rem; color: var(--tenant-secondary); }
+.tenant-public-announcements-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.tenant-public-announcement-card { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid color-mix(in srgb, var(--tenant-secondary) 22%, transparent); border-radius: 1rem; background: #fffdf9; box-shadow: 0 .65rem 1.8rem rgba(15, 34, 58, .06); }
+.tenant-public-announcement-card.is-pinned { border-color: color-mix(in srgb, var(--tenant-secondary) 55%, transparent); }
+.tenant-public-announcement-image { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 8; object-fit: cover; background: color-mix(in srgb, var(--tenant-primary) 9%, #fffdf9); }
+.tenant-public-announcement-body { display: grid; min-width: 0; gap: .6rem; padding: 1.05rem; }
+.tenant-public-announcement-meta { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: .6rem; color: var(--tenant-secondary); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.tenant-public-announcement-meta span { min-width: 0; overflow-wrap: anywhere; }
+.tenant-public-announcement-card h3 { margin: 0; overflow-wrap: anywhere; color: var(--tenant-primary); font-family: "Playfair Display", serif; font-size: 1.3rem; line-height: 1.15; }
+.tenant-public-announcement-card p { margin: 0; overflow-wrap: anywhere; color: color-mix(in srgb, var(--tenant-primary) 68%, white); font-size: .92rem; line-height: 1.6; white-space: pre-line; }
+.tenant-public-announcement-action { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; gap: .35rem; border-radius: .7rem; background: var(--tenant-primary); padding: .58rem .75rem; color: white; font-size: .82rem; font-weight: 700; text-decoration: none; }
+.tenant-public-announcement-action:hover { background: color-mix(in srgb, var(--tenant-primary) 82%, black); }
 .tenant-public-ministries-section { background: #fffdf9; }
 .tenant-public-ministries-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 .tenant-public-ministry-card { display: flex; min-width: 0; gap: .9rem; align-items: flex-start; border: 1px solid color-mix(in srgb, var(--tenant-primary) 15%, transparent); border-radius: 1rem; background: color-mix(in srgb, var(--tenant-secondary) 7%, #fffdf9); padding: 1rem; }
@@ -431,7 +443,7 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-gallery-item figcaption { padding: .7rem .8rem; color: color-mix(in srgb, var(--tenant-primary) 80%, #1f2937); font-size: .875rem; line-height: 1.4; overflow-wrap: anywhere; }
 
 @media (max-width: 44rem) {
-  .tenant-public-contact-grid, .tenant-public-events-grid, .tenant-public-ministries-grid, .tenant-public-services-grid { grid-template-columns: 1fr; }
+  .tenant-public-contact-grid, .tenant-public-events-grid, .tenant-public-announcements-grid, .tenant-public-ministries-grid, .tenant-public-services-grid { grid-template-columns: 1fr; }
   .tenant-public-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 

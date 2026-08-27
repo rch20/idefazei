@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   announcements,
@@ -378,6 +378,9 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
   const publicCells = site?.status === "published"
     ? await getPublicCellsByChurchId(church.id)
     : [];
+  const publicAnnouncements = site?.status === "published"
+    ? await getPublicAnnouncementsByChurch(church.id)
+    : [];
 
   return {
     church: {
@@ -405,6 +408,7 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
     upcomingEvents,
     publicMinistries,
     publicCells,
+    publicAnnouncements,
   };
 }
 
@@ -2478,15 +2482,50 @@ export async function getAnnouncementsByChurch(churchId: number) {
     .select()
     .from(announcements)
     .where(eq(announcements.churchId, churchId))
-    .orderBy(desc(announcements.pinned), desc(announcements.publishedAt))
+    .orderBy(desc(announcements.pinned), desc(announcements.createdAt))
     .limit(50);
+}
+
+export async function getPublicAnnouncementsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+  return db.select({
+    id: announcements.id,
+    title: announcements.title,
+    content: announcements.content,
+    type: announcements.type,
+    imageUrl: announcements.imageUrl,
+    pinned: announcements.pinned,
+    ctaLabel: announcements.ctaLabel,
+    ctaHref: announcements.ctaHref,
+    publishedAt: announcements.publishedAt,
+    expiresAt: announcements.expiresAt,
+  }).from(announcements).where(and(
+    eq(announcements.churchId, churchId),
+    eq(announcements.publicVisible, true),
+    or(eq(announcements.publicStatus, "publicado"), eq(announcements.publicStatus, "agendado")),
+    or(isNull(announcements.publicStartsAt), lte(announcements.publicStartsAt, now)),
+    or(isNull(announcements.expiresAt), gt(announcements.expiresAt, now)),
+  )).orderBy(desc(announcements.pinned), desc(announcements.publishedAt)).limit(6);
+}
+
+export async function updateAnnouncement(id: number, churchId: number, data: Partial<typeof announcements.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.update(announcements).set(data).where(and(eq(announcements.id, id), eq(announcements.churchId, churchId)));
+  const rows = await db.select().from(announcements).where(and(eq(announcements.id, id), eq(announcements.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
 }
 
 export async function createAnnouncement(data: typeof announcements.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   const result = await db.insert(announcements).values(data);
-  return result[0];
+  const id = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+  if (!id) return result[0];
+  const rows = await db.select().from(announcements).where(and(eq(announcements.id, id), eq(announcements.churchId, data.churchId))).limit(1);
+  return rows[0] ?? result[0];
 }
 
 // ─── PRAYER REQUESTS ──────────────────────────────────────────────────────────

@@ -110,7 +110,7 @@ export const mediaAssets = mysqlTable("media_assets", {
   churchId: int("churchId").notNull(),
   provider: mysqlEnum("provider", ["cloudinary", "manus_storage"]).notNull(),
   resourceType: mysqlEnum("resourceType", ["image", "video", "raw"]).notNull().default("image"),
-  purpose: mysqlEnum("purpose", ["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "certificate_logo", "treasury_attachment", "public_video", "other"]).notNull().default("other"),
+  purpose: mysqlEnum("purpose", ["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "certificate_logo", "treasury_attachment", "public_video", "announcement_image", "other"]).notNull().default("other"),
   publicId: varchar("publicId", { length: 512 }),
   storageKey: varchar("storageKey", { length: 512 }),
   url: text("url").notNull(),
@@ -639,10 +639,18 @@ export const announcements = mysqlTable("announcements", {
   type: mysqlEnum("type", ["aviso", "evento", "comunicado", "devocional"]).default("aviso"),
   imageUrl: text("imageUrl"),
   pinned: boolean("pinned").default(false),
-  publishedAt: timestamp("publishedAt").defaultNow().notNull(),
+  publicVisible: boolean("publicVisible").notNull().default(false),
+  publicStatus: mysqlEnum("publicStatus", ["rascunho", "publicado", "agendado", "arquivado"]).notNull().default("rascunho"),
+  publicStartsAt: timestamp("publicStartsAt"),
   expiresAt: timestamp("expiresAt"),
+  ctaLabel: varchar("ctaLabel", { length: 80 }),
+  ctaHref: varchar("ctaHref", { length: 500 }),
+  mediaAssetId: int("mediaAssetId"),
+  publishedAt: timestamp("publishedAt").defaultNow().notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("announcements_church_public_idx").on(table.churchId, table.publicVisible, table.publicStatus, table.pinned),
+]);
 
 // ─── BIBLIOTECA DIGITAL ───────────────────────────────────────────────────────
 

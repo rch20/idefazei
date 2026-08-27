@@ -12,6 +12,7 @@ export type MediaPurpose =
   | "certificate_logo"
   | "treasury_attachment"
   | "public_video"
+  | "announcement_image"
   | "other";
 
 export interface UploadMediaInput {

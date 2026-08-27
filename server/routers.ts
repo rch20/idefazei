@@ -39,6 +39,9 @@ import {
   createSoul,
   findPossiblePeopleByIdentity,
   getAnnouncementsByChurch,
+  getPublicAnnouncementsByChurch,
+  getActiveMediaAssetById,
+  updateAnnouncement,
   getCellsByChurch,
   getCellMembersCount,
   getActiveMembersByCell,
@@ -2716,6 +2719,41 @@ const libraryRouter = router({
     }),
 });
 
+function parseAnnouncementDate(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma data válida para o aviso." });
+  return parsed;
+}
+
+const announcementInput = z.object({
+  title: z.string().trim().min(2).max(255),
+  content: z.string().trim().min(5).max(4000),
+  type: z.enum(["aviso", "evento", "comunicado", "devocional"]).default("aviso"),
+  pinned: z.boolean().default(false),
+  publicVisible: z.boolean().default(false),
+  publicStartsAt: z.string().nullable().optional(),
+  expiresAt: z.string().nullable().optional(),
+  ctaLabel: z.string().trim().max(80).nullable().optional(),
+  ctaHref: z.string().trim().max(500).refine((value) => value.startsWith("/") || /^https:\/\//.test(value), "Informe um destino interno ou uma URL HTTPS.").nullable().optional(),
+  imageUrl: z.string().trim().max(1000).url().nullable().optional(),
+  mediaAssetId: z.number().int().positive().nullable().optional(),
+});
+
+async function validateAnnouncementMedia(churchId: number, mediaAssetId: number | null | undefined, imageUrl: string | null | undefined) {
+  if (!imageUrl && mediaAssetId) throw new TRPCError({ code: "BAD_REQUEST", message: "O asset de mídia precisa estar vinculado a uma imagem." });
+  if (!imageUrl) return;
+  if (!mediaAssetId) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagens públicas precisam ser enviadas pelo fluxo de mídia da igreja." });
+  const asset = await getActiveMediaAssetById(mediaAssetId, churchId);
+  if (!asset || asset.purpose !== "announcement_image" || asset.resourceType !== "image" || ![asset.url, asset.secureUrl].includes(imageUrl)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "A imagem selecionada não pertence a esta igreja ou não é uma imagem de aviso." });
+  }
+}
+
+function validateAnnouncementCta(ctaLabel: string | null | undefined, ctaHref: string | null | undefined) {
+  if (Boolean(ctaLabel) !== Boolean(ctaHref)) throw new TRPCError({ code: "BAD_REQUEST", message: "Preencha o texto e o destino do botão juntos." });
+}
+
 const announcementsRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number() }))
@@ -2724,19 +2762,56 @@ const announcementsRouter = router({
       return getAnnouncementsByChurch(input.churchId);
     }),
 
+  publicList: publicProcedure
+    .query(async ({ ctx }) => {
+      if (!ctx.tenantSlug) return [];
+      const church = await getChurchBySlug(ctx.tenantSlug);
+      if (!church?.active) return [];
+      const publicSite = await getTenantPublicSiteByChurchId(church.id);
+      if (publicSite?.site?.status !== "published") return [];
+      return getPublicAnnouncementsByChurch(church.id);
+    }),
+
   create: protectedProcedure
-    .input(
-      z.object({
-        churchId: z.number(),
-        title: z.string().min(2),
-        content: z.string().min(5),
-        type: z.enum(["aviso", "evento", "comunicado", "devocional"]).default("aviso"),
-        pinned: z.boolean().default(false),
-      })
-    )
+    .input(z.object({ churchId: z.number(), ...announcementInput.shape }))
     .mutation(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
-      return createAnnouncement({ ...input, authorId: ctx.user.id });
+      const publicStartsAt = parseAnnouncementDate(input.publicStartsAt);
+      const expiresAt = parseAnnouncementDate(input.expiresAt);
+      if (expiresAt && publicStartsAt && expiresAt <= publicStartsAt) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A expiração precisa ser posterior ao início da exibição." });
+      }
+      validateAnnouncementCta(input.ctaLabel, input.ctaHref);
+      await validateAnnouncementMedia(input.churchId, input.mediaAssetId, input.imageUrl);
+      if (input.publicVisible) {
+        await requireChurchPublicSitePublisher(ctx.user.id, input.churchId);
+      }
+      const publicStatus = input.publicVisible ? (publicStartsAt && publicStartsAt > new Date() ? "agendado" : "publicado") : "rascunho";
+      return createAnnouncement({ ...input, authorId: ctx.user.id, publicStartsAt, expiresAt, publicStatus });
+    }),
+
+  update: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number().int().positive(), ...announcementInput.shape }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const publicStartsAt = parseAnnouncementDate(input.publicStartsAt);
+      const expiresAt = parseAnnouncementDate(input.expiresAt);
+      if (expiresAt && publicStartsAt && expiresAt <= publicStartsAt) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A expiração precisa ser posterior ao início da exibição." });
+      }
+      validateAnnouncementCta(input.ctaLabel, input.ctaHref);
+      await validateAnnouncementMedia(input.churchId, input.mediaAssetId, input.imageUrl);
+      if (input.publicVisible) await requireChurchPublicSitePublisher(ctx.user.id, input.churchId);
+      const publicStatus = input.publicVisible ? (publicStartsAt && publicStartsAt > new Date() ? "agendado" : "publicado") : "rascunho";
+      const { id, churchId, ...data } = input;
+      return updateAnnouncement(id, churchId, { ...data, publicStartsAt, expiresAt, publicStatus });
+    }),
+
+  archivePublic: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchPublicSitePublisher(ctx.user.id, input.churchId);
+      return updateAnnouncement(input.id, input.churchId, { publicVisible: false, publicStatus: "arquivado" });
     }),
 });
 

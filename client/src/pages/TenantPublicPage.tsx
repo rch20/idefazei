@@ -1,11 +1,12 @@
 import { TenantPublicShell } from "@/components/TenantPublicShell";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, CalendarDays, Clock3, HandHeart, Images, MapPin, MessageCircle, UsersRound } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CalendarDays, Clock3, HandHeart, MapPin, MessageCircle, Pin, UsersRound } from "lucide-react";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type PublicGalleryItem = { url?: string; alt?: string; caption?: string };
+const ANNOUNCEMENT_TYPE_LABELS: Record<string, string> = { aviso: "Aviso", evento: "Evento", comunicado: "Comunicado", devocional: "Devocional" };
 type SectionContent = { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string; services?: PublicService[]; items?: PublicGalleryItem[] };
 
 function findContent(sections: Array<{ sectionType: string; content: unknown }>, type: string): SectionContent | null {
@@ -104,6 +105,38 @@ export default function TenantPublicPage() {
                     <div className="tenant-public-event-date"><strong>{startsAt.toLocaleDateString("pt-BR", { day: "2-digit" })}</strong><span>{startsAt.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")}</span></div>
                     <div className="min-w-0"><span className="tenant-public-event-type">{event.type}</span><h3>{event.name}</h3>{event.description && <p>{event.description}</p>}<div className="tenant-public-event-meta"><span><Clock3 aria-hidden="true" />{startsAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>{event.location && <span><MapPin aria-hidden="true" />{event.location}</span>}</div></div>
                   </article>;
+                })}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {data.publicAnnouncements.length > 0 && (
+          <section className="tenant-public-section tenant-public-announcements-section">
+            <div className="tenant-public-container">
+              <div className="tenant-public-prose tenant-public-events-heading">
+                <span className="tenant-public-eyebrow">Mural público</span>
+                <h2>Avisos da igreja</h2>
+                <p>Informações importantes para quem já caminha conosco e para quem está chegando.</p>
+              </div>
+              <div className="tenant-public-announcements-grid">
+                {data.publicAnnouncements.map((announcement) => {
+                  const isExternal = Boolean(announcement.ctaHref?.startsWith("http"));
+                  return (
+                    <article key={announcement.id} className={`tenant-public-announcement-card${announcement.pinned ? " is-pinned" : ""}`}>
+                      {announcement.imageUrl && <img className="tenant-public-announcement-image" src={announcement.imageUrl} alt="" loading="lazy" decoding="async" />}
+                      <div className="tenant-public-announcement-body">
+                        <div className="tenant-public-announcement-meta">
+                          <span>{ANNOUNCEMENT_TYPE_LABELS[announcement.type ?? "aviso"] ?? "Aviso"}</span>
+                          {announcement.pinned && <span className="inline-flex items-center gap-1"><Pin size={12} aria-hidden="true" /> Destaque</span>}
+                        </div>
+                        <h3>{announcement.title}</h3>
+                        <p>{announcement.content}</p>
+                        <p className="text-xs">Publicado em {new Date(announcement.publishedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</p>
+                        {announcement.ctaHref && announcement.ctaLabel && <a className="tenant-public-announcement-action" href={announcement.ctaHref} target={isExternal ? "_blank" : undefined} rel={isExternal ? "noreferrer" : undefined}>{announcement.ctaLabel}<ArrowUpRight size={15} aria-hidden="true" /></a>}
+                      </div>
+                    </article>
+                  );
                 })}
               </div>
             </div>

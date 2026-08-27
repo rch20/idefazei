@@ -1,0 +1,1 @@
+CREATE INDEX `announcements_church_public_idx` ON `announcements` (`churchId`,`publicVisible`,`publicStatus`,`pinned`);
