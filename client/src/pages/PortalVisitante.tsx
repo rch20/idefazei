@@ -57,9 +57,15 @@ export default function PortalVisitante() {
             <p className="text-[10px] uppercase tracking-widest text-[#c9a84c]">Portal do Visitante</p>
           </div>
         </a>
-        <a href="/login" className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-[#1e3a5f]/65 transition-colors hover:text-[#1e3a5f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a84c] focus-visible:ring-offset-2">
-          Já sou membro →
-        </a>
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <a href="/" aria-label={`Voltar para a página inicial de ${tenantName}`} title="Voltar para a página inicial" className="inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-xs font-semibold text-[#1e3a5f]/60 transition-colors hover:bg-[#1e3a5f]/5 hover:text-[#1e3a5f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a84c] focus-visible:ring-offset-2 sm:px-2.5 sm:text-sm">
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Início</span>
+          </a>
+          <a href="/login" className="rounded-lg px-2 py-1 text-sm font-semibold text-[#1e3a5f]/65 transition-colors hover:text-[#1e3a5f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a84c] focus-visible:ring-offset-2">
+            Já sou membro →
+          </a>
+        </div>
       </div>
     </header>
   );

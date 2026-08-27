@@ -8,6 +8,7 @@ describe("PortalVisitante", () => {
   it("mantém uma rota explícita para a Home no cabeçalho e no estado de sucesso", () => {
     expect(portalSource).toContain('href="/"');
     expect(portalSource).toContain("Voltar para a página inicial");
+    expect(portalSource).toContain(">Início</span>");
     expect(portalSource).toContain("onClick={() => setSubmitted(false)}");
   });
 
