@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useChurchSlug } from "@/hooks/useTenant";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 import { TenantPublicFooter } from "@/components/TenantPublicFooter";
+import { getPublicHeroEyebrow } from "../../../shared/publicPage";
 
 const visitorSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
@@ -37,6 +38,7 @@ export default function PortalVisitante() {
   const churchSlug = useChurchSlug();
   const tenantPublic = trpc.tenantPublic.current.useQuery();
   useTenantPwaMeta({ tenantSlug: tenantPublic.data?.church.slug, tenantName: tenantPublic.data?.church.name, primaryColor: tenantPublic.data?.theme?.primaryColor ?? tenantPublic.data?.church.primaryColor, pwaIconAssetId: tenantPublic.data?.church.pwaIconAssetId, pwaIconVersion: tenantPublic.data?.church.pwaIconVersion });
+  const publicHeroEyebrow = getPublicHeroEyebrow(tenantPublic.data?.sections);
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<VisitorData>({
     resolver: zodResolver(visitorSchema),
@@ -226,7 +228,7 @@ export default function PortalVisitante() {
           </p>
         </form>
       </div>
-      {tenantPublic.data && <TenantPublicFooter church={tenantPublic.data.church} />}
+      {tenantPublic.data && <TenantPublicFooter church={tenantPublic.data.church} eyebrow={publicHeroEyebrow} />}
     </div>
   );
 }

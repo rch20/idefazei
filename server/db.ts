@@ -543,7 +543,7 @@ export type TenantPublicDraftInput = {
 };
 
 const DEFAULT_PUBLIC_SECTIONS = [
-  { sectionType: "hero" as const, enabled: true, sortOrder: 0, content: { title: "", subtitle: "", primaryCtaLabel: "Quero conhecer a igreja", primaryCtaHref: "/visitante" } },
+  { sectionType: "hero" as const, enabled: true, sortOrder: 0, content: { title: "", eyebrow: "", subtitle: "", primaryCtaLabel: "Quero conhecer a igreja", primaryCtaHref: "/visitante" } },
   { sectionType: "about" as const, enabled: true, sortOrder: 1, content: { title: "Uma igreja para caminhar junto", body: "" } },
   { sectionType: "schedule" as const, enabled: true, sortOrder: 2, content: { title: "Horários de culto", body: "Encontre um horário para caminhar conosco.", services: [] } },
   { sectionType: "events" as const, enabled: true, sortOrder: 3, content: { title: "Próximos eventos", subtitle: "Participe do que Deus está fazendo em nossa comunidade." } },

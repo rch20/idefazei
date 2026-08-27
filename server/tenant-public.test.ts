@@ -334,6 +334,13 @@ describe("Galeria pública por tenant", () => {
     expect(routerSource).toContain('requireChurchAdministrator(ctx.user.id, input.id)');
   });
 
+  it("permite persistir a frase de identificação no hero sem quebrar tenants legados", () => {
+    expect(routerSource).toContain("eyebrow: z.string().trim().max(80).optional()");
+    expect(dbSource).toContain('eyebrow: ""');
+    expect(dbSource).toContain('sectionType === "hero"');
+    expect(existsSync(resolve(process.cwd(), "shared/publicPage.ts"))).toBe(true);
+  });
+
   it("valida redes sociais por allow-list HTTPS e sanitiza o payload público", () => {
     expect(routerSource).toContain("socialMediaInputSchema");
     expect(routerSource).toContain("normalizeSocialMediaLinks(socialMedia)");

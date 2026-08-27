@@ -5,6 +5,7 @@ import { trpc } from "@/lib/trpc";
 import { ArrowRight, ArrowUpRight, CalendarDays, ChevronDown, Clock3, HandHeart, MapPin, Maximize2, MessageCircle, Pin, UsersRound } from "lucide-react";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 import { TenantPublicFooter } from "@/components/TenantPublicFooter";
+import { getPublicHeroEyebrow } from "../../../shared/publicPage";
 import { useState } from "react";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
@@ -42,6 +43,7 @@ export default function TenantPublicPage() {
   const primaryLabel = hero?.primaryCtaLabel ?? "Quero conhecer a igreja";
   const publicServices = (schedule?.services ?? []).filter((service) => service.day && service.time);
   const publicGalleryItems = (gallerySection?.items ?? []).filter((item) => item.url && item.alt);
+  const publicHeroEyebrow = getPublicHeroEyebrow(data.sections);
 
   return (
     <TenantPublicShell brand={{
@@ -66,7 +68,7 @@ export default function TenantPublicPage() {
       <main>
         <section className="tenant-public-hero">
           <div className="tenant-public-container tenant-public-hero-content">
-            <span className="tenant-public-eyebrow">Comunidade de fé</span>
+            <span className="tenant-public-eyebrow">{publicHeroEyebrow}</span>
             <h1>{title}</h1>
             <p>{subtitle}</p>
             <Button asChild className="tenant-public-cta">
@@ -211,7 +213,7 @@ export default function TenantPublicPage() {
         </DialogContent>
       </Dialog>
 
-      <TenantPublicFooter church={data.church} />
+      <TenantPublicFooter church={data.church} eyebrow={publicHeroEyebrow} />
     </TenantPublicShell>
   );
 }

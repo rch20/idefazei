@@ -837,6 +837,7 @@ const tenantPublicRouter = router({
       sortOrder: z.number().int().min(0).max(20),
       content: z.object({
         title: z.string().trim().max(140).optional(),
+        eyebrow: z.string().trim().max(80).optional(),
         subtitle: z.string().trim().max(280).optional(),
         body: z.string().trim().max(2000).optional(),
         primaryCtaLabel: z.string().trim().max(48).optional(),

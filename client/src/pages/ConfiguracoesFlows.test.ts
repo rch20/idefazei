@@ -106,7 +106,9 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(pwaHookSource).toContain("theme-color");
     expect(pwaHookSource).toContain("pwaIconVersion");
     expect(visiteNosSource).toContain("useTenantPwaMeta");
+    expect(visiteNosSource).toContain("publicHeroEyebrow");
     expect(portalVisitanteSource).toContain("useTenantPwaMeta");
+    expect(portalVisitanteSource).toContain("publicHeroEyebrow");
     expect(loginIgrejaSource).toContain("useTenantPwaMeta");
     expect(churchLayoutSource).toContain("useTenantPwaMeta");
   });
@@ -121,6 +123,15 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(publicSettingsSource).toContain('id="tenant-public-preview"');
     expect(publicSettingsSource).toContain("PublicMetricCard");
     expect(publicSettingsSource).toContain("grid grid-cols-2 gap-2 sm:flex");
+  });
+
+  it("permite configurar a frase de identificação do hero com fallback no editor público", () => {
+    expect(publicSettingsSource).toContain("Frase de identificação");
+    expect(publicSettingsSource).toContain("section.content.eyebrow");
+    expect(publicSettingsSource).toContain("Comunidade de fé");
+    expect(publicSettingsSource).toContain("Aparece acima do título no hero e no rodapé");
+    expect(publicPageSource).toContain("getPublicHeroEyebrow");
+    expect(publicFooterSource).toContain("DEFAULT_PUBLIC_HERO_EYEBROW");
   });
 
   it("agrupa ordenação e visibilidade dos blocos com controles acessíveis", () => {

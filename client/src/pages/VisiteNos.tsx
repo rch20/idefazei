@@ -8,6 +8,7 @@ import { ArrowLeft, CalendarDays, Clock3, LocateFixed, MapPin, MessageCircle, Na
 import { useMemo, useState } from "react";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 import { TenantPublicFooter } from "@/components/TenantPublicFooter";
+import { getPublicHeroEyebrow } from "../../../shared/publicPage";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type SectionContent = { title?: string; body?: string; services?: PublicService[] };
@@ -81,6 +82,7 @@ export default function VisiteNos() {
   const schedule = findContent(data.sections, "schedule");
   const services = (schedule?.services ?? []).filter((service) => service.day && service.time);
   const selectedCell = cellsWithDistance.find((cell) => cell.id === selectedCellId) ?? cellsWithDistance[0] ?? null;
+  const publicHeroEyebrow = getPublicHeroEyebrow(data.sections);
   const churchDestination = [data.church.address, data.church.city, data.church.state].filter(Boolean).join(", ");
   const churchDirections = churchDestination
     ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(churchDestination)}`
@@ -207,7 +209,7 @@ export default function VisiteNos() {
         </section>
       </main>
 
-      <TenantPublicFooter church={data.church} />
+      <TenantPublicFooter church={data.church} eyebrow={publicHeroEyebrow} />
     </TenantPublicShell>
   );
 }

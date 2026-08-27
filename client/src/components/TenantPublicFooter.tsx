@@ -1,4 +1,5 @@
 import { Facebook, Instagram, Mail, MapPin, Music2, Phone, Globe2, Youtube, type LucideIcon } from "lucide-react";
+import { DEFAULT_PUBLIC_HERO_EYEBROW } from "../../../shared/publicPage";
 import { normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS, SOCIAL_PLATFORM_META, type SocialPlatform } from "../../../shared/socialMedia";
 
 type TenantPublicFooterProps = {
@@ -11,6 +12,7 @@ type TenantPublicFooterProps = {
     website?: string | null;
     socialMedia?: unknown;
   };
+  eyebrow?: string | null;
 };
 
 const SOCIAL_ICONS: Record<SocialPlatform, LucideIcon> = {
@@ -36,7 +38,7 @@ function normalizePhone(value: string | null | undefined) {
   return digits.length >= 8 ? digits : null;
 }
 
-export function TenantPublicFooter({ church }: TenantPublicFooterProps) {
+export function TenantPublicFooter({ church, eyebrow }: TenantPublicFooterProps) {
   const socialMedia = normalizeSocialMediaLinks(church.socialMedia);
   const socialLinks = SOCIAL_PLATFORM_KEYS.filter((platform) => socialMedia[platform]).map((platform) => ({
     platform,
@@ -53,7 +55,7 @@ export function TenantPublicFooter({ church }: TenantPublicFooterProps) {
       <div className="tenant-public-container">
         <div className="tenant-public-footer-grid">
           <div className="tenant-public-footer-brand">
-            <p className="tenant-public-footer-kicker">Comunidade de fé</p>
+            <p className="tenant-public-footer-kicker">{eyebrow?.trim() || DEFAULT_PUBLIC_HERO_EYEBROW}</p>
             <h2>{church.name}</h2>
             <p>Um lugar para caminhar junto, servir e crescer.</p>
           </div>
