@@ -370,8 +370,8 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-container { width: min(100% - 2rem, 72rem); margin-inline: auto; }
 .tenant-public-loading { display: grid; min-height: 100dvh; place-items: center; padding: 2rem; text-align: center; }
 
-.tenant-public-header { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 28%, transparent); background: rgb(248 244 237 / 95%); backdrop-filter: blur(12px); }
-.tenant-public-header-inner { display: flex; min-height: 4.5rem; align-items: center; justify-content: space-between; gap: 1rem; }
+.tenant-public-header { position: sticky; top: 0; z-index: 20; isolation: isolate; border-bottom: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 28%, transparent); background: #f8f4ed; }
+.tenant-public-header-inner { display: flex; height: 4.5rem; min-height: 4.5rem; align-items: center; justify-content: space-between; gap: 1rem; }
 .tenant-public-brand { display: inline-flex; min-width: 0; align-items: center; gap: .75rem; color: inherit; font-family: "Playfair Display", serif; font-size: clamp(1.1rem, 4vw, 1.45rem); font-weight: 700; text-decoration: none; }
 .tenant-public-logo { width: 2.5rem; height: 2.5rem; flex: 0 0 auto; border-radius: .65rem; object-fit: contain; }
 .tenant-public-mark { display: grid; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; place-items: center; border-radius: .65rem; background: var(--tenant-primary, #1e3a5f); color: var(--tenant-secondary, #c9a84c); }

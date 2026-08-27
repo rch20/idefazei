@@ -135,12 +135,17 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, logout } = useChurchAuth();
   const { churchName, logoUrl } = useChurch();
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [expandedGroup, setExpandedGroup] = useState<string | null>("principal");
   const currentRole = user?.role ?? "membro";
   const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery(
     { churchId: user?.churchId ?? 0 },
     { enabled: Boolean(user?.churchId) }
   );
   const effectiveRoles = Array.from(new Set([currentRole, ...(effectiveRolesQuery.data ?? [])]));
+  useEffect(() => {
+    const activeGroup = groups.find((group) => navItems.some((item) => item.group === group.key && (location === item.path || location.startsWith(item.path + "/"))));
+    if (activeGroup) setExpandedGroup(activeGroup.key);
+  }, [location]);
   const canReviewRegistrations = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local", "secretario"].includes(role));
   const pendingRegistrationsQuery = trpc.churchAuth.pendingRegistrations.useQuery(
     { churchId: user?.churchId ?? 0 },
@@ -161,7 +166,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
       {/* Sidebar */}
       <aside
         className={`
-          fixed top-0 left-0 h-full z-50 w-64 flex flex-col
+          fixed top-0 left-0 h-dvh z-50 w-64 flex flex-col
           sidebar-sacred transition-transform duration-300 ease-out
           lg:relative lg:translate-x-0 lg:z-auto
           ${open ? "translate-x-0" : "-translate-x-full"}
@@ -190,36 +195,46 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-5">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Navegação principal">
           {groups.map((group) => {
             const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))));
             if (!items.length) return null;
+            const isExpanded = expandedGroup === group.key;
             return (
-              <div key={group.key}>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-white/30 px-3 mb-1">
-                  {group.label}
-                </p>
-                <div className="space-y-0.5">
-                  {items.map((item) => {
-                    const isActive = location === item.path || location.startsWith(item.path + "/");
-                    return (
-                      <button
-                        key={item.path}
-                        className={`sidebar-item w-full ${isActive ? "active" : ""}`}
-                        onClick={() => { navigate(item.path); onClose(); }}
-                      >
-                        <item.icon className="w-4 h-4 flex-shrink-0" />
-                        <span>{item.label}</span>
-                        {item.path === "/app/configuracoes" && pendingRegistrationCount > 0 && (
-                          <span className="ml-auto min-w-5 rounded-full bg-gold px-1.5 py-0.5 text-center text-[10px] font-bold text-navy" aria-label={`${pendingRegistrationCount} cadastro${pendingRegistrationCount === 1 ? "" : "s"} aguardando aprovação`}>
-                            {pendingRegistrationCount > 9 ? "9+" : pendingRegistrationCount}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              <section key={group.key} className="border-b border-white/5 pb-1 last:border-0">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-white/45 transition-colors hover:bg-white/5 hover:text-white/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+                  onClick={() => setExpandedGroup((current) => current === group.key ? null : group.key)}
+                  aria-expanded={isExpanded}
+                  aria-controls={`sidebar-group-${group.key}`}
+                >
+                  <span>{group.label}</span>
+                  <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} aria-hidden="true" />
+                </button>
+                {isExpanded && (
+                  <div id={`sidebar-group-${group.key}`} className="space-y-0.5 pb-1">
+                    {items.map((item) => {
+                      const isActive = location === item.path || location.startsWith(item.path + "/");
+                      return (
+                        <button
+                          key={item.path}
+                          className={`sidebar-item w-full ${isActive ? "active" : ""}`}
+                          onClick={() => { navigate(item.path); onClose(); }}
+                        >
+                          <item.icon className="w-4 h-4 flex-shrink-0" />
+                          <span className="min-w-0 truncate">{item.label}</span>
+                          {item.path === "/app/configuracoes" && pendingRegistrationCount > 0 && (
+                            <span className="ml-auto min-w-5 rounded-full bg-gold px-1.5 py-0.5 text-center text-[10px] font-bold text-navy" aria-label={`${pendingRegistrationCount} cadastro${pendingRegistrationCount === 1 ? "" : "s"} aguardando aprovação`}>
+                              {pendingRegistrationCount > 9 ? "9+" : pendingRegistrationCount}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
             );
           })}
         </nav>
@@ -303,7 +318,7 @@ function TopBar({
   });
 
   return (
-    <header className="h-14 flex items-center justify-between px-4 lg:px-6 border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-30">
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-4 lg:px-6">
       <div className="flex items-center gap-3">
         <button
           onClick={onMenuClick}
@@ -391,12 +406,12 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
 
   return (
     <ChurchContext.Provider value={churchContext}>
-      <div className="min-h-screen min-w-0 overflow-x-hidden bg-background flex golden-pattern">
+      <div className="flex h-dvh min-h-screen min-w-0 overflow-hidden bg-background golden-pattern">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <TopBar onMenuClick={() => setSidebarOpen(true)} title={title} />
-          <main className="flex-1 min-w-0 overflow-x-hidden overflow-y-auto p-4 lg:p-6">
+          <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 lg:p-6">
             {children}
           </main>
         </div>
