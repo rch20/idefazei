@@ -117,6 +117,11 @@ function RadarEspiritual({ churchId }: { churchId: number }) {
           <h2 className="font-display font-bold text-navy text-lg">Radar Espiritual</h2>
           <p className="text-xs text-muted-foreground">Pessoas que precisam de atenção</p>
         </div>
+        <Link href="/app/radar" className="ml-auto">
+          <Button variant="ghost" size="sm" className="gap-1 text-xs text-navy hover:bg-amber-50">
+            Ver detalhes <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </Link>
       </div>
 
       {isLoading ? (

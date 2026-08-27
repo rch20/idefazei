@@ -52,6 +52,7 @@ const Comunicacao = lazy(() => import("./pages/Comunicacao"));
 const ConfiguracoesCertificados = lazy(() => import("./pages/ConfiguracoesCertificados"));
 const Faturamento = lazy(() => import("./pages/Faturamento"));
 const CentralCuidado = lazy(() => import("./pages/CentralCuidado"));
+const RadarEspiritual = lazy(() => import("./pages/RadarEspiritual"));
 const Tesouraria = lazy(() => import("./pages/Tesouraria"));
 
 function PublicRoot() {
@@ -117,7 +118,7 @@ function Router() {
 
       <Route path="/app/radar">
         <AppPage title="Radar Espiritual">
-          <Placeholder title="Radar Espiritual" description="Visão detalhada de pessoas em risco espiritual" />
+          <RadarEspiritual />
         </AppPage>
       </Route>
 

@@ -143,6 +143,7 @@ import {
   getCareHistoryByPerson,
   getCurrentCareAssignment,
   getRadarEspiritual,
+  getSpiritualRadarByChurch,
   getSoulById,
   getSoulsByChurch,
   updateChurch,
@@ -2802,6 +2803,55 @@ const dashboardRouter = router({
     }),
 });
 
+const radarSignalCatalog = [
+  { key: "consolidacao_pendente", label: "Consolidação pendente", description: "Nova Alma sem registro de Consolidação." },
+  { key: "primeiro_contato_pendente", label: "Primeiro contato pendente", description: "Consolidação sem primeiro contato registrado." },
+  { key: "visita_pendente", label: "Visita pendente", description: "Visita aberta, agendada ou vencida." },
+  { key: "follow_up_vencido", label: "Follow-up vencido", description: "Próxima ação de cuidado passou do prazo." },
+  { key: "sem_responsavel", label: "Sem responsável", description: "Pessoa sem responsável ativo pelo cuidado." },
+  { key: "sem_celula", label: "Sem célula ativa", description: "Pessoa em etapa de integração sem célula ativa." },
+  { key: "sem_discipulador", label: "Sem discipulador", description: "Etapa de discipulado sem discipulador registrado." },
+  { key: "ausencias_recentes", label: "Ausências recentes", description: "Duas últimas marcações de célula foram ausências." },
+  { key: "pedido_oracao_pendente", label: "Pedido de oração pendente", description: "Pedido vinculado a uma Pessoa sem retorno registrado." },
+  { key: "sem_formacao", label: "Sem formação registrada", description: "Pessoa sem matrícula em formação ativa ou concluída." },
+] as const;
+
+const radarRouter = router({
+  list: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const actorRoles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const canManageAll = actorRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+      const managedPersonIds = canManageAll
+        ? null
+        : new Set(await getJourneyManagedPersonIds({
+            churchId: input.churchId,
+            actorPersonId: actor.personId ?? null,
+            actorRoles,
+          }));
+      const radar = await getSpiritualRadarByChurch(input.churchId);
+      const items = canManageAll
+        ? radar.items
+        : radar.items.filter((item) => managedPersonIds?.has(item.person.id) || item.careAssignment?.responsiblePersonId === actor.personId);
+      const scopedSummary = {
+        ...radar.summary,
+        totalPeople: canManageAll ? radar.summary.totalPeople : managedPersonIds?.size ?? 0,
+        peopleWithSignals: items.length,
+        alta: items.filter((item) => item.priority === "alta").length,
+        media: items.filter((item) => item.priority === "media").length,
+        normal: items.filter((item) => item.priority === "normal").length,
+        bySignal: Object.fromEntries(radarSignalCatalog.map((signal) => [signal.key, items.filter((item) => item.signals.some((itemSignal) => itemSignal.key === signal.key)).length])),
+      };
+      return {
+        summary: scopedSummary,
+        items,
+        availableSignals: radarSignalCatalog,
+        scope: { canManageAll, actorRoles, linkedPersonId: actor.personId ?? null },
+      };
+    }),
+});
+
 // ─── CHURCH AUTH ROUTER ─────────────────────────────────────────────────────
 
 const churchAuthRouter = router({
@@ -4478,6 +4528,7 @@ export const appRouter = router({
   announcements: announcementsRouter,
   prayer: prayerRouter,
   dashboard: dashboardRouter,
+  radar: radarRouter,
   leader: leaderRouter,
     families: familiesRouter,
   schedules: schedulesRouter,
