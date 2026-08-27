@@ -49,6 +49,17 @@ describe("Template Ministerial Base — estabilidade global", () => {
     expect(css).toContain(".tenant-public-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }");
   });
 
+  it("mantém o hero compacto no mobile e sinaliza continuidade sem ruído visual", () => {
+    const page = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
+    expect(page).toContain('id="tenant-public-content"');
+    expect(page).toContain("tenant-public-scroll-cue");
+    expect(page).toContain("Descubra mais");
+    expect(page).toContain("Continuar para conhecer mais sobre a igreja");
+    expect(css).toContain(".tenant-public-hero { min-height: 82svh; }");
+    expect(css).toContain(".tenant-public-scroll-cue { bottom: .8rem;");
+    expect(css).toContain("prefers-reduced-motion: reduce");
+  });
+
   it("protege a seção de Avisos Públicos com mídia, destaque e CTA responsivo", () => {
     const page = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
     expect(page).toContain("data.publicAnnouncements.length > 0");

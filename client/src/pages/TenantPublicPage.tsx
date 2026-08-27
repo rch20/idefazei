@@ -2,7 +2,7 @@ import { TenantPublicShell } from "@/components/TenantPublicShell";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, ArrowUpRight, CalendarDays, Clock3, HandHeart, MapPin, Maximize2, MessageCircle, Pin, UsersRound } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CalendarDays, ChevronDown, Clock3, HandHeart, MapPin, Maximize2, MessageCircle, Pin, UsersRound } from "lucide-react";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 import { useState } from "react";
 
@@ -72,10 +72,13 @@ export default function TenantPublicPage() {
               <a href={primaryHref}>{primaryLabel}<ArrowRight size={18} aria-hidden="true" /></a>
             </Button>
           </div>
+          <a className="tenant-public-scroll-cue" href="#tenant-public-content" aria-label="Continuar para conhecer mais sobre a igreja">
+            <span>Descubra mais</span><ChevronDown size={16} aria-hidden="true" />
+          </a>
         </section>
 
         {(about?.body ?? data.church.vision ?? data.church.mission) && (
-          <section className="tenant-public-section">
+          <section id="tenant-public-content" className="tenant-public-section">
             <div className="tenant-public-container tenant-public-prose">
               <span className="tenant-public-eyebrow">Sobre nós</span>
               <h2>{about?.title ?? "Uma igreja para caminhar junto"}</h2>
