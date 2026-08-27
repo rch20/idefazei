@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Heart, Home, BookOpen, UserPlus, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, Heart, Home, BookOpen, UserPlus, CheckCircle2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useChurchSlug } from "@/hooks/useTenant";
@@ -37,8 +37,32 @@ export default function PortalVisitante() {
   const [selectedType, setSelectedType] = useState<string>("pedido_oracao");
   const churchSlug = useChurchSlug();
   const tenantPublic = trpc.tenantPublic.current.useQuery();
+  const tenantName = tenantPublic.data?.church.name ?? "Igreja";
+  const logoCandidates = [tenantPublic.data?.theme?.logoUrl, tenantPublic.data?.church.logoUrl].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+  const [logoSourceIndex, setLogoSourceIndex] = useState(0);
+  const logoUrl = logoCandidates[logoSourceIndex] ?? null;
+  const logoLetters = tenantName.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase() || "✦";
+  useEffect(() => setLogoSourceIndex(0), [tenantPublic.data?.theme?.logoUrl, tenantPublic.data?.church.logoUrl]);
   useTenantPwaMeta({ tenantSlug: tenantPublic.data?.church.slug, tenantName: tenantPublic.data?.church.name, primaryColor: tenantPublic.data?.theme?.primaryColor ?? tenantPublic.data?.church.primaryColor, pwaIconAssetId: tenantPublic.data?.church.pwaIconAssetId, pwaIconVersion: tenantPublic.data?.church.pwaIconVersion });
   const publicHeroEyebrow = getPublicHeroEyebrow(tenantPublic.data?.sections);
+  const publicHeader = (
+    <header className="relative z-10 border-b border-[#c9a84c]/20 bg-white/70 px-4 py-4 backdrop-blur-sm sm:px-6">
+      <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
+        <a href="/" className="flex min-w-0 items-center gap-3 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a84c] focus-visible:ring-offset-2" aria-label={`Voltar para a página inicial de ${tenantName}`}>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#1e3a5f] text-[#c9a84c]">
+            {logoUrl ? <img src={logoUrl} alt={`Logo ${tenantName}`} className="h-full w-full object-contain" onError={() => setLogoSourceIndex((current) => current + 1)} /> : <span aria-hidden="true" className="font-bold">{logoLetters}</span>}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate font-bold text-[#1e3a5f]">{tenantName}</p>
+            <p className="text-[10px] uppercase tracking-widest text-[#c9a84c]">Portal do Visitante</p>
+          </div>
+        </a>
+        <a href="/login" className="shrink-0 rounded-lg px-2 py-1 text-sm font-semibold text-[#1e3a5f]/65 transition-colors hover:text-[#1e3a5f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a84c] focus-visible:ring-offset-2">
+          Já sou membro →
+        </a>
+      </div>
+    </header>
+  );
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<VisitorData>({
     resolver: zodResolver(visitorSchema),
@@ -72,19 +96,25 @@ export default function PortalVisitante() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-[#f5f0e8] flex items-center justify-center px-4">
-        <div className="text-center max-w-md">
+      <div className="min-h-screen bg-[#f5f0e8]">
+        {publicHeader}
+        <div className="flex min-h-[calc(100vh-5rem)] items-center justify-center px-4">
+          <div className="max-w-md text-center">
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 className="w-10 h-10 text-green-600" />
           </div>
           <h2 className="font-serif text-3xl font-bold text-[#1e3a5f] mb-3">Recebemos sua mensagem!</h2>
           <p className="text-[#1e3a5f]/60 mb-8">Nossa equipe entrará em contato em breve. Que Deus abençoe você!</p>
-          <Button
-            onClick={() => setSubmitted(false)}
-            className="bg-[#1e3a5f] hover:bg-[#162d4a] text-white"
-          >
-            Enviar outra mensagem
-          </Button>
+            <Button
+              onClick={() => setSubmitted(false)}
+              className="bg-[#1e3a5f] text-white hover:bg-[#162d4a]"
+            >
+              Enviar outra mensagem
+            </Button>
+            <a href="/" className="mt-3 inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold text-[#1e3a5f]/70 transition-colors hover:text-[#1e3a5f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a84c] focus-visible:ring-offset-2">
+              <ArrowLeft className="h-4 w-4" /> Voltar para a página inicial
+            </a>
+          </div>
         </div>
       </div>
     );
@@ -102,23 +132,7 @@ export default function PortalVisitante() {
         </svg>
       </div>
 
-      {/* Header */}
-      <header className="relative z-10 py-5 px-6 border-b border-[#c9a84c]/20 bg-white/60 backdrop-blur-sm">
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-[#1e3a5f] rounded-xl flex items-center justify-center">
-              <span className="text-[#c9a84c] font-bold">✦</span>
-            </div>
-            <div>
-              <p className="font-bold text-[#1e3a5f] text-base leading-tight">{tenantPublic.data?.church.name ?? "Igreja"}</p>
-              <p className="text-[#c9a84c] text-[10px] uppercase tracking-widest">Portal do Visitante</p>
-            </div>
-          </div>
-          <a href="/login" className="text-sm text-[#1e3a5f]/60 hover:text-[#1e3a5f] transition-colors">
-            Já sou membro →
-          </a>
-        </div>
-      </header>
+      {publicHeader}
 
       {/* Main */}
       <div className="relative z-10 max-w-2xl mx-auto px-4 py-12">
