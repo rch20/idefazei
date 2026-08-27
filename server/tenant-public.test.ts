@@ -350,6 +350,16 @@ describe("Galeria pública por tenant", () => {
     expect(dbSource).toContain("eq(churches.slug, slug)");
   });
 
+  it("valida e expõe o atendimento pastoral somente para o tenant e audiência configurados", () => {
+    expect(routerSource).toContain("pastoralSupportInputSchema");
+    expect(routerSource).toContain("normalizePastoralSupportConfig(pastoralSupport)");
+    expect(routerSource).toContain("requireChurchAdministrator(ctx.user.id, id)");
+    expect(dbSource).toContain("normalizePastoralSupportConfig(church.pastoralSupport)");
+    expect(dbSource).toContain("pastoralSupport.enabled && pastoralSupport.showPublic");
+    expect(dbSource).toContain("pastoralSupport: publicPastoralSupport");
+    expect(dbSource).toContain("eq(churches.slug, slug)");
+  });
+
   it("prepara um endpoint genérico para imagens e vídeos sem aceitar finalidade arbitrária", () => {
     expect(indexSource).toContain('app.post("/api/media/upload"');
     expect(indexSource).toContain('"public_video"');

@@ -53,6 +53,7 @@ export const churches = mysqlTable("churches", {
   email: varchar("email", { length: 320 }),
   website: text("website"),
   socialMedia: json("socialMedia"), // { instagram, facebook, youtube }
+  pastoralSupport: json("pastoralSupport"), // { url, label, enabled, showPublic, showAuthenticated }
   vision: text("vision"),
   mission: text("mission"),
   values: text("values"),

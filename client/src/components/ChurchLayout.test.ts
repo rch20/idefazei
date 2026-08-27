@@ -21,6 +21,14 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain('aria-expanded={isExpanded}');
   });
 
+  it("exibe o atendimento pastoral autenticado sem acoplar o serviço externo ao sistema", () => {
+    const source = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
+    expect(source).toContain("shouldShowPastoralSupport(pastoralSupport, \"authenticated\")");
+    expect(source).toContain("atendimento pastoral externo");
+    expect(source).toContain('target="_blank" rel="noreferrer"');
+    expect(source).toContain("const pastoralSupport = normalizePastoralSupportConfig(church?.pastoralSupport)");
+  });
+
   it("mantém o TopBar e o shell autenticado estáveis durante a rolagem", () => {
     const source = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
     expect(source).toContain('className="sticky top-0 z-30 flex h-14 shrink-0');

@@ -76,6 +76,7 @@ import {
 import { ENV } from "./_core/env";
 import { getDerivedLogoIconUrls } from "./media";
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
+import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -442,6 +443,10 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
     .where(and(eq(churches.slug, slug), eq(churches.active, true))).limit(1);
   const church = churchRows[0];
   if (!church) return null;
+  const pastoralSupport = normalizePastoralSupportConfig(church.pastoralSupport);
+  const publicPastoralSupport = pastoralSupport.enabled && pastoralSupport.showPublic && pastoralSupport.url
+    ? { url: pastoralSupport.url, label: pastoralSupport.label }
+    : null;
 
   const [siteRows, themeRows] = await Promise.all([
     db.select().from(tenantPublicSites).where(eq(tenantPublicSites.churchId, church.id)).limit(1),
@@ -509,6 +514,7 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
       mission: church.mission,
       values: church.values,
       socialMedia: normalizeSocialMediaLinks(church.socialMedia),
+      pastoralSupport: publicPastoralSupport,
     },
     site,
     theme: publishedTheme,
@@ -3691,6 +3697,41 @@ export async function createFinancialCategory(data: { churchId: number; type: "e
   const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
   const rows = await db.select().from(financialCategories).where(eq(financialCategories.id, id)).limit(1);
   return rows[0] ?? null;
+}
+
+export async function getFinancialCategoriesForManagement(churchId: number) {
+  await ensureTreasuryDefaults(churchId);
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(financialCategories).where(eq(financialCategories.churchId, churchId)).orderBy(financialCategories.type, financialCategories.name);
+}
+
+export async function getFinancialCategoryForManagement(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(financialCategories).where(and(eq(financialCategories.id, id), eq(financialCategories.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function hasFinancialCategoryTransactions(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db.select({ id: financialTransactions.id }).from(financialTransactions).where(and(eq(financialTransactions.categoryId, id), eq(financialTransactions.churchId, churchId))).limit(1);
+  return rows.length > 0;
+}
+
+export async function updateFinancialCategory(data: { id: number; churchId: number; type: "entrada" | "saida"; name: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(financialCategories).set({ type: data.type, name: data.name }).where(and(eq(financialCategories.id, data.id), eq(financialCategories.churchId, data.churchId), eq(financialCategories.isSystem, false)));
+  return getFinancialCategoryForManagement(data.id, data.churchId);
+}
+
+export async function setFinancialCategoryActive(data: { id: number; churchId: number; active: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(financialCategories).set({ active: data.active }).where(and(eq(financialCategories.id, data.id), eq(financialCategories.churchId, data.churchId), eq(financialCategories.isSystem, false)));
+  return getFinancialCategoryForManagement(data.id, data.churchId);
 }
 
 export async function getFinancialTransactionById(id: number, churchId: number) {

@@ -2,6 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS } from "../shared/socialMedia";
+import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -90,7 +91,12 @@ import {
   getFinancialAccountById,
   getFinancialAccountsByChurch,
   getFinancialCategoriesByChurch,
+  getFinancialCategoriesForManagement,
+  getFinancialCategoryForManagement,
   getFinancialCategoryById,
+  hasFinancialCategoryTransactions,
+  updateFinancialCategory,
+  setFinancialCategoryActive,
   getFinancialPeriodClosure,
   getFinancialReceiptData,
   getFinancialReconciliation,
@@ -696,6 +702,13 @@ const socialMediaInputSchema = z.object({
   youtube: socialMediaUrlInput("youtube"),
   tiktok: socialMediaUrlInput("tiktok"),
 }).optional();
+const pastoralSupportInputSchema = z.object({
+  url: z.string().trim().max(500).refine((value) => !value || normalizePastoralSupportUrl(value) !== null, "Informe uma URL HTTPS válida do Dedo de Prosa.").optional().or(z.literal("")),
+  label: z.string().trim().max(80).optional().or(z.literal("")),
+  enabled: z.boolean().optional(),
+  showPublic: z.boolean().optional(),
+  showAuthenticated: z.boolean().optional(),
+}).optional();
 
 const churchRouter = router({
   list: publicProcedure.query(async () => {
@@ -783,14 +796,16 @@ const churchRouter = router({
         mission: z.string().optional(),
         values: z.string().optional(),
         socialMedia: socialMediaInputSchema,
+        pastoralSupport: pastoralSupportInputSchema,
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { id, socialMedia, website, ...data } = input;
+      const { id, socialMedia, pastoralSupport, website, ...data } = input;
       await requireChurchAdministrator(ctx.user.id, id);
       return updateChurch(id, {
         ...data,
         ...(socialMedia !== undefined ? { socialMedia: normalizeSocialMediaLinks(socialMedia) } : {}),
+        ...(pastoralSupport !== undefined ? { pastoralSupport: normalizePastoralSupportConfig(pastoralSupport) } : {}),
         ...(website !== undefined ? { website: normalizePublicWebsiteUrl(website) } : {}),
       });
     }),
@@ -2549,6 +2564,11 @@ const departmentsRouter = router({
     }),
 });
 
+const scheduleDateInput = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data no formato AAAA-MM-DD.").refine((value) => {
+  const date = new Date(`${value}T12:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, "Informe uma data de calendário válida.");
+
 const schedulesRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number(), month: z.number().optional(), year: z.number().optional() }))
@@ -2581,10 +2601,10 @@ const schedulesRouter = router({
       ministryId: z.number(),
       departmentId: z.number().int().positive().nullable().optional(),
       personId: z.number(),
-      scheduledDate: z.string(),
+      scheduledDate: scheduleDateInput,
       startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário inicial válido."),
       endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário final válido."),
-      role: z.string().optional(),
+      role: z.string().trim().max(100).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       await requireScheduleManagementPermission(ctx.user.id, input.churchId, input.ministryId, input.departmentId);
@@ -2618,7 +2638,7 @@ const schedulesRouter = router({
       ministryId: z.number().int().positive(),
       departmentId: z.number().int().positive().nullable().optional(),
       personId: z.number().int().positive(),
-      scheduledDate: z.string(),
+      scheduledDate: scheduleDateInput,
       startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário inicial válido."),
       endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário final válido."),
       role: z.string().trim().max(100).optional(),
@@ -4272,6 +4292,14 @@ const treasuryRouter = router({
       return getFinancialCategoriesByChurch(input.churchId, input.type);
     }),
 
+  categoriesManagement: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem administrar categorias financeiras." });
+      return getFinancialCategoriesForManagement(input.churchId);
+    }),
+
   periodClosure: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), periodStart: financialDateInput }))
     .query(async ({ input, ctx }) => {
@@ -4360,6 +4388,36 @@ const treasuryRouter = router({
         if (isDuplicateFinancialRecord(error)) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma categoria equivalente para este tipo de lançamento." });
         throw error;
       }
+    }),
+
+  updateCategory: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive(), type: z.enum(["entrada", "saida"]), name: z.string().trim().min(2).max(120) }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem editar categorias financeiras." });
+      const category = await getFinancialCategoryForManagement(input.id, input.churchId);
+      if (!category) throw new TRPCError({ code: "NOT_FOUND", message: "Categoria financeira não encontrada nesta igreja." });
+      if (category.isSystem) throw new TRPCError({ code: "FORBIDDEN", message: "Categorias padrão do sistema não podem ser editadas." });
+      if (category.type !== input.type && await hasFinancialCategoryTransactions(input.id, input.churchId)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível trocar o tipo de uma categoria que já possui lançamentos." });
+      }
+      try {
+        return await updateFinancialCategory(input);
+      } catch (error) {
+        if (isDuplicateFinancialRecord(error)) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma categoria equivalente para este tipo de lançamento." });
+        throw error;
+      }
+    }),
+
+  setCategoryActive: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive(), active: z.boolean() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem ativar ou inativar categorias financeiras." });
+      const category = await getFinancialCategoryForManagement(input.id, input.churchId);
+      if (!category) throw new TRPCError({ code: "NOT_FOUND", message: "Categoria financeira não encontrada nesta igreja." });
+      if (category.isSystem) throw new TRPCError({ code: "FORBIDDEN", message: "Categorias padrão do sistema não podem ser inativadas." });
+      return setFinancialCategoryActive(input);
     }),
 
   createTransaction: protectedProcedure

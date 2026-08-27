@@ -15,6 +15,7 @@ import {
   Bell,
   BookOpen,
   CreditCard,
+  ExternalLink,
   Building2,
   CalendarDays,
   Check,
@@ -44,6 +45,7 @@ import {
 import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
+import { normalizePastoralSupportConfig, shouldShowPastoralSupport, type PastoralSupportConfig } from "../../../shared/pastoralSupport";
 
 // ─── CHURCH CONTEXT ───────────────────────────────────────────────────────────
 
@@ -55,6 +57,7 @@ interface ChurchContextType {
   primaryColor: string;
   secondaryColor: string;
   logoUrl?: string | null;
+  pastoralSupport: PastoralSupportConfig;
 }
 
 const ChurchContext = createContext<ChurchContextType>({
@@ -64,6 +67,7 @@ const ChurchContext = createContext<ChurchContextType>({
   pwaIconAssetId: null,
   primaryColor: "#1e3a5f",
   secondaryColor: "#c9a84c",
+  pastoralSupport: normalizePastoralSupportConfig(null),
 });
 
 export const useChurch = () => useContext(ChurchContext);
@@ -306,8 +310,9 @@ function TopBar({
   title?: string;
 }) {
   const { user } = useChurchAuth();
-  const { churchId } = useChurch();
+  const { churchId, pastoralSupport } = useChurch();
   const utils = trpc.useUtils();
+  const showPastoralSupport = shouldShowPastoralSupport(pastoralSupport, "authenticated");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const notificationCountQuery = trpc.notifications.unreadCount.useQuery({ churchId }, { enabled: Boolean(user?.churchId) });
   const notificationsQuery = trpc.notifications.mine.useQuery({ churchId }, { enabled: Boolean(user?.churchId && notificationsOpen) });
@@ -331,6 +336,7 @@ function TopBar({
         )}
       </div>
       <div className="flex items-center gap-2">
+        {showPastoralSupport && pastoralSupport.url && <a href={pastoralSupport.url} target="_blank" rel="noreferrer" className="inline-flex max-w-[13rem] items-center gap-1.5 rounded-full border border-gold/35 bg-gold/10 px-2.5 py-1.5 text-xs font-semibold text-navy transition-colors hover:bg-gold/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70" aria-label={`${pastoralSupport.label} — atendimento pastoral externo`} title={pastoralSupport.label}><MessageCircle className="h-4 w-4 shrink-0 text-gold" /><span className="hidden truncate sm:inline">{pastoralSupport.label}</span><ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" /></a>}
         <span className="text-xs text-muted-foreground hidden sm:block">
           Plataforma de Discipulado
         </span>
@@ -377,6 +383,7 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
     { id: churchId ?? 0 },
     { enabled: isAuthenticated && churchId !== null }
   );
+  const pastoralSupport = normalizePastoralSupportConfig(church?.pastoralSupport);
   useTenantPwaMeta({ tenantSlug: church?.slug, tenantName: church?.name, primaryColor: church?.primaryColor, pwaIconAssetId: church?.pwaIconAssetId, pwaIconVersion: church?.updatedAt?.getTime() });
 
   if (loading) {
@@ -402,6 +409,7 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
     primaryColor: church?.primaryColor ?? "#1e3a5f",
     secondaryColor: church?.secondaryColor ?? "#c9a84c",
     logoUrl: church?.logoUrl,
+    pastoralSupport,
   };
 
   return (

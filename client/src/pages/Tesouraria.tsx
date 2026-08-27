@@ -23,6 +23,8 @@ import {
   FileText,
   Landmark,
   Loader2,
+  Pencil,
+  Power,
   Paperclip,
   Plus,
   Printer,
@@ -82,6 +84,8 @@ export default function Tesouraria() {
   const [accountFilter, setAccountFilter] = useState("todas");
   const [transactionOpen, setTransactionOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<{ id: number; name: string; type: TransactionType } | null>(null);
   const [accountOpen, setAccountOpen] = useState(false);
   const [reverseOpen, setReverseOpen] = useState<number | null>(null);
   const [receiptOpen, setReceiptOpen] = useState<number | null>(null);
@@ -142,6 +146,7 @@ export default function Tesouraria() {
   const effectiveRoles = useMemo(() => Array.from(new Set([user?.role, ...(effectiveRolesQuery.data ?? [])].filter(Boolean))), [user?.role, effectiveRolesQuery.data]);
   const periodClosed = closureQuery.data?.status === "fechado";
   const canManageStructure = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(String(role)));
+  const categoryManagementQuery = trpc.treasury.categoriesManagement.useQuery({ churchId }, { enabled: Boolean(churchId && canManageStructure) });
   const canClosePeriod = effectiveRoles.includes("pastor_presidente");
   const selectedCategories = (categoriesQuery.data ?? []).filter((category) => category.type === form.type);
   const selectedAccount = selectedAccountId
@@ -172,6 +177,7 @@ export default function Tesouraria() {
       utils.treasury.overview.invalidate(),
       utils.treasury.accounts.invalidate(),
       utils.treasury.categories.invalidate(),
+      utils.treasury.categoriesManagement.invalidate(),
       utils.treasury.periodClosure.invalidate(),
       utils.treasury.reconciliation.invalidate(),
     ]);
@@ -189,10 +195,30 @@ export default function Tesouraria() {
     onSuccess: async () => {
       await invalidateTreasury();
       setCategoryName("");
+      setEditingCategory(null);
       setCategoryOpen(false);
       setStructureError(null);
       toast.success("Categoria criada.");
     },
+    onError: (error) => toast.error(error.message),
+  });
+  const updateCategory = trpc.treasury.updateCategory.useMutation({
+    onSuccess: async () => {
+      await invalidateTreasury();
+      setCategoryName("");
+      setEditingCategory(null);
+      setCategoryOpen(false);
+      setStructureError(null);
+      toast.success("Categoria atualizada.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  const setCategoryActive = trpc.treasury.setCategoryActive.useMutation({
+    onSuccess: async (_category, variables) => {
+      await invalidateTreasury();
+      toast.success(variables.active ? "Categoria reativada." : "Categoria inativada.");
+    },
+    onError: (error) => toast.error(error.message),
   });
   const createAccount = trpc.treasury.createAccount.useMutation({
     onSuccess: async () => {
@@ -281,6 +307,10 @@ export default function Tesouraria() {
     event.preventDefault();
     setStructureError(null);
     if (categoryName.trim().length < 2) return setStructureError("Informe um nome com pelo menos 2 caracteres.");
+    if (editingCategory) {
+      updateCategory.mutate({ churchId, id: editingCategory.id, type: categoryType, name: categoryName.trim() });
+      return;
+    }
     createCategory.mutate({ churchId, type: categoryType, name: categoryName.trim() });
   };
 
@@ -396,7 +426,7 @@ export default function Tesouraria() {
       <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end">
         <label className="grid gap-1.5 text-sm font-medium text-navy">Período<Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-full sm:w-48" /></label>
         <label className="grid gap-1.5 text-sm font-medium text-navy">Conta<select value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm sm:w-52"><option value="todas">Todas as contas</option>{(accountsQuery.data ?? []).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
-        {canManageStructure && <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => { createCategory.reset(); setStructureError(null); setCategoryOpen(true); }}><Plus className="mr-1 h-4 w-4" /> Categoria</Button><Button variant="outline" size="sm" onClick={() => { createAccount.reset(); setStructureError(null); setAccountOpen(true); }}><Landmark className="mr-1 h-4 w-4" /> Conta</Button></div>}
+          {canManageStructure && <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => { createCategory.reset(); updateCategory.reset(); setEditingCategory(null); setCategoryName(""); setCategoryType("entrada"); setStructureError(null); setCategoryOpen(true); }}><Plus className="mr-1 h-4 w-4" /> Categoria</Button><Button variant="outline" size="sm" onClick={() => { setCategoryManagerOpen(true); categoryManagementQuery.refetch(); }}><Pencil className="mr-1 h-4 w-4" /> Gerenciar categorias</Button><Button variant="outline" size="sm" onClick={() => { createAccount.reset(); setStructureError(null); setAccountOpen(true); }}><Landmark className="mr-1 h-4 w-4" /> Conta</Button></div>}
         <div className="sm:ml-auto">{periodClosed ? <Badge className="bg-slate-800 text-white">Período fechado · lançamentos bloqueados</Badge> : <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">Período em aberto</Badge>}</div>
       </section>
 
@@ -472,7 +502,9 @@ export default function Tesouraria() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={categoryOpen} onOpenChange={(open) => { if (!createCategory.isPending) { setCategoryOpen(open); if (!open) { setStructureError(null); createCategory.reset(); } } }}><DialogContent className={TREASURY_DIALOG_CLASS}><DialogHeader className="shrink-0 pr-8"><DialogTitle className="font-display text-2xl text-navy">Nova categoria</DialogTitle><DialogDescription>Crie uma categoria exclusiva para esta igreja.</DialogDescription></DialogHeader><TreasuryDialogBody><form className="grid gap-4" onSubmit={submitCategory}><label className="grid gap-1.5"><Label>Tipo</Label><select value={categoryType} onChange={(event) => setCategoryType(event.target.value as TransactionType)} className="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="entrada">Entrada</option><option value="saida">Saída</option></select></label><label className="grid gap-1.5"><Label>Nome</Label><Input required value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Ex.: Missões internacionais" /></label>{(structureError || createCategory.error) && <InlineError compact message={structureError || createCategory.error?.message || "Não foi possível criar a categoria."} />}<Button type="submit" disabled={createCategory.isPending} className="bg-navy hover:bg-navy/90">{createCategory.isPending ? "Criando…" : "Criar categoria"}</Button></form></TreasuryDialogBody></DialogContent></Dialog>
+      <Dialog open={categoryManagerOpen} onOpenChange={(open) => { if (!setCategoryActive.isPending && !updateCategory.isPending) setCategoryManagerOpen(open); }}><DialogContent className={`${TREASURY_DIALOG_CLASS} sm:max-w-2xl`}><DialogHeader className="shrink-0 pr-8"><DialogTitle className="font-display text-2xl text-navy">Categorias financeiras</DialogTitle><DialogDescription>As categorias padrão são protegidas. Categorias personalizadas podem ser editadas e inativadas sem apagar o histórico.</DialogDescription></DialogHeader><TreasuryDialogBody><div className="space-y-2">{categoryManagementQuery.isLoading ? <div className="h-32 animate-pulse rounded-xl bg-muted" /> : (categoryManagementQuery.data ?? []).length === 0 ? <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">Nenhuma categoria encontrada.</p> : (categoryManagementQuery.data ?? []).map((category) => <div key={category.id} className={`flex min-w-0 items-center gap-3 rounded-xl border p-3 ${category.active ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50 opacity-75"}`}><div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${category.type === "entrada" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{category.type === "entrada" ? <ArrowDownCircle className="h-4 w-4" /> : <ArrowUpCircle className="h-4 w-4" />}</div><div className="min-w-0 flex-1"><div className="flex min-w-0 flex-wrap items-center gap-2"><p className="truncate text-sm font-semibold text-navy">{category.name}</p><Badge variant="outline" className="text-[10px]">{category.type === "entrada" ? "Entrada" : "Saída"}</Badge>{category.isSystem && <Badge className="bg-slate-200 text-[10px] text-slate-700">Padrão</Badge>}{!category.active && <Badge className="bg-amber-100 text-[10px] text-amber-800">Inativa</Badge>}</div><p className="mt-1 truncate text-[11px] text-muted-foreground">{category.isSystem ? "Categoria protegida do sistema" : "Categoria personalizada"}</p></div>{!category.isSystem && <div className="flex shrink-0 items-center gap-1"><Button type="button" variant="ghost" size="icon" aria-label={`Editar categoria ${category.name}`} title="Editar categoria" onClick={() => { setEditingCategory({ id: category.id, name: category.name, type: category.type }); setCategoryName(category.name); setCategoryType(category.type); setStructureError(null); updateCategory.reset(); setCategoryManagerOpen(false); setCategoryOpen(true); }}><Pencil className="h-4 w-4 text-navy" /></Button><Button type="button" variant="ghost" size="icon" aria-label={`${category.active ? "Inativar" : "Reativar"} categoria ${category.name}`} title={category.active ? "Inativar categoria" : "Reativar categoria"} disabled={setCategoryActive.isPending} onClick={() => setCategoryActive.mutate({ churchId, id: category.id, active: !category.active })}><Power className={`h-4 w-4 ${category.active ? "text-rose-600" : "text-emerald-600"}`} /></Button></div>}</div>)}</div></TreasuryDialogBody></DialogContent></Dialog>
+
+      <Dialog open={categoryOpen} onOpenChange={(open) => { if (!createCategory.isPending && !updateCategory.isPending) { setCategoryOpen(open); if (!open) { setStructureError(null); setEditingCategory(null); createCategory.reset(); updateCategory.reset(); } } }}><DialogContent className={TREASURY_DIALOG_CLASS}><DialogHeader className="shrink-0 pr-8"><DialogTitle className="font-display text-2xl text-navy">{editingCategory ? "Editar categoria" : "Nova categoria"}</DialogTitle><DialogDescription>{editingCategory ? "Atualize uma categoria personalizada sem apagar seus lançamentos." : "Crie uma categoria exclusiva para esta igreja."}</DialogDescription></DialogHeader><TreasuryDialogBody><form className="grid gap-4" onSubmit={submitCategory}><label className="grid gap-1.5"><Label>Tipo</Label><select value={categoryType} onChange={(event) => setCategoryType(event.target.value as TransactionType)} className="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="entrada">Entrada</option><option value="saida">Saída</option></select></label><label className="grid gap-1.5"><Label>Nome</Label><Input required value={categoryName} onChange={(event) => setCategoryName(event.target.value)} placeholder="Ex.: Missões internacionais" /></label>{(structureError || createCategory.error || updateCategory.error) && <InlineError compact message={structureError || createCategory.error?.message || updateCategory.error?.message || "Não foi possível salvar a categoria."} />}<Button type="submit" disabled={createCategory.isPending || updateCategory.isPending} className="bg-navy hover:bg-navy/90">{createCategory.isPending || updateCategory.isPending ? "Salvando…" : editingCategory ? "Salvar categoria" : "Criar categoria"}</Button></form></TreasuryDialogBody></DialogContent></Dialog>
 
       <Dialog open={accountOpen} onOpenChange={(open) => { if (!createAccount.isPending) { setAccountOpen(open); if (!open) { setStructureError(null); createAccount.reset(); } } }}><DialogContent className={TREASURY_DIALOG_CLASS}><DialogHeader className="shrink-0 pr-8"><DialogTitle className="font-display text-2xl text-navy">Nova conta financeira</DialogTitle><DialogDescription>O saldo inicial só deve ser usado na implantação ou na abertura de uma nova conta.</DialogDescription></DialogHeader><TreasuryDialogBody><form className="grid gap-4" onSubmit={submitAccount}><label className="grid gap-1.5"><Label>Nome</Label><Input required value={newAccount.name} onChange={(event) => setNewAccount({ ...newAccount, name: event.target.value })} placeholder="Ex.: Banco Missões" /></label><label className="grid gap-1.5"><Label>Tipo</Label><select value={newAccount.type} onChange={(event) => setNewAccount({ ...newAccount, type: event.target.value as "caixa" | "banco" | "outro" })} className="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="caixa">Caixa</option><option value="banco">Banco</option><option value="outro">Outro</option></select></label><label className="grid gap-1.5"><Label>Saldo inicial (R$)</Label><Input inputMode="decimal" value={newAccount.openingBalance} onChange={(event) => setNewAccount({ ...newAccount, openingBalance: event.target.value })} /></label>{(structureError || createAccount.error) && <InlineError compact message={structureError || createAccount.error?.message || "Não foi possível criar a conta."} />}<Button type="submit" disabled={createAccount.isPending} className="bg-navy hover:bg-navy/90">{createAccount.isPending ? "Criando…" : "Criar conta"}</Button></form></TreasuryDialogBody></DialogContent></Dialog>
 

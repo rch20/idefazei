@@ -10,6 +10,7 @@ const publicSettingsSource = readFileSync(resolve(root, "client/src/components/T
 const publicPageSource = readFileSync(resolve(root, "client/src/pages/TenantPublicPage.tsx"), "utf8");
 const publicFooterSource = readFileSync(resolve(root, "client/src/components/TenantPublicFooter.tsx"), "utf8");
 const socialContractSource = readFileSync(resolve(root, "shared/socialMedia.ts"), "utf8");
+const pastoralSupportContractSource = readFileSync(resolve(root, "shared/pastoralSupport.ts"), "utf8");
 const manifestSource = readFileSync(resolve(root, "client/public/manifest.json"), "utf8");
 const serviceWorkerSource = readFileSync(resolve(root, "client/public/sw.js"), "utf8");
 const pwaHookSource = readFileSync(resolve(root, "client/src/hooks/useTenantPwaMeta.ts"), "utf8");
@@ -31,7 +32,7 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
   });
 
   it("mantém a ação de salvar contextual e evita confundir publicação com configuração geral", () => {
-    expect(settingsSource).toContain("const canSaveChurchSettings = activeTab === \"geral\" || activeTab === \"identidade\"");
+    expect(settingsSource).toContain("const canSaveChurchSettings = activeTab === \"geral\" || activeTab === \"identidade\" || activeTab === \"integracao\"");
     expect(settingsSource).toContain("Salve e publique dentro do editor público");
     expect(settingsSource).toContain("Salvar alterações");
     expect(settingsSource).not.toContain("Salvar Alterações");
@@ -134,6 +135,22 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(publicFooterSource).toContain("DEFAULT_PUBLIC_HERO_EYEBROW");
   });
 
+  it("configura o atendimento pastoral externo com visibilidade pública e autenticada independentes", () => {
+    expect(settingsSource).toContain("Atendimento pastoral externo");
+    expect(settingsSource).toContain('id="pastoral-support-url"');
+    expect(settingsSource).toContain('id="pastoral-support-label"');
+    expect(settingsSource).toContain('id="pastoral-support-enabled"');
+    expect(settingsSource).toContain('id="pastoral-support-public"');
+    expect(settingsSource).toContain('id="pastoral-support-authenticated"');
+    expect(settingsSource).toContain("Salvar integração");
+    expect(settingsSource).toContain("DEFAULT_PASTORAL_SUPPORT_URL");
+    expect(pastoralSupportContractSource).toContain("normalizePastoralSupportUrl");
+    expect(pastoralSupportContractSource).toContain("shouldShowPastoralSupport");
+    expect(pastoralSupportContractSource).toContain("dedodeprosa.diaebeleza.com.br");
+    expect(publicFooterSource).toContain("tenant-public-footer-support");
+    expect(churchLayoutSource).toContain("showPastoralSupport");
+  });
+
   it("agrupa ordenação e visibilidade dos blocos com controles acessíveis", () => {
     expect(publicSettingsSource).toContain("ChevronUp");
     expect(publicSettingsSource).toContain("ChevronDown");
@@ -142,8 +159,8 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(publicSettingsSource).toContain("Exibir bloco ${labels[section.sectionType]}");
     expect(publicSettingsSource).not.toContain(">Subir</Button>");
     expect(publicSettingsSource).not.toContain(">Descer</Button>");
-    expect(settingsSource).toContain("Conexões ativas");
-    expect(settingsSource).toContain("Em planejamento");
+    expect(settingsSource).toContain("Atendimento pastoral externo");
+    expect(settingsSource).toContain("O botão abre o Dedo de Prosa em uma nova aba");
   });
 });
 

@@ -49,6 +49,18 @@ describe("Tesouraria — regressões de interface e lógica", () => {
     expect(dbSource).not.toContain("transaction.contributorPersonId ? getPersonById(transaction.contributorPersonId, churchId)");
   });
 
+  it("oferece gestão separada de categorias sem apagar histórico financeiro", () => {
+    expect(pageSource).toContain("categoriesManagement.useQuery");
+    expect(pageSource).toContain("Gerenciar categorias");
+    expect(pageSource).toContain("Editar categoria");
+    expect(pageSource).toContain("Inativar categoria");
+    expect(pageSource).toContain("Reativar categoria");
+    expect(pageSource).toContain("As categorias padrão são protegidas");
+    expect(dbSource).toContain("getFinancialCategoriesForManagement");
+    expect(dbSource).toContain("hasFinancialCategoryTransactions");
+    expect(dbSource).toContain("setFinancialCategoryActive");
+  });
+
   it("confirma e estorna de forma atômica antes de registrar auditoria", () => {
     expect(dbSource).toContain("return db.transaction(async (tx) =>");
     expect(dbSource).toContain("affectedRows?: number");

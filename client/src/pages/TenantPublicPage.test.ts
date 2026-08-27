@@ -81,9 +81,11 @@ describe("Template Ministerial Base — estabilidade global", () => {
     expect(footer).toContain("normalizeSocialMediaLinks");
     expect(footer).toContain("socialLinks.length > 0");
     expect(footer).toContain("target=\"_blank\" rel=\"noreferrer\"");
+    expect(footer).toContain("tenant-public-footer-support-link");
+    expect(footer).toContain("Atendimento pastoral em um ambiente reservado e acolhedor.");
     expect(css).toContain(".tenant-public-footer-grid");
     expect(css).toContain(".tenant-public-footer-social-links");
-    expect(css).toContain(".tenant-public-footer-grid { grid-template-columns: 1fr;");
+    expect(css).toContain(".tenant-public-footer-grid, .tenant-public-footer-grid--support { grid-template-columns: 1fr;");
   });
 
   it("oferece uma ação pública direta de Pedido de Oração no subdomínio da igreja", () => {

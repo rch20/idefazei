@@ -1,4 +1,4 @@
-import { Facebook, Instagram, Mail, MapPin, Music2, Phone, Globe2, Youtube, type LucideIcon } from "lucide-react";
+import { ExternalLink, Facebook, Instagram, Mail, MapPin, MessageCircle, Music2, Phone, Globe2, Youtube, type LucideIcon } from "lucide-react";
 import { DEFAULT_PUBLIC_HERO_EYEBROW } from "../../../shared/publicPage";
 import { normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS, SOCIAL_PLATFORM_META, type SocialPlatform } from "../../../shared/socialMedia";
 
@@ -11,6 +11,7 @@ type TenantPublicFooterProps = {
     email?: string | null;
     website?: string | null;
     socialMedia?: unknown;
+    pastoralSupport?: { url: string; label: string } | null;
   };
   eyebrow?: string | null;
 };
@@ -50,10 +51,13 @@ export function TenantPublicFooter({ church, eyebrow }: TenantPublicFooterProps)
   const phoneDigits = normalizePhone(church.phone);
   const whatsappDigits = normalizePhone(church.whatsapp);
 
+  const hasPastoralSupport = Boolean(church.pastoralSupport?.url);
+  const footerGridClass = hasPastoralSupport && socialLinks.length > 0 ? "tenant-public-footer-grid tenant-public-footer-grid--support" : "tenant-public-footer-grid";
+
   return (
     <footer className="tenant-public-footer">
       <div className="tenant-public-container">
-        <div className="tenant-public-footer-grid">
+        <div className={footerGridClass}>
           <div className="tenant-public-footer-brand">
             <p className="tenant-public-footer-kicker">{eyebrow?.trim() || DEFAULT_PUBLIC_HERO_EYEBROW}</p>
             <h2>{church.name}</h2>
@@ -68,6 +72,16 @@ export function TenantPublicFooter({ church, eyebrow }: TenantPublicFooterProps)
             {websiteUrl && <a href={websiteUrl} target="_blank" rel="noreferrer"><Globe2 aria-hidden="true" /><span>Site oficial</span></a>}
             {whatsappDigits && <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noreferrer"><Phone aria-hidden="true" /><span>WhatsApp</span></a>}
           </div>
+
+          {hasPastoralSupport && <div className="tenant-public-footer-support">
+            <h2>Precisa conversar?</h2>
+            <a className="tenant-public-footer-support-link" href={church.pastoralSupport!.url} target="_blank" rel="noreferrer" aria-label={`${church.pastoralSupport!.label} — atendimento externo de ${church.name}`}>
+              <MessageCircle aria-hidden="true" />
+              <span>{church.pastoralSupport!.label}</span>
+              <ExternalLink aria-hidden="true" />
+            </a>
+            <p>Atendimento pastoral em um ambiente reservado e acolhedor.</p>
+          </div>}
 
           {socialLinks.length > 0 && <div className="tenant-public-footer-social">
             <h2>Acompanhe a igreja</h2>

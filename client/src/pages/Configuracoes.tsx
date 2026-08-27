@@ -3,16 +3,18 @@ import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, Settings2, RotateCcw, Share2 } from "lucide-react";
+import { Building2, ExternalLink, Palette, Users, Globe, MessageCircle, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, Settings2, RotateCcw, Share2 } from "lucide-react";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { TenantPublicSettings } from "@/components/TenantPublicSettings";
 import { SOCIAL_PLATFORM_KEYS, SOCIAL_PLATFORM_META, type SocialPlatform } from "../../../shared/socialMedia";
+import { normalizePastoralSupportConfig, DEFAULT_PASTORAL_SUPPORT_LABEL, DEFAULT_PASTORAL_SUPPORT_URL, type PastoralSupportConfig } from "../../../shared/pastoralSupport";
 
 const ROLES = [
   { value: "pastor_presidente", label: "Pastor Presidente" },
@@ -33,6 +35,7 @@ const SOCIAL_PLATFORM_FIELDS: Array<{ key: SocialPlatform; label: string; placeh
 }));
 
 type SocialMediaForm = Record<SocialPlatform, string>;
+type PastoralSupportForm = Omit<PastoralSupportConfig, "url"> & { url: string };
 
 function socialMediaFormFromValue(value: unknown): SocialMediaForm {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -40,6 +43,11 @@ function socialMediaFormFromValue(value: unknown): SocialMediaForm {
     result[key] = typeof source[key] === "string" ? source[key] as string : "";
     return result;
   }, { instagram: "", facebook: "", youtube: "", tiktok: "" });
+}
+
+function pastoralSupportFormFromValue(value: unknown): PastoralSupportForm {
+  const config = normalizePastoralSupportConfig(value);
+  return { ...config, url: config.url ?? "" };
 }
 
 const COMPLEMENTARY_ROLES = [
@@ -76,6 +84,7 @@ export default function Configuracoes() {
     primaryColor: church?.primaryColor ?? "#1e3a5f",
     secondaryColor: church?.secondaryColor ?? "#c9a84c",
     socialMedia: socialMediaFormFromValue(church?.socialMedia),
+    pastoralSupport: pastoralSupportFormFromValue(church?.pastoralSupport),
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const pwaIconInputRef = useRef<HTMLInputElement>(null);
@@ -102,6 +111,7 @@ export default function Configuracoes() {
       primaryColor: church.primaryColor ?? "#1e3a5f",
       secondaryColor: church.secondaryColor ?? "#c9a84c",
       socialMedia: socialMediaFormFromValue(church.socialMedia),
+      pastoralSupport: pastoralSupportFormFromValue(church.pastoralSupport),
     });
     const effectivePreviewUrl = church.slug ? `/api/pwa/icon-192.png?tenant=${encodeURIComponent(church.slug)}&v=${encodeURIComponent(String(church.updatedAt?.getTime() ?? 0))}` : null;
     setPwaIconPreviewUrl(church.pwaIcon192Url ?? (church.logoUrl ? effectivePreviewUrl : null));
@@ -252,7 +262,9 @@ export default function Configuracoes() {
     );
   }
 
-  const canSaveChurchSettings = activeTab === "geral" || activeTab === "identidade";
+  const canSaveChurchSettings = activeTab === "geral" || activeTab === "identidade" || activeTab === "integracao";
+  const pastoralSupport = churchForm.pastoralSupport;
+  const pastoralSupportConfigured = Boolean(pastoralSupport.url.trim());
   const hasCustomPwaIcon = Boolean(church?.pwaIconAssetId) || church?.pwaIconSource === "custom";
   const effectivePwaIconUrl = pwaIconPreviewUrl ?? churchForm.logoUrl ?? null;
 
@@ -555,18 +567,23 @@ export default function Configuracoes() {
           {/* Integração */}
           <TabsContent value="integracao">
             <div className="space-y-5">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><div className="flex items-center gap-2"><Plug className="h-5 w-5 text-gold" /><h2 className="font-display text-2xl font-bold text-navy">Integrações</h2></div><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Acompanhe as conexões previstas para ampliar os canais da sua igreja.</p></div><span className="w-fit rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600">Planejamento</span></div>
-              <div className="grid gap-3 sm:grid-cols-3"><ConfigMetricCard icon={Plug} label="Conexões ativas" value="0" detail="Nenhuma integração conectada" tone="success" /><ConfigMetricCard icon={Settings2} label="Em planejamento" value="4" detail="Conexões previstas para a plataforma" /><ConfigMetricCard icon={ShieldCheck} label="Escopo" value="1 igreja" detail="Configurações isoladas por tenant" /></div>
-              <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Conexões disponíveis</h3><p className="mt-1 text-sm text-muted-foreground">Estas integrações ainda não estão ativas. Quando liberadas, a configuração continuará isolada por igreja.</p></div><div className="mt-5 grid gap-3 md:grid-cols-2">
-                {[
-                  { name: "WhatsApp Business API", desc: "Envio automático de mensagens e notificações" },
-                  { name: "YouTube Live", desc: "Transmissão ao vivo integrada ao canal da igreja" },
-                  { name: "PagSeguro / Mercado Pago", desc: "Recebimento de dízimos e ofertas online" },
-                  { name: "Google Calendar", desc: "Sincronização de eventos com o Google Calendar" },
-                ].map((integration) => (
-                  <article key={integration.name} className="flex min-w-0 items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-4"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-400 shadow-sm"><Plug className="h-4 w-4" /></span><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold text-navy">{integration.name}</p><span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">Planejado</span></div><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{integration.desc}</p></div></article>
-                ))}
-              </div></section>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"><div><div className="flex items-center gap-2"><Plug className="h-5 w-5 text-gold" /><h2 className="font-display text-2xl font-bold text-navy">Integrações</h2></div><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Conecte sua igreja a serviços externos sem tirar o controle do tenant.</p></div><span className={`w-fit rounded-full px-3 py-1.5 text-xs font-semibold ${pastoralSupport.enabled && pastoralSupportConfigured ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{pastoralSupport.enabled && pastoralSupportConfigured ? "Atendimento ativo" : "Nenhuma conexão ativa"}</span></div>
+              <section className="card-sacred overflow-hidden p-5 sm:p-6">
+                <div className="flex items-start gap-3 border-b border-border pb-4"><span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold"><MessageCircle className="h-5 w-5" /></span><div><h3 className="text-base font-semibold text-navy">Atendimento pastoral externo</h3><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Use o Dedo de Prosa para receber conversas e agendamentos. O Ide Fazei apenas encaminha o visitante, sem incorporar o serviço nem armazenar a conversa.</p></div></div>
+                <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(260px,.95fr)]">
+                  <div className="min-w-0 space-y-4">
+                    <div><Label htmlFor="pastoral-support-url">Link de atendimento *</Label><Input id="pastoral-support-url" type="url" inputMode="url" value={pastoralSupport.url} onChange={(event) => setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, url: event.target.value } })} className="mt-1" placeholder={DEFAULT_PASTORAL_SUPPORT_URL} autoComplete="url" /><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Aceitamos somente o endereço seguro do Dedo de Prosa: {DEFAULT_PASTORAL_SUPPORT_URL}</p></div>
+                    <div><Label htmlFor="pastoral-support-label">Nome do botão</Label><Input id="pastoral-support-label" value={pastoralSupport.label} maxLength={80} onChange={(event) => setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, label: event.target.value } })} className="mt-1" placeholder={DEFAULT_PASTORAL_SUPPORT_LABEL} /><p className="mt-1 text-xs text-muted-foreground">Ex.: “Converse com o Pastor” ou “Fale com nossa equipe”.</p></div>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex items-start justify-between gap-4"><div><Label htmlFor="pastoral-support-enabled" className="cursor-pointer text-sm font-semibold text-navy">Ativar atendimento pastoral</Label><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Quando desativado, o botão não aparece em nenhum ambiente.</p></div><Switch id="pastoral-support-enabled" checked={pastoralSupport.enabled} onCheckedChange={(enabled) => setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, enabled } })} aria-label="Ativar atendimento pastoral externo" /></div></div>
+                  </div>
+                  <div className="min-w-0 space-y-4">
+                    <div className="rounded-2xl border border-gold/25 bg-gold/5 p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-gold" /><div><p className="text-sm font-semibold text-navy">Onde o botão aparece?</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">As visibilidades são independentes. Você pode exibir o atendimento somente para visitantes, somente para usuários logados ou nos dois ambientes.</p></div></div><div className="mt-4 space-y-3"><div className="flex items-start justify-between gap-4 rounded-xl border border-white/70 bg-white/70 p-3"><div><Label htmlFor="pastoral-support-public" className="cursor-pointer text-sm font-semibold text-navy">Exibir para visitantes</Label><p className="mt-1 text-xs text-muted-foreground">Rodapé das páginas públicas</p></div><Switch id="pastoral-support-public" checked={pastoralSupport.showPublic} onCheckedChange={(showPublic) => setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, showPublic } })} aria-label="Exibir atendimento para visitantes" /></div><div className="flex items-start justify-between gap-4 rounded-xl border border-white/70 bg-white/70 p-3"><div><Label htmlFor="pastoral-support-authenticated" className="cursor-pointer text-sm font-semibold text-navy">Exibir para discípulos/membros logados</Label><p className="mt-1 text-xs text-muted-foreground">Botão no cabeçalho da plataforma</p></div><Switch id="pastoral-support-authenticated" checked={pastoralSupport.showAuthenticated} onCheckedChange={(showAuthenticated) => setChurchForm({ ...churchForm, pastoralSupport: { ...pastoralSupport, showAuthenticated } })} aria-label="Exibir atendimento para usuários logados" /></div></div></div>
+                    {pastoralSupport.enabled && !pastoralSupportConfigured && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">Informe um link válido antes de ativar o atendimento. O endereço será validado no servidor.</p>}
+                    {pastoralSupportConfigured && <a href={pastoralSupport.url} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-2 rounded-full border border-navy/15 bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition-colors hover:bg-navy/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"><MessageCircle className="h-4 w-4 text-gold" /><span className="min-w-0 truncate">Prévia: {pastoralSupport.label || DEFAULT_PASTORAL_SUPPORT_LABEL}</span><ExternalLink className="h-3.5 w-3.5 shrink-0" /></a>}
+                  </div>
+                </div>
+              </section>
+              <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between"><p className="text-xs leading-relaxed text-muted-foreground">O botão abre o Dedo de Prosa em uma nova aba e preserva a sessão do Ide Fazei.</p><Button className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending || (pastoralSupport.enabled && !pastoralSupportConfigured)}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar integração"}</Button></div>
             </div>
           </TabsContent>
         </Tabs>

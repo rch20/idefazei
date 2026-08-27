@@ -451,12 +451,20 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-service-card p svg { flex: 0 0 auto; width: .85rem; height: .85rem; color: var(--tenant-secondary); }
 .tenant-public-footer { margin-top: 0; padding-block: 3.5rem 1.25rem; background: var(--tenant-primary, #1e3a5f); color: rgb(255 255 255 / 78%); font-size: .825rem; }
 .tenant-public-footer-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, .8fr)); gap: clamp(1.75rem, 5vw, 4rem); }
-.tenant-public-footer-brand, .tenant-public-footer-contact, .tenant-public-footer-social { min-width: 0; }
+.tenant-public-footer-grid--support { grid-template-columns: minmax(0, 1.15fr) repeat(3, minmax(0, .85fr)); }
+.tenant-public-footer-brand, .tenant-public-footer-contact, .tenant-public-footer-social, .tenant-public-footer-support { min-width: 0; }
 .tenant-public-footer-kicker { color: var(--tenant-secondary, #c9a84c); font-size: .68rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .tenant-public-footer h2 { margin: 0; color: white; font-family: "Playfair Display", Georgia, serif; font-size: 1.35rem; line-height: 1.1; }
 .tenant-public-footer-brand h2 { margin-top: .55rem; font-size: clamp(1.65rem, 4vw, 2.25rem); }
 .tenant-public-footer-brand > p:last-child { max-width: 28ch; margin-top: .8rem; color: rgb(255 255 255 / 66%); line-height: 1.65; }
-.tenant-public-footer-contact h2, .tenant-public-footer-social h2 { margin-bottom: .9rem; font-family: inherit; font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.tenant-public-footer-contact h2, .tenant-public-footer-social h2, .tenant-public-footer-support h2 { margin-bottom: .9rem; font-family: inherit; font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.tenant-public-footer-support { display: grid; align-content: start; gap: .65rem; }
+.tenant-public-footer-support-link { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; gap: .5rem; border: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 55%, transparent); border-radius: 999px; padding: .55rem .75rem; color: white; background: color-mix(in srgb, var(--tenant-secondary, #c9a84c) 18%, transparent); font-weight: 700; line-height: 1.25; text-decoration: none; transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease; }
+.tenant-public-footer-support-link:hover { border-color: var(--tenant-secondary, #c9a84c); background: color-mix(in srgb, var(--tenant-secondary, #c9a84c) 30%, transparent); }
+.tenant-public-footer-support-link:focus-visible { outline: 3px solid var(--tenant-secondary, #c9a84c); outline-offset: 3px; }
+.tenant-public-footer-support-link svg { width: 1rem; height: 1rem; flex: 0 0 auto; color: var(--tenant-secondary, #c9a84c); }
+.tenant-public-footer-support-link svg:last-child { width: .85rem; height: .85rem; margin-left: .05rem; }
+.tenant-public-footer-support p { max-width: 28ch; margin: 0; color: rgb(255 255 255 / 62%); font-size: .78rem; line-height: 1.55; }
 .tenant-public-footer-contact { display: grid; align-content: start; gap: .55rem; }
 .tenant-public-footer-contact p, .tenant-public-footer-contact a { display: flex; min-width: 0; align-items: flex-start; gap: .55rem; margin: 0; color: rgb(255 255 255 / 70%); line-height: 1.45; overflow-wrap: anywhere; text-decoration: none; }
 .tenant-public-footer-contact a:hover { color: white; }
@@ -482,7 +490,7 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
   .tenant-public-hero h1 { max-width: 12ch; font-size: clamp(2.5rem, 12vw, 4.2rem); }
   .tenant-public-hero p { margin-block: 1.15rem 1.5rem; font-size: clamp(1.15rem, 5vw, 1.45rem); }
   .tenant-public-scroll-cue { bottom: .8rem; font-size: .64rem; }
-  .tenant-public-footer-grid { grid-template-columns: 1fr; gap: 2rem; }
+  .tenant-public-footer-grid, .tenant-public-footer-grid--support { grid-template-columns: 1fr; gap: 2rem; }
   .tenant-public-footer-bottom { align-items: flex-start; flex-direction: column; gap: .35rem; margin-top: 2rem; }
   .tenant-public-image-dialog { width: calc(100% - 1rem); max-width: calc(100% - 1rem); padding: 1rem; }
   .tenant-public-image-dialog-viewport { max-height: calc(92dvh - 7rem); }
