@@ -334,6 +334,15 @@ describe("Galeria pública por tenant", () => {
     expect(routerSource).toContain('requireChurchAdministrator(ctx.user.id, input.id)');
   });
 
+  it("valida redes sociais por allow-list HTTPS e sanitiza o payload público", () => {
+    expect(routerSource).toContain("socialMediaInputSchema");
+    expect(routerSource).toContain("normalizeSocialMediaLinks(socialMedia)");
+    expect(routerSource).toContain("requireChurchAdministrator(ctx.user.id, id)");
+    expect(dbSource).toContain("website: church.website");
+    expect(dbSource).toContain("socialMedia: normalizeSocialMediaLinks(church.socialMedia)");
+    expect(dbSource).toContain("eq(churches.slug, slug)");
+  });
+
   it("prepara um endpoint genérico para imagens e vídeos sem aceitar finalidade arbitrária", () => {
     expect(indexSource).toContain('app.post("/api/media/upload"');
     expect(indexSource).toContain('"public_video"');

@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { trpc } from "@/lib/trpc";
 import { ArrowRight, ArrowUpRight, CalendarDays, ChevronDown, Clock3, HandHeart, MapPin, Maximize2, MessageCircle, Pin, UsersRound } from "lucide-react";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
+import { TenantPublicFooter } from "@/components/TenantPublicFooter";
 import { useState } from "react";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
@@ -210,7 +211,7 @@ export default function TenantPublicPage() {
         </DialogContent>
       </Dialog>
 
-      <footer className="tenant-public-footer"><div className="tenant-public-container">© {new Date().getFullYear()} {data.church.name}</div></footer>
+      <TenantPublicFooter church={data.church} />
     </TenantPublicShell>
   );
 }

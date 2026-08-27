@@ -1,6 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS } from "../shared/socialMedia";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -688,6 +689,14 @@ async function requireCellMeetingAuthorization(userId: number, churchId: number,
 
 // ─── ROUTERS ──────────────────────────────────────────────────────────────────
 
+const socialMediaUrlInput = (platform: (typeof SOCIAL_PLATFORM_KEYS)[number]) => z.string().trim().max(500).refine((value) => isValidSocialMediaUrl(platform, value), `Informe uma URL HTTPS válida para ${platform}.`).optional().or(z.literal(""));
+const socialMediaInputSchema = z.object({
+  instagram: socialMediaUrlInput("instagram"),
+  facebook: socialMediaUrlInput("facebook"),
+  youtube: socialMediaUrlInput("youtube"),
+  tiktok: socialMediaUrlInput("tiktok"),
+}).optional();
+
 const churchRouter = router({
   list: publicProcedure.query(async () => {
     const churches = await getAllChurches();
@@ -742,7 +751,7 @@ const churchRouter = router({
         phone: z.string().optional(),
         whatsapp: z.string().optional(),
         email: z.string().email().optional(),
-        website: z.string().optional(),
+        website: z.string().trim().max(500).refine((value) => !value || normalizePublicWebsiteUrl(value) !== null, "Informe uma URL HTTP(S) válida para o website.").optional().or(z.literal("")),
         vision: z.string().optional(),
         mission: z.string().optional(),
         values: z.string().optional(),
@@ -769,15 +778,21 @@ const churchRouter = router({
         phone: z.string().optional(),
         whatsapp: z.string().optional(),
         email: z.string().optional(),
+        website: z.string().trim().max(500).refine((value) => !value || normalizePublicWebsiteUrl(value) !== null, "Informe uma URL HTTP(S) válida para o website.").optional().or(z.literal("")),
         vision: z.string().optional(),
         mission: z.string().optional(),
         values: z.string().optional(),
+        socialMedia: socialMediaInputSchema,
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { id, ...data } = input;
+      const { id, socialMedia, website, ...data } = input;
       await requireChurchAdministrator(ctx.user.id, id);
-      return updateChurch(id, data);
+      return updateChurch(id, {
+        ...data,
+        ...(socialMedia !== undefined ? { socialMedia: normalizeSocialMediaLinks(socialMedia) } : {}),
+        ...(website !== undefined ? { website: normalizePublicWebsiteUrl(website) } : {}),
+      });
     }),
 
   useLogoAsPwaIcon: protectedProcedure

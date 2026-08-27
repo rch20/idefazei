@@ -12,6 +12,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { useChurchSlug } from "@/hooks/useTenant";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
+import { TenantPublicFooter } from "@/components/TenantPublicFooter";
 
 const visitorSchema = z.object({
   name: z.string().min(2, "Nome deve ter pelo menos 2 caracteres"),
@@ -225,6 +226,7 @@ export default function PortalVisitante() {
           </p>
         </form>
       </div>
+      {tenantPublic.data && <TenantPublicFooter church={tenantPublic.data.church} />}
     </div>
   );
 }

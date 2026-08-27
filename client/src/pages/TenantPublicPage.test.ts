@@ -70,6 +70,22 @@ describe("Template Ministerial Base — estabilidade global", () => {
     expect(page).not.toContain("announcements.list.useQuery");
   });
 
+  it("exibe rodapé institucional responsivo com redes sociais opcionais", () => {
+    const page = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
+    const visiteNos = readFileSync(resolve(process.cwd(), "client/src/pages/VisiteNos.tsx"), "utf8");
+    const portalVisitante = readFileSync(resolve(process.cwd(), "client/src/pages/PortalVisitante.tsx"), "utf8");
+    const footer = readFileSync(resolve(process.cwd(), "client/src/components/TenantPublicFooter.tsx"), "utf8");
+    expect(page).toContain("<TenantPublicFooter church={data.church} />");
+    expect(visiteNos).toContain("<TenantPublicFooter church={data.church} />");
+    expect(portalVisitante).toContain("<TenantPublicFooter church={tenantPublic.data.church} />");
+    expect(footer).toContain("normalizeSocialMediaLinks");
+    expect(footer).toContain("socialLinks.length > 0");
+    expect(footer).toContain("target=\"_blank\" rel=\"noreferrer\"");
+    expect(css).toContain(".tenant-public-footer-grid");
+    expect(css).toContain(".tenant-public-footer-social-links");
+    expect(css).toContain(".tenant-public-footer-grid { grid-template-columns: 1fr;");
+  });
+
   it("oferece uma ação pública direta de Pedido de Oração no subdomínio da igreja", () => {
     const page = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
     const visitorPortal = readFileSync(resolve(process.cwd(), "client/src/pages/PortalVisitante.tsx"), "utf8");

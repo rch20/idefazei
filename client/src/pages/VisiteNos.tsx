@@ -7,6 +7,7 @@ import { getWhatsAppLinkWithMessage } from "@/lib/whatsapp";
 import { ArrowLeft, CalendarDays, Clock3, LocateFixed, MapPin, MessageCircle, Navigation, ShieldCheck, UsersRound } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
+import { TenantPublicFooter } from "@/components/TenantPublicFooter";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type SectionContent = { title?: string; body?: string; services?: PublicService[] };
@@ -206,7 +207,7 @@ export default function VisiteNos() {
         </section>
       </main>
 
-      <footer className="tenant-public-footer"><div className="tenant-public-container">© {new Date().getFullYear()} {data.church.name}</div></footer>
+      <TenantPublicFooter church={data.church} />
     </TenantPublicShell>
   );
 }

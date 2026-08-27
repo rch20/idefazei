@@ -75,6 +75,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { getDerivedLogoIconUrls } from "./media";
+import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -502,11 +503,12 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
       phone: church.phone,
       whatsapp: church.whatsapp,
       email: church.email,
+      website: church.website,
       address: church.address,
       vision: church.vision,
       mission: church.mission,
       values: church.values,
-      socialMedia: church.socialMedia,
+      socialMedia: normalizeSocialMediaLinks(church.socialMedia),
     },
     site,
     theme: publishedTheme,

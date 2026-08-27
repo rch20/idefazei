@@ -8,10 +8,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, Settings2, RotateCcw } from "lucide-react";
+import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, Settings2, RotateCcw, Share2 } from "lucide-react";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { TenantPublicSettings } from "@/components/TenantPublicSettings";
+import { SOCIAL_PLATFORM_KEYS, SOCIAL_PLATFORM_META, type SocialPlatform } from "../../../shared/socialMedia";
 
 const ROLES = [
   { value: "pastor_presidente", label: "Pastor Presidente" },
@@ -24,6 +25,22 @@ const ROLES = [
   { value: "tesoureiro", label: "Tesoureiro" },
   { value: "membro", label: "Membro" },
 ];
+
+const SOCIAL_PLATFORM_FIELDS: Array<{ key: SocialPlatform; label: string; placeholder: string }> = SOCIAL_PLATFORM_KEYS.map((key) => ({
+  key,
+  label: SOCIAL_PLATFORM_META[key].label,
+  placeholder: key === "instagram" ? "https://instagram.com/suaigreja" : key === "facebook" ? "https://facebook.com/suaigreja" : key === "youtube" ? "https://youtube.com/@suaigreja" : "https://tiktok.com/@suaigreja",
+}));
+
+type SocialMediaForm = Record<SocialPlatform, string>;
+
+function socialMediaFormFromValue(value: unknown): SocialMediaForm {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return SOCIAL_PLATFORM_KEYS.reduce<SocialMediaForm>((result, key) => {
+    result[key] = typeof source[key] === "string" ? source[key] as string : "";
+    return result;
+  }, { instagram: "", facebook: "", youtube: "", tiktok: "" });
+}
 
 const COMPLEMENTARY_ROLES = [
   { value: "consolidador", label: "Consolidador" },
@@ -58,6 +75,7 @@ export default function Configuracoes() {
     mission: church?.mission ?? "",
     primaryColor: church?.primaryColor ?? "#1e3a5f",
     secondaryColor: church?.secondaryColor ?? "#c9a84c",
+    socialMedia: socialMediaFormFromValue(church?.socialMedia),
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const pwaIconInputRef = useRef<HTMLInputElement>(null);
@@ -83,6 +101,7 @@ export default function Configuracoes() {
       mission: church.mission ?? "",
       primaryColor: church.primaryColor ?? "#1e3a5f",
       secondaryColor: church.secondaryColor ?? "#c9a84c",
+      socialMedia: socialMediaFormFromValue(church.socialMedia),
     });
     const effectivePreviewUrl = church.slug ? `/api/pwa/icon-192.png?tenant=${encodeURIComponent(church.slug)}&v=${encodeURIComponent(String(church.updatedAt?.getTime() ?? 0))}` : null;
     setPwaIconPreviewUrl(church.pwaIcon192Url ?? (church.logoUrl ? effectivePreviewUrl : null));
@@ -290,6 +309,13 @@ export default function Configuracoes() {
                 <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Identificação</h3><p className="mt-1 text-sm text-muted-foreground">Nome e endereço público do seu tenant.</p></div><div className="mt-5 grid gap-4"><div><Label htmlFor="name">Nome da Igreja *</Label><Input id="name" value={churchForm.name} onChange={(e) => setChurchForm({ ...churchForm, name: e.target.value })} className="mt-1" placeholder="Ex.: Igreja Batista Central" /></div><div><Label htmlFor="slug">Subdomínio (slug) *</Label><div className="mt-1 flex min-w-0 items-center gap-2"><Input id="slug" value={churchForm.slug} onChange={(e) => setChurchForm({ ...churchForm, slug: e.target.value.toLowerCase().replace(/\s+/g, "-") })} placeholder="minha-igreja" /><span className="shrink-0 text-xs text-muted-foreground">.igrejaapp.com</span></div></div><div><Label htmlFor="address">Endereço</Label><Input id="address" value={churchForm.address} onChange={(e) => setChurchForm({ ...churchForm, address: e.target.value })} className="mt-1" placeholder="Rua das Flores, 123" /></div><div className="grid grid-cols-[minmax(0,1fr)_88px] gap-3"><div><Label htmlFor="city">Cidade</Label><Input id="city" value={churchForm.city} onChange={(e) => setChurchForm({ ...churchForm, city: e.target.value })} className="mt-1" placeholder="São Paulo" /></div><div><Label htmlFor="state">Estado</Label><Input id="state" value={churchForm.state} onChange={(e) => setChurchForm({ ...churchForm, state: e.target.value.toUpperCase().slice(0, 2) })} className="mt-1 uppercase" placeholder="SP" maxLength={2} /></div></div></div></section>
                 <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Canais de contato</h3><p className="mt-1 text-sm text-muted-foreground">Facilite o contato entre sua igreja e a comunidade.</p></div><div className="mt-5 grid gap-4"><div><Label htmlFor="phone">Telefone</Label><Input id="phone" value={churchForm.phone} onChange={(e) => setChurchForm({ ...churchForm, phone: e.target.value })} className="mt-1" placeholder="(11) 3333-4444" /></div><div><Label htmlFor="whatsapp">WhatsApp</Label><Input id="whatsapp" value={churchForm.whatsapp} onChange={(e) => setChurchForm({ ...churchForm, whatsapp: e.target.value })} className="mt-1" placeholder="(11) 99999-8888" /></div><div><Label htmlFor="email">E-mail</Label><Input id="email" type="email" value={churchForm.email} onChange={(e) => setChurchForm({ ...churchForm, email: e.target.value })} className="mt-1" placeholder="contato@minhaigreja.com" /></div><div><Label htmlFor="website">Website</Label><Input id="website" value={churchForm.website} onChange={(e) => setChurchForm({ ...churchForm, website: e.target.value })} className="mt-1" placeholder="https://minhaigreja.com" /></div></div></section>
               </div>
+              <section className="card-sacred p-5 sm:p-6">
+                <div className="flex items-start gap-3 border-b border-border pb-4"><span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-navy/5 text-navy"><Share2 className="h-4 w-4" /></span><div><h3 className="text-base font-semibold text-navy">Redes sociais</h3><p className="mt-1 text-sm text-muted-foreground">Cadastre os canais oficiais. Eles aparecerão no rodapé da página pública somente quando estiverem preenchidos.</p></div></div>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  {SOCIAL_PLATFORM_FIELDS.map((platform) => <div key={platform.key}><Label htmlFor={`social-${platform.key}`}>{platform.label}</Label><Input id={`social-${platform.key}`} type="url" inputMode="url" value={churchForm.socialMedia[platform.key]} onChange={(event) => setChurchForm({ ...churchForm, socialMedia: { ...churchForm.socialMedia, [platform.key]: event.target.value } })} className="mt-1" placeholder={platform.placeholder} autoComplete="url" /><p className="mt-1 text-xs text-muted-foreground">{SOCIAL_PLATFORM_META[platform.key].description}. Use um endereço HTTPS oficial.</p></div>)}
+                </div>
+                <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs leading-relaxed text-muted-foreground">Os links são validados no servidor e aceitam somente os domínios oficiais de cada plataforma. Deixe em branco para ocultar uma rede do site.</p>
+              </section>
               <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Mensagem da igreja</h3><p className="mt-1 text-sm text-muted-foreground">Registre a visão e a missão que orientam sua comunidade.</p></div><div className="mt-5 grid gap-4 lg:grid-cols-2"><div><Label htmlFor="vision">Visão</Label><Textarea id="vision" value={churchForm.vision} onChange={(e) => setChurchForm({ ...churchForm, vision: e.target.value })} className="mt-1" placeholder="A visão da sua igreja..." rows={5} /></div><div><Label htmlFor="mission">Missão</Label><Textarea id="mission" value={churchForm.mission} onChange={(e) => setChurchForm({ ...churchForm, mission: e.target.value })} className="mt-1" placeholder="A missão da sua igreja..." rows={5} /></div></div></section>
               <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">Revise os dados e salve somente esta seção.</p><Button className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar alterações"}</Button></div>
             </div>

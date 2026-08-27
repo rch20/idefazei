@@ -8,6 +8,8 @@ const root = resolve(here, "../../..");
 const settingsSource = readFileSync(resolve(root, "client/src/pages/Configuracoes.tsx"), "utf8");
 const publicSettingsSource = readFileSync(resolve(root, "client/src/components/TenantPublicSettings.tsx"), "utf8");
 const publicPageSource = readFileSync(resolve(root, "client/src/pages/TenantPublicPage.tsx"), "utf8");
+const publicFooterSource = readFileSync(resolve(root, "client/src/components/TenantPublicFooter.tsx"), "utf8");
+const socialContractSource = readFileSync(resolve(root, "shared/socialMedia.ts"), "utf8");
 const manifestSource = readFileSync(resolve(root, "client/public/manifest.json"), "utf8");
 const serviceWorkerSource = readFileSync(resolve(root, "client/public/sw.js"), "utf8");
 const pwaHookSource = readFileSync(resolve(root, "client/src/hooks/useTenantPwaMeta.ts"), "utf8");
@@ -48,6 +50,18 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("A logo, cores e ícone só ficam ativos após salvar.");
   });
 
+  it("oferece configuração de redes sociais oficiais por tenant", () => {
+    expect(settingsSource).toContain("Redes sociais");
+    expect(settingsSource).toContain("socialMediaFormFromValue");
+    expect(settingsSource).toContain('id={`social-${platform.key}`}');
+    expect(settingsSource).toContain("SOCIAL_PLATFORM_META");
+    expect(socialContractSource).toContain('instagram: { label: "Instagram"');
+    expect(socialContractSource).toContain('facebook: { label: "Facebook"');
+    expect(socialContractSource).toContain('youtube: { label: "YouTube"');
+    expect(socialContractSource).toContain('tiktok: { label: "TikTok"');
+    expect(settingsSource).toContain("Use um endereço HTTPS oficial.");
+  });
+
   it("oferece um único upload do ícone PWA com os tamanhos iOS e instalação", () => {
     expect(settingsSource).toContain("tenant_pwa_icon");
     expect(settingsSource).toContain("Ícone do aplicativo");
@@ -65,6 +79,16 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("utils.tenantPublic.adminPreview.invalidate");
     expect(settingsSource).toContain("utils.tenantPublic.current.invalidate");
     expect(settingsSource).toContain("setChurchForm((current) => ({ ...current, logoUrl: result.optimizedUrl }))");
+  });
+
+  it("reflete contatos e redes sociais somente quando configurados no rodapé público", () => {
+    expect(publicPageSource).toContain("TenantPublicFooter");
+    expect(publicFooterSource).toContain("normalizeSocialMediaLinks");
+    expect(publicFooterSource).toContain("Redes sociais de");
+    expect(publicFooterSource).toContain('target="_blank" rel="noreferrer"');
+    expect(publicFooterSource).toContain("tenant-public-footer-social-links");
+    expect(publicFooterSource).toContain("socialLinks.length > 0");
+    expect(publicFooterSource).toContain("Site oficial");
   });
 
   it("propaga o tenant para head, manifest, notificações e cache do service worker", () => {
