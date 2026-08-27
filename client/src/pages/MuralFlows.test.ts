@@ -29,6 +29,8 @@ describe("Mural — Avisos Públicos", () => {
     expect(page).toContain('purpose: "announcement_image"');
     expect(page).toContain('resourceType: "image"');
     expect(page).toContain("Imagem vinculada ao aviso");
+    expect(page).toContain("1200 × 600 px (proporção 2:1)");
+    expect(page).toContain("imagens em outra proporção serão recortadas");
   });
 
   it("mantém ações claras e responsivas", () => {
