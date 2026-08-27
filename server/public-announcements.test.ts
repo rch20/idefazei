@@ -47,6 +47,9 @@ describe("Avisos Públicos — contrato e isolamento", () => {
     expect(media).toContain('"announcement_image"');
     expect(router).toContain('asset.purpose !== "announcement_image"');
     expect(router).toContain("getActiveMediaAssetById(mediaAssetId, churchId)");
+    expect(router).toContain("getOptimizedMediaUrls");
+    expect(router).toContain("optimized.optimizedUrl");
+    expect(router).toContain("A URL da imagem não corresponde ao asset enviado");
   });
 
   it("mantém o mural interno separado da página pública", () => {

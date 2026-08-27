@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
+import { getOptimizedMediaUrls } from "./media";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -2789,8 +2790,13 @@ async function validateAnnouncementMedia(churchId: number, mediaAssetId: number 
   if (!imageUrl) return;
   if (!mediaAssetId) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagens públicas precisam ser enviadas pelo fluxo de mídia da igreja." });
   const asset = await getActiveMediaAssetById(mediaAssetId, churchId);
-  if (!asset || asset.purpose !== "announcement_image" || asset.resourceType !== "image" || ![asset.url, asset.secureUrl].includes(imageUrl)) {
+  if (!asset || asset.purpose !== "announcement_image" || asset.resourceType !== "image") {
     throw new TRPCError({ code: "BAD_REQUEST", message: "A imagem selecionada não pertence a esta igreja ou não é uma imagem de aviso." });
+  }
+  const optimized = getOptimizedMediaUrls({ provider: asset.provider, publicId: asset.publicId, url: asset.url, resourceType: asset.resourceType });
+  const acceptedUrls = new Set([asset.url, asset.secureUrl, optimized.optimizedUrl, optimized.webpUrl, optimized.avifUrl].filter((value): value is string => Boolean(value)));
+  if (!acceptedUrls.has(imageUrl)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "A URL da imagem não corresponde ao asset enviado para esta igreja." });
   }
 }
 

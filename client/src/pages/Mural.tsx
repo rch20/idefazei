@@ -150,7 +150,7 @@ export default function Mural() {
     setUploadingImage(true);
     try {
       const uploaded = await uploadChurchMedia(file, { purpose: "announcement_image", resourceType: "image" });
-      setForm((current) => ({ ...current, imageUrl: uploaded.optimizedUrl, mediaAssetId: uploaded.mediaAssetId }));
+      setForm((current) => ({ ...current, imageUrl: uploaded.url, mediaAssetId: uploaded.mediaAssetId }));
       toast.success("Imagem enviada com segurança.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível enviar a imagem.");
