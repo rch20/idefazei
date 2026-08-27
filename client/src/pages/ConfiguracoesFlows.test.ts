@@ -126,6 +126,17 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(publicSettingsSource).toContain("grid grid-cols-2 gap-2 sm:flex");
   });
 
+  it("oferece presets, upload personalizado e retorno ao visual atual do hero", () => {
+    expect(publicSettingsSource).toContain("Imagem principal do Hero");
+    expect(publicSettingsSource).toContain("HERO_PRESETS");
+    expect(publicSettingsSource).toContain("Enviar imagem da minha igreja");
+    expect(publicSettingsSource).toContain("1920 × 1080 px, proporção 16:9");
+    expect(publicSettingsSource).toContain('purpose: "tenant_public_hero"');
+    expect(publicSettingsSource).toContain("Voltar ao visual atual");
+    expect(publicPageSource).toContain("resolveHeroImage(hero)");
+    expect(publicPageSource).toContain("tenant-public-hero-overlay");
+  });
+
   it("permite configurar a frase de identificação do hero com fallback no editor público", () => {
     expect(publicSettingsSource).toContain("Frase de identificação");
     expect(publicSettingsSource).toContain("section.content.eyebrow");

@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
+import { HERO_PRESET_IDS } from "../shared/publicHero";
 import { getOptimizedMediaUrls } from "./media";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -858,6 +859,10 @@ const tenantPublicRouter = router({
         body: z.string().trim().max(2000).optional(),
         primaryCtaLabel: z.string().trim().max(48).optional(),
         primaryCtaHref: z.string().trim().max(280).refine((value) => value.startsWith("/") || /^https:\/\//.test(value), "Informe um destino interno ou uma URL HTTPS.").optional(),
+        heroImageSource: z.enum(["preset", "custom"]).optional(),
+        heroImagePresetId: z.enum(HERO_PRESET_IDS).nullable().optional(),
+        heroImageUrl: z.string().trim().max(2048).refine((value) => /^https:\/\//.test(value), "A imagem do Hero precisa usar HTTPS.").nullable().optional(),
+        heroImageAssetId: z.number().int().positive().nullable().optional(),
         services: z.array(z.object({
           day: z.string().trim().min(2).max(32),
           time: z.string().trim().min(2).max(24),
@@ -875,6 +880,7 @@ const tenantPublicRouter = router({
   })).mutation(async ({ ctx, input }) => {
     if (!ctx.user.churchId || ctx.user.authSource !== "church") throw new TRPCError({ code: "FORBIDDEN" });
     await requireChurchPublicSitePublisher(ctx.user.id, ctx.user.churchId);
+    await validateHeroImageSelection(ctx.user.churchId, input.sections);
     return saveTenantPublicDraftByChurchId(ctx.user.churchId, input);
   }),
 
@@ -2796,6 +2802,30 @@ async function validateAnnouncementMedia(churchId: number, mediaAssetId: number 
   const optimized = getOptimizedMediaUrls({ provider: asset.provider, publicId: asset.publicId, url: asset.url, resourceType: asset.resourceType });
   const acceptedUrls = new Set([asset.url, asset.secureUrl, optimized.optimizedUrl, optimized.webpUrl, optimized.avifUrl].filter((value): value is string => Boolean(value)));
   if (!acceptedUrls.has(imageUrl)) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "A URL da imagem não corresponde ao asset enviado para esta igreja." });
+  }
+}
+
+async function validateHeroImageSelection(churchId: number, sections: Array<{ sectionType: string; content: { heroImageSource?: "preset" | "custom"; heroImagePresetId?: string | null; heroImageUrl?: string | null; heroImageAssetId?: number | null } }>) {
+  const hero = sections.find((section) => section.sectionType === "hero");
+  if (!hero) return;
+  const source = hero.content.heroImageSource ?? "preset";
+  if (source === "preset") {
+    if (hero.content.heroImagePresetId && !HERO_PRESET_IDS.includes(hero.content.heroImagePresetId as (typeof HERO_PRESET_IDS)[number])) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: "A imagem predefinida do Hero não é válida." });
+    }
+    return;
+  }
+  if (!hero.content.heroImageAssetId || !hero.content.heroImageUrl) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "Envie uma imagem personalizada do Hero antes de salvar." });
+  }
+  const asset = await getActiveMediaAssetById(hero.content.heroImageAssetId, churchId);
+  if (!asset || asset.purpose !== "tenant_public_hero" || asset.resourceType !== "image") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "A imagem personalizada não pertence a esta igreja ou não é um asset de Hero." });
+  }
+  const optimized = getOptimizedMediaUrls({ provider: asset.provider, publicId: asset.publicId, url: asset.url, resourceType: asset.resourceType });
+  const acceptedUrls = new Set([asset.url, asset.secureUrl, optimized.optimizedUrl, optimized.webpUrl, optimized.avifUrl].filter((value): value is string => Boolean(value)));
+  if (!acceptedUrls.has(hero.content.heroImageUrl)) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "A URL da imagem não corresponde ao asset enviado para esta igreja." });
   }
 }

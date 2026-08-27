@@ -377,8 +377,10 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-mark { display: grid; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; place-items: center; border-radius: .65rem; background: var(--tenant-primary, #1e3a5f); color: var(--tenant-secondary, #c9a84c); }
 .tenant-public-login { color: inherit; font-size: .875rem; font-weight: 700; text-decoration: none; }
 
-.tenant-public-hero { position: relative; display: grid; min-height: clamp(30rem, 78dvh, 48rem); align-items: center; overflow: clip; background: linear-gradient(145deg, color-mix(in srgb, var(--tenant-primary, #1e3a5f) 98%, black), var(--tenant-primary, #1e3a5f)); color: white; }
+.tenant-public-hero { position: relative; display: grid; min-height: clamp(30rem, 78dvh, 48rem); align-items: center; overflow: clip; background-color: var(--tenant-primary, #1e3a5f); background-position: center; background-size: cover; color: white; }
 .tenant-public-hero::after { position: absolute; inset: auto -20% -30% auto; width: min(34rem, 82vw); aspect-ratio: 1; border: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 52%, transparent); border-radius: 999px; content: ""; pointer-events: none; }
+.tenant-public-hero-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.tenant-public-hero-overlay { position: absolute; inset: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--tenant-primary, #1e3a5f) 94%, black) 0%, color-mix(in srgb, var(--tenant-primary, #1e3a5f) 72%, transparent) 42%, color-mix(in srgb, var(--tenant-primary, #1e3a5f) 18%, transparent) 100%); pointer-events: none; }
 .tenant-public-scroll-cue { position: absolute; z-index: 2; bottom: 1.1rem; left: 50%; display: inline-flex; align-items: center; gap: .35rem; transform: translateX(-50%); border-bottom: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 65%, transparent); padding: .25rem .1rem .35rem; color: rgb(255 255 255 / 72%); font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-decoration: none; text-transform: uppercase; white-space: nowrap; }
 .tenant-public-scroll-cue svg { color: var(--tenant-secondary, #c9a84c); transition: transform 180ms ease; }
 .tenant-public-scroll-cue:hover svg, .tenant-public-scroll-cue:focus-visible svg { transform: translateY(3px); }
@@ -485,7 +487,9 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 @media (max-width: 44rem) {
   .tenant-public-contact-grid, .tenant-public-events-grid, .tenant-public-announcements-grid, .tenant-public-ministries-grid, .tenant-public-services-grid { grid-template-columns: 1fr; }
   .tenant-public-gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tenant-public-hero { min-height: 82svh; }
+  .tenant-public-hero { min-height: 82svh; background-position: 68% center; }
+  .tenant-public-hero-image { object-position: 68% center; }
+  .tenant-public-hero-overlay { background: linear-gradient(90deg, color-mix(in srgb, var(--tenant-primary, #1e3a5f) 96%, black) 0%, color-mix(in srgb, var(--tenant-primary, #1e3a5f) 78%, transparent) 56%, color-mix(in srgb, var(--tenant-primary, #1e3a5f) 30%, transparent) 100%); }
   .tenant-public-hero-content { padding-block: 4.5rem 5.5rem; }
   .tenant-public-hero h1 { max-width: 12ch; font-size: clamp(2.5rem, 12vw, 4.2rem); }
   .tenant-public-hero p { margin-block: 1.15rem 1.5rem; font-size: clamp(1.15rem, 5vw, 1.45rem); }
@@ -504,7 +508,10 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 /* Prévia do painel: usa apenas variáveis de marca e herda o mesmo limite de viewport do template. */
 .tenant-public-preview { min-width: 0; overflow: clip; color: var(--tenant-primary); background: #fdfaf4; }
 .tenant-public-preview-header { padding: .8rem 1rem; font-size: .75rem; font-weight: 800; color: var(--tenant-primary); background: #fffdf9; }
-.tenant-public-preview-hero { min-width: 0; padding: 2rem 1.25rem; color: #fff; background: var(--tenant-primary); }
+.tenant-public-preview-hero { position: relative; min-width: 0; min-height: 15rem; overflow: hidden; padding: 2rem 1.25rem; color: #fff; background-color: var(--tenant-primary); background-position: center; background-size: cover; }
+.tenant-public-preview-hero-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.tenant-public-preview-hero-overlay { position: absolute; inset: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--tenant-primary) 94%, black) 0%, color-mix(in srgb, var(--tenant-primary) 72%, transparent) 100%); pointer-events: none; }
+.tenant-public-preview-hero-copy { position: relative; z-index: 1; }
 .tenant-public-preview-hero span { color: var(--tenant-secondary); font-size: .64rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .tenant-public-preview-hero h3 { margin: .7rem 0; overflow-wrap: anywhere; font-family: "Playfair Display", Georgia, serif; font-size: clamp(1.75rem, 8vw, 2.5rem); line-height: .98; }
 .tenant-public-preview-hero p { overflow-wrap: anywhere; color: rgb(255 255 255 / 78%); font-size: .88rem; line-height: 1.5; }

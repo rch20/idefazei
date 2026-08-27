@@ -6,12 +6,13 @@ import { ArrowRight, ArrowUpRight, CalendarDays, ChevronDown, Clock3, HandHeart,
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 import { TenantPublicFooter } from "@/components/TenantPublicFooter";
 import { getPublicHeroEyebrow } from "../../../shared/publicPage";
+import { resolveHeroImage } from "../../../shared/publicHero";
 import { useState } from "react";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type PublicGalleryItem = { url?: string; alt?: string; caption?: string };
 const ANNOUNCEMENT_TYPE_LABELS: Record<string, string> = { aviso: "Aviso", evento: "Evento", comunicado: "Comunicado", devocional: "Devocional" };
-type SectionContent = { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string; services?: PublicService[]; items?: PublicGalleryItem[] };
+type SectionContent = { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string; heroImageSource?: "preset" | "custom"; heroImagePresetId?: string | null; heroImageUrl?: string | null; heroImageAssetId?: number | null; services?: PublicService[]; items?: PublicGalleryItem[] };
 
 function findContent(sections: Array<{ sectionType: string; content: unknown }>, type: string): SectionContent | null {
   const section = sections.find((item) => item.sectionType === type);
@@ -44,6 +45,7 @@ export default function TenantPublicPage() {
   const publicServices = (schedule?.services ?? []).filter((service) => service.day && service.time);
   const publicGalleryItems = (gallerySection?.items ?? []).filter((item) => item.url && item.alt);
   const publicHeroEyebrow = getPublicHeroEyebrow(data.sections);
+  const heroImage = resolveHeroImage(hero);
 
   return (
     <TenantPublicShell brand={{
@@ -67,6 +69,8 @@ export default function TenantPublicPage() {
 
       <main>
         <section className="tenant-public-hero">
+          {heroImage.src && <img className="tenant-public-hero-image" src={heroImage.src} alt="" aria-hidden="true" />}
+          {heroImage.src && <div className="tenant-public-hero-overlay" aria-hidden="true" />}
           <div className="tenant-public-container tenant-public-hero-content">
             <span className="tenant-public-eyebrow">{publicHeroEyebrow}</span>
             <h1>{title}</h1>

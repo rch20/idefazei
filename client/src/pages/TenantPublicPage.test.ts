@@ -53,9 +53,13 @@ describe("Template Ministerial Base — estabilidade global", () => {
     const page = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
     expect(page).toContain('id="tenant-public-content"');
     expect(page).toContain("tenant-public-scroll-cue");
+    expect(page).toContain("resolveHeroImage(hero)");
+    expect(page).toContain('className="tenant-public-hero-image"');
+    expect(css).toContain(".tenant-public-hero-overlay {");
+    expect(css).toContain("background-size: cover;");
     expect(page).toContain("Descubra mais");
     expect(page).toContain("Continuar para conhecer mais sobre a igreja");
-    expect(css).toContain(".tenant-public-hero { min-height: 82svh; }");
+    expect(css).toContain(".tenant-public-hero { min-height: 82svh;");
     expect(css).toContain(".tenant-public-scroll-cue { bottom: .8rem;");
     expect(css).toContain("prefers-reduced-motion: reduce");
   });

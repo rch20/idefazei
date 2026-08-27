@@ -363,6 +363,9 @@ describe("Galeria pública por tenant", () => {
   it("prepara um endpoint genérico para imagens e vídeos sem aceitar finalidade arbitrária", () => {
     expect(indexSource).toContain('app.post("/api/media/upload"');
     expect(indexSource).toContain('"public_video"');
+    expect(indexSource).toContain('"tenant_public_hero"');
+    expect(routerSource).toContain("validateHeroImageSelection");
+    expect(routerSource).toContain('asset.purpose !== "tenant_public_hero"');
     expect(indexSource).toContain('resourceType: MediaResourceType');
     expect(indexSource).toContain("const imagePurposes = new Set<MediaPurpose>");
     expect(indexSource).toContain("createMediaAsset");
@@ -381,6 +384,8 @@ describe("Galeria pública por tenant", () => {
     expect(router).not.toContain("churchId: z.number()");
     expect(upload).toContain('const publisherRoles = new Set(["pastor_presidente", "pastor_local"])');
     expect(upload).toContain('purpose: "tenant_public_gallery"');
+    expect(indexSource).toContain('purpose === "tenant_public_hero" ? 5 : 4');
+    expect(routerSource).toContain('heroImageAssetId: z.number().int().positive().nullable().optional()');
     expect(upload).toContain("fileSize: 4 * 1024 * 1024");
     expect(upload).toContain("uploadMedia");
     expect(upload).toContain("createMediaAsset");
