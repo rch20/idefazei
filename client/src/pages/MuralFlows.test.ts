@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const page = readFileSync(resolve(process.cwd(), "client/src/pages/Mural.tsx"), "utf8");
+const publicPage = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
+const publicStyles = readFileSync(resolve(process.cwd(), "client/src/index.css"), "utf8");
 
 describe("Mural — Avisos Públicos", () => {
   it("separa o mural interno da publicação pública", () => {
@@ -35,5 +37,16 @@ describe("Mural — Avisos Públicos", () => {
     expect(page).toContain("Retirar");
     expect(page).toContain("max-h-[92dvh]");
     expect(page).toContain("overflow-y-auto");
+  });
+
+  it("oferece expansão acessível da imagem sem conflitar com o CTA", () => {
+    expect(publicPage).toContain("Ampliar imagem do aviso");
+    expect(publicPage).toContain("tenant-public-image-dialog");
+    expect(publicPage).toContain("Visualização ampliada do aviso público");
+    expect(publicPage).toContain("onOpenChange");
+    expect(publicStyles).toContain(".tenant-public-announcement-image-trigger");
+    expect(publicStyles).toContain("cursor: zoom-in");
+    expect(publicStyles).toContain(".tenant-public-image-dialog-viewport");
+    expect(publicStyles).toContain("overscroll-behavior: contain");
   });
 });

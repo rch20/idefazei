@@ -1,8 +1,10 @@
 import { TenantPublicShell } from "@/components/TenantPublicShell";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, ArrowUpRight, CalendarDays, Clock3, HandHeart, MapPin, MessageCircle, Pin, UsersRound } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CalendarDays, Clock3, HandHeart, MapPin, Maximize2, MessageCircle, Pin, UsersRound } from "lucide-react";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
+import { useState } from "react";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type PublicGalleryItem = { url?: string; alt?: string; caption?: string };
@@ -17,6 +19,7 @@ function findContent(sections: Array<{ sectionType: string; content: unknown }>,
 export default function TenantPublicPage() {
   const { data, isLoading } = trpc.tenantPublic.current.useQuery();
   useTenantPwaMeta({ tenantSlug: data?.church.slug, tenantName: data?.church.name, primaryColor: data?.theme?.primaryColor ?? data?.church.primaryColor, pwaIconAssetId: data?.church.pwaIconAssetId });
+  const [expandedAnnouncement, setExpandedAnnouncement] = useState<{ title: string; imageUrl: string; imageAlt: string } | null>(null);
 
   if (isLoading) {
     return <div className="tenant-public-root tenant-public-loading" aria-live="polite">Carregando a igreja...</div>;
@@ -124,7 +127,17 @@ export default function TenantPublicPage() {
                   const isExternal = Boolean(announcement.ctaHref?.startsWith("http"));
                   return (
                     <article key={announcement.id} className={`tenant-public-announcement-card${announcement.pinned ? " is-pinned" : ""}`}>
-                      {announcement.imageUrl && <img className="tenant-public-announcement-image" src={announcement.imageUrl} alt="" loading="lazy" decoding="async" />}
+                      {announcement.imageUrl && (
+                        <button
+                          type="button"
+                          className="tenant-public-announcement-image-trigger"
+                          aria-label={`Ampliar imagem do aviso ${announcement.title}`}
+                          onClick={() => setExpandedAnnouncement({ title: announcement.title, imageUrl: announcement.imageUrl!, imageAlt: `Imagem do aviso ${announcement.title}` })}
+                        >
+                          <img className="tenant-public-announcement-image" src={announcement.imageUrl} alt={`Imagem do aviso ${announcement.title}`} loading="lazy" decoding="async" />
+                          <span className="tenant-public-announcement-image-hint" aria-hidden="true"><Maximize2 size={15} /><span>Ampliar</span></span>
+                        </button>
+                      )}
                       <div className="tenant-public-announcement-body">
                         <div className="tenant-public-announcement-meta">
                           <span>{ANNOUNCEMENT_TYPE_LABELS[announcement.type ?? "aviso"] ?? "Aviso"}</span>
@@ -181,6 +194,18 @@ export default function TenantPublicPage() {
           </div>
         </section>
       </main>
+
+      <Dialog open={Boolean(expandedAnnouncement)} onOpenChange={(open) => { if (!open) setExpandedAnnouncement(null); }}>
+        <DialogContent className="tenant-public-image-dialog">
+          <DialogHeader className="tenant-public-image-dialog-header">
+            <DialogTitle>{expandedAnnouncement?.title ?? "Imagem do aviso"}</DialogTitle>
+            <DialogDescription className="tenant-public-image-dialog-description">Visualização ampliada do aviso público.</DialogDescription>
+          </DialogHeader>
+          <div className="tenant-public-image-dialog-viewport">
+            {expandedAnnouncement && <img className="tenant-public-image-expanded" src={expandedAnnouncement.imageUrl} alt={expandedAnnouncement.imageAlt} />}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <footer className="tenant-public-footer"><div className="tenant-public-container">© {new Date().getFullYear()} {data.church.name}</div></footer>
     </TenantPublicShell>
