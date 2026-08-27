@@ -38,8 +38,19 @@ describe("Adaptador de mídia", () => {
     expect(source).toContain('"tenant_logo"');
     expect(source).toContain('"tenant_pwa_icon"');
     expect(source).toContain("getPwaIconUrls");
+    expect(source).toContain("getOptimizedMediaUrls");
+    expect(source).toContain('fetch_format: fetchFormat');
     expect(source).toContain('resource_type: resourceTypeForCloudinary(input.resourceType)');
     expect(source).toContain("CLOUDINARY_CLOUD_NAME");
+  });
+
+  it("entrega a URL original no fallback quando não há Cloudinary configurado", async () => {
+    const { getOptimizedMediaUrls } = await import("./media");
+    expect(getOptimizedMediaUrls({ provider: "manus_storage", resourceType: "image", publicId: null, url: "/manus-storage/test.png" })).toEqual({
+      optimizedUrl: "/manus-storage/test.png",
+      webpUrl: null,
+      avifUrl: null,
+    });
   });
 
   it("mantém o registro de assets isolado por igreja e preparado para a migração aditiva", () => {

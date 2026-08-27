@@ -34,6 +34,7 @@ const COMPLEMENTARY_ROLES = [
 
 export default function Configuracoes() {
   const { churchId } = useChurch();
+  const utils = trpc.useUtils();
   const { user } = useChurchAuth();
   const canManageAccounts = ["pastor_presidente", "pastor_local", "secretario"].includes(user?.role ?? "");
   const canManageRoles = ["pastor_presidente", "pastor_local"].includes(user?.role ?? "");
@@ -87,7 +88,15 @@ export default function Configuracoes() {
   }, [church]);
 
   const updateMutation = trpc.churches.update.useMutation({
-    onSuccess: () => toast.success("Configurações salvas com sucesso!"),
+    onSuccess: async () => {
+      await Promise.all([
+        refetch(),
+        churchId ? utils.churches.getById.invalidate({ id: churchId }) : Promise.resolve(),
+        utils.tenantPublic.adminPreview.invalidate(),
+        utils.tenantPublic.current.invalidate(),
+      ]);
+      toast.success("Configurações salvas com sucesso!");
+    },
     onError: (err: { message: string }) => toast.error(err.message),
   });
   const { data: churchUsers, refetch: refetchChurchUsers } = trpc.churchAuth.listUsers.useQuery(
@@ -162,8 +171,8 @@ export default function Configuracoes() {
     setIsUploadingLogo(true);
     try {
       const result = await uploadChurchMedia(file, { purpose: "tenant_logo", resourceType: "image" });
-      setChurchForm((current) => ({ ...current, logoUrl: result.url }));
-      updateMutation.mutate({ id: churchId!, logoUrl: result.url }, { onSuccess: () => { refetch(); toast.success("Logo atualizada com sucesso!"); } });
+      setChurchForm((current) => ({ ...current, logoUrl: result.optimizedUrl }));
+      updateMutation.mutate({ id: churchId!, logoUrl: result.optimizedUrl });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível enviar a logo.");
     } finally {
@@ -186,8 +195,13 @@ export default function Configuracoes() {
     setIsUploadingPwaIcon(true);
     try {
       const result = await uploadChurchMedia(file, { purpose: "tenant_pwa_icon", resourceType: "image" });
-      setPwaIconPreviewUrl(result.icon192Url ?? result.url);
-      await refetch();
+      setPwaIconPreviewUrl(result.icon192Url ?? result.optimizedUrl);
+      await Promise.all([
+        refetch(),
+        churchId ? utils.churches.getById.invalidate({ id: churchId }) : Promise.resolve(),
+        utils.tenantPublic.adminPreview.invalidate(),
+        utils.tenantPublic.current.invalidate(),
+      ]);
       toast.success("Ícone PWA atualizado em todos os destinos.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível enviar o ícone PWA.");

@@ -41,6 +41,12 @@ export interface UploadedMedia {
   durationSeconds: number | null;
 }
 
+export interface OptimizedMediaUrls {
+  optimizedUrl: string;
+  webpUrl: string | null;
+  avifUrl: string | null;
+}
+
 let cloudinaryConfigured = false;
 
 function hasCloudinaryConfig() {
@@ -148,6 +154,24 @@ export async function uploadMedia(input: UploadMediaInput): Promise<UploadedMedi
     throw new Error("MEDIA_PROVIDER=cloudinary exige CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY e CLOUDINARY_API_SECRET.");
   }
   return isCloudinaryEnabled() ? uploadToCloudinary(input) : uploadToManusStorage(input);
+}
+
+export function getOptimizedMediaUrls(media: Pick<UploadedMedia, "provider" | "publicId" | "url" | "resourceType">): OptimizedMediaUrls {
+  if (media.resourceType !== "image" || media.provider !== "cloudinary" || !media.publicId || !hasCloudinaryConfig()) {
+    return { optimizedUrl: media.url, webpUrl: null, avifUrl: null };
+  }
+  const client = configureCloudinary();
+  const buildUrl = (fetchFormat: "auto" | "webp" | "avif") => client.url(media.publicId!, {
+    secure: true,
+    resource_type: "image",
+    type: "upload",
+    transformation: [{ quality: "auto:good", fetch_format: fetchFormat }],
+  });
+  return {
+    optimizedUrl: buildUrl("auto"),
+    webpUrl: buildUrl("webp"),
+    avifUrl: buildUrl("avif"),
+  };
 }
 
 export function getPwaIconUrls(media: Pick<UploadedMedia, "provider" | "publicId" | "url">) {

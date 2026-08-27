@@ -5,6 +5,9 @@ export type ClientMediaResourceType = "image" | "video";
 
 export type UploadedMediaResult = {
   url: string;
+  optimizedUrl: string;
+  webpUrl: string | null;
+  avifUrl: string | null;
   key: string;
   provider: "cloudinary" | "manus_storage";
   publicId: string | null;
@@ -25,5 +28,10 @@ export async function uploadChurchMedia(file: File, options: { purpose: ClientMe
   const response = await fetch("/api/media/upload", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
   const result = await response.json() as Partial<UploadedMediaResult> & { error?: string };
   if (!response.ok || !result.url || !result.key || !result.provider || !result.resourceType || !result.purpose) throw new Error(result.error ?? "Não foi possível enviar a mídia.");
-  return result as UploadedMediaResult;
+  return {
+    ...result,
+    optimizedUrl: result.optimizedUrl ?? result.url,
+    webpUrl: result.webpUrl ?? null,
+    avifUrl: result.avifUrl ?? null,
+  } as UploadedMediaResult;
 }

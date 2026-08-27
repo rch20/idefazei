@@ -55,6 +55,13 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("Ícone PWA atualizado em todos os destinos.");
   });
 
+  it("invalida o estado do tenant e do site após salvar a identidade", () => {
+    expect(settingsSource).toContain("utils.churches.getById.invalidate");
+    expect(settingsSource).toContain("utils.tenantPublic.adminPreview.invalidate");
+    expect(settingsSource).toContain("utils.tenantPublic.current.invalidate");
+    expect(settingsSource).toContain("setChurchForm((current) => ({ ...current, logoUrl: result.optimizedUrl }))");
+  });
+
   it("propaga o tenant para head, manifest, notificações e cache do service worker", () => {
     expect(publicPageSource).toContain("useTenantPwaMeta");
     expect(manifestSource).toContain("/api/pwa/icon-192.png");

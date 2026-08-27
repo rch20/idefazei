@@ -82,7 +82,7 @@ export default function ConfiguracoesCertificados() {
     setUploadingLogo(true);
     try {
       const result = await uploadChurchMedia(file, { purpose: "certificate_logo", resourceType: "image" });
-      setLogoUrl(result.url);
+      setLogoUrl(result.optimizedUrl);
       toast.success("Logo enviado com sucesso!");
     } catch {
       toast.error("Erro ao enviar logo");

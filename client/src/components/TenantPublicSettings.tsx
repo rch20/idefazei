@@ -91,7 +91,7 @@ export function TenantPublicSettings() {
     setIsUploadingGallery(true);
     try {
       const result = await uploadChurchMedia(file, { purpose: "tenant_public_gallery", resourceType: "image" });
-      patchSection("gallery", { content: { items: [...galleryItems, { url: result.url, mediaAssetId: result.mediaAssetId ?? undefined, alt: file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "), caption: "" }] } });
+      patchSection("gallery", { content: { items: [...galleryItems, { url: result.optimizedUrl, mediaAssetId: result.mediaAssetId ?? undefined, alt: file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "), caption: "" }] } });
       toast.success("Imagem adicionada ao rascunho. Publique a página para exibi-la.");
     } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível enviar a imagem."); }
     finally { setIsUploadingGallery(false); }

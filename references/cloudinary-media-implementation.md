@@ -54,3 +54,11 @@ O tenant agora possui `pwaIconAssetId`, `pwaIcon192Url` e `pwaIcon512Url`. A fin
 O upload sincroniza o `faviconUrl` do tema público e atualiza o head em todas as rotas relevantes: página pública, Visite-nos, Portal do Visitante, login por subdomínio e painel autenticado. O manifest dinâmico e os endpoints `/api/pwa/icon-192.png` e `/api/pwa/icon-512.png` resolvem a igreja pelo host público ou por slug validado do painel. O service worker foi versionado para `ide-fazei-v5` e as notificações usam o endpoint 192x192 correto.
 
 A produção já está com as migrações aplicadas e `MEDIA_PROVIDER=cloudinary` ativo. Novos uploads de identidade, ícone PWA, galeria, certificados e vídeos públicos usarão o Cloudinary conforme suas finalidades e permissões; comprovantes financeiros continuam protegidos no storage privado atual.
+
+## Correção de propagação e entrega otimizada
+
+A atualização da Identidade Visual do tenant agora ocorre em transação: `churches`, `tenant_themes` e a revisão pública publicada do mesmo tenant são sincronizados quando cores ou logo são alterados. O frontend invalida as consultas do painel, da prévia pública e da experiência pública após salvar, evitando estado antigo na sidebar, no PWA e no site.
+
+Imagens Cloudinary passam a retornar `optimizedUrl`, `webpUrl` e `avifUrl`. O `optimizedUrl` usa negociação automática de formato e qualidade (`f_auto,q_auto:good`); os links WebP e AVIF ficam disponíveis para consumidores que desejarem seleção explícita. O asset original permanece registrado no banco para auditoria e gerenciamento.
+
+Logo do tenant, galeria pública, logo de certificados e imagens de Avisos Públicos agora persistem a URL otimizada na experiência consumida pelo visitante. Vídeos e comprovantes financeiros não são convertidos por este fluxo: vídeos mantêm `resource_type=video` e comprovantes continuam no storage privado.

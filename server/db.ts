@@ -309,10 +309,44 @@ export async function createChurch(data: typeof churches.$inferInsert) {
   return rows[0];
 }
 
+type PublishedBrandingPatch = Partial<Pick<typeof tenantThemes.$inferInsert, "primaryColor" | "secondaryColor" | "logoUrl" | "faviconUrl">>;
+
+async function syncPublishedBranding(tx: Parameters<Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>["transaction"]>[0]>[0], churchId: number, branding: PublishedBrandingPatch) {
+  const siteRows = await tx.select().from(tenantPublicSites).where(eq(tenantPublicSites.churchId, churchId)).limit(1);
+  const site = siteRows[0];
+  if (!site?.publishedRevisionId) return;
+  const revisionRows = await tx.select().from(tenantPageRevisions).where(and(
+    eq(tenantPageRevisions.id, site.publishedRevisionId),
+    eq(tenantPageRevisions.churchId, churchId),
+    eq(tenantPageRevisions.siteId, site.id),
+  )).limit(1);
+  const revision = revisionRows[0];
+  const snapshot = revision?.snapshot as { theme?: Record<string, unknown>; sections?: unknown } | undefined;
+  if (!revision || !snapshot?.theme) return;
+  await tx.update(tenantPageRevisions).set({
+    snapshot: { ...snapshot, theme: { ...snapshot.theme, ...branding } },
+  }).where(and(
+    eq(tenantPageRevisions.id, revision.id),
+    eq(tenantPageRevisions.churchId, churchId),
+    eq(tenantPageRevisions.siteId, site.id),
+  ));
+}
+
 export async function updateChurch(id: number, data: Partial<typeof churches.$inferInsert>) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  await db.update(churches).set(data).where(eq(churches.id, id));
+  const branding: PublishedBrandingPatch = {};
+  if (data.primaryColor) branding.primaryColor = data.primaryColor;
+  if (data.secondaryColor) branding.secondaryColor = data.secondaryColor;
+  if (data.logoUrl !== undefined) branding.logoUrl = data.logoUrl;
+  await db.transaction(async (tx) => {
+    await tx.update(churches).set(data).where(eq(churches.id, id));
+    if (Object.keys(branding).length > 0) {
+      await tx.update(tenantThemes).set(branding).where(eq(tenantThemes.churchId, id));
+      await syncPublishedBranding(tx, id, branding);
+    }
+  });
+  return getChurchById(id);
 }
 
 export async function updateChurchPwaIcon(churchId: number, data: { assetId: number | null; icon192Url: string; icon512Url: string }) {
@@ -321,6 +355,7 @@ export async function updateChurchPwaIcon(churchId: number, data: { assetId: num
   await db.transaction(async (tx) => {
     await tx.update(churches).set({ pwaIconAssetId: data.assetId, pwaIcon192Url: data.icon192Url, pwaIcon512Url: data.icon512Url }).where(eq(churches.id, churchId));
     await tx.update(tenantThemes).set({ faviconUrl: data.icon192Url }).where(eq(tenantThemes.churchId, churchId));
+    await syncPublishedBranding(tx, churchId, { faviconUrl: data.icon192Url });
   });
 }
 

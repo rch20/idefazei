@@ -13,7 +13,7 @@ import { dailyNotificationsHandler } from "../scheduledNotifications";
 import { scheduleRemindersHandler } from "../scheduleReminders";
 import Busboy from "busboy";
 import { storagePut } from "../storage";
-import { getPwaIconUrls, uploadMedia, type MediaPurpose, type MediaResourceType } from "../media";
+import { getOptimizedMediaUrls, getPwaIconUrls, uploadMedia, type MediaPurpose, type MediaResourceType } from "../media";
 import { stripeWebhookHandler } from "../stripe-webhook";
 import { verifyToken } from "../auth";
 import { matchesTreasuryAttachmentSignature, safeTreasuryAttachmentName, TREASURY_ATTACHMENT_MIME_TYPES } from "../treasury-files";
@@ -263,7 +263,8 @@ async function startServer() {
           entityId: churchUser.churchId,
           uploadedByChurchUserId: churchUser.id,
         });
-        res.json({ url: uploaded.url, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, mediaAssetId: asset?.id ?? null });
+        const optimized = getOptimizedMediaUrls(uploaded);
+        res.json({ url: uploaded.url, optimizedUrl: optimized.optimizedUrl, webpUrl: optimized.webpUrl, avifUrl: optimized.avifUrl, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, mediaAssetId: asset?.id ?? null });
       } catch (err) {
         console.error("[Upload] Error:", err);
         res.status(500).json({ error: "Upload failed" });
@@ -342,7 +343,8 @@ async function startServer() {
           entityId: churchUser.churchId,
           uploadedByChurchUserId: churchUser.id,
         });
-        return res.json({ url: uploaded.url, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, mediaAssetId: asset?.id ?? null });
+        const optimized = getOptimizedMediaUrls(uploaded);
+        return res.json({ url: uploaded.url, optimizedUrl: optimized.optimizedUrl, webpUrl: optimized.webpUrl, avifUrl: optimized.avifUrl, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, mediaAssetId: asset?.id ?? null });
       } catch (error) {
         console.error("[Tenant public media] Upload failed:", error);
         return res.status(500).json({ error: "Upload failed" });
@@ -408,7 +410,8 @@ async function startServer() {
         const asset = await createMediaAsset({ churchId: churchUser.churchId, provider: uploaded.provider, resourceType: uploaded.resourceType, purpose: uploaded.purpose, publicId: uploaded.publicId, storageKey: uploaded.provider === "manus_storage" ? uploaded.key : null, url: uploaded.url, secureUrl: uploaded.secureUrl, originalFilename: uploaded.originalFilename, mimeType: uploaded.mimeType, bytes: uploaded.bytes, width: uploaded.width, height: uploaded.height, durationSeconds: uploaded.durationSeconds, entityType: purpose, entityId: churchUser.churchId, uploadedByChurchUserId: churchUser.id });
         const pwaUrls = purpose === "tenant_pwa_icon" ? getPwaIconUrls(uploaded) : null;
         if (pwaUrls) await updateChurchPwaIcon(churchUser.churchId, { assetId: asset?.id ?? null, ...pwaUrls });
-        return res.json({ url: uploaded.url, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, resourceType: uploaded.resourceType, purpose: uploaded.purpose, mediaAssetId: asset?.id ?? null, icon192Url: pwaUrls?.icon192Url ?? null, icon512Url: pwaUrls?.icon512Url ?? null });
+        const optimized = getOptimizedMediaUrls(uploaded);
+        return res.json({ url: uploaded.url, optimizedUrl: optimized.optimizedUrl, webpUrl: optimized.webpUrl, avifUrl: optimized.avifUrl, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, resourceType: uploaded.resourceType, purpose: uploaded.purpose, mediaAssetId: asset?.id ?? null, icon192Url: pwaUrls?.icon192Url ?? null, icon512Url: pwaUrls?.icon512Url ?? null });
       } catch (error) {
         console.error("[Media] Upload failed:", error);
         return res.status(500).json({ error: "Upload failed" });

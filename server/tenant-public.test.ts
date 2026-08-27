@@ -30,6 +30,21 @@ const draftInput = {
   sections: [{ sectionType: "hero" as const, enabled: true, sortOrder: 0, content: { title: "Bem-vindo", subtitle: "Uma igreja de fé", primaryCtaLabel: "Visitar", primaryCtaHref: "/visitante" }}],
 };
 
+describe("Propagação da identidade visual", () => {
+  const dbSource = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
+  const configSource = readFileSync(resolve(process.cwd(), "client/src/pages/Configuracoes.tsx"), "utf8");
+
+  it("sincroniza alterações da identidade com tema e revisão publicada do mesmo tenant", () => {
+    const start = dbSource.indexOf("type PublishedBrandingPatch =");
+    const end = dbSource.indexOf("// ─── SITE PÚBLICO MULTI-TENANT", start);
+    const helper = dbSource.slice(start, end);
+    expect(helper).toContain("syncPublishedBranding");
+    expect(helper).toContain("tenantThemes");
+    expect(helper).toContain("tenantPageRevisions");
+    expect(configSource).toContain("utils.tenantPublic.current.invalidate");
+  });
+});
+
 describe("tenantPublic.current", () => {
   afterEach(() => vi.restoreAllMocks());
 
