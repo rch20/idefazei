@@ -16,6 +16,7 @@ export type UploadedMediaResult = {
   mediaAssetId: number | null;
   icon192Url?: string | null;
   icon512Url?: string | null;
+  pwaIconSource?: "custom" | "derived" | null;
 };
 
 export async function uploadChurchMedia(file: File, options: { purpose: ClientMediaPurpose; resourceType: ClientMediaResourceType }) {

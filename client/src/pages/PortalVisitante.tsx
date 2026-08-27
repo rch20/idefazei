@@ -35,7 +35,7 @@ export default function PortalVisitante() {
   const [selectedType, setSelectedType] = useState<string>("pedido_oracao");
   const churchSlug = useChurchSlug();
   const tenantPublic = trpc.tenantPublic.current.useQuery();
-  useTenantPwaMeta({ tenantSlug: tenantPublic.data?.church.slug, tenantName: tenantPublic.data?.church.name, primaryColor: tenantPublic.data?.theme?.primaryColor ?? tenantPublic.data?.church.primaryColor, pwaIconAssetId: tenantPublic.data?.church.pwaIconAssetId });
+  useTenantPwaMeta({ tenantSlug: tenantPublic.data?.church.slug, tenantName: tenantPublic.data?.church.name, primaryColor: tenantPublic.data?.theme?.primaryColor ?? tenantPublic.data?.church.primaryColor, pwaIconAssetId: tenantPublic.data?.church.pwaIconAssetId, pwaIconVersion: tenantPublic.data?.church.pwaIconVersion });
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<VisitorData>({
     resolver: zodResolver(visitorSchema),

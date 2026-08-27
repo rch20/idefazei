@@ -189,6 +189,35 @@ export function getPwaIconUrls(media: Pick<UploadedMedia, "provider" | "publicId
   return { icon192Url: buildUrl(192), icon512Url: buildUrl(512) };
 }
 
+function cloudinaryBackgroundColor(color?: string) {
+  const normalized = String(color ?? "").trim().replace(/^#/, "");
+  return /^[0-9a-f]{6}$/i.test(normalized) ? `rgb:${normalized.toLowerCase()}` : "rgb:1e3a5f";
+}
+
+/**
+ * Deriva o ícone a partir da logo sem cortar as extremidades. O modo `pad`
+ * mantém a logo institucional inteira, preenche o quadrado com a cor primária
+ * e gera PNGs compatíveis sem criar novos uploads no Cloudinary.
+ */
+export function getDerivedLogoIconUrls(
+  media: Pick<UploadedMedia, "provider" | "publicId" | "url">,
+  backgroundColor?: string | null,
+) {
+  if (media.provider !== "cloudinary" || !media.publicId || !hasCloudinaryConfig()) {
+    return { icon192Url: media.url, icon512Url: media.url };
+  }
+  const client = configureCloudinary();
+  const background = cloudinaryBackgroundColor(backgroundColor ?? undefined);
+  const buildUrl = (size: number) => client.url(media.publicId!, {
+    secure: true,
+    resource_type: "image",
+    type: "upload",
+    format: "png",
+    transformation: [{ width: size, height: size, crop: "pad", gravity: "center", background, quality: "auto:good" }],
+  });
+  return { icon192Url: buildUrl(192), icon512Url: buildUrl(512) };
+}
+
 export async function destroyCloudinaryAsset(publicId: string, resourceType: MediaResourceType) {
   if (!hasCloudinaryConfig()) return false;
   const client = configureCloudinary();

@@ -49,9 +49,13 @@ A preparação local foi validada com TypeScript, suíte completa de 245 testes 
 
 ## Ícone PWA por tenant
 
-O tenant agora possui `pwaIconAssetId`, `pwaIcon192Url` e `pwaIcon512Url`. A finalidade `tenant_pwa_icon` é administrativa e usa o endpoint comum de mídia. Com Cloudinary ativo, o servidor gera os derivados PNG 192x192 e 512x512 a partir do mesmo `public_id`, usando transformação quadrada; sem Cloudinary, o fallback atual permanece disponível até a ativação das credenciais.
+O tenant possui `pwaIconAssetId`, `pwaIcon192Url`, `pwaIcon512Url` e `pwaIconSource`. O contrato é reversível e tem a seguinte precedência: **ícone personalizado ativo** (`pwaIconAssetId` preenchido) > **ícone derivado da logo** (`pwaIconSource=derived`) > **fallback físico do PWA**. O asset manual nunca é excluído ao restaurar a logo.
 
-O upload sincroniza o `faviconUrl` do tema público e atualiza o head em todas as rotas relevantes: página pública, Visite-nos, Portal do Visitante, login por subdomínio e painel autenticado. O manifest dinâmico e os endpoints `/api/pwa/icon-192.png` e `/api/pwa/icon-512.png` resolvem a igreja pelo host público ou por slug validado do painel. O service worker foi versionado para `ide-fazei-v5` e as notificações usam o endpoint 192x192 correto.
+A finalidade `tenant_pwa_icon` é administrativa e usa o endpoint comum de mídia. Com Cloudinary ativo, um upload manual gera derivados PNG 192x192 e 512x512 com `crop: fill`; quando a logo é a fonte, o servidor gera os mesmos tamanhos sem novo upload, com `crop: pad`, centralização, fundo na cor primária e preservação das extremidades da marca. O original institucional permanece intacto.
+
+O upload da logo atualiza automaticamente os derivados apenas quando não existe ícone personalizado. Salvar uma nova cor primária recalcula o fundo do derivado da logo; não altera ícone personalizado. A mutation administrativa “Usar logo como ícone” limpa somente a referência ativa do ícone manual e aponta novamente para os derivados mais recentes da logo.
+
+O upload sincroniza o `faviconUrl` do tema público e atualiza o head em todas as rotas relevantes: página pública, Visite-nos, Portal do Visitante, login por subdomínio e painel autenticado. O manifest dinâmico e os endpoints `/api/pwa/icon-192.png` e `/api/pwa/icon-512.png` resolvem a igreja pelo host público ou por slug validado do painel. Ícones e atalhos recebem `?tenant=<slug>&v=<updatedAt>` para invalidar cache quando a logo, cores ou fonte efetiva mudarem. O service worker foi versionado para `ide-fazei-v5` e as notificações usam o endpoint 192x192 correto.
 
 A produção já está com as migrações aplicadas e `MEDIA_PROVIDER=cloudinary` ativo. Novos uploads de identidade, ícone PWA, galeria, certificados e vídeos públicos usarão o Cloudinary conforme suas finalidades e permissões; comprovantes financeiros continuam protegidos no storage privado atual.
 

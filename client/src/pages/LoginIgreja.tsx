@@ -45,7 +45,7 @@ export default function LoginIgreja() {
   });
   const tenantName = tenantPublic?.church.name ?? "Ide Fazei";
   const primaryColor = tenantPublic?.theme?.primaryColor ?? tenantPublic?.church.primaryColor ?? "#1e3a5f";
-  useTenantPwaMeta({ tenantSlug: tenantPublic?.church.slug, tenantName: tenantPublic?.church.name, primaryColor, pwaIconAssetId: tenantPublic?.church.pwaIconAssetId });
+  useTenantPwaMeta({ tenantSlug: tenantPublic?.church.slug, tenantName: tenantPublic?.church.name, primaryColor, pwaIconAssetId: tenantPublic?.church.pwaIconAssetId, pwaIconVersion: tenantPublic?.church.pwaIconVersion });
   const accentColor = tenantPublic?.theme?.secondaryColor ?? tenantPublic?.church.secondaryColor ?? "#c9a84c";
   const logoUrl = tenantPublic?.theme?.logoUrl ?? tenantPublic?.church.logoUrl ?? null;
   const logoLetters = tenantName

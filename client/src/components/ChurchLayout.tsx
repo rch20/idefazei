@@ -362,7 +362,7 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
     { id: churchId ?? 0 },
     { enabled: isAuthenticated && churchId !== null }
   );
-  useTenantPwaMeta({ tenantSlug: church?.slug, tenantName: church?.name, primaryColor: church?.primaryColor, pwaIconAssetId: church?.pwaIconAssetId });
+  useTenantPwaMeta({ tenantSlug: church?.slug, tenantName: church?.name, primaryColor: church?.primaryColor, pwaIconAssetId: church?.pwaIconAssetId, pwaIconVersion: church?.updatedAt?.getTime() });
 
   if (loading) {
     return (

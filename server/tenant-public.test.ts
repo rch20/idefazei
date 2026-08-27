@@ -310,15 +310,28 @@ describe("Galeria pública por tenant", () => {
   it("resolve manifest e ícones PWA por tenant com fallback e cache controlado", () => {
     expect(indexSource).toContain('app.get("/manifest.json"');
     expect(indexSource).toContain('app.get("/api/pwa/icon-:size(192|512).png"');
-    expect(indexSource).toContain('"/api/pwa/icon-192.png"');
-    expect(indexSource).toContain('"/api/pwa/icon-512.png"');
-    expect(indexSource).toContain("pwaIcon192Url");
+    expect(indexSource).toContain('`/api/pwa/icon-192.png${pwaCacheQuery}`');
+    expect(indexSource).toContain('`/api/pwa/icon-512.png${pwaCacheQuery}`');
+    expect(dbSource).toContain("pwaIcon192Url");
+    expect(indexSource).toContain("getDerivedLogoIconUrls");
+    expect(indexSource).toContain("hasCustomPwaIcon");
+    expect(indexSource).toContain("pwaCacheQuery");
     expect(indexSource).toContain('const fallbackPwaIcons = { 192: "/ide-fazei-pwa-fallback-192.png", 512: "/ide-fazei-pwa-fallback-512.png" } as const;');
     expect(indexSource).not.toContain("/manus-storage/ide-fazei-symbol_59bf82d4.png");
     expect(existsSync(resolve(process.cwd(), "client/public/ide-fazei-pwa-fallback-192.png"))).toBe(true);
     expect(existsSync(resolve(process.cwd(), "client/public/ide-fazei-pwa-fallback-512.png"))).toBe(true);
     expect(indexSource).toContain("no-cache, max-age=0, must-revalidate");
     expect(dbSource).toContain("faviconUrl: church.pwaIcon192Url || church.logoUrl");
+    expect(dbSource).toContain('pwaIconSource: church.pwaIconSource');
+    expect(dbSource).toContain('source: "derived"');
+  });
+
+  it("mantém a precedência ícone personalizado > logo derivada > fallback e a restauração reversível", () => {
+    expect(dbSource).toContain('export async function useChurchLogoAsPwaIcon');
+    expect(dbSource).toContain('pwaIconAssetId: null');
+    expect(dbSource).toContain('sem excluir o upload manual anterior');
+    expect(routerSource).toContain('useLogoAsPwaIcon: protectedProcedure');
+    expect(routerSource).toContain('requireChurchAdministrator(ctx.user.id, input.id)');
   });
 
   it("prepara um endpoint genérico para imagens e vídeos sem aceitar finalidade arbitrária", () => {

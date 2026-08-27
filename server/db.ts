@@ -74,6 +74,7 @@ import {
   onboardingProgress,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { getDerivedLogoIconUrls } from "./media";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -332,15 +333,50 @@ async function syncPublishedBranding(tx: Parameters<Parameters<NonNullable<Await
   ));
 }
 
+async function getLatestLogoForChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(mediaAssets).where(and(
+    eq(mediaAssets.churchId, churchId),
+    eq(mediaAssets.purpose, "tenant_logo"),
+    eq(mediaAssets.status, "active"),
+  )).orderBy(desc(mediaAssets.createdAt), desc(mediaAssets.id)).limit(1);
+  return rows[0] ?? null;
+}
+
+async function deriveLatestLogoIcon(churchId: number, backgroundColor?: string | null) {
+  const asset = await getLatestLogoForChurch(churchId);
+  if (!asset) return null;
+  return getDerivedLogoIconUrls({
+    provider: asset.provider,
+    publicId: asset.publicId,
+    url: asset.secureUrl ?? asset.url,
+  }, backgroundColor);
+}
+
 export async function updateChurch(id: number, data: Partial<typeof churches.$inferInsert>) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
+  const currentChurch = await getChurchById(id);
+  const shouldRefreshDerivedIcon = Boolean(
+    currentChurch &&
+    currentChurch.pwaIconAssetId === null &&
+    currentChurch.pwaIconSource !== "custom" &&
+    (data.primaryColor !== undefined || data.logoUrl !== undefined),
+  );
+  const derivedIconUrls = shouldRefreshDerivedIcon
+    ? await deriveLatestLogoIcon(id, data.primaryColor ?? currentChurch?.primaryColor)
+    : null;
   const branding: PublishedBrandingPatch = {};
   if (data.primaryColor) branding.primaryColor = data.primaryColor;
   if (data.secondaryColor) branding.secondaryColor = data.secondaryColor;
   if (data.logoUrl !== undefined) branding.logoUrl = data.logoUrl;
+  if (derivedIconUrls) branding.faviconUrl = derivedIconUrls.icon192Url;
+  const churchPatch = derivedIconUrls
+    ? { ...data, pwaIconAssetId: null, pwaIcon192Url: derivedIconUrls.icon192Url, pwaIcon512Url: derivedIconUrls.icon512Url, pwaIconSource: "derived" as const }
+    : data;
   await db.transaction(async (tx) => {
-    await tx.update(churches).set(data).where(eq(churches.id, id));
+    await tx.update(churches).set(churchPatch).where(eq(churches.id, id));
     if (Object.keys(branding).length > 0) {
       await tx.update(tenantThemes).set(branding).where(eq(tenantThemes.churchId, id));
       await syncPublishedBranding(tx, id, branding);
@@ -349,14 +385,47 @@ export async function updateChurch(id: number, data: Partial<typeof churches.$in
   return getChurchById(id);
 }
 
-export async function updateChurchPwaIcon(churchId: number, data: { assetId: number | null; icon192Url: string; icon512Url: string }) {
+export async function getEffectivePwaIconUrls(churchId: number) {
+  const church = await getChurchById(churchId);
+  if (!church) return null;
+  if (church.pwaIconAssetId !== null || church.pwaIconSource === "custom") {
+    return {
+      icon192Url: church.pwaIcon192Url || church.logoUrl,
+      icon512Url: church.pwaIcon512Url || church.pwaIcon192Url || church.logoUrl,
+    };
+  }
+  if (!church.logoUrl) return null;
+  const derived = await deriveLatestLogoIcon(churchId, church.primaryColor);
+  return derived ?? { icon192Url: church.logoUrl, icon512Url: church.logoUrl };
+}
+
+export async function updateChurchPwaIcon(churchId: number, data: { assetId: number | null; icon192Url: string; icon512Url: string; source: "custom" | "derived" }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.transaction(async (tx) => {
-    await tx.update(churches).set({ pwaIconAssetId: data.assetId, pwaIcon192Url: data.icon192Url, pwaIcon512Url: data.icon512Url }).where(eq(churches.id, churchId));
+    await tx.update(churches).set({ pwaIconAssetId: data.assetId, pwaIcon192Url: data.icon192Url, pwaIcon512Url: data.icon512Url, pwaIconSource: data.source }).where(eq(churches.id, churchId));
     await tx.update(tenantThemes).set({ faviconUrl: data.icon192Url }).where(eq(tenantThemes.churchId, churchId));
     await syncPublishedBranding(tx, churchId, { faviconUrl: data.icon192Url });
   });
+}
+
+/** Reativa a logo institucional como fonte do ícone sem excluir o upload manual anterior. */
+export async function useChurchLogoAsPwaIcon(churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const church = await getChurchById(churchId);
+  if (!church?.logoUrl) throw new Error("Este tenant ainda não possui uma logo institucional.");
+  const logoAsset = await getLatestLogoForChurch(churchId);
+  const logoMedia = logoAsset ? {
+    provider: logoAsset.provider,
+    publicId: logoAsset.publicId,
+    url: logoAsset.secureUrl ?? logoAsset.url,
+  } : null;
+  const urls = logoMedia
+    ? getDerivedLogoIconUrls(logoMedia, church.primaryColor)
+    : { icon192Url: church.logoUrl, icon512Url: church.logoUrl };
+  await updateChurchPwaIcon(churchId, { assetId: null, ...urls, source: "derived" });
+  return getChurchById(churchId);
 }
 
 // ─── SITE PÚBLICO MULTI-TENANT ─────────────────────────────────────────────────
@@ -424,6 +493,8 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
       slug: church.slug,
       logoUrl: church.logoUrl,
       pwaIconAssetId: church.pwaIconAssetId,
+      pwaIconSource: church.pwaIconSource,
+      pwaIconVersion: church.updatedAt.getTime(),
       primaryColor: church.primaryColor,
       secondaryColor: church.secondaryColor,
       city: church.city,

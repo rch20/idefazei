@@ -18,7 +18,7 @@ function findContent(sections: Array<{ sectionType: string; content: unknown }>,
 
 export default function TenantPublicPage() {
   const { data, isLoading } = trpc.tenantPublic.current.useQuery();
-  useTenantPwaMeta({ tenantSlug: data?.church.slug, tenantName: data?.church.name, primaryColor: data?.theme?.primaryColor ?? data?.church.primaryColor, pwaIconAssetId: data?.church.pwaIconAssetId });
+  useTenantPwaMeta({ tenantSlug: data?.church.slug, tenantName: data?.church.name, primaryColor: data?.theme?.primaryColor ?? data?.church.primaryColor, pwaIconAssetId: data?.church.pwaIconAssetId, pwaIconVersion: data?.church.pwaIconVersion });
   const [expandedAnnouncement, setExpandedAnnouncement] = useState<{ title: string; imageUrl: string; imageAlt: string } | null>(null);
 
   if (isLoading) {

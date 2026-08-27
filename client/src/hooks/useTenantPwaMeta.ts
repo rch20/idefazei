@@ -5,6 +5,7 @@ type TenantPwaMetaInput = {
   tenantName?: string | null;
   primaryColor?: string | null;
   pwaIconAssetId?: number | null;
+  pwaIconVersion?: number | string | Date | null;
 };
 
 function setOrCreateLink(rel: string, href: string, sizes?: string) {
@@ -34,10 +35,11 @@ function setOrCreateMeta(name: string, content: string) {
   return element;
 }
 
-export function useTenantPwaMeta({ tenantSlug, tenantName, primaryColor, pwaIconAssetId }: TenantPwaMetaInput) {
+export function useTenantPwaMeta({ tenantSlug, tenantName, primaryColor, pwaIconAssetId, pwaIconVersion }: TenantPwaMetaInput) {
   useEffect(() => {
     if (!tenantSlug) return;
-    const query = `?tenant=${encodeURIComponent(tenantSlug)}${pwaIconAssetId ? `&v=${pwaIconAssetId}` : ""}`;
+    const effectiveVersion = pwaIconVersion instanceof Date ? pwaIconVersion.getTime() : pwaIconVersion ?? pwaIconAssetId;
+    const query = `?tenant=${encodeURIComponent(tenantSlug)}${effectiveVersion !== null && effectiveVersion !== undefined && effectiveVersion !== "" ? `&v=${encodeURIComponent(String(effectiveVersion))}` : ""}`;
     const icon192 = `/api/pwa/icon-192.png${query}`;
     const originalTitle = document.title;
     const originalIcon = document.head.querySelector<HTMLLinkElement>('link[rel="icon"]')?.href;
@@ -70,5 +72,5 @@ export function useTenantPwaMeta({ tenantSlug, tenantName, primaryColor, pwaIcon
       }
       document.title = originalTitle;
     };
-  }, [pwaIconAssetId, primaryColor, tenantName, tenantSlug]);
+  }, [pwaIconAssetId, pwaIconVersion, primaryColor, tenantName, tenantSlug]);
 }

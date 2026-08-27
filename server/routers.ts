@@ -150,6 +150,7 @@ import {
   getSoulById,
   getSoulsByChurch,
   updateChurch,
+  useChurchLogoAsPwaIcon,
   updateConsolidation,
   updateConsolidationReferral,
   linkSoulToPerson,
@@ -777,6 +778,13 @@ const churchRouter = router({
       const { id, ...data } = input;
       await requireChurchAdministrator(ctx.user.id, id);
       return updateChurch(id, data);
+    }),
+
+  useLogoAsPwaIcon: protectedProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.id);
+      return useChurchLogoAsPwaIcon(input.id);
     }),
 });
 

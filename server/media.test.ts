@@ -38,6 +38,9 @@ describe("Adaptador de mídia", () => {
     expect(source).toContain('"tenant_logo"');
     expect(source).toContain('"tenant_pwa_icon"');
     expect(source).toContain("getPwaIconUrls");
+    expect(source).toContain("getDerivedLogoIconUrls");
+    expect(source).toContain('crop: "pad"');
+    expect(source).toContain('background, quality: "auto:good"');
     expect(source).toContain("getOptimizedMediaUrls");
     expect(source).toContain('fetch_format: fetchFormat');
     expect(source).toContain('resource_type: resourceTypeForCloudinary(input.resourceType)');
@@ -45,7 +48,8 @@ describe("Adaptador de mídia", () => {
   });
 
   it("entrega a URL original no fallback quando não há Cloudinary configurado", async () => {
-    const { getOptimizedMediaUrls } = await import("./media");
+    const { getDerivedLogoIconUrls, getOptimizedMediaUrls } = await import("./media");
+    expect(getDerivedLogoIconUrls({ provider: "manus_storage", publicId: null, url: "/manus-storage/test.png" }, "#ffffff")).toEqual({ icon192Url: "/manus-storage/test.png", icon512Url: "/manus-storage/test.png" });
     expect(getOptimizedMediaUrls({ provider: "manus_storage", resourceType: "image", publicId: null, url: "/manus-storage/test.png" })).toEqual({
       optimizedUrl: "/manus-storage/test.png",
       webpUrl: null,
@@ -57,12 +61,16 @@ describe("Adaptador de mídia", () => {
     const schema = readFileSync(resolve(process.cwd(), "drizzle/schema.ts"), "utf8");
     const migration = readFileSync(resolve(process.cwd(), "drizzle/0036_tan_cerebro.sql"), "utf8");
     const pwaMigration = readFileSync(resolve(process.cwd(), "drizzle/0037_superb_korg.sql"), "utf8");
+    const iconSourceMigration = readFileSync(resolve(process.cwd(), "drizzle/0040_equal_katie_power.sql"), "utf8");
     expect(schema).toContain('export const mediaAssets = mysqlTable("media_assets"');
     expect(schema).toContain('pwaIcon192Url: text("pwaIcon192Url")');
     expect(schema).toContain('pwaIcon512Url: text("pwaIcon512Url")');
+    expect(schema).toContain('pwaIconSource: mysqlEnum("pwaIconSource", ["custom", "derived"])');
     expect(pwaMigration).toContain("tenant_pwa_icon");
     expect(pwaMigration).toContain("pwaIcon192Url");
     expect(pwaMigration).toContain("pwaIcon512Url");
+    expect(iconSourceMigration).toContain("ADD `pwaIconSource` enum('custom','derived')");
+    expect(iconSourceMigration).toContain("WHERE `pwaIconAssetId` IS NOT NULL");
     expect(schema).toContain('index("media_assets_church_idx").on(table.churchId)');
     expect(migration).toContain("CREATE TABLE `media_assets`");
     expect(migration).toContain("enum('cloudinary','manus_storage')");

@@ -53,7 +53,7 @@ function meetingLabel(cell: PublicCell) {
 
 export default function VisiteNos() {
   const { data, isLoading } = trpc.tenantPublic.current.useQuery();
-  useTenantPwaMeta({ tenantSlug: data?.church.slug, tenantName: data?.church.name, primaryColor: data?.theme?.primaryColor ?? data?.church.primaryColor, pwaIconAssetId: data?.church.pwaIconAssetId });
+  useTenantPwaMeta({ tenantSlug: data?.church.slug, tenantName: data?.church.name, primaryColor: data?.theme?.primaryColor ?? data?.church.primaryColor, pwaIconAssetId: data?.church.pwaIconAssetId, pwaIconVersion: data?.church.pwaIconVersion });
   const [selectedCellId, setSelectedCellId] = useState<number | null>(null);
   const [visitorLocation, setVisitorLocation] = useState<Coordinates | null>(null);
   const [locationError, setLocationError] = useState("");

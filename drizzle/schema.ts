@@ -40,6 +40,8 @@ export const churches = mysqlTable("churches", {
   pwaIconAssetId: int("pwaIconAssetId"),
   pwaIcon192Url: text("pwaIcon192Url"),
   pwaIcon512Url: text("pwaIcon512Url"),
+  // custom = upload manual ativo; derived = composição automática a partir da logo.
+  pwaIconSource: mysqlEnum("pwaIconSource", ["custom", "derived"]).default("derived").notNull(),
   primaryColor: varchar("primaryColor", { length: 7 }).default("#1e3a5f"),
   secondaryColor: varchar("secondaryColor", { length: 7 }).default("#c9a84c"),
   address: text("address"),

@@ -53,6 +53,11 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("Ícone do aplicativo");
     expect(settingsSource).toContain("iOS: 192×192 · PWA: 192×192 e 512×512");
     expect(settingsSource).toContain("Ícone PWA atualizado em todos os destinos.");
+    expect(settingsSource).toContain("useLogoAsPwaIconMutation");
+    expect(settingsSource).toContain("Usar logo como ícone");
+    expect(settingsSource).toContain("Aba do navegador");
+    expect(settingsSource).toContain("Atalho móvel");
+    expect(settingsSource).toContain("Fonte efetiva:");
   });
 
   it("invalida o estado do tenant e do site após salvar a identidade", () => {
@@ -75,6 +80,7 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(pwaHookSource).toContain("apple-touch-icon");
     expect(pwaHookSource).toContain("manifest.json");
     expect(pwaHookSource).toContain("theme-color");
+    expect(pwaHookSource).toContain("pwaIconVersion");
     expect(visiteNosSource).toContain("useTenantPwaMeta");
     expect(portalVisitanteSource).toContain("useTenantPwaMeta");
     expect(loginIgrejaSource).toContain("useTenantPwaMeta");

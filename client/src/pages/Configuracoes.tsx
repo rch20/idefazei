@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, Settings2 } from "lucide-react";
+import { Building2, Palette, Users, Globe, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, Settings2, RotateCcw } from "lucide-react";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { TenantPublicSettings } from "@/components/TenantPublicSettings";
@@ -63,7 +63,7 @@ export default function Configuracoes() {
   const pwaIconInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUploadingPwaIcon, setIsUploadingPwaIcon] = useState(false);
-  const [pwaIconPreviewUrl, setPwaIconPreviewUrl] = useState<string | null>(church?.pwaIcon192Url ?? null);
+  const [pwaIconPreviewUrl, setPwaIconPreviewUrl] = useState<string | null>(church?.pwaIcon192Url ?? church?.logoUrl ?? null);
   const [activeTab, setActiveTab] = useState("geral");
 
   useEffect(() => {
@@ -84,7 +84,8 @@ export default function Configuracoes() {
       primaryColor: church.primaryColor ?? "#1e3a5f",
       secondaryColor: church.secondaryColor ?? "#c9a84c",
     });
-    setPwaIconPreviewUrl(church.pwaIcon192Url ?? null);
+    const effectivePreviewUrl = church.slug ? `/api/pwa/icon-192.png?tenant=${encodeURIComponent(church.slug)}&v=${encodeURIComponent(String(church.updatedAt?.getTime() ?? 0))}` : null;
+    setPwaIconPreviewUrl(church.pwaIcon192Url ?? (church.logoUrl ? effectivePreviewUrl : null));
   }, [church]);
 
   const updateMutation = trpc.churches.update.useMutation({
@@ -96,6 +97,19 @@ export default function Configuracoes() {
         utils.tenantPublic.current.invalidate(),
       ]);
       toast.success("Configurações salvas com sucesso!");
+    },
+    onError: (err: { message: string }) => toast.error(err.message),
+  });
+  const useLogoAsPwaIconMutation = trpc.churches.useLogoAsPwaIcon.useMutation({
+    onSuccess: async (updatedChurch) => {
+      setPwaIconPreviewUrl(updatedChurch?.pwaIcon192Url ?? churchForm.logoUrl ?? null);
+      await Promise.all([
+        refetch(),
+        churchId ? utils.churches.getById.invalidate({ id: churchId }) : Promise.resolve(),
+        utils.tenantPublic.adminPreview.invalidate(),
+        utils.tenantPublic.current.invalidate(),
+      ]);
+      toast.success("A logo agora é a fonte do ícone em todos os destinos.");
     },
     onError: (err: { message: string }) => toast.error(err.message),
   });
@@ -172,6 +186,7 @@ export default function Configuracoes() {
     try {
       const result = await uploadChurchMedia(file, { purpose: "tenant_logo", resourceType: "image" });
       setChurchForm((current) => ({ ...current, logoUrl: result.optimizedUrl }));
+      if (result.pwaIconSource === "derived" && result.icon192Url) setPwaIconPreviewUrl(result.icon192Url);
       updateMutation.mutate({ id: churchId!, logoUrl: result.optimizedUrl });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível enviar a logo.");
@@ -219,6 +234,8 @@ export default function Configuracoes() {
   }
 
   const canSaveChurchSettings = activeTab === "geral" || activeTab === "identidade";
+  const hasCustomPwaIcon = Boolean(church?.pwaIconAssetId) || church?.pwaIconSource === "custom";
+  const effectivePwaIconUrl = pwaIconPreviewUrl ?? churchForm.logoUrl ?? null;
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 p-4 animate-fade-in-up sm:p-6 lg:p-8">
@@ -304,14 +321,21 @@ export default function Configuracoes() {
                 </section>
 
                 <section className="card-sacred p-5 sm:p-6">
-                  <div className="border-b border-border pb-4"><div className="flex items-center gap-2"><Smartphone className="h-4 w-4 text-gold" /><h3 className="text-base font-semibold text-navy">Ícone do aplicativo</h3></div><p className="mt-1 text-sm text-muted-foreground">Um único upload será usado no favicon, PWA, atalhos e tela inicial do iOS.</p></div>
-                  <div className="mt-5">
+                  <div className="border-b border-border pb-4"><div className="flex items-center gap-2"><Smartphone className="h-4 w-4 text-gold" /><h3 className="text-base font-semibold text-navy">Ícone do aplicativo</h3></div><p className="mt-1 text-sm text-muted-foreground">A logo é a fonte automática por padrão. Um upload quadrado personalizado tem prioridade e pode ser restaurado depois.</p></div>
+                  <div className="mt-5 space-y-4">
                     <input ref={pwaIconInputRef} aria-label="Selecionar ícone PWA da igreja" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={handlePwaIconUpload} />
-                    <button type="button" onClick={() => pwaIconInputRef.current?.click()} disabled={isUploadingPwaIcon} className="flex w-full min-w-0 items-center gap-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-4 text-left transition-colors hover:border-gold/60 hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 disabled:cursor-wait disabled:opacity-70">
-                      {pwaIconPreviewUrl || churchForm.logoUrl ? <img src={pwaIconPreviewUrl ?? churchForm.logoUrl} alt="Prévia do ícone PWA" className="h-16 w-16 shrink-0 rounded-2xl object-cover shadow-sm" /> : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-navy text-gold shadow-sm"><Smartphone className="h-7 w-7" /></span>}
-                      <span className="min-w-0"><strong className="block text-sm font-semibold text-navy">{isUploadingPwaIcon ? "Enviando ícone..." : pwaIconPreviewUrl ? "Clique para substituir o ícone" : "Clique para enviar o ícone"}</strong><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">PNG, JPG ou WebP · máximo de 2 MB · prefira uma imagem quadrada</span></span>
-                    </button>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />iOS: 192×192 · PWA: 192×192 e 512×512 · um upload, todos os destinos</div>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+                      <button type="button" onClick={() => pwaIconInputRef.current?.click()} disabled={isUploadingPwaIcon} className="flex min-w-0 flex-1 items-center gap-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/70 p-4 text-left transition-colors hover:border-gold/60 hover:bg-gold/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 disabled:cursor-wait disabled:opacity-70">
+                        {effectivePwaIconUrl ? <img src={effectivePwaIconUrl} alt="Prévia do ícone efetivo PWA" className="h-16 w-16 shrink-0 rounded-2xl bg-white object-contain p-1 shadow-sm" /> : <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-navy text-gold shadow-sm"><Smartphone className="h-7 w-7" /></span>}
+                        <span className="min-w-0"><strong className="block text-sm font-semibold text-navy">{isUploadingPwaIcon ? "Enviando ícone..." : hasCustomPwaIcon ? "Substituir ícone personalizado" : "Enviar ícone personalizado"}</strong><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">PNG, JPG ou WebP · máximo de 2 MB · prefira uma imagem quadrada</span></span>
+                      </button>
+                      {hasCustomPwaIcon && <Button type="button" variant="outline" className="gap-2 border-navy/15 bg-white text-navy hover:bg-navy/5 sm:w-44" onClick={() => useLogoAsPwaIconMutation.mutate({ id: churchId! })} disabled={useLogoAsPwaIconMutation.isPending || !churchForm.logoUrl}><RotateCcw className="h-4 w-4" />{useLogoAsPwaIconMutation.isPending ? "Restaurando..." : "Usar logo como ícone"}</Button>}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />iOS: 192×192 · PWA: 192×192 e 512×512 · favicon e atalhos usam a mesma fonte efetiva</div>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {[{ label: "Logo institucional", value: churchForm.logoUrl, alt: "Prévia da logo institucional" }, { label: "Aba do navegador", value: effectivePwaIconUrl, alt: "Prévia do favicon" }, { label: "Atalho móvel", value: effectivePwaIconUrl, alt: "Prévia do atalho móvel" }].map((preview) => <div key={preview.label} className="rounded-2xl border border-slate-200 bg-white p-3"><p className="text-[11px] font-semibold text-navy">{preview.label}</p><div className="mt-2 flex h-14 items-center justify-center rounded-xl bg-slate-50">{preview.value ? <img src={preview.value} alt={preview.alt} className="h-10 w-10 rounded-lg object-contain" /> : <span className="text-[11px] text-muted-foreground">Ainda não enviada</span>}</div></div>)}
+                    </div>
+                    <p className="text-xs leading-relaxed text-muted-foreground">{hasCustomPwaIcon ? "Fonte efetiva: ícone personalizado. A logo continua preservada e pode voltar a ser usada sem excluir este asset." : churchForm.logoUrl ? "Fonte efetiva: derivado quadrado da logo, com composição que preserva a marca inteira." : "Fonte efetiva: fallback padrão até que a logo institucional seja enviada."}</p>
                   </div>
                 </section>
 

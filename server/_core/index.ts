@@ -13,7 +13,7 @@ import { dailyNotificationsHandler } from "../scheduledNotifications";
 import { scheduleRemindersHandler } from "../scheduleReminders";
 import Busboy from "busboy";
 import { storagePut } from "../storage";
-import { getOptimizedMediaUrls, getPwaIconUrls, uploadMedia, type MediaPurpose, type MediaResourceType } from "../media";
+import { getDerivedLogoIconUrls, getOptimizedMediaUrls, getPwaIconUrls, uploadMedia, type MediaPurpose, type MediaResourceType } from "../media";
 import { stripeWebhookHandler } from "../stripe-webhook";
 import { verifyToken } from "../auth";
 import { matchesTreasuryAttachmentSignature, safeTreasuryAttachmentName, TREASURY_ATTACHMENT_MIME_TYPES } from "../treasury-files";
@@ -26,6 +26,8 @@ import {
   getComplementaryRolesByChurchUser,
   getFinancialReconciliationById,
   getChurchBySlug,
+  getChurchById,
+  getEffectivePwaIconUrls,
   getMinistryRoleDefinitionsByChurch,
   updateChurchPwaIcon,
 } from "../db";
@@ -91,6 +93,7 @@ async function startServer() {
   };
   app.get("/manifest.json", async (req, res) => {
     const church = await resolvePwaChurch(req);
+    const pwaCacheQuery = church ? `?tenant=${encodeURIComponent(church.slug)}&v=${encodeURIComponent(String(church.updatedAt?.getTime() ?? 0))}` : "";
     res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
     res.type("application/manifest+json").json({
       id: "/",
@@ -105,14 +108,14 @@ async function startServer() {
       orientation: "portrait-primary",
       lang: "pt-BR",
       icons: [
-        { src: "/api/pwa/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
-        { src: "/api/pwa/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+        { src: `/api/pwa/icon-192.png${pwaCacheQuery}`, sizes: "192x192", type: "image/png", purpose: "any maskable" },
+        { src: `/api/pwa/icon-512.png${pwaCacheQuery}`, sizes: "512x512", type: "image/png", purpose: "any maskable" },
       ],
       categories: ["productivity", "lifestyle"],
       shortcuts: [
-        { name: "Dashboard", short_name: "Dashboard", description: "Visão geral da sua igreja", url: "/app/dashboard", icons: [{ src: "/api/pwa/icon-192.png", sizes: "192x192", type: "image/png" }] },
-        { name: "Ganhar Almas", short_name: "Almas", description: "Registrar nova conversão", url: "/app/almas", icons: [{ src: "/api/pwa/icon-192.png", sizes: "192x192", type: "image/png" }] },
-        { name: "Funil de Discipulado", short_name: "Funil", description: "Acompanhar o funil de discipulado", url: "/app/funil", icons: [{ src: "/api/pwa/icon-192.png", sizes: "192x192", type: "image/png" }] },
+        { name: "Dashboard", short_name: "Dashboard", description: "Visão geral da sua igreja", url: "/app/dashboard", icons: [{ src: `/api/pwa/icon-192.png${pwaCacheQuery}`, sizes: "192x192", type: "image/png" }] },
+        { name: "Ganhar Almas", short_name: "Almas", description: "Registrar nova conversão", url: "/app/almas", icons: [{ src: `/api/pwa/icon-192.png${pwaCacheQuery}`, sizes: "192x192", type: "image/png" }] },
+        { name: "Funil de Discipulado", short_name: "Funil", description: "Acompanhar o funil de discipulado", url: "/app/funil", icons: [{ src: `/api/pwa/icon-192.png${pwaCacheQuery}`, sizes: "192x192", type: "image/png" }] },
       ],
     });
   });
@@ -120,7 +123,8 @@ async function startServer() {
     const church = await resolvePwaChurch(req);
     const size = req.params.size === "512" ? 512 : 192;
     const fallbackPwaIcon = fallbackPwaIcons[size];
-    const iconUrl = size === 512 ? (church?.pwaIcon512Url || church?.pwaIcon192Url || church?.logoUrl || fallbackPwaIcon) : (church?.pwaIcon192Url || church?.logoUrl || fallbackPwaIcon);
+    const effectivePwaIcon = church ? await getEffectivePwaIconUrls(church.id) : null;
+    const iconUrl = size === 512 ? (effectivePwaIcon?.icon512Url || effectivePwaIcon?.icon192Url || fallbackPwaIcon) : (effectivePwaIcon?.icon192Url || fallbackPwaIcon);
     res.setHeader("Cache-Control", "no-cache, max-age=0, must-revalidate");
     return res.redirect(302, iconUrl);
   });
@@ -408,10 +412,22 @@ async function startServer() {
       try {
         const uploaded = await uploadMedia({ churchId: churchUser.churchId, data: fileBuffer, mimeType, resourceType, purpose, originalFilename, uploadedByChurchUserId: churchUser.id });
         const asset = await createMediaAsset({ churchId: churchUser.churchId, provider: uploaded.provider, resourceType: uploaded.resourceType, purpose: uploaded.purpose, publicId: uploaded.publicId, storageKey: uploaded.provider === "manus_storage" ? uploaded.key : null, url: uploaded.url, secureUrl: uploaded.secureUrl, originalFilename: uploaded.originalFilename, mimeType: uploaded.mimeType, bytes: uploaded.bytes, width: uploaded.width, height: uploaded.height, durationSeconds: uploaded.durationSeconds, entityType: purpose, entityId: churchUser.churchId, uploadedByChurchUserId: churchUser.id });
-        const pwaUrls = purpose === "tenant_pwa_icon" ? getPwaIconUrls(uploaded) : null;
-        if (pwaUrls) await updateChurchPwaIcon(churchUser.churchId, { assetId: asset?.id ?? null, ...pwaUrls });
+        const churchBeforeMediaUpdate = await getChurchById(churchUser.churchId);
+        const hasCustomPwaIcon = churchBeforeMediaUpdate?.pwaIconSource === "custom" || churchBeforeMediaUpdate?.pwaIconAssetId !== null;
+        const pwaUrls = purpose === "tenant_pwa_icon"
+          ? getPwaIconUrls(uploaded)
+          : purpose === "tenant_logo" && !hasCustomPwaIcon
+            ? getDerivedLogoIconUrls(uploaded, churchBeforeMediaUpdate?.primaryColor)
+            : null;
+        if (pwaUrls) {
+          await updateChurchPwaIcon(churchUser.churchId, {
+            assetId: purpose === "tenant_pwa_icon" ? asset?.id ?? null : null,
+            ...pwaUrls,
+            source: purpose === "tenant_pwa_icon" ? "custom" : "derived",
+          });
+        }
         const optimized = getOptimizedMediaUrls(uploaded);
-        return res.json({ url: uploaded.url, optimizedUrl: optimized.optimizedUrl, webpUrl: optimized.webpUrl, avifUrl: optimized.avifUrl, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, resourceType: uploaded.resourceType, purpose: uploaded.purpose, mediaAssetId: asset?.id ?? null, icon192Url: pwaUrls?.icon192Url ?? null, icon512Url: pwaUrls?.icon512Url ?? null });
+        return res.json({ url: uploaded.url, optimizedUrl: optimized.optimizedUrl, webpUrl: optimized.webpUrl, avifUrl: optimized.avifUrl, key: uploaded.key, provider: uploaded.provider, publicId: uploaded.publicId, resourceType: uploaded.resourceType, purpose: uploaded.purpose, mediaAssetId: asset?.id ?? null, icon192Url: pwaUrls?.icon192Url ?? null, icon512Url: pwaUrls?.icon512Url ?? null, pwaIconSource: pwaUrls ? purpose === "tenant_pwa_icon" ? "custom" : "derived" : null });
       } catch (error) {
         console.error("[Media] Upload failed:", error);
         return res.status(500).json({ error: "Upload failed" });
