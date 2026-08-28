@@ -1891,6 +1891,7 @@ const careRouter = router({
         responsiblePersonId: z.number(),
         role: z.enum(["quem_ganhou", "consolidador", "lider_celula", "discipulador", "pastor"]),
         notes: z.string().max(1000).optional(),
+        releaseAccess: z.boolean().default(true),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -1902,7 +1903,11 @@ const careRouter = router({
       if (!person || !responsible) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou responsável inválido para esta igreja." });
       }
-      return setCurrentCareAssignment(input);
+      return setCurrentCareAssignment({
+        ...input,
+        approverChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null,
+        releaseAccess: input.releaseAccess,
+      });
     }),
 });
 
@@ -3042,7 +3047,16 @@ const churchAuthRouter = router({
     .input(z.object({ email: z.string().email(), password: z.string().min(6) }))
     .mutation(async ({ input }) => {
       const result = await loginChurchUser(input.email, input.password);
-      if (!result) throw new TRPCError({ code: "UNAUTHORIZED", message: "Email ou senha inválidos" });
+      if (!result) {
+        const account = await getChurchUserByEmail(input.email);
+        if (account?.registrationStatus === "pending") {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Seu cadastro ainda aguarda aprovação da liderança." });
+        }
+        if (account && !account.active) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Seu acesso ainda não está liberado. Fale com a liderança da sua igreja." });
+        }
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Email ou senha inválidos" });
+      }
       return result;
     }),
 

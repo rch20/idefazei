@@ -77,7 +77,7 @@ export default function Pessoas() {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(defaultForm);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
-  const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "" });
+  const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
   const [selectedCellId, setSelectedCellId] = useState("");
   const [referralForm, setReferralForm] = useState({ reason: "", notes: "", preferredConsolidatorId: "" });
   const [ministryFunctionForm, setMinistryFunctionForm] = useState({ ministryId: "", roleKey: "" });
@@ -128,8 +128,8 @@ export default function Pessoas() {
     onError: () => toast.error("Erro ao cadastrar pessoa"),
   });
   const assignCare = trpc.care.assign.useMutation({
-    onSuccess: async () => {
-      toast.success("Responsável pelo cuidado atualizado.");
+    onSuccess: async (result) => {
+      toast.success(result?.accessReleased ? "Responsável atualizado e acesso liberado." : "Responsável pelo cuidado atualizado.");
       setCareForm((current) => ({ ...current, notes: "" }));
       await Promise.all([currentCare.refetch(), careHistory.refetch(), careAttention.refetch()]);
     },
@@ -231,7 +231,7 @@ export default function Pessoas() {
 
   function openPersonJourney(person: any) {
     setSelectedPerson(person);
-    setCareForm({ responsiblePersonId: "", role: "consolidador", notes: "" });
+    setCareForm({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
     setSelectedCellId("");
     setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "" });
     setMinistryFunctionForm({ ministryId: "", roleKey: "" });
@@ -261,6 +261,7 @@ export default function Pessoas() {
       responsiblePersonId: Number(careForm.responsiblePersonId),
       role: careForm.role as "quem_ganhou" | "consolidador" | "lider_celula" | "discipulador" | "pastor",
       notes: careForm.notes.trim() || undefined,
+      releaseAccess: careForm.releaseAccess,
     });
   }
 
@@ -620,6 +621,18 @@ export default function Pessoas() {
                 </Select>
               </div>
             </div>
+            <label className="mt-3 flex items-start gap-3 rounded-lg border border-border/70 bg-background/70 p-3 text-sm">
+              <input
+                type="checkbox"
+                checked={careForm.releaseAccess}
+                onChange={(event) => setCareForm((current) => ({ ...current, releaseAccess: event.target.checked }))}
+                className="mt-0.5 h-4 w-4 accent-navy"
+              />
+              <span>
+                <span className="block font-medium text-navy">Liberar acesso ao login após salvar</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">A conta pendente desta Pessoa será aprovada e ativada. Desmarque para apenas registrar o responsável.</span>
+              </span>
+            </label>
             <div className="mt-3">
               <Label htmlFor="care-notes">Observação</Label>
               <Textarea id="care-notes" className="mt-1 bg-background" rows={2} value={careForm.notes} onChange={(event) => setCareForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Ex.: responsável definido após primeiro contato" />

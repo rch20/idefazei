@@ -1486,6 +1486,54 @@ describe("Fluxo completo de discipulado", () => {
       ).rejects.toThrow("sob sua responsabilidade pastoral");
     });
 
+    it("informa que o cadastro ainda aguarda aprovação no login", async () => {
+      (getChurchUserByEmail as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 77,
+        churchId: CHURCH_ID,
+        email: "nova.alma@igreja.com",
+        active: false,
+        registrationStatus: "pending",
+      });
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await expect(caller.churchAuth.login({ email: "nova.alma@igreja.com", password: "senha-incorreta" }))
+        .rejects.toThrow("ainda aguarda aprovação");
+    });
+
+    it("libera o acesso pendente por padrão ao definir um responsável autorizado", async () => {
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.care.assign({
+        churchId: CHURCH_ID,
+        personId: 10,
+        responsiblePersonId: 11,
+        role: "pastor",
+      });
+
+      expect(setCurrentCareAssignment).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        personId: 10,
+        responsiblePersonId: 11,
+        role: "pastor",
+        releaseAccess: true,
+        approverChurchUserId: 2,
+      }));
+    });
+
+    it("permite registrar somente o responsável sem liberar o acesso", async () => {
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.care.assign({
+        churchId: CHURCH_ID,
+        personId: 10,
+        responsiblePersonId: 11,
+        role: "pastor",
+        releaseAccess: false,
+      });
+
+      expect(setCurrentCareAssignment).toHaveBeenCalledWith(expect.objectContaining({ releaseAccess: false }));
+    });
+
     it("reflete uma visita solicitada na fila de cuidado com o histórico do encaminhamento", async () => {
       const { getCareVisitsByChurch } = await import("./db");
       (getCareVisitsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([

@@ -1370,32 +1370,83 @@ export async function getSpiritualRadarByChurch(churchId: number) {
   };
 }
 
-/** Encerra o responsável anterior e define exatamente um responsável atual. */
+/** Encerra o responsável anterior, define o atual e pode liberar a conta pendente da Pessoa. */
 export async function setCurrentCareAssignment(data: {
   churchId: number;
   personId: number;
   responsiblePersonId: number;
   role: "quem_ganhou" | "consolidador" | "lider_celula" | "discipulador" | "pastor";
   notes?: string;
+  releaseAccess?: boolean;
+  approverChurchUserId?: number | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  const now = new Date();
-  await db
-    .update(careAssignments)
-    .set({ active: false, endedAt: now })
-    .where(
-      and(
-        eq(careAssignments.personId, data.personId),
-        eq(careAssignments.churchId, data.churchId),
-        eq(careAssignments.active, true)
-      )
-    );
-  const result = await db.insert(careAssignments).values({ ...data, active: true, startedAt: now });
-  const assignmentId = (result[0] as { insertId?: number }).insertId;
-  if (!assignmentId) throw new Error("Failed to set care assignment");
-  const rows = await db.select().from(careAssignments).where(eq(careAssignments.id, assignmentId)).limit(1);
-  return rows[0] ?? null;
+  return db.transaction(async (tx) => {
+    const now = new Date();
+    await tx
+      .update(careAssignments)
+      .set({ active: false, endedAt: now })
+      .where(
+        and(
+          eq(careAssignments.personId, data.personId),
+          eq(careAssignments.churchId, data.churchId),
+          eq(careAssignments.active, true)
+        )
+      );
+    const result = await tx.insert(careAssignments).values({
+      churchId: data.churchId,
+      personId: data.personId,
+      responsiblePersonId: data.responsiblePersonId,
+      role: data.role,
+      notes: data.notes,
+      active: true,
+      startedAt: now,
+    });
+    const assignmentId = (result[0] as { insertId?: number }).insertId;
+    if (!assignmentId) throw new Error("Failed to set care assignment");
+
+    let accessReleased = false;
+    if (data.releaseAccess === true) {
+      const pendingAccounts = await tx
+        .select({ id: churchUsers.id })
+        .from(churchUsers)
+        .where(
+          and(
+            eq(churchUsers.churchId, data.churchId),
+            eq(churchUsers.personId, data.personId),
+            eq(churchUsers.registrationStatus, "pending"),
+            eq(churchUsers.active, false)
+          )
+        )
+        .limit(1);
+      const pendingAccount = pendingAccounts[0];
+      if (pendingAccount) {
+        const updateResult = await tx
+          .update(churchUsers)
+          .set({
+            registrationStatus: "approved",
+            active: true,
+            approvedAt: now,
+            approvedByChurchUserId: data.approverChurchUserId ?? null,
+            rejectionReason: null,
+          })
+          .where(
+            and(
+              eq(churchUsers.id, pendingAccount.id),
+              eq(churchUsers.churchId, data.churchId),
+              eq(churchUsers.personId, data.personId),
+              eq(churchUsers.registrationStatus, "pending"),
+              eq(churchUsers.active, false)
+            )
+          );
+        accessReleased = Number((updateResult as { affectedRows?: number }).affectedRows ?? 0) > 0;
+      }
+    }
+
+    const rows = await tx.select().from(careAssignments).where(eq(careAssignments.id, assignmentId)).limit(1);
+    return rows[0] ? { ...rows[0], accessReleased } : null;
+  });
 }
 
 // ─── CONSOLIDATIONS ───────────────────────────────────────────────────────────
