@@ -13,24 +13,28 @@ export const HERO_PRESETS = [
     label: "Orgânico claro",
     description: "Formas suaves, textura leve e acolhimento.",
     src: "/hero-presets/hero-abstract-organic.webp",
+    mobileSrc: "/hero-presets/mobile/hero-abstract-organic-mobile.webp",
   },
   {
     id: "abstract-deep",
     label: "Gradiente profundo",
     description: "Profundidade, luz discreta e contraste elegante.",
     src: "/hero-presets/hero-abstract-deep.webp",
+    mobileSrc: "/hero-presets/mobile/hero-abstract-deep-mobile.webp",
   },
   {
     id: "abstract-waves",
     label: "Ondas suaves",
     description: "Movimento sutil com sensação de leveza.",
     src: "/hero-presets/hero-abstract-waves.webp",
+    mobileSrc: "/hero-presets/mobile/hero-abstract-waves-mobile.webp",
   },
   {
     id: "abstract-geometry",
     label: "Geometria minimalista",
     description: "Arcos e planos discretos para mais versatilidade.",
     src: "/hero-presets/hero-abstract-geometry.webp",
+    mobileSrc: "/hero-presets/mobile/hero-abstract-geometry-mobile.webp",
   },
 ] as const;
 
@@ -62,8 +66,8 @@ export function getHeroPreset(id: unknown) {
 export function resolveHeroImage(content: unknown) {
   const value = content && typeof content === "object" ? content as HeroImageContent : {};
   if (value.heroImageSource === "custom" && typeof value.heroImageUrl === "string" && /^https:\/\//.test(value.heroImageUrl)) {
-    return { source: "custom" as const, label: "Imagem personalizada", src: value.heroImageUrl };
+    return { source: "custom" as const, label: "Imagem personalizada", src: value.heroImageUrl, mobileSrc: value.heroImageUrl };
   }
   const preset = getHeroPreset(value.heroImagePresetId);
-  return { source: "preset" as const, label: preset.label, src: preset.src };
+  return { source: "preset" as const, label: preset.label, src: preset.src, mobileSrc: "mobileSrc" in preset ? preset.mobileSrc : undefined };
 }

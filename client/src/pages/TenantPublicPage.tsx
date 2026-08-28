@@ -68,8 +68,11 @@ export default function TenantPublicPage() {
       </header>
 
       <main>
-        <section className="tenant-public-hero">
-          {heroImage.src && <img className="tenant-public-hero-image" src={heroImage.src} alt="" aria-hidden="true" />}
+        <section className={`tenant-public-hero${heroImage.src ? " has-image" : ""}`}>
+          {heroImage.src && <picture className="tenant-public-hero-media" aria-hidden="true">
+            {heroImage.mobileSrc && heroImage.mobileSrc !== heroImage.src && <source media="(max-width: 44rem)" srcSet={heroImage.mobileSrc} />}
+            <img className="tenant-public-hero-image" src={heroImage.src} alt="" />
+          </picture>}
           {heroImage.src && <div className="tenant-public-hero-overlay" aria-hidden="true" />}
           <div className="tenant-public-container tenant-public-hero-content">
             <span className="tenant-public-eyebrow">{publicHeroEyebrow}</span>
