@@ -11,6 +11,8 @@ describe("public hero image selection", () => {
 
   it("resolves every predefined image without exposing an unknown id", () => {
     expect(HERO_PRESETS).toHaveLength(5);
+    expect(HERO_PRESETS.map((preset) => preset.id)).toEqual(["original", "abstract-organic", "abstract-deep", "abstract-waves", "abstract-geometry"]);
+    expect(resolveHeroImage({ heroImageSource: "preset", heroImagePresetId: "abstract-geometry" }).src).toBe("/hero-presets/hero-abstract-geometry.webp");
     expect(resolveHeroImage({ heroImageSource: "preset", heroImagePresetId: "community" }).src).toBe("/hero-presets/hero-community.webp");
     expect(resolveHeroImage({ heroImageSource: "preset", heroImagePresetId: "unknown" }).src).toBeNull();
   });
