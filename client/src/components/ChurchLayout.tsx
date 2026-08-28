@@ -61,6 +61,7 @@ export type ChurchAccessSummary = {
   isVisitador: boolean;
   isPastoralWorker: boolean;
   canManageCells: boolean;
+  canManageMinistry: boolean;
   canManageLibrary: boolean;
   canAccessTreasury: boolean;
   canIndicateNewSoul: boolean;
@@ -110,8 +111,8 @@ const navItems: NavItem[] = [
   { icon: Globe, label: "Células", path: "/app/celulas", group: "celulas" },
   { icon: Map, label: "Mapa de Células", path: "/app/mapa", group: "celulas" },
   { icon: CalendarDays, label: "Eventos", path: "/app/eventos", group: "ministerio", accessKey: "isExecutive" },
-  { icon: Music, label: "Ministérios", path: "/app/ministerios", group: "ministerio", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"] },
-  { icon: Star, label: "Escalas", path: "/app/escalas", group: "ministerio", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"] },
+  { icon: Music, label: "Ministérios", path: "/app/ministerios", group: "ministerio", accessKey: "canManageMinistry" },
+  { icon: Star, label: "Escalas", path: "/app/escalas", group: "ministerio", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"], accessKey: "canManageCells" },
   { icon: BookOpen, label: "Escola de Fundamentos", path: "/app/escola-fundamentos", group: "discipulado", accessKey: "isExecutive" },
   { icon: Droplets, label: "Batismo nas Águas", path: "/app/batismo", group: "discipulado", accessKey: "isExecutive" },
   { icon: Heart, label: "Encontro com Deus", path: "/app/encontro-com-deus", group: "discipulado", accessKey: "canManageEncounter", requiresEncounterAccess: true },

@@ -760,6 +760,32 @@ describe("Fluxo completo de discipulado", () => {
       })).rejects.toThrow("responsáveis por este Ministério");
     });
 
+    it("expõe ao líder nomeado somente os Ministérios sob sua responsabilidade", async () => {
+      const { getMinistryMemberCounts, getMinistryRoleAssignmentsByPerson, getMinistryRoleDefinitionsByChurch, getPeopleByChurch } = await import("./db");
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 13,
+        userId: 45,
+        churchId: CHURCH_ID,
+        personId: 10,
+        role: "membro",
+        active: true,
+      });
+      (getMinistriesByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+        { id: 7, churchId: CHURCH_ID, name: "Mídia", type: "midia", leaderId: 10, active: true },
+        { id: 8, churchId: CHURCH_ID, name: "Louvor", type: "louvor", leaderId: 99, active: true },
+      ]);
+      (getMinistryMemberCounts as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ ministryId: 7, count: 1 }, { ministryId: 8, count: 4 }]);
+      (getPeopleByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: 10, fullName: "Karen" }, { id: 99, fullName: "Outro líder" }]);
+      (getMinistryRoleAssignmentsByPerson as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+      (getMinistryRoleDefinitionsByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+      const caller = appRouter.createCaller(createMemberContext(45));
+
+      const result = await caller.ministries.list({ churchId: CHURCH_ID });
+
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ id: 7, name: "Mídia", canManage: true, leaderName: "Karen" });
+    });
+
     it("permite ao responsável nomeado do Ministério atribuir participantes e criar Escalas", async () => {
       (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
         id: 13,

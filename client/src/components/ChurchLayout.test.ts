@@ -47,6 +47,17 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain('label: "Biblioteca"');
   });
 
+  it("usa capacidade contextual para exibir Ministérios ao líder designado", () => {
+    const layout = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
+    const app = readFileSync(resolve(process.cwd(), "client/src/App.tsx"), "utf8");
+    const ministerios = readFileSync(resolve(process.cwd(), "client/src/pages/Ministerios.tsx"), "utf8");
+    expect(layout).toContain('canManageMinistry: boolean');
+    expect(layout).toContain('accessKey: "canManageMinistry"');
+    expect(app).toContain('requiredAccess="canManageMinistry"');
+    expect(ministerios).toContain('const canCreateMinistry = roles.some');
+    expect(ministerios).toContain('selectedMinistry?.canManage');
+  });
+
   it("mantém as ações de membro separadas do acesso administrativo", () => {
     const ganharAlmas = readFileSync(resolve(process.cwd(), "client/src/pages/GanharAlmas.tsx"), "utf8");
     const oracao = readFileSync(resolve(process.cwd(), "client/src/pages/Oracao.tsx"), "utf8");

@@ -586,6 +586,8 @@ async function getChurchAccessSummary(userId: number, churchId: number) {
   const isVisitador = roles.includes("visitador");
   const isPastoralWorker = roles.some((role) => PASTORAL_ACTION_ROLES.has(role));
   const canManageCells = roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor", "lider"].includes(role));
+  const canManageMinistry = roles.some((role) => CHURCH_ADMIN_ROLES.has(role) || role === "lider_ministerio" || MINISTRY_MANAGEMENT_ROLE_KEYS.has(role))
+    || Boolean(actor.personId && (await getMinistriesByChurch(churchId)).some((ministry) => ministry.leaderId === actor.personId));
   const canManageLibrary = isExecutive;
   return {
     actorPersonId: actor.personId ?? null,
@@ -599,6 +601,7 @@ async function getChurchAccessSummary(userId: number, churchId: number) {
     isVisitador,
     isPastoralWorker,
     canManageCells,
+    canManageMinistry,
     canManageLibrary,
     canAccessTreasury: roles.some((role) => TREASURY_ROLES.has(role)),
     canIndicateNewSoul: Boolean(actor.personId),
@@ -2371,7 +2374,13 @@ const ministriesRouter = router({
         MINISTRY_MANAGEMENT_ROLE_KEYS.has(assignment.roleKey)
         || definitionByKey.get(assignment.roleKey)?.permissionPackage === "ministry_leader"
       ).map(({ assignment }) => assignment.ministryId));
-      return rows.map((m) => ({
+      const visibleRows = canManageAll
+        ? rows
+        : rows.filter((ministry) => Boolean(actor.personId && ministry.leaderId === actor.personId) || managedByAssignment.has(ministry.id));
+      if (!canManageAll && visibleRows.length === 0) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Você não possui um Ministério sob sua responsabilidade." });
+      }
+      return visibleRows.map((m) => ({
         ...m,
         memberCount: countByMinistry.get(m.id) ?? 0,
         leaderName: m.leaderId ? nameByPerson.get(m.leaderId) ?? null : null,
@@ -2381,7 +2390,7 @@ const ministriesRouter = router({
   members: protectedProcedure
     .input(z.object({ churchId: z.number(), ministryId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
       const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
       if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado." });
       return getMinistryMembers(input.ministryId, input.churchId);

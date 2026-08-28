@@ -118,7 +118,7 @@ export default function Ministerios() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <div>
             <h1 className="text-2xl font-display font-bold text-navy">Ministérios</h1>
-            <p className="text-sm text-muted-foreground mt-1">Gerencie os ministérios e equipes da sua igreja</p>
+            <p className="text-sm text-muted-foreground mt-1">{canCreateMinistry ? "Gerencie os ministérios e equipes da sua igreja" : "Gerencie o Ministério atribuído a você e sua equipe"}</p>
           </div>
           {canCreateMinistry && <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -256,10 +256,10 @@ export default function Ministerios() {
         <Dialog open={Boolean(selectedMinistry)} onOpenChange={(nextOpen) => !nextOpen && setSelectedMinistry(null)}>
           <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-3xl">
             <DialogHeader>
-              <DialogTitle className="font-display text-navy">Equipe: {selectedMinistry?.name}</DialogTitle>
+              <DialogTitle className="font-display text-navy">{canCreateMinistry ? "Equipe" : "Meu Ministério"}: {selectedMinistry?.name}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Participantes, liderança e escalas permanecem isolados neste Ministério.</p>
+              <p className="text-sm text-muted-foreground">{canCreateMinistry ? "Participantes, liderança e escalas permanecem isolados neste Ministério." : "Este painel mostra somente a equipe e as responsabilidades do Ministério sob sua liderança."}</p>
               {canManageRoles && <div className="rounded-xl border border-gold/30 bg-gold/5 p-3">
                 <Label htmlFor="selected-ministry-leader">Líder responsável</Label>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row">
