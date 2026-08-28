@@ -122,6 +122,13 @@ export default function Consolidacao() {
     },
     onError: (error: { message: string }) => toast.error(error.message),
   });
+  const approveReferral = trpc.consolidation.approveReferral.useMutation({
+    onSuccess: () => {
+      toast.success("Consolidação aceita pela liderança. O caso agora está pronto para ser assumido.");
+      referralsQuery.refetch();
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
+  });
   const acceptReferral = trpc.consolidation.acceptReferral.useMutation({
     onSuccess: () => {
       toast.success("Encaminhamento assumido. A Pessoa agora está em sua carteira de cuidado.");
@@ -296,7 +303,7 @@ export default function Consolidacao() {
           <div className="mt-4 space-y-3">
             {filteredReferrals.map((referral) => {
               const isPending = referral.status === "pendente";
-              const isAccepted = referral.status === "aceito";
+              const isApproved = referral.status === "aprovado";
               const isInFollowUp = referral.status === "em_acompanhamento";
               return (
                 <article key={referral.id} className="rounded-xl border border-rose-100 bg-background p-4 shadow-sm">
@@ -304,7 +311,7 @@ export default function Consolidacao() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-navy">{referral.personName}</p>
-                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${referral.status === "encerrado" ? "border-green-200 bg-green-50 text-green-700" : referral.status === "em_acompanhamento" ? "border-blue-200 bg-blue-50 text-blue-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{referral.status === "pendente" ? "Aguardando aceite" : referral.status === "aceito" ? "Aceito" : referral.status === "em_acompanhamento" ? "Em acompanhamento" : "Encerrado"}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${referral.status === "encerrado" ? "border-green-200 bg-green-50 text-green-700" : referral.status === "em_acompanhamento" ? "border-blue-200 bg-blue-50 text-blue-700" : referral.status === "aprovado" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{referral.status === "pendente" ? "Aguardando aceite da liderança" : referral.status === "aprovado" ? "Aceito pela liderança" : referral.status === "aceito" ? "Assumido pelo Consolidador" : referral.status === "em_acompanhamento" ? "Em acompanhamento" : "Encerrado"}</span>
                         {referral.careDueStatus !== "encerrado" && <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${referral.careDueStatus === "atrasado" ? "border-rose-200 bg-rose-50 text-rose-700" : referral.careDueStatus === "proximo" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}><Clock3 className="h-3 w-3" />{getCareDueLabel(referral)}</span>}
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">Indicado por {referral.referredByName} · origem: {referral.sourceName} · {new Date(referral.referredAt).toLocaleDateString("pt-BR")}{referral.preferredConsolidatorName ? ` · Preferência: ${referral.preferredConsolidatorName}` : ""}</p>
@@ -313,7 +320,8 @@ export default function Consolidacao() {
                     </div>
                     <div className="flex shrink-0 flex-col gap-2 sm:w-44">
                       {referral.canAssign && <ConsolidationAssignmentControl churchId={churchId} referral={referral} candidates={consolidatorsQuery.data ?? []} canAssign={Boolean(referral.canAssign)} onSaved={async () => { await referralsQuery.refetch(); }} />}
-                      {isPending && referral.canAccept && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
+                      {isPending && referral.canApprove && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={approveReferral.isPending} onClick={() => approveReferral.mutate({ churchId, id: referral.id })}><CheckCircle2 className="mr-2 h-4 w-4" />Aceitar consolidação</Button>}
+                      {isApproved && referral.canAccept && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
                       {!isPending && referral.status !== "encerrado" && <Button size="sm" variant="outline" onClick={() => openTracking(referral.id)}><ClipboardCheck className="mr-2 h-4 w-4" />{trackingReferralId === referral.id ? "Fechar painel" : "Acompanhar caso"}</Button>}
                       {isInFollowUp && <Button size="sm" variant="outline" onClick={() => setClosingReferralId(referral.id)}>Encerrar cuidado</Button>}
                       {referral.acceptedByName && <p className="text-center text-[11px] text-muted-foreground">Responsável: {referral.acceptedByName}</p>}

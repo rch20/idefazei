@@ -27,6 +27,7 @@ import {
   createConsolidationReferralCase,
   assignConsolidationCase,
   acceptConsolidationCase,
+  approveConsolidationCase,
   getConsolidationCaseAssignments,
   startConsolidationWorkflow,
   createConsolidationFollowUp,
@@ -1375,7 +1376,8 @@ const consolidationRouter = router({
           assignedToName: referral.assignedToPersonId ? peopleById.get(referral.assignedToPersonId)?.fullName ?? "Consolidador atribuído" : null,
           acceptedByName: referral.acceptedByPersonId ? peopleById.get(referral.acceptedByPersonId)?.fullName ?? "Consolidador" : null,
           canAssign: canViewAll,
-          canAccept: Boolean(context.capabilities.canWorkConsolidation && actor.personId && referral.status === "pendente" && (!referral.assignedToPersonId || referral.assignedToPersonId === actor.personId)),
+          canApprove: Boolean(context.capabilities.canManageConsolidation && referral.status === "pendente"),
+          canAccept: Boolean(context.roles.includes("consolidador") && actor.personId && referral.status === "aprovado" && (!referral.assignedToPersonId || referral.assignedToPersonId === actor.personId)),
         };
       });
     }),
@@ -1500,6 +1502,24 @@ const consolidationRouter = router({
       return updateConsolidationReferral(input.id, input.churchId, { careDueAt: dueAt });
     }),
 
+  approveReferral: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number(), notes: z.string().trim().max(1000).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      if (!context.capabilities.canManageConsolidation || !context.actor.personId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente a liderança autorizada pode aceitar uma indicação para Consolidação." });
+      }
+      const referral = await getConsolidationReferralById(input.id, input.churchId);
+      if (!referral || referral.status !== "pendente") throw new TRPCError({ code: "BAD_REQUEST", message: "Este caso já foi analisado ou não está disponível." });
+      try {
+        return await approveConsolidationCase({ churchId: input.churchId, referralId: input.id, approvedByPersonId: context.actor.personId, churchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null, notes: input.notes?.trim() || null });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("já foi analisado")) throw new TRPCError({ code: "CONFLICT", message: "Este caso já foi analisado por outra pessoa. Atualize a fila." });
+        throw error;
+      }
+    }),
+
   acceptReferral: protectedProcedure
     .input(z.object({ churchId: z.number(), id: z.number() }))
     .mutation(async ({ input, ctx }) => {
@@ -1507,7 +1527,7 @@ const consolidationRouter = router({
       const actor = context.actor;
       if (!actor.personId || !context.roles.includes("consolidador")) throw new TRPCError({ code: "FORBIDDEN", message: "Somente uma Pessoa com função ativa de Consolidador pode assumir este caso." });
       const referral = await getConsolidationReferralById(input.id, input.churchId);
-      if (!referral || referral.status !== "pendente") throw new TRPCError({ code: "BAD_REQUEST", message: "Este caso não está disponível para aceite." });
+      if (!referral || !["pendente", "aprovado"].includes(referral.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "Este caso não está disponível para aceite." });
       if ((referral.assignedToPersonId || referral.preferredConsolidatorId) && (referral.assignedToPersonId ?? referral.preferredConsolidatorId) !== actor.personId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Este caso está atribuído a outro Consolidador." });
       }

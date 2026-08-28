@@ -75,6 +75,7 @@ vi.mock("./db", () => ({
   updateConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "aceito" }),
   assignConsolidationCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, assignedToPersonId: 10 }, assignment: { id: 1, action: "atribuido" } }),
   acceptConsolidationCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, acceptedByPersonId: 10, status: "aceito" }, assignment: { id: 2, action: "aceito" } }),
+  approveConsolidationCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, approvedByPersonId: 10, status: "aprovado" }, assignment: { id: 3, action: "aprovado" } }),
   getConsolidationCaseAssignments: vi.fn().mockResolvedValue([]),
   getConsolidationFollowUpsByReferral: vi.fn().mockResolvedValue([]),
   getConsolidationFollowUpsByChurch: vi.fn().mockResolvedValue([]),
@@ -1328,7 +1329,31 @@ describe("Fluxo completo de discipulado", () => {
       await expect(caller.consolidation.updateReferralCareDue({ churchId: CHURCH_ID, id: 51, careDueAt })).rejects.toThrow("Somente o Consolidador responsável");
     });
 
-    it("permite que um Consolidador assuma o encaminhamento e registre o cuidado", async () => {
+    it("permite que a liderança pastoral aceite a indicação antes do cuidado", async () => {
+      const { approveConsolidationCase, getConsolidationReferralById } = await import("./db");
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "pastor_presidente", active: true });
+      vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({
+        id: 51,
+        churchId: CHURCH_ID,
+        personId: 1,
+        referredByPersonId: 20,
+        assignedToPersonId: null,
+        preferredConsolidatorId: 10,
+        status: "pendente",
+      } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.consolidation.approveReferral({ churchId: CHURCH_ID, id: 51, notes: "Aceito pela liderança pastoral." });
+
+      expect(approveConsolidationCase).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        referralId: 51,
+        approvedByPersonId: 10,
+        notes: "Aceito pela liderança pastoral.",
+      }));
+    });
+
+    it("permite que um Consolidador assuma um caso já aceito pela liderança", async () => {
       const { acceptConsolidationCase, getConsolidationReferralById } = await import("./db");
       (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
       vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({
@@ -1337,7 +1362,7 @@ describe("Fluxo completo de discipulado", () => {
         personId: 1,
         referredByPersonId: 20,
         preferredConsolidatorId: null,
-        status: "pendente",
+        status: "aprovado",
       } as any);
       const caller = appRouter.createCaller(createMemberContext(-2));
 

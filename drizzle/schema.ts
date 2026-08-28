@@ -906,6 +906,7 @@ export const consolidationReferrals = mysqlTable("consolidation_referrals", {
   assignedByChurchUserId: int("assignedByChurchUserId"),
   assignedAt: timestamp("assignedAt"),
   acceptedByPersonId: int("acceptedByPersonId"),
+  approvedByPersonId: int("approvedByPersonId"),
   departmentId: int("departmentId"),
   sourceType: mysqlEnum("sourceType", ["pastoral", "celula", "ministerio", "departamento"]).default("pastoral").notNull(),
   sourceCellId: int("sourceCellId"),
@@ -914,12 +915,13 @@ export const consolidationReferrals = mysqlTable("consolidation_referrals", {
   priority: mysqlEnum("priority", ["baixa", "normal", "alta", "urgente"]).default("normal").notNull(),
   reason: varchar("reason", { length: 255 }).notNull(),
   notes: text("notes"),
-  status: mysqlEnum("status", ["pendente", "aceito", "em_acompanhamento", "encerrado", "cancelado"])
+  status: mysqlEnum("status", ["pendente", "aprovado", "aceito", "em_acompanhamento", "encerrado", "cancelado"])
     .default("pendente")
     .notNull(),
   referredAt: timestamp("referredAt").defaultNow().notNull(),
   careDueAt: timestamp("careDueAt"),
   acceptedAt: timestamp("acceptedAt"),
+  approvedAt: timestamp("approvedAt"),
   firstContactAt: timestamp("firstContactAt"),
   closedAt: timestamp("closedAt"),
   closeNotes: text("closeNotes"),
@@ -939,7 +941,7 @@ export const consolidationCaseAssignments = mysqlTable("consolidation_case_assig
   id: int("id").autoincrement().primaryKey(),
   churchId: int("churchId").notNull(),
   referralId: int("referralId").notNull(),
-  action: mysqlEnum("action", ["atribuido", "reatribuido", "aceito", "devolvido_fila"]).notNull(),
+  action: mysqlEnum("action", ["atribuido", "reatribuido", "aprovado", "aceito", "devolvido_fila"]).notNull(),
   fromPersonId: int("fromPersonId"),
   toPersonId: int("toPersonId"),
   performedByChurchUserId: int("performedByChurchUserId"),
