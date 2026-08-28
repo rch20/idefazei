@@ -154,12 +154,14 @@ import {
   getPeopleByChurch,
   getPersonById,
   getPrayerRequestsByChurch,
+  getPrayerRequestsByPerson,
   getCareHistoryByPerson,
   getCurrentCareAssignment,
   getRadarEspiritual,
   getSpiritualRadarByChurch,
   getSoulById,
   getSoulsByChurch,
+  getSoulsByWinner,
   updateChurch,
   useChurchLogoAsPwaIcon,
   updateConsolidation,
@@ -300,6 +302,9 @@ const PASTORAL_ACTION_ROLES = new Set(["pastor_presidente", "pastor_local", "sup
 const TREASURY_ROLES = new Set(["pastor_presidente", "pastor_local", "tesoureiro"]);
 const VISIT_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor", "consolidador", "visitador"]);
 const MINISTRY_MANAGEMENT_ROLE_KEYS = new Set(["lider_louvor", "lider_consolidacao", "supervisor_consolidacao", "lider_visitas", "supervisor_visitas"]);
+const EXECUTIVE_READ_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario", "supervisor"]);
+const COMMUNICATION_MANAGER_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario", "comunicacao"]);
+const PRAYER_MANAGER_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario", "supervisor"]);
 
 /**
  * Catálogo central: a igreja atribui uma função, nunca permissões isoladas por pessoa.
@@ -568,6 +573,56 @@ async function getEffectiveChurchRoles(userId: number, churchId: number, actor: 
   const ministryGrants = ministryRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
   const departmentGrants = departmentRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
   return Array.from(new Set([actor.role, ...complementary, ...ministryGrants, ...departmentGrants]));
+}
+
+async function getChurchAccessSummary(userId: number, churchId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, actor);
+  const isPastor = roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+  const isExecutive = roles.some((role) => EXECUTIVE_READ_ROLES.has(role));
+  const isCommunicationManager = roles.some((role) => COMMUNICATION_MANAGER_ROLES.has(role));
+  const isPrayerManager = roles.some((role) => PRAYER_MANAGER_ROLES.has(role));
+  const isConsolidator = roles.includes("consolidador");
+  const isVisitador = roles.includes("visitador");
+  const isPastoralWorker = roles.some((role) => PASTORAL_ACTION_ROLES.has(role));
+  const canManageCells = roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor", "lider"].includes(role));
+  const canManageLibrary = isExecutive;
+  return {
+    actorPersonId: actor.personId ?? null,
+    actorRole: actor.role,
+    roles,
+    isPastor,
+    isExecutive,
+    isCommunicationManager,
+    isPrayerManager,
+    isConsolidator,
+    isVisitador,
+    isPastoralWorker,
+    canManageCells,
+    canManageLibrary,
+    canAccessTreasury: roles.some((role) => TREASURY_ROLES.has(role)),
+    canIndicateNewSoul: Boolean(actor.personId),
+    canManageEvents: roles.some((role) => CHURCH_ADMIN_ROLES.has(role)),
+    canManageEncounter: isExecutive,
+  };
+}
+
+async function requireExecutiveReadAccess(userId: number, churchId: number) {
+  const access = await getChurchAccessSummary(userId, churchId);
+  if (!access.isExecutive) throw new TRPCError({ code: "FORBIDDEN", message: "Esta área é restrita à liderança autorizada." });
+  return access;
+}
+
+async function requireCommunicationManager(userId: number, churchId: number) {
+  const access = await getChurchAccessSummary(userId, churchId);
+  if (!access.isCommunicationManager) throw new TRPCError({ code: "FORBIDDEN", message: "A gestão da Comunicação é restrita à liderança autorizada." });
+  return access;
+}
+
+async function requirePrayerManager(userId: number, churchId: number) {
+  const access = await getChurchAccessSummary(userId, churchId);
+  if (!access.isPrayerManager) throw new TRPCError({ code: "FORBIDDEN", message: "A gestão dos pedidos de oração é restrita à liderança autorizada." });
+  return access;
 }
 
 async function getEffectivePersonRoles(personId: number, churchId: number) {
@@ -1064,8 +1119,10 @@ const soulsRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      return getSoulsByChurch(input.churchId);
+      const access = await getChurchAccessSummary(ctx.user.id, input.churchId);
+      if (access.isExecutive || access.isPastoralWorker) return getSoulsByChurch(input.churchId);
+      if (!access.actorPersonId) return [];
+      return getSoulsByWinner(input.churchId, access.actorPersonId);
     }),
 
   create: protectedProcedure
@@ -1094,12 +1151,24 @@ const soulsRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      await requirePastoralAction(ctx.user.id, input.churchId);
+      const access = await getChurchAccessSummary(ctx.user.id, input.churchId);
+      const isSelfIndication = !access.isPastoralWorker && Boolean(access.actorPersonId);
+      if (!access.isPastoralWorker && !isSelfIndication) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Seu perfil não pode registrar uma Nova Alma." });
+      }
+      if (isSelfIndication && (input.existingPersonId || input.wonById)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Membros podem apenas indicar uma nova alma; a liderança fará os vínculos pastorais." });
+      }
       const isSpontaneousVisit = input.origin === "visita_espontanea";
-      if (!isSpontaneousVisit && !input.wonById) {
+      if (!isSelfIndication && !isSpontaneousVisit && !input.wonById) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Informe quem ganhou a Nova Alma ou selecione visita espontânea." });
       }
-      const winner = input.wonById ? await getPersonById(input.wonById, input.churchId) : null;
+      const winner = isSelfIndication
+        ? await getPersonById(access.actorPersonId!, input.churchId)
+        : input.wonById ? await getPersonById(input.wonById, input.churchId) : null;
+      if (isSelfIndication && !winner) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Sua conta ainda não está vinculada a uma Pessoa da igreja." });
+      }
       if (input.wonById && !winner) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma pessoa válida da sua igreja." });
       }
@@ -1132,15 +1201,23 @@ const soulsRouter = router({
           whatsapp: input.phone?.trim() || null,
           conversionDate: new Date(`${input.decisionDate}T12:00:00.000Z`),
           discipleshipStage: "nova_alma",
-          wonById: input.wonById ?? null,
+          wonById: winner?.id ?? null,
         });
       }
       if (!person) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível criar a ficha da Pessoa." });
       }
 
-      const { existingPersonId: _existingPersonId, ...soulInput } = input;
-      const soul = await createSoul({ ...soulInput, wonById: input.wonById ?? null, personId: person.id } as any);
+      const { existingPersonId: _existingPersonId, wonById: _wonById, origin: _origin, acceptedJesus: _acceptedJesus, reconciliation: _reconciliation, firstVisit: _firstVisit, ...soulInput } = input;
+      const soul = await createSoul({
+        ...soulInput,
+        origin: isSelfIndication ? "indicacao" : input.origin,
+        acceptedJesus: isSelfIndication ? false : input.acceptedJesus,
+        reconciliation: isSelfIndication ? false : input.reconciliation,
+        firstVisit: isSelfIndication ? false : input.firstVisit,
+        wonById: winner?.id ?? null,
+        personId: person.id,
+      } as any);
       if (!soul) {
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível registrar a Nova Alma." });
       }
@@ -1151,7 +1228,7 @@ const soulsRouter = router({
             personId: person.id,
             responsiblePersonId: winner.id,
             role: "quem_ganhou",
-            notes: "Responsável inicial definido no registro da Nova Alma.",
+            notes: isSelfIndication ? "Indicação registrada pelo próprio membro; aguarda cuidado da liderança." : "Responsável inicial definido no registro da Nova Alma.",
           })
         : null;
       return { soul, person, careAssignment, createdPerson: !input.existingPersonId, needsConsolidator: !winner };
@@ -1166,6 +1243,7 @@ const soulsRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      await requirePastoralAction(ctx.user.id, input.churchId);
       const soul = await getSoulById(input.id, input.churchId);
       if (!soul?.personId) throw new TRPCError({ code: "NOT_FOUND", message: "Nova Alma não encontrada." });
       await requireJourneyStagePermission(ctx.user.id, input.churchId, soul.personId);
@@ -2871,7 +2949,7 @@ const announcementsRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireCommunicationManager(ctx.user.id, input.churchId);
       return getAnnouncementsByChurch(input.churchId);
     }),
 
@@ -2888,7 +2966,7 @@ const announcementsRouter = router({
   create: protectedProcedure
     .input(z.object({ churchId: z.number(), ...announcementInput.shape }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireCommunicationManager(ctx.user.id, input.churchId);
       const publicStartsAt = parseAnnouncementDate(input.publicStartsAt);
       const expiresAt = parseAnnouncementDate(input.expiresAt);
       if (expiresAt && publicStartsAt && expiresAt <= publicStartsAt) {
@@ -2906,7 +2984,7 @@ const announcementsRouter = router({
   update: protectedProcedure
     .input(z.object({ churchId: z.number(), id: z.number().int().positive(), ...announcementInput.shape }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireCommunicationManager(ctx.user.id, input.churchId);
       const publicStartsAt = parseAnnouncementDate(input.publicStartsAt);
       const expiresAt = parseAnnouncementDate(input.expiresAt);
       if (expiresAt && publicStartsAt && expiresAt <= publicStartsAt) {
@@ -2932,8 +3010,39 @@ const prayerRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requirePrayerManager(ctx.user.id, input.churchId);
       return getPrayerRequestsByChurch(input.churchId);
+    }),
+
+  mine: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) return [];
+      return getPrayerRequestsByPerson(input.churchId, actor.personId);
+    }),
+
+  createMine: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      type: z.enum(["pedido", "testemunho"]).default("pedido"),
+      content: z.string().min(5),
+      isPrivate: z.boolean().default(false),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) throw new TRPCError({ code: "BAD_REQUEST", message: "Sua conta ainda não está vinculada a uma Pessoa da igreja." });
+      const person = await getPersonById(actor.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Seu cadastro de Pessoa não foi encontrado." });
+      return createPrayerRequest({
+        churchId: input.churchId,
+        personId: actor.personId,
+        visitorName: person.fullName,
+        visitorPhone: person.whatsapp ?? person.phone ?? null,
+        type: input.type,
+        content: input.content,
+        isPrivate: input.isPrivate,
+      });
     }),
 
   create: publicProcedure
@@ -2958,35 +3067,35 @@ const dashboardRouter = router({
   stats: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireExecutiveReadAccess(ctx.user.id, input.churchId);
       return getDashboardStats(input.churchId);
     }),
 
   radarEspiritual: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireExecutiveReadAccess(ctx.user.id, input.churchId);
       return getRadarEspiritual(input.churchId);
     }),
 
   discipleshipFunnel: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireExecutiveReadAccess(ctx.user.id, input.churchId);
       return getDiscipleshipFunnel(input.churchId);
     }),
 
   discipleshipTree: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireExecutiveReadAccess(ctx.user.id, input.churchId);
       return getDiscipleshipTree(input.churchId);
     }),
 
   careAttention: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireExecutiveReadAccess(ctx.user.id, input.churchId);
       return getCareAttentionByChurch(input.churchId);
     }),
 });
@@ -3009,7 +3118,9 @@ const radarRouter = router({
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
       const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      const actorRoles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const access = await getChurchAccessSummary(ctx.user.id, input.churchId);
+      if (!access.isExecutive) throw new TRPCError({ code: "FORBIDDEN", message: "O Radar Espiritual é restrito à liderança autorizada." });
+      const actorRoles = access.roles;
       const canManageAll = actorRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
       const managedPersonIds = canManageAll
         ? null
@@ -3135,6 +3246,10 @@ const churchAuthRouter = router({
       const actor = await requireChurchMember(ctx.user.id, input.churchId);
       return getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
     }),
+
+  accessSummary: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => getChurchAccessSummary(ctx.user.id, input.churchId)),
 
   linkPerson: protectedProcedure
     .input(z.object({ churchId: z.number(), userId: z.number(), personId: z.number() }))

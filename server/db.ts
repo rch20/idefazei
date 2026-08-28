@@ -1006,6 +1006,17 @@ export async function getSoulsByChurch(churchId: number) {
     .limit(100);
 }
 
+export async function getSoulsByWinner(churchId: number, wonById: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(souls)
+    .where(and(eq(souls.churchId, churchId), eq(souls.wonById, wonById)))
+    .orderBy(desc(souls.createdAt))
+    .limit(100);
+}
+
 export async function getSoulById(id: number, churchId: number) {
   const db = await getDb();
   if (!db) return null;
@@ -2727,6 +2738,17 @@ export async function getPrayerRequestsByChurch(churchId: number) {
     .select()
     .from(prayerRequests)
     .where(and(eq(prayerRequests.churchId, churchId), eq(prayerRequests.isPrivate, false)))
+    .orderBy(desc(prayerRequests.createdAt))
+    .limit(50);
+}
+
+export async function getPrayerRequestsByPerson(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(prayerRequests)
+    .where(and(eq(prayerRequests.churchId, churchId), eq(prayerRequests.personId, personId)))
     .orderBy(desc(prayerRequests.createdAt))
     .limit(50);
 }

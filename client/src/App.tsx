@@ -5,7 +5,7 @@ import { Route, Switch } from "wouter";
 import { lazy, Suspense } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import ChurchLayout from "./components/ChurchLayout";
+import ChurchLayout, { useChurch, type ChurchAccessSummary } from "./components/ChurchLayout";
 
 // Carregamento sob demanda reduz o JavaScript inicial no Safari iOS e mantém
 // um retorno visual claro enquanto a página solicitada é baixada.
@@ -73,10 +73,29 @@ function RouteLoading() {
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
 
-function AppPage({ children, title }: { children: React.ReactNode; title?: string }) {
+type RequiredAccess = keyof Pick<ChurchAccessSummary, "isExecutive" | "isPastoralWorker" | "isCommunicationManager" | "canAccessTreasury" | "isPastor" | "canManageEncounter" | "canManageCells">;
+
+function AccessDenied({ title }: { title?: string }) {
+  return (
+    <div className="mx-auto flex min-h-[45vh] max-w-xl items-center justify-center p-6">
+      <div className="rounded-2xl border border-gold/25 bg-card p-8 text-center shadow-sm">
+        <h1 className="font-display text-xl font-semibold text-navy">Acesso restrito</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">Seu perfil não possui permissão para acessar {title ? `a área “${title}”` : "esta área"}. Se você acredita que deveria ter acesso, fale com a liderança da sua igreja.</p>
+      </div>
+    </div>
+  );
+}
+
+function ChurchAccessGate({ children, title, requiredAccess }: { children: React.ReactNode; title?: string; requiredAccess?: RequiredAccess }) {
+  const { accessSummary } = useChurch();
+  if (requiredAccess && accessSummary === null) return null;
+  return requiredAccess && !accessSummary?.[requiredAccess] ? <AccessDenied title={title} /> : <>{children}</>;
+}
+
+function AppPage({ children, title, requiredAccess }: { children: React.ReactNode; title?: string; requiredAccess?: RequiredAccess }) {
   return (
     <ChurchLayout title={title}>
-      {children}
+      <ChurchAccessGate title={title} requiredAccess={requiredAccess}>{children}</ChurchAccessGate>
     </ChurchLayout>
   );
 }
@@ -108,25 +127,25 @@ function Router() {
 
       {/* ── App — Dashboard ── */}
       <Route path="/app/dashboard">
-        <AppPage title="Dashboard">
+        <AppPage title="Dashboard" requiredAccess="isExecutive">
           <Dashboard />
         </AppPage>
       </Route>
 
       <Route path="/app/cuidado">
-        <AppPage title="Central de Cuidado">
+        <AppPage title="Central de Cuidado" requiredAccess="isPastoralWorker">
           <CentralCuidado />
         </AppPage>
       </Route>
 
       <Route path="/app/radar">
-        <AppPage title="Radar Espiritual">
+        <AppPage title="Radar Espiritual" requiredAccess="isExecutive">
           <RadarEspiritual />
         </AppPage>
       </Route>
 
       <Route path="/app/arvore">
-        <AppPage title="Árvore de Discipulado">
+        <AppPage title="Árvore de Discipulado" requiredAccess="isExecutive">
           <Placeholder title="Árvore de Discipulado" description="Genealogia espiritual visual da sua igreja" />
         </AppPage>
       </Route>
@@ -145,26 +164,26 @@ function Router() {
       </Route>
 
       <Route path="/app/consolidacao">
-        <AppPage title="Consolidação">
+        <AppPage title="Consolidação" requiredAccess="isPastoralWorker">
           <Consolidacao />
         </AppPage>
       </Route>
 
       <Route path="/app/funil">
-        <AppPage title="Funil de Discipulado">
+        <AppPage title="Funil de Discipulado" requiredAccess="isExecutive">
           <FunilDiscipulado />
         </AppPage>
       </Route>
 
       {/* ── App — Membros ── */}
       <Route path="/app/pessoas">
-        <AppPage title="Pessoas">
+        <AppPage title="Pessoas" requiredAccess="isExecutive">
           <Pessoas />
         </AppPage>
       </Route>
 
       <Route path="/app/familias">
-        <AppPage title="Famílias">
+        <AppPage title="Famílias" requiredAccess="isExecutive">
           <Familias />
         </AppPage>
       </Route>
@@ -184,24 +203,24 @@ function Router() {
 
       {/* ── App — Ministério ── */}
       <Route path="/app/eventos">
-        <AppPage title="Eventos">
+        <AppPage title="Eventos" requiredAccess="isExecutive">
           <Eventos />
         </AppPage>
       </Route>
 
       <Route path="/app/ministerios">
-        <AppPage title="Ministérios">
+        <AppPage title="Ministérios" requiredAccess="canManageCells">
           <Ministerios />
         </AppPage>
       </Route>
       <Route path="/app/estrutura-organizacional">
-        <AppPage title="Estrutura Organizacional">
+        <AppPage title="Estrutura Organizacional" requiredAccess="isExecutive">
           <EstruturaOrganizacional />
         </AppPage>
       </Route>
 
       <Route path="/app/escalas">
-        <AppPage title="Escalas">
+        <AppPage title="Escalas" requiredAccess="canManageCells">
           <Escalas />
         </AppPage>
       </Route>
@@ -214,56 +233,56 @@ function Router() {
       </Route>
 
       <Route path="/app/mural">
-        <AppPage title="Mural de Avisos">
+        <AppPage title="Mural de Avisos" requiredAccess="isCommunicationManager">
           <Mural />
         </AppPage>
       </Route>
 
       {/* ── App — Novos Módulos ── */}
       <Route path="/app/escola-fundamentos">
-        <AppPage title="Escola de Fundamentos">
+        <AppPage title="Escola de Fundamentos" requiredAccess="isExecutive">
           <EscolaFundamentos />
         </AppPage>
       </Route>
 
       <Route path="/app/batismo">
-        <AppPage title="Batismo nas Águas">
+        <AppPage title="Batismo nas Águas" requiredAccess="isExecutive">
           <Batismo />
         </AppPage>
       </Route>
 
       <Route path="/app/encontro-com-deus/:eventId">
-        <AppPage title="Encontro com Deus">
+        <AppPage title="Encontro com Deus" requiredAccess="canManageEncounter">
           <EncontroComDeusDetalhe />
         </AppPage>
       </Route>
 
       <Route path="/app/encontro-com-deus">
-        <AppPage title="Encontro com Deus">
+        <AppPage title="Encontro com Deus" requiredAccess="canManageEncounter">
           <EncontroComDeus />
         </AppPage>
       </Route>
 
       <Route path="/app/escola-lideres">
-        <AppPage title="Escola de Líderes">
+        <AppPage title="Escola de Líderes" requiredAccess="isExecutive">
           <EscolaLideres />
         </AppPage>
       </Route>
 
       <Route path="/app/gestao-lideranca">
-        <AppPage title="Gestão de Liderança">
+        <AppPage title="Gestão de Liderança" requiredAccess="isExecutive">
           <GestaoLideranca />
         </AppPage>
       </Route>
 
       <Route path="/app/aconselhamento">
-        <AppPage title="Aconselhamento Pastoral">
+        <AppPage title="Aconselhamento Pastoral" requiredAccess="isExecutive">
           <Aconselhamento />
         </AppPage>
       </Route>
 
       <Route path="/app/comunicacao">
-        <AppPage title="Comunicação">
+        <AppPage title="Comunicação" requiredAccess="isCommunicationManager">
           <Comunicacao />
         </AppPage>
       </Route>
@@ -276,25 +295,25 @@ function Router() {
       </Route>
 
       <Route path="/app/configuracoes">
-        <AppPage title="Configurações">
+        <AppPage title="Configurações" requiredAccess="isExecutive">
           <Configuracoes />
         </AppPage>
       </Route>
 
       <Route path="/app/configuracoes/certificados">
-        <AppPage title="Certificados">
+        <AppPage title="Certificados" requiredAccess="isExecutive">
           <ConfiguracoesCertificados />
         </AppPage>
       </Route>
 
       <Route path="/app/faturamento">
-        <AppPage title="Faturamento">
+        <AppPage title="Faturamento" requiredAccess="isPastor">
           <Faturamento />
         </AppPage>
       </Route>
 
       <Route path="/app/tesouraria">
-        <AppPage title="Tesouraria">
+        <AppPage title="Tesouraria" requiredAccess="canAccessTreasury">
           <Tesouraria />
         </AppPage>
       </Route>
@@ -306,7 +325,7 @@ function Router() {
       </Route>
 
       <Route path="/app/lider">
-        <AppPage title="App do Líder">
+        <AppPage title="App do Líder" requiredAccess="canManageCells">
           <AppLider />
         </AppPage>
       </Route>

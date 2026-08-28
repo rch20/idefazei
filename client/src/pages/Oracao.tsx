@@ -11,8 +11,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 export default function Oracao() {
-  const { churchId } = useChurch();
+  const { churchId, accessSummary } = useChurch();
   const [open, setOpen] = useState(false);
+  const isPrayerManager = Boolean(accessSummary?.isPrayerManager);
   const [form, setForm] = useState({
     visitorName: "",
     visitorPhone: "",
@@ -21,23 +22,40 @@ export default function Oracao() {
     isPrivate: false,
   });
 
-  const { data: requests, isLoading, refetch } = trpc.prayer.list.useQuery({ churchId });
-  const createRequest = trpc.prayer.create.useMutation({
+  const managerRequestsQuery = trpc.prayer.list.useQuery({ churchId }, { enabled: isPrayerManager });
+  const ownRequestsQuery = trpc.prayer.mine.useQuery({ churchId }, { enabled: accessSummary !== null && !isPrayerManager });
+  const requests = isPrayerManager ? managerRequestsQuery.data : ownRequestsQuery.data;
+  const isLoading = isPrayerManager ? managerRequestsQuery.isLoading : ownRequestsQuery.isLoading;
+  const createPublicRequest = trpc.prayer.create.useMutation({
     onSuccess: () => {
       toast.success("Pedido registrado com sucesso!");
       setOpen(false);
       setForm({ visitorName: "", visitorPhone: "", type: "pedido", content: "", isPrivate: false });
-      refetch();
+      void managerRequestsQuery.refetch();
     },
-    onError: () => toast.error("Erro ao registrar pedido"),
+    onError: (error) => toast.error(error.message || "Erro ao registrar pedido"),
   });
+  const createOwnRequest = trpc.prayer.createMine.useMutation({
+    onSuccess: () => {
+      toast.success("Pedido registrado com sucesso!");
+      setOpen(false);
+      setForm({ visitorName: "", visitorPhone: "", type: "pedido", content: "", isPrivate: false });
+      void ownRequestsQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message || "Erro ao registrar pedido"),
+  });
+  const isSubmitting = createPublicRequest.isPending || createOwnRequest.isPending;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    createRequest.mutate({ churchId, ...form });
+    if (isPrayerManager) {
+      createPublicRequest.mutate({ churchId, ...form });
+    } else {
+      createOwnRequest.mutate({ churchId, type: form.type, content: form.content, isPrivate: form.isPrivate });
+    }
   }
 
-  const pedidos = (requests ?? []).filter((r) => r.type === "pedido" && !r.isPrivate);
+  const pedidos = (requests ?? []).filter((r) => r.type === "pedido" && (isPrayerManager ? !r.isPrivate : true));
   const testemunhos = (requests ?? []).filter((r) => r.type === "testemunho");
 
   return (
@@ -45,7 +63,7 @@ export default function Oracao() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold font-display text-navy">Pedidos de Oração</h1>
-          <p className="text-sm text-muted-foreground mt-1">Intercessão e testemunhos da comunidade</p>
+            <p className="text-sm text-muted-foreground mt-1">{isPrayerManager ? "Intercessão e testemunhos da comunidade" : "Registre e acompanhe seus pedidos de oração"}</p>
         </div>
         <Button onClick={() => setOpen(true)} className="bg-navy hover:bg-navy-light text-white gap-2">
           <Plus className="w-4 h-4" />
@@ -58,7 +76,7 @@ export default function Oracao() {
         <div className="card-sacred p-5">
           <h2 className="font-display font-bold text-navy mb-4 flex items-center gap-2">
             <HandHeart className="w-5 h-5 text-rose-500" />
-            Pedidos de Oração ({pedidos.length})
+            {isPrayerManager ? "Pedidos de Oração" : "Meus Pedidos de Oração"} ({pedidos.length})
           </h2>
           {isLoading ? (
             <div className="space-y-3">
@@ -69,8 +87,8 @@ export default function Oracao() {
           ) : (
             <div className="space-y-3">
               {pedidos.map((r) => {
-                const contactPhone = formatContactPhone(r.visitorPhone);
-                const whatsappLink = getWhatsAppLink(r.visitorPhone, r.visitorName ?? "");
+                        const contactPhone = isPrayerManager ? formatContactPhone(r.visitorPhone) : null;
+                        const whatsappLink = isPrayerManager ? getWhatsAppLink(r.visitorPhone, r.visitorName ?? "") : null;
                 return (
                   <div key={r.id} className="rounded-xl border border-border/70 bg-background/60 p-3 transition-colors hover:bg-muted/20">
                     <div className="flex items-start justify-between gap-2">
@@ -141,11 +159,11 @@ export default function Oracao() {
           <DialogHeader>
             <DialogTitle className="font-display text-navy flex items-center gap-2">
               <HandHeart className="w-5 h-5 text-rose-500" />
-              Registrar Pedido de Oração
+              {isPrayerManager ? "Registrar Pedido de Oração" : "Meu Pedido de Oração"}
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            {isPrayerManager ? <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Nome (opcional)</Label>
                 <Input value={form.visitorName} onChange={(e) => setForm({ ...form, visitorName: e.target.value })} />
@@ -154,7 +172,7 @@ export default function Oracao() {
                 <Label>Telefone (opcional)</Label>
                 <Input value={form.visitorPhone} onChange={(e) => setForm({ ...form, visitorPhone: e.target.value })} />
               </div>
-            </div>
+            </div> : <p className="rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground">Este pedido será registrado no seu cadastro e ficará visível para você e para a liderança autorizada.</p>}
             <div>
               <Label>Tipo</Label>
               <div className="flex gap-3 mt-1">
@@ -176,8 +194,8 @@ export default function Oracao() {
             </label>
             <div className="flex gap-3">
               <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">Cancelar</Button>
-              <Button type="submit" className="flex-1 bg-navy hover:bg-navy-light text-white" disabled={createRequest.isPending}>
-                {createRequest.isPending ? "Enviando..." : "Registrar"}
+              <Button type="submit" className="flex-1 bg-navy hover:bg-navy-light text-white" disabled={isSubmitting}>
+                {isSubmitting ? "Enviando..." : "Registrar"}
               </Button>
             </div>
           </form>

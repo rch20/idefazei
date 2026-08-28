@@ -48,7 +48,8 @@ function createInitialForm() {
 }
 
 export default function GanharAlmas() {
-  const { churchId } = useChurch();
+  const { churchId, accessSummary } = useChurch();
+  const isLimitedMember = accessSummary ? !accessSummary.isPastoralWorker : true;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(createInitialForm);
@@ -61,7 +62,7 @@ export default function GanharAlmas() {
   );
   const peopleQuery = trpc.people.list.useQuery(
     { churchId: churchId! },
-    { enabled: Boolean(churchId) }
+    { enabled: Boolean(churchId && !isLimitedMember) }
   );
   const possibleMatchInput = useMemo(
     () => ({
@@ -72,7 +73,7 @@ export default function GanharAlmas() {
     [churchId, form.name, form.phone]
   );
   const possibleMatchesQuery = trpc.people.findPossibleMatches.useQuery(possibleMatchInput, {
-    enabled: Boolean(churchId && possibleMatchInput.fullName.length >= 2),
+    enabled: Boolean(churchId && !isLimitedMember && possibleMatchInput.fullName.length >= 2),
   });
 
   const souls = soulsQuery.data ?? [];
@@ -105,7 +106,7 @@ export default function GanharAlmas() {
   });
 
   function openNewSoulDialog() {
-    setForm(createInitialForm());
+    setForm({ ...createInitialForm(), origin: isLimitedMember ? "indicacao" : "culto" });
     setFormError("");
     setOpen(true);
   }
@@ -134,24 +135,27 @@ export default function GanharAlmas() {
       setFormError("A data da decisão não pode estar no futuro.");
       return;
     }
-    if (form.origin !== "visita_espontanea" && !form.wonById) {
+    if (!isLimitedMember && form.origin !== "visita_espontanea" && !form.wonById) {
       setFormError("Selecione quem ganhou esta alma para Cristo.");
       return;
     }
 
-    createSoul.mutate({
+    const soulInput = {
       churchId,
       name,
       phone: form.phone.trim() || undefined,
       address: form.address.trim() || undefined,
       decisionDate: form.decisionDate,
-      origin: form.origin,
-      acceptedJesus: form.acceptedJesus,
-      reconciliation: form.reconciliation,
-      firstVisit: form.firstVisit,
+      origin: isLimitedMember ? "indicacao" as const : form.origin,
+      acceptedJesus: isLimitedMember ? false : form.acceptedJesus,
+      reconciliation: isLimitedMember ? false : form.reconciliation,
+      firstVisit: isLimitedMember ? false : form.firstVisit,
+      notes: form.notes.trim() || undefined,
+    };
+    createSoul.mutate(isLimitedMember ? soulInput : {
+      ...soulInput,
       wonById: form.wonById ? Number(form.wonById) : undefined,
       existingPersonId: form.existingPersonId === "new" ? undefined : Number(form.existingPersonId),
-      notes: form.notes.trim() || undefined,
     });
   }
 
@@ -166,11 +170,11 @@ export default function GanharAlmas() {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 id="ganhar-almas-title" className="text-2xl font-bold font-display text-navy">Ganhar Almas</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Registre decisões de fé e inicie o acompanhamento com clareza.</p>
+          <p className="mt-1 text-sm text-muted-foreground">{isLimitedMember ? "Indique uma nova alma para que a liderança inicie o cuidado." : "Registre decisões de fé e inicie o acompanhamento com clareza."}</p>
         </div>
         <Button onClick={openNewSoulDialog} className="w-full bg-navy text-white hover:bg-navy-light sm:w-auto">
           <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-          Nova alma
+          {isLimitedMember ? "Indicar nova alma" : "Nova alma"}
         </Button>
       </header>
 
@@ -250,13 +254,13 @@ export default function GanharAlmas() {
       <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? setOpen(true) : closeDialog())}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto rounded-xl p-5 sm:max-w-xl sm:p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 font-display text-navy"><Flame className="h-5 w-5 text-amber-500" aria-hidden="true" />Registrar nova alma</DialogTitle>
-            <DialogDescription>Registre as informações essenciais para iniciar o cuidado e a consolidação.</DialogDescription>
+            <DialogTitle className="flex items-center gap-2 font-display text-navy"><Flame className="h-5 w-5 text-amber-500" aria-hidden="true" />{isLimitedMember ? "Indicar nova alma" : "Registrar nova alma"}</DialogTitle>
+            <DialogDescription>{isLimitedMember ? "Informe os dados básicos; a liderança fará a revisão e definirá o próximo passo." : "Registre as informações essenciais para iniciar o cuidado e a consolidação."}</DialogDescription>
           </DialogHeader>
 
-          {peopleQuery.isLoading ? (
+              {peopleQuery.isLoading && !isLimitedMember ? (
             <div className="py-8 text-center text-sm text-muted-foreground">Carregando pessoas da igreja…</div>
-          ) : peopleQuery.isError ? (
+          ) : peopleQuery.isError && !isLimitedMember ? (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Não foi possível carregar as pessoas da igreja. Feche e tente novamente.</div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5" noValidate>
@@ -270,7 +274,7 @@ export default function GanharAlmas() {
                   <Label htmlFor="soul-phone">Telefone</Label>
                   <Input id="soul-phone" inputMode="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="(00) 00000-0000" className="mt-1" />
                 </div>
-                <div className="sm:col-span-2 rounded-lg border border-gold/25 bg-gold/5 p-3">
+                {!isLimitedMember && <div className="sm:col-span-2 rounded-lg border border-gold/25 bg-gold/5 p-3">
                   <Label htmlFor="soul-existing-person" className="text-navy">Ficha central da Pessoa</Label>
                   <p className="mt-1 text-xs text-muted-foreground">Uma ficha será criada automaticamente. Se esta pessoa já estiver cadastrada, selecione-a para preservar o histórico em um só lugar.</p>
                   <Select value={form.existingPersonId} onValueChange={(value) => setForm({ ...form, existingPersonId: value })}>
@@ -286,19 +290,19 @@ export default function GanharAlmas() {
                       {possibleMatchesQuery.data.map((person) => person.fullName).join(", ")}. Se for a mesma pessoa, escolha-a acima para evitar duplicidade.
                     </div>
                   )}
-                </div>
+                </div>}
                 <div>
                   <Label htmlFor="soul-decision-date">Data da decisão *</Label>
                   <Input id="soul-decision-date" type="date" max={new Date().toISOString().slice(0, 10)} value={form.decisionDate} onChange={(event) => setForm({ ...form, decisionDate: event.target.value })} className="mt-1" />
                 </div>
-                <div>
+                {!isLimitedMember && (<div>
                   <Label htmlFor="soul-origin">Origem *</Label>
                   <Select value={form.origin} onValueChange={(value) => setForm({ ...form, origin: value as Origin, wonById: value === "visita_espontanea" ? "" : form.wonById })}>
                     <SelectTrigger id="soul-origin" className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>{ORIGINS.map((origin) => <SelectItem key={origin.value} value={origin.value}>{origin.label}</SelectItem>)}</SelectContent>
                   </Select>
-                </div>
-                {form.origin === "visita_espontanea" ? (
+                </div>)}
+                {!isLimitedMember && (form.origin === "visita_espontanea" ? (
                   <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
                     <strong>Chegou por conta própria.</strong> Registre o visitante agora; depois, um pastor ou líder poderá definir o consolidador responsável pelo primeiro contato.
                   </div>
@@ -350,19 +354,19 @@ export default function GanharAlmas() {
                       </Button>
                     )}
                   </div>
-                )}
+                ))}
                 <div className="sm:col-span-2">
                   <Label htmlFor="soul-address">Endereço</Label>
                   <Input id="soul-address" value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} placeholder="Rua, número e bairro" className="mt-1" />
                 </div>
               </div>
 
-              <fieldset className="space-y-3 rounded-lg border border-border p-3">
+              {!isLimitedMember && <fieldset className="space-y-3 rounded-lg border border-border p-3">
                 <legend className="px-1 text-sm font-semibold text-navy">Informações da decisão</legend>
                 <label className="flex min-h-7 items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={form.acceptedJesus} onChange={(event) => setForm({ ...form, acceptedJesus: event.target.checked })} className="h-4 w-4 accent-navy" />Aceitou Jesus</label>
                 <label className="flex min-h-7 items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={form.reconciliation} onChange={(event) => setForm({ ...form, reconciliation: event.target.checked })} className="h-4 w-4 accent-navy" />Reconciliação</label>
                 <label className="flex min-h-7 items-center gap-2 text-sm text-foreground"><input type="checkbox" checked={form.firstVisit} onChange={(event) => setForm({ ...form, firstVisit: event.target.checked })} className="h-4 w-4 accent-navy" />Primeira visita</label>
-              </fieldset>
+              </fieldset>}
 
               <div>
                 <Label htmlFor="soul-notes">Observações</Label>
@@ -371,7 +375,7 @@ export default function GanharAlmas() {
 
               <div className="sticky bottom-0 -mx-5 flex flex-col-reverse gap-2 border-t border-border bg-background px-5 pt-4 sm:-mx-6 sm:flex-row sm:justify-end sm:px-6">
                 <Button type="button" variant="outline" onClick={closeDialog} disabled={createSoul.isPending}>Cancelar</Button>
-                <Button type="submit" className="bg-navy text-white hover:bg-navy-light" disabled={createSoul.isPending}>{createSoul.isPending ? "Registrando…" : "Registrar nova alma"}</Button>
+                <Button type="submit" className="bg-navy text-white hover:bg-navy-light" disabled={createSoul.isPending}>{createSoul.isPending ? "Enviando…" : isLimitedMember ? "Enviar indicação" : "Registrar nova alma"}</Button>
               </div>
             </form>
           )}

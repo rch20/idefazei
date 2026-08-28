@@ -49,6 +49,25 @@ import { normalizePastoralSupportConfig, shouldShowPastoralSupport, type Pastora
 
 // ─── CHURCH CONTEXT ───────────────────────────────────────────────────────────
 
+export type ChurchAccessSummary = {
+  actorPersonId: number | null;
+  actorRole: string;
+  roles: string[];
+  isPastor: boolean;
+  isExecutive: boolean;
+  isCommunicationManager: boolean;
+  isPrayerManager: boolean;
+  isConsolidator: boolean;
+  isVisitador: boolean;
+  isPastoralWorker: boolean;
+  canManageCells: boolean;
+  canManageLibrary: boolean;
+  canAccessTreasury: boolean;
+  canIndicateNewSoul: boolean;
+  canManageEvents: boolean;
+  canManageEncounter: boolean;
+};
+
 interface ChurchContextType {
   churchId: number;
   churchName: string;
@@ -58,6 +77,7 @@ interface ChurchContextType {
   secondaryColor: string;
   logoUrl?: string | null;
   pastoralSupport: PastoralSupportConfig;
+  accessSummary: ChurchAccessSummary | null;
 }
 
 const ChurchContext = createContext<ChurchContextType>({
@@ -68,45 +88,46 @@ const ChurchContext = createContext<ChurchContextType>({
   primaryColor: "#1e3a5f",
   secondaryColor: "#c9a84c",
   pastoralSupport: normalizePastoralSupportConfig(null),
+  accessSummary: null,
 });
 
 export const useChurch = () => useContext(ChurchContext);
 
 // ─── NAV ITEMS ────────────────────────────────────────────────────────────────
 
-type NavItem = { icon: typeof Home; label: string; path: string; group: string; roles?: string[]; requiresEncounterAccess?: boolean };
+type NavItem = { icon: typeof Home; label: string; path: string; group: string; roles?: string[]; accessKey?: keyof ChurchAccessSummary; requiresEncounterAccess?: boolean };
 
 const navItems: NavItem[] = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/app/dashboard", group: "principal" },
-  { icon: Heart, label: "Central de Cuidado", path: "/app/cuidado", group: "principal", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"] },
-  { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "principal" },
-  { icon: TreePine, label: "Árvore de Discipulado", path: "/app/arvore", group: "principal" },
+  { icon: LayoutDashboard, label: "Dashboard", path: "/app/dashboard", group: "principal", accessKey: "isExecutive" },
+  { icon: Heart, label: "Central de Cuidado", path: "/app/cuidado", group: "principal", accessKey: "isPastoralWorker" },
+  { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "principal", accessKey: "isExecutive" },
+  { icon: TreePine, label: "Árvore de Discipulado", path: "/app/arvore", group: "principal", accessKey: "isExecutive" },
   { icon: Flame, label: "Ganhar Almas", path: "/app/almas", group: "discipulado" },
-  { icon: Heart, label: "Consolidação", path: "/app/consolidacao", group: "discipulado", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador", "visitador"] },
-  { icon: ChevronRight, label: "Funil de Discipulado", path: "/app/funil", group: "discipulado" },
-  { icon: Users, label: "Pessoas", path: "/app/pessoas", group: "membros" },
-  { icon: Home, label: "Famílias", path: "/app/familias", group: "membros" },
+  { icon: Heart, label: "Consolidação", path: "/app/consolidacao", group: "discipulado", accessKey: "isPastoralWorker" },
+  { icon: ChevronRight, label: "Funil de Discipulado", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
+  { icon: Users, label: "Pessoas", path: "/app/pessoas", group: "membros", accessKey: "isExecutive" },
+  { icon: Home, label: "Famílias", path: "/app/familias", group: "membros", accessKey: "isExecutive" },
   { icon: Globe, label: "Células", path: "/app/celulas", group: "celulas" },
   { icon: Map, label: "Mapa de Células", path: "/app/mapa", group: "celulas" },
-  { icon: CalendarDays, label: "Eventos", path: "/app/eventos", group: "ministerio" },
-  { icon: Music, label: "Ministérios", path: "/app/ministerios", group: "ministerio" },
-  { icon: Star, label: "Escalas", path: "/app/escalas", group: "ministerio" },
-  { icon: BookOpen, label: "Escola de Fundamentos", path: "/app/escola-fundamentos", group: "discipulado" },
-  { icon: Droplets, label: "Batismo nas Águas", path: "/app/batismo", group: "discipulado" },
-  { icon: Heart, label: "Encontro com Deus", path: "/app/encontro-com-deus", group: "discipulado", requiresEncounterAccess: true },
-  { icon: GraduationCap, label: "Escola de Líderes", path: "/app/escola-lideres", group: "lideranca" },
+  { icon: CalendarDays, label: "Eventos", path: "/app/eventos", group: "ministerio", accessKey: "isExecutive" },
+  { icon: Music, label: "Ministérios", path: "/app/ministerios", group: "ministerio", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"] },
+  { icon: Star, label: "Escalas", path: "/app/escalas", group: "ministerio", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"] },
+  { icon: BookOpen, label: "Escola de Fundamentos", path: "/app/escola-fundamentos", group: "discipulado", accessKey: "isExecutive" },
+  { icon: Droplets, label: "Batismo nas Águas", path: "/app/batismo", group: "discipulado", accessKey: "isExecutive" },
+  { icon: Heart, label: "Encontro com Deus", path: "/app/encontro-com-deus", group: "discipulado", accessKey: "canManageEncounter", requiresEncounterAccess: true },
+  { icon: GraduationCap, label: "Escola de Líderes", path: "/app/escola-lideres", group: "lideranca", accessKey: "isExecutive" },
   { icon: Crown, label: "Gestão de Liderança", path: "/app/gestao-lideranca", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
   { icon: Shield, label: "Aconselhamento", path: "/app/aconselhamento", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
   { icon: MessageCircle, label: "Pedidos de Oração", path: "/app/oracao", group: "comunicacao" },
-  { icon: BookOpen, label: "Mural", path: "/app/mural", group: "comunicacao" },
-  { icon: MessageSquare, label: "Comunicação", path: "/app/comunicacao", group: "comunicacao", roles: ["pastor_presidente", "pastor_local", "secretario"] },
+  { icon: BookOpen, label: "Mural", path: "/app/mural", group: "comunicacao", accessKey: "isCommunicationManager" },
+  { icon: MessageSquare, label: "Comunicação", path: "/app/comunicacao", group: "comunicacao", roles: ["pastor_presidente", "pastor_local", "secretario"], accessKey: "isCommunicationManager" },
   { icon: Shield, label: "Biblioteca", path: "/app/biblioteca", group: "comunicacao" },
   { icon: Building2, label: "Configurações", path: "/app/configuracoes", group: "admin", roles: ["pastor_presidente", "pastor_local", "secretario"] },
   { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin", roles: ["pastor_presidente", "pastor_local", "secretario"] },
-  { icon: WalletCards, label: "Tesouraria", path: "/app/tesouraria", group: "admin", roles: ["pastor_presidente", "pastor_local", "tesoureiro"] },
-  { icon: CreditCard, label: "Faturamento", path: "/app/faturamento", group: "admin", roles: ["pastor_presidente", "pastor_local"] },
+  { icon: WalletCards, label: "Tesouraria", path: "/app/tesouraria", group: "admin", accessKey: "canAccessTreasury" },
+  { icon: CreditCard, label: "Faturamento", path: "/app/faturamento", group: "admin", accessKey: "isPastor" },
   { icon: Users, label: "Área do Membro", path: "/app/membro", group: "membros" },
-  { icon: Star, label: "App do Líder", path: "/app/lider", group: "membros", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"] },
+  { icon: Star, label: "App do Líder", path: "/app/lider", group: "membros", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"] },
 ];
 
 const groups = [
@@ -139,15 +160,11 @@ const roleLabels: Record<string, string> = {
 function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [location, navigate] = useLocation();
   const { user, logout } = useChurchAuth();
-  const { churchName, logoUrl } = useChurch();
+  const { churchName, logoUrl, accessSummary } = useChurch();
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [expandedGroup, setExpandedGroup] = useState<string | null>("principal");
   const currentRole = user?.role ?? "membro";
-  const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery(
-    { churchId: user?.churchId ?? 0 },
-    { enabled: Boolean(user?.churchId) }
-  );
-  const effectiveRoles = Array.from(new Set([currentRole, ...(effectiveRolesQuery.data ?? [])]));
+  const effectiveRoles = Array.from(new Set([currentRole, ...(accessSummary?.roles ?? [])]));
   const encounterAccessQuery = trpc.encontro.hasAccess.useQuery(
     { churchId: user?.churchId ?? 0 },
     { enabled: Boolean(user?.churchId) }
@@ -156,7 +173,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     const activeGroup = groups.find((group) => navItems.some((item) => item.group === group.key && (location === item.path || location.startsWith(item.path + "/"))));
     if (activeGroup) setExpandedGroup(activeGroup.key);
   }, [location]);
-  const canReviewRegistrations = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local", "secretario"].includes(role));
+  const canReviewRegistrations = Boolean(accessSummary?.isExecutive);
   const pendingRegistrationsQuery = trpc.churchAuth.pendingRegistrations.useQuery(
     { churchId: user?.churchId ?? 0 },
     { enabled: Boolean(user?.churchId && canReviewRegistrations) }
@@ -207,7 +224,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         {/* Navigation */}
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Navegação principal">
           {groups.map((group) => {
-            const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))) && (!i.requiresEncounterAccess || encounterAccessQuery.data === true));
+            const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))) && (!i.accessKey || Boolean(accessSummary?.[i.accessKey])) && (!i.requiresEncounterAccess || encounterAccessQuery.data === true));
             if (!items.length) return null;
             const isExpanded = expandedGroup === group.key;
             return (
@@ -389,6 +406,10 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
     { id: churchId ?? 0 },
     { enabled: isAuthenticated && churchId !== null }
   );
+  const { data: accessSummary } = trpc.churchAuth.accessSummary.useQuery(
+    { churchId: churchId ?? 0 },
+    { enabled: isAuthenticated && churchId !== null, staleTime: 30_000 }
+  );
   const pastoralSupport = normalizePastoralSupportConfig(church?.pastoralSupport);
   useTenantPwaMeta({ tenantSlug: church?.slug, tenantName: church?.name, primaryColor: church?.primaryColor, pwaIconAssetId: church?.pwaIconAssetId, pwaIconVersion: church?.updatedAt?.getTime() });
 
@@ -416,6 +437,7 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
     secondaryColor: church?.secondaryColor ?? "#c9a84c",
     logoUrl: church?.logoUrl,
     pastoralSupport,
+    accessSummary: accessSummary ?? null,
   };
 
   return (

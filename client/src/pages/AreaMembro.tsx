@@ -17,16 +17,17 @@ const DISCIPLESHIP_STAGES = [
 ];
 
 export default function AreaMembro() {
-  const { churchId } = useChurch();
+  const { churchId, accessSummary } = useChurch();
   const [activeTab, setActiveTab] = useState("perfil");
 
-  const { data: people, isLoading: loadingPeople } = trpc.people.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const { data: member, isLoading: loadingPeople } = trpc.people.getById.useQuery(
+    { churchId: churchId!, id: accessSummary?.actorPersonId ?? 0 },
+    { enabled: Boolean(churchId && accessSummary?.actorPersonId) },
+  );
   const { data: events, isLoading: loadingEvents } = trpc.events.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
-  const { data: announcements, isLoading: loadingAnnouncements } = trpc.announcements.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
-  const { data: prayers, isLoading: loadingPrayers } = trpc.prayer.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
-
-  // Simula o membro logado como o primeiro da lista
-  const member = people?.[0];
+  const { data: publicSite, isLoading: loadingAnnouncements } = trpc.tenantPublic.current.useQuery(undefined, { enabled: !!churchId, staleTime: 60_000 });
+  const announcements = publicSite?.publicAnnouncements ?? [];
+  const { data: prayers, isLoading: loadingPrayers } = trpc.prayer.mine.useQuery({ churchId: churchId! }, { enabled: !!churchId });
 
   const currentStageIndex = member?.discipleshipStage
     ? DISCIPLESHIP_STAGES.indexOf(member.discipleshipStage)
@@ -238,10 +239,10 @@ export default function AreaMembro() {
                 Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 w-full mb-3" />)
               ) : announcements && announcements.length > 0 ? (
                 <div className="space-y-3">
-                  {announcements.map((ann: { id: number; title: string; content: string; priority?: string | null; createdAt: Date }) => (
-                    <div key={ann.id} className={`p-4 rounded-xl border ${ann.priority === "urgent" ? "border-red-200 bg-red-50" : "border-[#1e3a5f]/10 bg-[#f5f0e8]/30"}`}>
+                  {announcements.map((ann) => (
+                    <div key={ann.id} className={`p-4 rounded-xl border ${ann.pinned ? "border-amber-200 bg-amber-50" : "border-[#1e3a5f]/10 bg-[#f5f0e8]/30"}`}>
                       <div className="flex items-start gap-3">
-                        {ann.priority === "urgent" ? (
+                        {ann.pinned ? (
                           <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                         ) : (
                           <Bell className="w-5 h-5 text-[#c9a84c] shrink-0 mt-0.5" />
@@ -251,7 +252,7 @@ export default function AreaMembro() {
                           <p className="text-[#1e3a5f]/60 text-xs mt-1 leading-relaxed">{ann.content}</p>
                           <p className="text-[#1e3a5f]/30 text-[10px] mt-2 flex items-center gap-1">
                             <Clock className="w-3 h-3" />
-                            {new Date(ann.createdAt).toLocaleDateString("pt-BR")}
+                            {new Date(ann.publishedAt).toLocaleDateString("pt-BR")}
                           </p>
                         </div>
                       </div>

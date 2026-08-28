@@ -81,9 +81,9 @@ export default function LoginIgreja() {
       } else if (role === "consolidador") {
         navigate("/app/consolidacao");
       } else if (role === "tesoureiro") {
-        navigate("/app/configuracoes");
+        navigate("/app/tesouraria");
       } else {
-        navigate("/app/dashboard");
+        navigate("/app/membro");
       }
     },
     onError: (err: { message?: string }) => {
