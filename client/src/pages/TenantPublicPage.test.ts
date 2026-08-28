@@ -78,6 +78,29 @@ describe("Template Ministerial Base — estabilidade global", () => {
     expect(page).not.toContain("announcements.list.useQuery");
   });
 
+  it("compacta textos longos em duas linhas e oferece leitura completa sem alterar o conteúdo", () => {
+    const page = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
+    expect(page).toContain("ANNOUNCEMENT_SUMMARY_CHAR_LIMIT");
+    expect(page).toContain("shouldShowAnnouncementDetails");
+    expect(page).toContain("tenant-public-announcement-summary");
+    expect(page).toContain('aria-haspopup="dialog"');
+    expect(page).toContain("Ver mais");
+    expect(css).toContain("-webkit-line-clamp: 2");
+    expect(css).toContain(".tenant-public-announcement-details-trigger");
+    expect(page).toContain("tenant-public-announcement-dialog");
+    expect(page).toContain("tenant-public-announcement-full-content");
+    expect(page).toContain("selectedAnnouncement?.content");
+    expect(page).toContain("target={isExternal ? \"_blank\" : undefined}");
+  });
+
+  it("mantém o resumo e o modal de texto separados do lightbox de imagem", () => {
+    const page = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
+    expect(page).toContain("expandedAnnouncementImage");
+    expect(page).toContain("selectedAnnouncement");
+    expect(page).toContain("tenant-public-image-dialog");
+    expect(page).toContain("tenant-public-announcement-dialog");
+  });
+
   it("exibe rodapé institucional responsivo com redes sociais opcionais", () => {
     const page = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
     const visiteNos = readFileSync(resolve(process.cwd(), "client/src/pages/VisiteNos.tsx"), "utf8");

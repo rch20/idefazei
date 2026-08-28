@@ -11,7 +11,14 @@ import { useState } from "react";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type PublicGalleryItem = { url?: string; alt?: string; caption?: string };
+type AnnouncementDetails = { title: string; content: string; type?: string | null; publishedAt: Date | string };
 const ANNOUNCEMENT_TYPE_LABELS: Record<string, string> = { aviso: "Aviso", evento: "Evento", comunicado: "Comunicado", devocional: "Devocional" };
+const ANNOUNCEMENT_SUMMARY_CHAR_LIMIT = 110;
+
+function shouldShowAnnouncementDetails(content: string) {
+  const normalized = content.trim();
+  return normalized.length > ANNOUNCEMENT_SUMMARY_CHAR_LIMIT || normalized.split(/\r?\n/).length > 2;
+}
 type SectionContent = { title?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string; heroImageSource?: "preset" | "custom"; heroImagePresetId?: string | null; heroImageUrl?: string | null; heroImageAssetId?: number | null; services?: PublicService[]; items?: PublicGalleryItem[] };
 
 function findContent(sections: Array<{ sectionType: string; content: unknown }>, type: string): SectionContent | null {
@@ -22,7 +29,8 @@ function findContent(sections: Array<{ sectionType: string; content: unknown }>,
 export default function TenantPublicPage() {
   const { data, isLoading } = trpc.tenantPublic.current.useQuery();
   useTenantPwaMeta({ tenantSlug: data?.church.slug, tenantName: data?.church.name, primaryColor: data?.theme?.primaryColor ?? data?.church.primaryColor, pwaIconAssetId: data?.church.pwaIconAssetId, pwaIconVersion: data?.church.pwaIconVersion });
-  const [expandedAnnouncement, setExpandedAnnouncement] = useState<{ title: string; imageUrl: string; imageAlt: string } | null>(null);
+  const [expandedAnnouncementImage, setExpandedAnnouncementImage] = useState<{ title: string; imageUrl: string; imageAlt: string } | null>(null);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<AnnouncementDetails | null>(null);
 
   if (isLoading) {
     return <div className="tenant-public-root tenant-public-loading" aria-live="polite">Carregando a igreja...</div>;
@@ -138,6 +146,7 @@ export default function TenantPublicPage() {
               <div className="tenant-public-announcements-grid">
                 {data.publicAnnouncements.map((announcement) => {
                   const isExternal = Boolean(announcement.ctaHref?.startsWith("http"));
+                  const showDetailsAction = shouldShowAnnouncementDetails(announcement.content);
                   return (
                     <article key={announcement.id} className={`tenant-public-announcement-card${announcement.pinned ? " is-pinned" : ""}`}>
                       {announcement.imageUrl && (
@@ -145,7 +154,7 @@ export default function TenantPublicPage() {
                           type="button"
                           className="tenant-public-announcement-image-trigger"
                           aria-label={`Ampliar imagem do aviso ${announcement.title}`}
-                          onClick={() => setExpandedAnnouncement({ title: announcement.title, imageUrl: announcement.imageUrl!, imageAlt: `Imagem do aviso ${announcement.title}` })}
+                          onClick={() => setExpandedAnnouncementImage({ title: announcement.title, imageUrl: announcement.imageUrl!, imageAlt: `Imagem do aviso ${announcement.title}` })}
                         >
                           <img className="tenant-public-announcement-image" src={announcement.imageUrl} alt={`Imagem do aviso ${announcement.title}`} loading="lazy" decoding="async" />
                           <span className="tenant-public-announcement-image-hint" aria-hidden="true"><Maximize2 size={15} /><span>Ampliar</span></span>
@@ -157,7 +166,15 @@ export default function TenantPublicPage() {
                           {announcement.pinned && <span className="inline-flex items-center gap-1"><Pin size={12} aria-hidden="true" /> Destaque</span>}
                         </div>
                         <h3>{announcement.title}</h3>
-                        <p>{announcement.content}</p>
+                        <p className={showDetailsAction ? "tenant-public-announcement-summary" : undefined}>{announcement.content}</p>
+                        {showDetailsAction && <button
+                          type="button"
+                          className="tenant-public-announcement-details-trigger"
+                          aria-haspopup="dialog"
+                          onClick={() => setSelectedAnnouncement({ title: announcement.title, content: announcement.content, type: announcement.type, publishedAt: announcement.publishedAt })}
+                        >
+                          Ver mais <ArrowRight size={15} aria-hidden="true" />
+                        </button>}
                         <p className="text-xs">Publicado em {new Date(announcement.publishedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</p>
                         {announcement.ctaHref && announcement.ctaLabel && <a className="tenant-public-announcement-action" href={announcement.ctaHref} target={isExternal ? "_blank" : undefined} rel={isExternal ? "noreferrer" : undefined}>{announcement.ctaLabel}<ArrowUpRight size={15} aria-hidden="true" /></a>}
                       </div>
@@ -208,14 +225,30 @@ export default function TenantPublicPage() {
         </section>
       </main>
 
-      <Dialog open={Boolean(expandedAnnouncement)} onOpenChange={(open) => { if (!open) setExpandedAnnouncement(null); }}>
+      <Dialog open={Boolean(expandedAnnouncementImage)} onOpenChange={(open) => { if (!open) setExpandedAnnouncementImage(null); }}>
         <DialogContent className="tenant-public-image-dialog">
           <DialogHeader className="tenant-public-image-dialog-header">
-            <DialogTitle>{expandedAnnouncement?.title ?? "Imagem do aviso"}</DialogTitle>
+            <DialogTitle>{expandedAnnouncementImage?.title ?? "Imagem do aviso"}</DialogTitle>
             <DialogDescription className="tenant-public-image-dialog-description">Visualização ampliada do aviso público.</DialogDescription>
           </DialogHeader>
           <div className="tenant-public-image-dialog-viewport">
-            {expandedAnnouncement && <img className="tenant-public-image-expanded" src={expandedAnnouncement.imageUrl} alt={expandedAnnouncement.imageAlt} />}
+            {expandedAnnouncementImage && <img className="tenant-public-image-expanded" src={expandedAnnouncementImage.imageUrl} alt={expandedAnnouncementImage.imageAlt} />}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(selectedAnnouncement)} onOpenChange={(open) => { if (!open) setSelectedAnnouncement(null); }}>
+        <DialogContent className="tenant-public-announcement-dialog">
+          <DialogHeader className="tenant-public-announcement-dialog-header">
+            <div className="tenant-public-announcement-dialog-meta">
+              <span>{ANNOUNCEMENT_TYPE_LABELS[selectedAnnouncement?.type ?? "aviso"] ?? "Aviso"}</span>
+              {selectedAnnouncement && <span>Publicado em {new Date(selectedAnnouncement.publishedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</span>}
+            </div>
+            <DialogTitle>{selectedAnnouncement?.title ?? "Aviso da igreja"}</DialogTitle>
+            <DialogDescription>Leitura completa do aviso publicado.</DialogDescription>
+          </DialogHeader>
+          <div className="tenant-public-announcement-dialog-body">
+            <p className="tenant-public-announcement-full-content">{selectedAnnouncement?.content}</p>
           </div>
         </DialogContent>
       </Dialog>

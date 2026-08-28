@@ -431,9 +431,20 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-announcement-meta span { min-width: 0; overflow-wrap: anywhere; }
 .tenant-public-announcement-card h3 { margin: 0; overflow-wrap: anywhere; color: var(--tenant-primary); font-family: "Playfair Display", serif; font-size: 1.3rem; line-height: 1.15; }
 .tenant-public-announcement-card p { margin: 0; overflow-wrap: anywhere; color: color-mix(in srgb, var(--tenant-primary) 68%, white); font-size: .92rem; line-height: 1.6; white-space: pre-line; }
+.tenant-public-announcement-summary { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.tenant-public-announcement-details-trigger { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; gap: .35rem; border: 0; border-radius: .6rem; padding: .18rem .15rem; color: var(--tenant-primary); background: transparent; font-size: .8rem; font-weight: 800; line-height: 1.35; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--tenant-secondary) 65%, transparent); text-underline-offset: .2rem; cursor: pointer; }
+.tenant-public-announcement-details-trigger:hover { color: color-mix(in srgb, var(--tenant-primary) 78%, black); text-decoration-color: var(--tenant-secondary); }
+.tenant-public-announcement-details-trigger:focus-visible { outline: 3px solid var(--tenant-secondary); outline-offset: 3px; }
 .tenant-public-announcement-action { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; gap: .35rem; border-radius: .7rem; background: var(--tenant-primary); padding: .58rem .75rem; color: white; font-size: .82rem; font-weight: 700; text-decoration: none; }
 .tenant-public-announcement-action:hover { background: color-mix(in srgb, var(--tenant-primary) 82%, black); }
 .tenant-public-image-dialog { grid-template-rows: auto minmax(0, 1fr); width: min(96vw, 70rem); max-width: min(96vw, 70rem); max-height: 92dvh; overflow: hidden; border-color: color-mix(in srgb, var(--tenant-secondary) 42%, transparent); color: white; background: rgb(15 34 58 / 97%); }
+.tenant-public-announcement-dialog { grid-template-rows: auto minmax(0, 1fr); width: min(96vw, 42rem); max-width: min(96vw, 42rem); max-height: 88dvh; overflow: hidden; border-color: color-mix(in srgb, var(--tenant-secondary) 35%, transparent); color: var(--tenant-primary); background: #fffdf9; }
+.tenant-public-announcement-dialog-header { padding-right: 2.5rem; }
+.tenant-public-announcement-dialog-header [data-slot="dialog-title"] { color: var(--tenant-primary); font-family: "Playfair Display", Georgia, serif; font-size: clamp(1.35rem, 4vw, 1.85rem); line-height: 1.1; }
+.tenant-public-announcement-dialog-header [data-slot="dialog-description"] { color: color-mix(in srgb, var(--tenant-primary) 62%, white); }
+.tenant-public-announcement-dialog-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem; color: var(--tenant-secondary); font-size: .68rem; font-weight: 800; letter-spacing: .08em; line-height: 1.35; text-transform: uppercase; }
+.tenant-public-announcement-dialog-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid color-mix(in srgb, var(--tenant-secondary) 18%, transparent); padding: 1rem .15rem .2rem 0; }
+.tenant-public-announcement-full-content { margin: 0; overflow-wrap: anywhere; color: color-mix(in srgb, var(--tenant-primary) 72%, white); font-size: 1rem; line-height: 1.75; white-space: pre-line; }
 .tenant-public-image-dialog-header { padding-right: 2.5rem; }
 .tenant-public-image-dialog-header [data-slot="dialog-title"] { color: white; font-family: "Playfair Display", Georgia, serif; }
 .tenant-public-image-dialog-description { color: rgb(255 255 255 / 68%); }
@@ -500,6 +511,9 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
   .tenant-public-footer-bottom { align-items: flex-start; flex-direction: column; gap: .35rem; margin-top: 2rem; }
   .tenant-public-image-dialog { width: calc(100% - 1rem); max-width: calc(100% - 1rem); padding: 1rem; }
   .tenant-public-image-dialog-viewport { max-height: calc(92dvh - 7rem); }
+  .tenant-public-announcement-dialog { width: calc(100% - 1rem); max-width: calc(100% - 1rem); max-height: calc(100dvh - 2rem); padding: 1rem; }
+  .tenant-public-announcement-dialog-body { max-height: calc(100dvh - 13rem); padding-top: .85rem; }
+  .tenant-public-announcement-full-content { font-size: .96rem; line-height: 1.7; }
   .tenant-public-image-expanded { max-height: calc(92dvh - 8rem); }
 }
 
