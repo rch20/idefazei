@@ -17,6 +17,7 @@ const pwaHookSource = readFileSync(resolve(root, "client/src/hooks/useTenantPwaM
 const visiteNosSource = readFileSync(resolve(root, "client/src/pages/VisiteNos.tsx"), "utf8");
 const portalVisitanteSource = readFileSync(resolve(root, "client/src/pages/PortalVisitante.tsx"), "utf8");
 const loginIgrejaSource = readFileSync(resolve(root, "client/src/pages/LoginIgreja.tsx"), "utf8");
+const cadastroSource = readFileSync(resolve(root, "client/src/pages/CadastroDiscipulo.tsx"), "utf8");
 const churchLayoutSource = readFileSync(resolve(root, "client/src/components/ChurchLayout.tsx"), "utf8");
 
 describe("Fluxo estrutural da Configuração da Igreja", () => {
@@ -49,6 +50,20 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("Dados institucionais");
     expect(settingsSource).toContain("Canais de contato");
     expect(settingsSource).toContain("A logo, cores e ícone só ficam ativos após salvar.");
+  });
+
+  it("personaliza e controla o cadastro público por tenant com link oficial copiável", () => {
+    expect(settingsSource).toContain("Convite e cadastro público");
+    expect(settingsSource).toContain("publicRegistrationEnabled");
+    expect(settingsSource).toContain("publicRegistrationTitle");
+    expect(settingsSource).toContain("publicRegistrationMessage");
+    expect(settingsSource).toContain("Link oficial da igreja");
+    expect(settingsSource).toContain("Copiar link");
+    expect(cadastroSource).toContain("trpc.tenantPublic.current.useQuery");
+    expect(cadastroSource).toContain("registration.enabled");
+    expect(cadastroSource).toContain("TenantPublicShell");
+    expect(cadastroSource).toContain("Cadastro recebido");
+    expect(cadastroSource).toContain("A liderança da");
   });
 
   it("oferece configuração de redes sociais oficiais por tenant", () => {

@@ -63,6 +63,7 @@ import {
   getActiveChurchUserById,
   getChurchMembersByChurch,
   getChurchUsersByChurch,
+  getChurchUserByEmail,
   getPendingChurchUsers,
   resolveChurchUserRegistration,
   linkChurchUserToPerson,
@@ -799,6 +800,9 @@ const churchRouter = router({
         values: z.string().optional(),
         socialMedia: socialMediaInputSchema,
         pastoralSupport: pastoralSupportInputSchema,
+        publicRegistrationEnabled: z.boolean().optional(),
+        publicRegistrationTitle: z.string().trim().min(3).max(140).optional(),
+        publicRegistrationMessage: z.string().trim().min(10).max(500).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -3308,12 +3312,19 @@ const registerRouter = router({
       phone: z.string().max(20).optional(),
       whatsapp: z.string().max(20).optional(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      if (!ctx.tenantSlug || ctx.tenantSlug !== input.churchSlug) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Envie seu cadastro pelo endereço oficial da igreja correta." });
+      }
       const church = await getChurchBySlug(input.churchSlug);
       if (!church?.active) throw new TRPCError({ code: "NOT_FOUND", message: "Igreja não encontrada ou indisponível." });
+      if (!church.publicRegistrationEnabled) throw new TRPCError({ code: "FORBIDDEN", message: "O cadastro público está temporariamente fechado por esta igreja." });
+      const existingAccount = await getChurchUserByEmail(input.email);
+      if (existingAccount) throw new TRPCError({ code: "CONFLICT", message: "Este e-mail já possui um cadastro. Solicite acesso à liderança ou use outro e-mail." });
       const existingIdentity = await findPossiblePeopleByIdentity(church.id, {
         fullName: input.name,
         phone: input.phone || input.whatsapp,
+        email: input.email,
       });
       if (existingIdentity.length) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma Pessoa com estes dados nesta igreja. Solicite acesso à liderança." });
       const person = await createPerson({

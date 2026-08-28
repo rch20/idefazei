@@ -360,6 +360,24 @@ describe("Galeria pública por tenant", () => {
     expect(dbSource).toContain("eq(churches.slug, slug)");
   });
 
+  it("expõe somente as configurações públicas de convite do tenant resolvido pelo host", () => {
+    expect(routerSource).toContain("publicRegistrationEnabled: z.boolean().optional()");
+    expect(routerSource).toContain("publicRegistrationTitle: z.string().trim().min(3).max(140).optional()");
+    expect(routerSource).toContain("publicRegistrationMessage: z.string().trim().min(10).max(500).optional()");
+    expect(routerSource).toContain("if (!ctx.tenantSlug || ctx.tenantSlug !== input.churchSlug)");
+    expect(routerSource).toContain("if (!church.publicRegistrationEnabled)");
+    expect(dbSource).toContain("publicRegistration: {");
+    expect(dbSource).toContain('path: "/cadastro"');
+    expect(dbSource).toContain("eq(churches.slug, slug)");
+  });
+
+  it("protege o cadastro contra conta duplicada e amplia a deduplicação de Pessoas", () => {
+    expect(routerSource).toContain("const existingAccount = await getChurchUserByEmail(input.email)");
+    expect(routerSource).toContain("email: input.email");
+    expect(dbSource).toContain("LOWER(TRIM(COALESCE(${people.email}, ''))) = ${normalizedEmail}");
+    expect(dbSource).toContain("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '')");
+  });
+
   it("prepara um endpoint genérico para imagens e vídeos sem aceitar finalidade arbitrária", () => {
     expect(indexSource).toContain('app.post("/api/media/upload"');
     expect(indexSource).toContain('"public_video"');

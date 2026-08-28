@@ -54,6 +54,9 @@ export const churches = mysqlTable("churches", {
   website: text("website"),
   socialMedia: json("socialMedia"), // { instagram, facebook, youtube }
   pastoralSupport: json("pastoralSupport"), // { url, label, enabled, showPublic, showAuthenticated }
+  publicRegistrationEnabled: boolean("publicRegistrationEnabled").notNull().default(true),
+  publicRegistrationTitle: varchar("publicRegistrationTitle", { length: 140 }).notNull().default("Cadastre-se e fique por perto"),
+  publicRegistrationMessage: varchar("publicRegistrationMessage", { length: 500 }).notNull().default("Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você."),
   vision: text("vision"),
   mission: text("mission"),
   values: text("values"),

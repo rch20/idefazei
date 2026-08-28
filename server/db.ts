@@ -515,6 +515,12 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
       values: church.values,
       socialMedia: normalizeSocialMediaLinks(church.socialMedia),
       pastoralSupport: publicPastoralSupport,
+      publicRegistration: {
+        enabled: church.publicRegistrationEnabled,
+        title: church.publicRegistrationTitle,
+        message: church.publicRegistrationMessage,
+        path: "/cadastro",
+      },
     },
     site,
     theme: publishedTheme,
@@ -936,21 +942,34 @@ export async function getPersonById(id: number, churchId: number) {
 /** Sugere fichas existentes, sem vincular automaticamente pessoas homônimas. */
 export async function findPossiblePeopleByIdentity(
   churchId: number,
-  identity: { fullName: string; phone?: string }
+  identity: { fullName: string; phone?: string; email?: string }
 ) {
   const db = await getDb();
   if (!db) return [];
   const matches = [eq(people.fullName, identity.fullName.trim())];
-  const phone = identity.phone?.trim();
-  if (phone) {
-    matches.push(eq(people.phone, phone), eq(people.whatsapp, phone));
+  const normalizedPhone = identity.phone?.replace(/\D/g, "");
+  if (normalizedPhone) {
+    const phoneExpression = (column: any) => sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') = ${normalizedPhone}`;
+    matches.push(phoneExpression(people.phone), phoneExpression(people.whatsapp));
   }
+  const normalizedEmail = identity.email?.trim().toLowerCase();
+  if (normalizedEmail) matches.push(sql`LOWER(TRIM(COALESCE(${people.email}, ''))) = ${normalizedEmail}`);
   return db
     .select()
     .from(people)
     .where(and(eq(people.churchId, churchId), eq(people.active, true), or(...matches)))
     .orderBy(people.fullName)
     .limit(10);
+}
+
+export async function getChurchUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select({ id: churchUsers.id, churchId: churchUsers.churchId, email: churchUsers.email, active: churchUsers.active, registrationStatus: churchUsers.registrationStatus })
+    .from(churchUsers)
+    .where(sql`LOWER(${churchUsers.email}) = ${email.trim().toLowerCase()}`)
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function createPerson(data: typeof people.$inferInsert) {

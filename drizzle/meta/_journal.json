@@ -302,6 +302,13 @@
       "when": 1787870013326,
       "tag": "0042_hero_preset_media",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "5",
+      "when": 1787890533753,
+      "tag": "0043_lowly_logan",
+      "breakpoints": true
     }
   ]
 }

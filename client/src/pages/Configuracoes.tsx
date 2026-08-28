@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Building2, ExternalLink, Palette, Users, Globe, MessageCircle, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, Settings2, RotateCcw, Share2 } from "lucide-react";
+import { Building2, ExternalLink, Palette, Users, Globe, MessageCircle, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, Settings2, RotateCcw, Share2, Copy } from "lucide-react";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { TenantPublicSettings } from "@/components/TenantPublicSettings";
@@ -57,6 +57,13 @@ function normalizePastoralSupportInput(value: string): string | null {
   return normalizePastoralSupportUrl(candidate);
 }
 
+function publicRegistrationUrl(slug: string) {
+  if (typeof window !== "undefined" && window.location.hostname.startsWith(`${slug}.`) && window.location.hostname.endsWith(".idefazei.com.br")) {
+    return `${window.location.origin}/cadastro`;
+  }
+  return `https://${slug}.idefazei.com.br/cadastro`;
+}
+
 const COMPLEMENTARY_ROLES = [
   { value: "consolidador", label: "Consolidador" },
   { value: "diacono", label: "Diácono" },
@@ -92,6 +99,9 @@ export default function Configuracoes() {
     secondaryColor: church?.secondaryColor ?? "#c9a84c",
     socialMedia: socialMediaFormFromValue(church?.socialMedia),
     pastoralSupport: pastoralSupportFormFromValue(church?.pastoralSupport),
+    publicRegistrationEnabled: church?.publicRegistrationEnabled ?? true,
+    publicRegistrationTitle: church?.publicRegistrationTitle ?? "Cadastre-se e fique por perto",
+    publicRegistrationMessage: church?.publicRegistrationMessage ?? "Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você.",
   });
   const logoInputRef = useRef<HTMLInputElement>(null);
   const pwaIconInputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +129,9 @@ export default function Configuracoes() {
       secondaryColor: church.secondaryColor ?? "#c9a84c",
       socialMedia: socialMediaFormFromValue(church.socialMedia),
       pastoralSupport: pastoralSupportFormFromValue(church.pastoralSupport),
+      publicRegistrationEnabled: church.publicRegistrationEnabled ?? true,
+      publicRegistrationTitle: church.publicRegistrationTitle ?? "Cadastre-se e fique por perto",
+      publicRegistrationMessage: church.publicRegistrationMessage ?? "Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você.",
     });
     const effectivePreviewUrl = church.slug ? `/api/pwa/icon-192.png?tenant=${encodeURIComponent(church.slug)}&v=${encodeURIComponent(String(church.updatedAt?.getTime() ?? 0))}` : null;
     setPwaIconPreviewUrl(church.pwaIcon192Url ?? (church.logoUrl ? effectivePreviewUrl : null));
@@ -349,6 +362,14 @@ export default function Configuracoes() {
                   {SOCIAL_PLATFORM_FIELDS.map((platform) => <div key={platform.key}><Label htmlFor={`social-${platform.key}`}>{platform.label}</Label><Input id={`social-${platform.key}`} type="url" inputMode="url" value={churchForm.socialMedia[platform.key]} onChange={(event) => setChurchForm({ ...churchForm, socialMedia: { ...churchForm.socialMedia, [platform.key]: event.target.value } })} className="mt-1" placeholder={platform.placeholder} autoComplete="url" /><p className="mt-1 text-xs text-muted-foreground">{SOCIAL_PLATFORM_META[platform.key].description}. Use um endereço HTTPS oficial.</p></div>)}
                 </div>
                 <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs leading-relaxed text-muted-foreground">Os links são validados no servidor e aceitam somente os domínios oficiais de cada plataforma. Deixe em branco para ocultar uma rede do site.</p>
+              </section>
+              <section className="card-sacred p-5 sm:p-6">
+                <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="text-base font-semibold text-navy">Convite e cadastro público</h3><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Compartilhe uma página de entrada com a identidade da sua igreja. O cadastro usa a base de Pessoas e fica pendente de aprovação antes de liberar o acesso.</p></div><Switch checked={churchForm.publicRegistrationEnabled} onCheckedChange={(enabled) => setChurchForm({ ...churchForm, publicRegistrationEnabled: enabled })} aria-label="Ativar cadastro público" /></div>
+                <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                  <div><Label htmlFor="public-registration-title">Título da página</Label><Input id="public-registration-title" value={churchForm.publicRegistrationTitle} maxLength={140} onChange={(event) => setChurchForm({ ...churchForm, publicRegistrationTitle: event.target.value })} className="mt-1" placeholder="Cadastre-se e fique por perto" /><p className="mt-1 text-xs text-muted-foreground">Um título curto funciona melhor no celular.</p></div>
+                  <div><Label htmlFor="public-registration-message">Mensagem de boas-vindas</Label><Textarea id="public-registration-message" value={churchForm.publicRegistrationMessage} maxLength={500} onChange={(event) => setChurchForm({ ...churchForm, publicRegistrationMessage: event.target.value })} className="mt-1" rows={3} placeholder="Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você." /><p className="mt-1 text-xs text-muted-foreground">{churchForm.publicRegistrationMessage.length}/500 caracteres</p></div>
+                </div>
+                <div className="mt-4 flex flex-col gap-3 rounded-xl border border-gold/25 bg-gold/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-gold">Link oficial da igreja</p><p className="mt-1 truncate font-mono text-sm text-navy">{churchForm.slug ? publicRegistrationUrl(churchForm.slug) : "Salve o subdomínio para gerar o link"}</p><p className="mt-1 text-xs text-muted-foreground">O endereço é gerado pelo sistema; não precisa ser digitado manualmente.</p></div><Button type="button" variant="outline" className="shrink-0 gap-2 bg-white text-navy" disabled={!churchForm.slug} onClick={() => { const link = publicRegistrationUrl(churchForm.slug); if (!navigator.clipboard) { toast.error("Copie o link manualmente neste navegador."); return; } void navigator.clipboard.writeText(link).then(() => toast.success("Link de cadastro copiado.")).catch(() => toast.error("Não foi possível copiar o link. Copie-o manualmente.")); }}><Copy className="h-4 w-4" />Copiar link</Button></div>
               </section>
               <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Mensagem da igreja</h3><p className="mt-1 text-sm text-muted-foreground">Registre a visão e a missão que orientam sua comunidade.</p></div><div className="mt-5 grid gap-4 lg:grid-cols-2"><div><Label htmlFor="vision">Visão</Label><Textarea id="vision" value={churchForm.vision} onChange={(e) => setChurchForm({ ...churchForm, vision: e.target.value })} className="mt-1" placeholder="A visão da sua igreja..." rows={5} /></div><div><Label htmlFor="mission">Missão</Label><Textarea id="mission" value={churchForm.mission} onChange={(e) => setChurchForm({ ...churchForm, mission: e.target.value })} className="mt-1" placeholder="A missão da sua igreja..." rows={5} /></div></div></section>
               <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">Revise os dados e salve somente esta seção.</p><Button className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar alterações"}</Button></div>

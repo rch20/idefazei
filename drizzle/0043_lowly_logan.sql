@@ -1,0 +1,3 @@
+ALTER TABLE `churches` ADD `publicRegistrationEnabled` boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE `churches` ADD `publicRegistrationTitle` varchar(140) DEFAULT 'Cadastre-se e fique por perto' NOT NULL;--> statement-breakpoint
+ALTER TABLE `churches` ADD `publicRegistrationMessage` varchar(500) DEFAULT 'Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você.' NOT NULL;
