@@ -2176,15 +2176,31 @@ export async function getMinistriesByChurch(churchId: number) {
     .orderBy(ministries.name);
 }
 
-export async function createMinistry(data: typeof ministries.$inferInsert) {
+export async function createMinistry(data: typeof ministries.$inferInsert, participantIds: number[] = []) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   return db.transaction(async (tx) => {
     const result = await tx.insert(ministries).values(data);
     const ministryId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
     if (!ministryId) throw new Error("Failed to create ministry");
-    if (data.leaderId) {
-      await tx.insert(ministryMembers).values({ ministryId, personId: data.leaderId, active: true });
+    const initialParticipantIds = Array.from(new Set([data.leaderId, ...participantIds].filter((id): id is number => Boolean(id))));
+    for (const personId of initialParticipantIds) {
+      await tx.insert(ministryMembers).values({ ministryId, personId, active: true });
+    }
+    if (data.type === "consolidacao") {
+      for (const department of [
+        { name: "Consolidação", description: "Acompanhamento e integração de Pessoas.", systemKey: "consolidacao" as const },
+        { name: "Visitas", description: "Planejamento e execução de visitas de cuidado.", systemKey: "visitas" as const },
+      ]) {
+        await tx.insert(departments).values({
+          churchId: data.churchId,
+          ministryId,
+          name: department.name,
+          description: department.description,
+          systemKey: department.systemKey,
+          active: true,
+        });
+      }
     }
     const rows = await tx.select().from(ministries).where(and(eq(ministries.id, ministryId), eq(ministries.churchId, data.churchId))).limit(1);
     return rows[0] ?? null;
@@ -2358,7 +2374,7 @@ export async function ensureConsolidationMinistryStructure(churchId: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   return db.transaction(async (tx) => {
-    let ministry = (await tx.select().from(ministries).where(and(eq(ministries.churchId, churchId), eq(ministries.type, "consolidacao"), eq(ministries.active, true))).limit(1).for("update"))[0];
+    let ministry = (await tx.select().from(ministries).where(and(eq(ministries.churchId, churchId), or(eq(ministries.type, "consolidacao"), sql`LOWER(${ministries.name}) LIKE '%consolida%'`), eq(ministries.active, true))).limit(1).for("update"))[0];
     if (!ministry) {
       const result = await tx.insert(ministries).values({ churchId, name: "Consolidação e Visitas", type: "consolidacao", description: "Cuidado, acompanhamento e visitas da igreja.", active: true });
       const ministryId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
@@ -2510,6 +2526,34 @@ export async function isActiveMinistryMember(ministryId: number, personId: numbe
         eq(people.churchId, churchId)
       )
     )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Participar do Ministério de Consolidação libera a atuação de Consolidador.
+ * O vínculo é derivado somente de registros ativos da mesma igreja; a ação de
+ * aprovação da liderança e a assunção do cuidado continuam protegidas pelas
+ * regras próprias da Consolidação.
+ */
+export async function isActiveConsolidationMinistryMember(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: ministryMembers.id })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .innerJoin(people, eq(people.id, ministryMembers.personId))
+    .where(and(
+      eq(ministryMembers.personId, personId),
+      eq(ministryMembers.active, true),
+      or(eq(ministries.type, "consolidacao"), sql`LOWER(${ministries.name}) LIKE '%consolida%'`),
+      eq(ministries.churchId, churchId),
+      eq(ministries.active, true),
+      eq(people.id, personId),
+      eq(people.churchId, churchId),
+      eq(people.active, true),
+    ))
     .limit(1);
   return rows.length > 0;
 }

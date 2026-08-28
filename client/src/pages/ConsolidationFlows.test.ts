@@ -13,6 +13,7 @@ const consolidationSource = readFileSync(resolve(root, "client/src/pages/Consoli
 const leaderSource = readFileSync(resolve(root, "client/src/pages/AppLider.tsx"), "utf8");
 const careSource = readFileSync(resolve(root, "client/src/pages/CentralCuidado.tsx"), "utf8");
 const ministryPanelSource = readFileSync(resolve(root, "client/src/components/ConsolidationMinistryPanel.tsx"), "utf8");
+const ministrySource = readFileSync(resolve(root, "client/src/pages/Ministerios.tsx"), "utf8");
 const assignmentSource = readFileSync(resolve(root, "client/src/components/ConsolidationAssignmentControl.tsx"), "utf8");
 const visitAssignmentSource = readFileSync(resolve(root, "client/src/components/VisitAssignmentControl.tsx"), "utf8");
 
@@ -25,6 +26,14 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(migrationSource).toContain('CREATE TABLE `care_visits`');
     expect(migrationSource).toContain('CREATE INDEX `care_visit_queue_idx` ON `care_visits` (`churchId`,`status`,`scheduledAt`)');
     expect(migrationSource).toContain('CREATE INDEX `consolidation_referral_person_idx` ON `consolidation_referrals` (`churchId`,`personId`,`status`)');
+  });
+
+  it("expõe o Ministério de Consolidação e seus envolvidos com acesso derivado por igreja", () => {
+    expect(schemaSource).toContain('"consolidacao"');
+    expect(routerSource).toContain("isActiveConsolidationMinistryMember");
+    expect(dbSource).toContain("export async function isActiveConsolidationMinistryMember");
+    expect(ministrySource).toContain('value="consolidacao"');
+    expect(ministrySource).toContain("participantIds");
   });
 
   it("salva Líder e Supervisor com vínculos e funções em uma única transação", () => {

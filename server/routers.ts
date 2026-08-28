@@ -134,6 +134,7 @@ import {
   getDepartmentMembers,
   getDepartmentCandidates,
   isActiveDepartmentMember,
+  isActiveConsolidationMinistryMember,
   assignPersonToDepartment,
   removePersonFromDepartment,
   getDepartmentRoleAssignments,
@@ -348,9 +349,14 @@ function getReferralCareDueState(referral: { careDueAt?: Date | null; referredAt
   return { careDueAt, careDueStatus: "em_dia" as const, hoursUntilCareDue };
 }
 
+function isConsolidationMinistry(ministry: { type: string; name: string }) {
+  const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return ministry.type === "consolidacao" || normalizedName.includes("consolidacao");
+}
+
 function getMinistryFunctionCatalogFor(ministry: { type: string; name: string }) {
   const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const context = normalizedName.includes("consolid") ? "consolidacao"
+  const context = isConsolidationMinistry(ministry) ? "consolidacao"
     : normalizedName.includes("celula") ? "celulas"
     : ministry.type;
   return MINISTRY_FUNCTION_CATALOG.filter(
@@ -565,15 +571,22 @@ async function requireScheduleParticipant(churchId: number, ministryId: number, 
 async function getEffectiveChurchRoles(userId: number, churchId: number, actor: { role: string; personId?: number | null }) {
   if (userId >= 0) return [actor.role];
   const complementary = await getComplementaryRolesByChurchUser(Math.abs(userId), churchId);
-  const [ministryRoleKeys, departmentRoleKeys, customDefinitions] = await Promise.all([
+  const [ministryRoleKeys, departmentRoleKeys, customDefinitions, isConsolidationMember] = await Promise.all([
     actor.personId ? getActiveMinistryRoleKeysByPerson(actor.personId, churchId) : Promise.resolve([]),
     actor.personId ? getActiveDepartmentRoleKeysByPerson(actor.personId, churchId) : Promise.resolve([]),
     getMinistryRoleDefinitionsByChurch(churchId),
+    actor.personId ? isActiveConsolidationMinistryMember(actor.personId, churchId) : Promise.resolve(false),
   ]);
   const customGrants = new Map(customDefinitions.map((definition) => [definition.key, CUSTOM_PERMISSION_PACKAGE_GRANTS[definition.permissionPackage] ?? []]));
   const ministryGrants = ministryRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
   const departmentGrants = departmentRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
-  return Array.from(new Set([actor.role, ...complementary, ...ministryGrants, ...departmentGrants]));
+  return Array.from(new Set([
+    actor.role,
+    ...complementary,
+    ...(isConsolidationMember ? ["consolidador"] : []),
+    ...ministryGrants,
+    ...departmentGrants,
+  ]));
 }
 
 async function getChurchAccessSummary(userId: number, churchId: number) {
@@ -634,15 +647,22 @@ async function getEffectivePersonRoles(personId: number, churchId: number) {
   const account = accounts.find((candidate) => candidate.active && candidate.personId === personId);
   if (!account) return [];
 
-  const [ministryRoleKeys, departmentRoleKeys, customDefinitions] = await Promise.all([
+  const [ministryRoleKeys, departmentRoleKeys, customDefinitions, isConsolidationMember] = await Promise.all([
     getActiveMinistryRoleKeysByPerson(personId, churchId),
     getActiveDepartmentRoleKeysByPerson(personId, churchId),
     getMinistryRoleDefinitionsByChurch(churchId),
+    isActiveConsolidationMinistryMember(personId, churchId),
   ]);
   const customGrants = new Map(customDefinitions.map((definition) => [definition.key, CUSTOM_PERMISSION_PACKAGE_GRANTS[definition.permissionPackage] ?? []]));
   const ministryGrants = ministryRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
   const departmentGrants = departmentRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
-  return Array.from(new Set([account.role, ...(account.complementaryRoles ?? []), ...ministryGrants, ...departmentGrants]));
+  return Array.from(new Set([
+    account.role,
+    ...(account.complementaryRoles ?? []),
+    ...(isConsolidationMember ? ["consolidador"] : []),
+    ...ministryGrants,
+    ...departmentGrants,
+  ]));
 }
 
 async function requireConsolidatorPerson(personId: number, churchId: number) {
@@ -675,7 +695,7 @@ async function getConsolidationMinistryContext(userId: number, churchId: number)
     getDepartmentsByChurch(churchId),
     getCellsByChurch(churchId),
   ]);
-  const ministry = ministries.find((item) => item.type === "consolidacao") ?? null;
+  const ministry = ministries.find((item) => isConsolidationMinistry(item)) ?? null;
   const consolidationDepartment = ministry ? departments.find((item) => item.ministryId === ministry.id && item.systemKey === "consolidacao" && item.active) ?? null : null;
   const visitsDepartment = ministry ? departments.find((item) => item.ministryId === ministry.id && item.systemKey === "visitas" && item.active) ?? null : null;
   const isPastor = roles.some((role) => CHURCH_ROLE_MANAGER_ROLES.has(role));
@@ -2514,8 +2534,9 @@ const ministriesRouter = router({
       churchId: z.number(),
       name: z.string().trim().min(2).max(255),
       description: z.string().trim().max(3000).optional(),
-      type: z.enum(["louvor", "infantil", "recepcao", "midia", "intercessao", "evangelismo", "casais", "jovens", "outro"]).default("outro"),
+      type: z.enum(["louvor", "infantil", "recepcao", "midia", "intercessao", "evangelismo", "casais", "jovens", "consolidacao", "outro"]).default("outro"),
       leaderId: z.number().int().positive().nullable().optional(),
+      participantIds: z.array(z.number().int().positive()).max(100).default([]),
     }))
     .mutation(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
@@ -2524,13 +2545,18 @@ const ministriesRouter = router({
         const leader = await getPersonById(input.leaderId, input.churchId);
         if (!leader) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um líder válido desta igreja." });
       }
+      const participantIds = Array.from(new Set(input.participantIds));
+      const participantPeople = await Promise.all(participantIds.map((personId) => getPersonById(personId, input.churchId)));
+      if (participantPeople.some((person) => !person)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Todos os envolvidos precisam pertencer a esta igreja." });
+      }
       const ministry = await createMinistry({
         churchId: input.churchId,
         name: input.name,
         description: input.description || null,
         type: input.type,
         leaderId: input.leaderId ?? null,
-      });
+      }, participantIds);
       return ministry;
     }),
   updateLeader: protectedProcedure
