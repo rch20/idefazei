@@ -59,6 +59,11 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("publicRegistrationMessage");
     expect(settingsSource).toContain("Link oficial da igreja");
     expect(settingsSource).toContain("Copiar link");
+    expect(settingsSource).toContain("Compartilhar cadastro");
+    expect(settingsSource).toContain("Compartilhar pelo celular");
+    expect(settingsSource).toContain("navigator.share");
+    expect(settingsSource).toContain("https://wa.me/?text=");
+    expect(settingsSource).toContain("mensagem e o link já preparados");
     expect(cadastroSource).toContain("trpc.tenantPublic.current.useQuery");
     expect(cadastroSource).toContain("registration.enabled");
     expect(cadastroSource).toContain("TenantPublicShell");

@@ -64,6 +64,10 @@ function publicRegistrationUrl(slug: string) {
   return `https://${slug}.idefazei.com.br/cadastro`;
 }
 
+function publicRegistrationShareMessage(churchName: string, title: string, message: string, link: string) {
+  return `Olá! ${churchName} convida você a realizar seu cadastro e ficar por dentro de tudo o que acontece em nossa igreja.\n\n${title}\n${message}\n\nCadastre-se pelo link abaixo:\n${link}`;
+}
+
 const COMPLEMENTARY_ROLES = [
   { value: "consolidador", label: "Consolidador" },
   { value: "diacono", label: "Diácono" },
@@ -109,6 +113,7 @@ export default function Configuracoes() {
   const [isUploadingPwaIcon, setIsUploadingPwaIcon] = useState(false);
   const [pwaIconPreviewUrl, setPwaIconPreviewUrl] = useState<string | null>(church?.pwaIcon192Url ?? church?.logoUrl ?? null);
   const [activeTab, setActiveTab] = useState("geral");
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!church) return;
@@ -214,6 +219,46 @@ export default function Configuracoes() {
     },
     onError: (error: { message: string }) => toast.error(error.message),
   });
+
+  const registrationLink = churchForm.slug ? publicRegistrationUrl(churchForm.slug) : "";
+  const registrationShareText = registrationLink ? publicRegistrationShareMessage(churchForm.name || "A igreja", churchForm.publicRegistrationTitle, churchForm.publicRegistrationMessage, registrationLink) : "";
+  const canUseNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+  const handleNativeShare = async () => {
+    if (!registrationLink || !canUseNativeShare) {
+      toast.info("Use WhatsApp ou Copiar link para compartilhar neste dispositivo.");
+      return;
+    }
+    try {
+      await navigator.share({ title: churchForm.publicRegistrationTitle, text: registrationShareText, url: registrationLink });
+      setShareDialogOpen(false);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      toast.error("Não foi possível abrir o compartilhamento do celular.");
+    }
+  };
+
+  const handleWhatsAppShare = () => {
+    if (!registrationLink) return;
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(registrationShareText)}`;
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+    setShareDialogOpen(false);
+  };
+
+  const handleCopyRegistrationLink = async (closeDialog = false) => {
+    if (!registrationLink) return;
+    if (!navigator.clipboard) {
+      toast.error("Copie o link manualmente neste navegador.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(registrationLink);
+      toast.success("Link de cadastro copiado.");
+      if (closeDialog) setShareDialogOpen(false);
+    } catch {
+      toast.error("Não foi possível copiar o link. Copie-o manualmente.");
+    }
+  };
 
   const handleSave = () => {
     const normalizedPastoralUrl = normalizePastoralSupportInput(churchForm.pastoralSupport.url);
@@ -369,7 +414,8 @@ export default function Configuracoes() {
                   <div><Label htmlFor="public-registration-title">Título da página</Label><Input id="public-registration-title" value={churchForm.publicRegistrationTitle} maxLength={140} onChange={(event) => setChurchForm({ ...churchForm, publicRegistrationTitle: event.target.value })} className="mt-1" placeholder="Cadastre-se e fique por perto" /><p className="mt-1 text-xs text-muted-foreground">Um título curto funciona melhor no celular.</p></div>
                   <div><Label htmlFor="public-registration-message">Mensagem de boas-vindas</Label><Textarea id="public-registration-message" value={churchForm.publicRegistrationMessage} maxLength={500} onChange={(event) => setChurchForm({ ...churchForm, publicRegistrationMessage: event.target.value })} className="mt-1" rows={3} placeholder="Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você." /><p className="mt-1 text-xs text-muted-foreground">{churchForm.publicRegistrationMessage.length}/500 caracteres</p></div>
                 </div>
-                <div className="mt-4 flex flex-col gap-3 rounded-xl border border-gold/25 bg-gold/5 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-gold">Link oficial da igreja</p><p className="mt-1 truncate font-mono text-sm text-navy">{churchForm.slug ? publicRegistrationUrl(churchForm.slug) : "Salve o subdomínio para gerar o link"}</p><p className="mt-1 text-xs text-muted-foreground">O endereço é gerado pelo sistema; não precisa ser digitado manualmente.</p></div><Button type="button" variant="outline" className="shrink-0 gap-2 bg-white text-navy" disabled={!churchForm.slug} onClick={() => { const link = publicRegistrationUrl(churchForm.slug); if (!navigator.clipboard) { toast.error("Copie o link manualmente neste navegador."); return; } void navigator.clipboard.writeText(link).then(() => toast.success("Link de cadastro copiado.")).catch(() => toast.error("Não foi possível copiar o link. Copie-o manualmente.")); }}><Copy className="h-4 w-4" />Copiar link</Button></div>
+                <div className="mt-4 rounded-xl border border-gold/25 bg-gold/5 p-4"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-gold">Link oficial da igreja</p><p className="mt-1 break-all font-mono text-xs leading-relaxed text-navy">{churchForm.slug ? registrationLink : "Salve o subdomínio para gerar o link"}</p><p className="mt-1 text-xs text-muted-foreground">Compartilhe com uma mensagem pronta ou copie somente o endereço.</p></div><div className="mt-4 flex flex-col gap-2 sm:flex-row"><Button type="button" className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" disabled={!churchForm.slug} onClick={() => setShareDialogOpen(true)}><Share2 className="h-4 w-4" />Compartilhar cadastro</Button><Button type="button" variant="outline" className="w-full gap-2 bg-white text-navy sm:w-auto" disabled={!churchForm.slug} onClick={() => void handleCopyRegistrationLink()}><Copy className="h-4 w-4" />Copiar link</Button></div></div>
+                <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Compartilhar cadastro</DialogTitle><DialogDescription>Escolha como deseja enviar o convite da {churchForm.name || "igreja"}. A mensagem já incluirá o link oficial.</DialogDescription></DialogHeader><div className="grid gap-2 py-2"><Button type="button" className="h-auto justify-start gap-3 whitespace-normal bg-navy px-4 py-3 text-left text-white hover:bg-navy-light" onClick={() => void handleNativeShare()} disabled={!canUseNativeShare}><Smartphone className="h-5 w-5 shrink-0" /><span><strong className="block">Compartilhar pelo celular</strong><small className="font-normal opacity-80">{canUseNativeShare ? "Escolha WhatsApp, Mensagens, Mail ou outro aplicativo." : "Indisponível neste navegador; use WhatsApp ou Copiar link."}</small></span></Button><Button type="button" variant="outline" className="h-auto justify-start gap-3 whitespace-normal px-4 py-3 text-left" onClick={handleWhatsAppShare}><MessageCircle className="h-5 w-5 shrink-0 text-emerald-600" /><span><strong className="block">WhatsApp</strong><small className="font-normal text-muted-foreground">Abrir com a mensagem e o link já preparados.</small></span></Button><Button type="button" variant="outline" className="h-auto justify-start gap-3 px-4 py-3 text-left" onClick={() => void handleCopyRegistrationLink(true)}><Copy className="h-5 w-5 shrink-0" /><span><strong className="block">Copiar link</strong><small className="font-normal text-muted-foreground">Copiar somente o endereço do cadastro.</small></span></Button></div></DialogContent></Dialog>
               </section>
               <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Mensagem da igreja</h3><p className="mt-1 text-sm text-muted-foreground">Registre a visão e a missão que orientam sua comunidade.</p></div><div className="mt-5 grid gap-4 lg:grid-cols-2"><div><Label htmlFor="vision">Visão</Label><Textarea id="vision" value={churchForm.vision} onChange={(e) => setChurchForm({ ...churchForm, vision: e.target.value })} className="mt-1" placeholder="A visão da sua igreja..." rows={5} /></div><div><Label htmlFor="mission">Missão</Label><Textarea id="mission" value={churchForm.mission} onChange={(e) => setChurchForm({ ...churchForm, mission: e.target.value })} className="mt-1" placeholder="A missão da sua igreja..." rows={5} /></div></div></section>
               <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">Revise os dados e salve somente esta seção.</p><Button className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar alterações"}</Button></div>
