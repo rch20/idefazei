@@ -533,6 +533,18 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-preview-hero p { overflow-wrap: anywhere; color: rgb(255 255 255 / 78%); font-size: .88rem; line-height: 1.5; }
 .tenant-public-preview-hero b { display: inline-block; max-width: 100%; margin-top: 1rem; overflow-wrap: anywhere; border-radius: .45rem; padding: .6rem .75rem; color: var(--tenant-primary); background: var(--tenant-secondary); font-size: .75rem; }
 
+.mural-announcement-summary { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.mural-announcement-preview-trigger { display: inline-flex; width: fit-content; max-width: 100%; margin-top: .25rem; border: 0; border-radius: .5rem; padding: .15rem .1rem; color: var(--navy, #16324f); background: transparent; font-size: .75rem; font-weight: 700; text-decoration: underline; text-decoration-color: color-mix(in srgb, #c9a84c 65%, transparent); text-underline-offset: .18rem; cursor: pointer; }
+.mural-announcement-preview-trigger:hover { color: #0f243b; text-decoration-color: #c9a84c; }
+.mural-announcement-preview-trigger:focus-visible { outline: 3px solid #c9a84c; outline-offset: 3px; }
+.mural-announcement-preview-dialog { width: min(96vw, 42rem); max-width: min(96vw, 42rem); }
+.mural-announcement-preview-body { max-height: calc(88dvh - 8rem); overflow-y: auto; overscroll-behavior: contain; padding: 1.25rem 1.5rem 1.5rem; }
+
+@media (max-width: 44rem) {
+  .mural-announcement-preview-dialog { width: calc(100% - 1rem); max-width: calc(100% - 1rem); }
+  .mural-announcement-preview-body { max-height: calc(100dvh - 10rem); padding: 1rem; }
+}
+
 /* Login por tenant: consome somente nome, logo e cores seguras da configuração publicada. */
 .tenant-login-brand-mark { display: grid; flex: 0 0 auto; overflow: hidden; place-items: center; border-radius: 1rem; background: var(--tenant-login-primary, #1e3a5f); color: var(--tenant-login-accent, #c9a84c); box-shadow: 0 10px 24px color-mix(in srgb, var(--tenant-login-primary, #1e3a5f) 18%, transparent); font-family: "Playfair Display", Georgia, serif; font-weight: 700; letter-spacing: -.04em; }
 .tenant-login-brand-mark img { width: 100%; height: 100%; object-fit: contain; background: #fff; }

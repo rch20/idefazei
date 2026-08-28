@@ -41,6 +41,25 @@ describe("Mural — Avisos Públicos", () => {
     expect(page).toContain("overflow-y-auto");
   });
 
+  it("compacta avisos longos do painel sem retirar acesso ao conteúdo integral", () => {
+    expect(page).toContain("ANNOUNCEMENT_ADMIN_SUMMARY_CHAR_LIMIT");
+    expect(page).toContain("mural-announcement-summary");
+    expect(page).toContain("Ver conteúdo completo");
+    expect(page).toContain("mural-announcement-preview-dialog");
+    expect(page).toContain("mural-announcement-preview-body");
+    expect(page).toContain('maxLength={4000}');
+    expect(publicStyles).toContain(".mural-announcement-summary");
+    expect(publicStyles).toContain("-webkit-line-clamp: 3");
+  });
+
+  it("deixa explícita a diferença entre avisos do mural e avisos publicados", () => {
+    expect(page).toContain("totalCount");
+    expect(page).toContain("publicCount");
+    expect(page).toContain("notPublicCount");
+    expect(page).toContain("fora da página pública");
+    expect(page).toContain("Exibir na página pública");
+  });
+
   it("oferece expansão acessível da imagem sem conflitar com o CTA", () => {
     expect(publicPage).toContain("Ampliar imagem do aviso");
     expect(publicPage).toContain("tenant-public-image-dialog");

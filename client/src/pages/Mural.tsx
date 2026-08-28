@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { trpc } from "@/lib/trpc";
-import { Archive, BookOpen, Globe2, ImagePlus, Megaphone, Pin, Plus } from "lucide-react";
+import { Archive, BookOpen, FileText, Globe2, ImagePlus, Megaphone, Pin, Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -57,6 +57,12 @@ const STATUS_LABELS: Record<string, string> = {
   agendado: "Agendado",
   arquivado: "Arquivado",
 };
+const ANNOUNCEMENT_ADMIN_SUMMARY_CHAR_LIMIT = 220;
+
+function shouldShowAnnouncementPreview(content: string) {
+  const normalized = content.trim();
+  return normalized.length > ANNOUNCEMENT_ADMIN_SUMMARY_CHAR_LIMIT || normalized.split(/\r?\n/).length > 3;
+}
 
 const EMPTY_FORM: AnnouncementForm = {
   title: "",
@@ -88,6 +94,7 @@ export default function Mural() {
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [form, setForm] = useState<AnnouncementForm>(EMPTY_FORM);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
 
   const { data: announcements, isLoading, refetch } = trpc.announcements.list.useQuery({ churchId });
   const create = trpc.announcements.create.useMutation({
@@ -113,7 +120,9 @@ export default function Mural() {
 
   const pinned = ((announcements ?? []) as Announcement[]).filter((announcement) => announcement.pinned);
   const regular = ((announcements ?? []) as Announcement[]).filter((announcement) => !announcement.pinned);
+  const totalCount = ((announcements ?? []) as Announcement[]).length;
   const publicCount = ((announcements ?? []) as Announcement[]).filter((announcement) => announcement.publicVisible && ["publicado", "agendado"].includes(announcement.publicStatus)).length;
+  const notPublicCount = Math.max(totalCount - publicCount, 0);
 
   function closeForm() {
     setOpen(false);
@@ -197,14 +206,19 @@ export default function Mural() {
       <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-950">
         <p className="font-semibold">Como funciona o Mural Público</p>
         <p className="mt-1 text-blue-900/75">O mural interno continua protegido. Um aviso só aparece no site quando um Pastor marca <strong>Exibir na página pública</strong>; datas de início e expiração controlam automaticamente sua disponibilidade.</p>
+        <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+          <span className="rounded-lg border border-blue-200/80 bg-white/55 px-3 py-2"><strong>{totalCount}</strong> {totalCount === 1 ? "aviso no mural" : "avisos no mural"}</span>
+          <span className="rounded-lg border border-blue-200/80 bg-white/55 px-3 py-2"><strong>{publicCount}</strong> {publicCount === 1 ? "visível ou agendado" : "visíveis ou agendados"} no site</span>
+          <span className="rounded-lg border border-blue-200/80 bg-white/55 px-3 py-2"><strong>{notPublicCount}</strong> {notPublicCount === 1 ? "aviso fora da página pública" : "avisos fora da página pública"}</span>
+        </div>
       </div>
 
       {isLoading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-muted" />)}</div>
       ) : (
         <div className="space-y-6">
-          {pinned.length > 0 && <AnnouncementGroup title="Fixados" icon={<Pin className="h-3 w-3" />} announcements={pinned} onEdit={openEdit} onArchive={(item) => archive.mutate({ churchId, id: item.id })} />}
-          {regular.length > 0 && <AnnouncementGroup title={pinned.length > 0 ? "Recentes" : "Avisos"} announcements={regular} onEdit={openEdit} onArchive={(item) => archive.mutate({ churchId, id: item.id })} />}
+          {pinned.length > 0 && <AnnouncementGroup title="Fixados" icon={<Pin className="h-3 w-3" />} announcements={pinned} onEdit={openEdit} onPreview={setSelectedAnnouncement} onArchive={(item) => archive.mutate({ churchId, id: item.id })} />}
+          {regular.length > 0 && <AnnouncementGroup title={pinned.length > 0 ? "Recentes" : "Avisos"} announcements={regular} onEdit={openEdit} onPreview={setSelectedAnnouncement} onArchive={(item) => archive.mutate({ churchId, id: item.id })} />}
           {(announcements ?? []).length === 0 && <div className="card-sacred flex flex-col items-center gap-3 p-12 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50"><Megaphone className="h-7 w-7 text-blue-500" /></div><p className="font-semibold text-navy">Nenhum aviso publicado</p><p className="text-sm text-muted-foreground">Publique o primeiro comunicado da sua igreja.</p></div>}
         </div>
       )}
@@ -240,22 +254,36 @@ export default function Mural() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={Boolean(selectedAnnouncement)} onOpenChange={(value) => { if (!value) setSelectedAnnouncement(null); }}>
+        <DialogContent className="mural-announcement-preview-dialog max-h-[88dvh] max-w-2xl overflow-hidden p-0">
+          <DialogHeader className="border-b border-border px-6 py-5">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-gold"><FileText className="h-4 w-4" /> Conteúdo do aviso</div>
+            <DialogTitle className="mt-2 font-display text-navy">{selectedAnnouncement?.title ?? "Aviso"}</DialogTitle>
+            {selectedAnnouncement && <p className="text-xs text-muted-foreground">{TYPE_CONFIG[selectedAnnouncement.type ?? "aviso"]?.label ?? "Aviso"} · Criado em {formatDate(selectedAnnouncement.createdAt)}</p>}
+          </DialogHeader>
+          <div className="mural-announcement-preview-body">
+            <p className="whitespace-pre-line break-words text-sm leading-relaxed text-foreground">{selectedAnnouncement?.content}</p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function AnnouncementGroup({ title, icon, announcements, onEdit, onArchive }: { title: string; icon?: React.ReactNode; announcements: Announcement[]; onEdit: (announcement: Announcement) => void; onArchive: (announcement: Announcement) => void }) {
-  return <div><h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{icon}{title}</h2><div className="space-y-3">{announcements.map((announcement) => <AnnouncementCard key={announcement.id} announcement={announcement} onEdit={onEdit} onArchive={onArchive} />)}</div></div>;
+function AnnouncementGroup({ title, icon, announcements, onEdit, onPreview, onArchive }: { title: string; icon?: React.ReactNode; announcements: Announcement[]; onEdit: (announcement: Announcement) => void; onPreview: (announcement: Announcement) => void; onArchive: (announcement: Announcement) => void }) {
+  return <div><h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{icon}{title}</h2><div className="space-y-3">{announcements.map((announcement) => <AnnouncementCard key={announcement.id} announcement={announcement} onEdit={onEdit} onPreview={onPreview} onArchive={onArchive} />)}</div></div>;
 }
 
-function AnnouncementCard({ announcement, onEdit, onArchive }: { announcement: Announcement; onEdit: (announcement: Announcement) => void; onArchive: (announcement: Announcement) => void }) {
+function AnnouncementCard({ announcement, onEdit, onPreview, onArchive }: { announcement: Announcement; onEdit: (announcement: Announcement) => void; onPreview: (announcement: Announcement) => void; onArchive: (announcement: Announcement) => void }) {
   const cfg = TYPE_CONFIG[announcement.type ?? "aviso"] ?? TYPE_CONFIG.aviso;
   const Icon = cfg.icon;
   const isPublic = Boolean(announcement.publicVisible);
+  const showPreview = shouldShowAnnouncementPreview(announcement.content);
   return <article className={`card-sacred p-4 ${announcement.pinned ? "border-gold/30 bg-amber-50/20" : ""}`}>
     <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start">
       <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${cfg.color.split(" ")[0]}`}><Icon className="h-4 w-4" /></div>
-      <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-navy">{announcement.title}</p>{announcement.pinned && <Pin className="h-3 w-3 text-gold" />}<span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${cfg.color}`}>{cfg.label}</span></div><p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-foreground">{announcement.content}</p><div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>Criado em {formatDate(announcement.createdAt)}</span>{isPublic && <span className="inline-flex items-center gap-1 text-green-700"><Globe2 className="h-3 w-3" />{STATUS_LABELS[announcement.publicStatus] ?? "Público"}</span>}{announcement.expiresAt && <span>Expira em {formatDate(announcement.expiresAt)}</span>}</div></div>
+      <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-navy">{announcement.title}</p>{announcement.pinned && <Pin className="h-3 w-3 text-gold" />}<span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${cfg.color}`}>{cfg.label}</span></div><p className={`mt-1 whitespace-pre-line text-sm leading-relaxed text-foreground${showPreview ? " mural-announcement-summary" : ""}`}>{announcement.content}</p>{showPreview && <button type="button" className="mural-announcement-preview-trigger" aria-haspopup="dialog" onClick={() => onPreview(announcement)}>Ver conteúdo completo</button>}<div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>Criado em {formatDate(announcement.createdAt)}</span>{isPublic && <span className="inline-flex items-center gap-1 text-green-700"><Globe2 className="h-3 w-3" />{STATUS_LABELS[announcement.publicStatus] ?? "Público"}</span>}{announcement.expiresAt && <span>Expira em {formatDate(announcement.expiresAt)}</span>}</div></div>
       <div className="flex flex-wrap gap-2 sm:justify-end"><Button type="button" size="sm" variant="outline" onClick={() => onEdit(announcement)}>Editar</Button>{isPublic && announcement.publicStatus !== "arquivado" && <Button type="button" size="sm" variant="outline" className="text-amber-700" onClick={() => onArchive(announcement)}><Archive className="mr-1.5 h-3.5 w-3.5" />Retirar</Button>}</div>
     </div>
   </article>;
