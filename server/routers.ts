@@ -3307,10 +3307,17 @@ const registerRouter = router({
     .input(z.object({
       churchSlug: z.string().min(3).max(100),
       name: z.string().min(2).max(255),
-      email: z.string().email(),
-      password: z.string().min(8),
+      email: z.string().email().max(320),
+      password: z.string().min(8).max(128),
+      birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       phone: z.string().max(20).optional(),
       whatsapp: z.string().max(20).optional(),
+      zipCode: z.string().regex(/^\d{5}-?\d{3}$/),
+      street: z.string().max(255).optional(),
+      number: z.string().min(1).max(10),
+      neighborhood: z.string().max(100).optional(),
+      city: z.string().max(100).optional(),
+      state: z.string().regex(/^[A-Za-z]{2}$/).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       if (!ctx.tenantSlug || ctx.tenantSlug !== input.churchSlug) {
@@ -3331,8 +3338,15 @@ const registerRouter = router({
         churchId: church.id,
         fullName: input.name,
         email: input.email.toLowerCase(),
+        birthDate: input.birthDate ? new Date(`${input.birthDate}T00:00:00.000Z`) : null,
         phone: input.phone || null,
         whatsapp: input.whatsapp || null,
+        zipCode: input.zipCode.replace(/\D/g, ""),
+        street: input.street || null,
+        number: input.number,
+        neighborhood: input.neighborhood || null,
+        city: input.city || null,
+        state: input.state?.toUpperCase() || null,
         active: true,
       });
       if (!person) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível criar a ficha do discípulo." });

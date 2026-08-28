@@ -365,6 +365,11 @@ describe("Galeria pública por tenant", () => {
     expect(routerSource).toContain("publicRegistrationTitle: z.string().trim().min(3).max(140).optional()");
     expect(routerSource).toContain("publicRegistrationMessage: z.string().trim().min(10).max(500).optional()");
     expect(routerSource).toContain("if (!ctx.tenantSlug || ctx.tenantSlug !== input.churchSlug)");
+    expect(routerSource).toContain("birthDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional()");
+    expect(routerSource).toContain("zipCode: z.string().regex(/^\\d{5}-?\\d{3}$/)");
+    expect(routerSource).toContain("number: z.string().min(1).max(10)");
+    expect(routerSource).toContain("birthDate: input.birthDate ? new Date");
+    expect(routerSource).toContain("zipCode: input.zipCode.replace(/\\D/g, \"\")");
     expect(routerSource).toContain("if (!church.publicRegistrationEnabled)");
     expect(dbSource).toContain("publicRegistration: {");
     expect(dbSource).toContain('path: "/cadastro"');

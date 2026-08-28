@@ -64,6 +64,11 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(cadastroSource).toContain("TenantPublicShell");
     expect(cadastroSource).toContain("Cadastro recebido");
     expect(cadastroSource).toContain("A liderança da");
+    expect(cadastroSource).toContain("Data de nascimento");
+    expect(cadastroSource).toContain("Informe o CEP primeiro");
+    expect(cadastroSource).toContain("https://viacep.com.br/ws/");
+    expect(cadastroSource).toContain("Endereço preenchido");
+    expect(cadastroSource).toContain("postal-code");
   });
 
   it("oferece configuração de redes sociais oficiais por tenant", () => {
