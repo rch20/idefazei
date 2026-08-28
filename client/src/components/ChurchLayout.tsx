@@ -74,7 +74,9 @@ export const useChurch = () => useContext(ChurchContext);
 
 // ─── NAV ITEMS ────────────────────────────────────────────────────────────────
 
-const navItems = [
+type NavItem = { icon: typeof Home; label: string; path: string; group: string; roles?: string[]; requiresEncounterAccess?: boolean };
+
+const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/app/dashboard", group: "principal" },
   { icon: Heart, label: "Central de Cuidado", path: "/app/cuidado", group: "principal", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"] },
   { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "principal" },
@@ -91,7 +93,7 @@ const navItems = [
   { icon: Star, label: "Escalas", path: "/app/escalas", group: "ministerio" },
   { icon: BookOpen, label: "Escola de Fundamentos", path: "/app/escola-fundamentos", group: "discipulado" },
   { icon: Droplets, label: "Batismo nas Águas", path: "/app/batismo", group: "discipulado" },
-  { icon: Heart, label: "Encontro com Deus", path: "/app/encontro-com-deus", group: "discipulado" },
+  { icon: Heart, label: "Encontro com Deus", path: "/app/encontro-com-deus", group: "discipulado", requiresEncounterAccess: true },
   { icon: GraduationCap, label: "Escola de Líderes", path: "/app/escola-lideres", group: "lideranca" },
   { icon: Crown, label: "Gestão de Liderança", path: "/app/gestao-lideranca", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
   { icon: Shield, label: "Aconselhamento", path: "/app/aconselhamento", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
@@ -146,6 +148,10 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     { enabled: Boolean(user?.churchId) }
   );
   const effectiveRoles = Array.from(new Set([currentRole, ...(effectiveRolesQuery.data ?? [])]));
+  const encounterAccessQuery = trpc.encontro.hasAccess.useQuery(
+    { churchId: user?.churchId ?? 0 },
+    { enabled: Boolean(user?.churchId) }
+  );
   useEffect(() => {
     const activeGroup = groups.find((group) => navItems.some((item) => item.group === group.key && (location === item.path || location.startsWith(item.path + "/"))));
     if (activeGroup) setExpandedGroup(activeGroup.key);
@@ -201,7 +207,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         {/* Navigation */}
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Navegação principal">
           {groups.map((group) => {
-            const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))));
+            const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))) && (!i.requiresEncounterAccess || encounterAccessQuery.data === true));
             if (!items.length) return null;
             const isExpanded = expandedGroup === group.key;
             return (

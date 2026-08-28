@@ -309,6 +309,13 @@
       "when": 1787890533753,
       "tag": "0043_lowly_logan",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "5",
+      "when": 1787919597928,
+      "tag": "0044_white_red_shift",
+      "breakpoints": true
     }
   ]
 }

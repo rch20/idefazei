@@ -1111,9 +1111,16 @@ export const encounterEvents = mysqlTable("encounter_events", {
   location: varchar("location", { length: 255 }),
   maxParticipants: int("maxParticipants"),
   description: text("description"),
+  status: mysqlEnum("status", ["rascunho", "planejamento", "confirmado", "em_andamento", "encerrado", "cancelado"]).default("planejamento").notNull(),
+  responsiblePersonId: int("responsiblePersonId"),
+  generalNotes: text("generalNotes"),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("encounter_events_church_status_idx").on(table.churchId, table.status),
+  index("encounter_events_responsible_idx").on(table.churchId, table.responsiblePersonId),
+]);
 
 export type EncounterEvent = typeof encounterEvents.$inferSelect;
 
@@ -1123,11 +1130,152 @@ export const encounterEnrollments = mysqlTable("encounter_enrollments", {
   personId: int("personId").notNull(),
   churchId: int("churchId").notNull(),
   status: mysqlEnum("status", ["inscrito", "confirmado", "participou", "concluiu", "cancelado"]).default("inscrito").notNull(),
+  source: mysqlEnum("source", ["manual", "public_form"]).default("manual").notNull(),
+  notes: text("notes"),
   enrolledAt: timestamp("enrolledAt").defaultNow().notNull(),
+  confirmedAt: timestamp("confirmedAt"),
   completedAt: timestamp("completedAt"),
-});
+  cancelledAt: timestamp("cancelledAt"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("encounter_enrollments_event_person_unique").on(table.churchId, table.encounterEventId, table.personId),
+  index("encounter_enrollments_event_status_idx").on(table.churchId, table.encounterEventId, table.status),
+]);
 
 export type EncounterEnrollment = typeof encounterEnrollments.$inferSelect;
+
+/** Link público revogável usado somente para receber fichas daquele encontro. */
+export const encounterPublicForms = mysqlTable("encounter_public_forms", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  encounterEventId: int("encounterEventId").notNull(),
+  publicToken: varchar("publicToken", { length: 96 }).notNull(),
+  active: boolean("active").default(true).notNull(),
+  expiresAt: timestamp("expiresAt"),
+  revokedAt: timestamp("revokedAt"),
+  createdByPersonId: int("createdByPersonId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("encounter_public_forms_token_unique").on(table.publicToken),
+  index("encounter_public_forms_event_active_idx").on(table.churchId, table.encounterEventId, table.active),
+]);
+
+export type EncounterPublicForm = typeof encounterPublicForms.$inferSelect;
+
+/** Dados privados enviados pelo discípulo para uma edição específica do encontro. */
+export const encounterDiscipleForms = mysqlTable("encounter_disciple_forms", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  encounterEventId: int("encounterEventId").notNull(),
+  encounterEnrollmentId: int("encounterEnrollmentId").notNull(),
+  personId: int("personId").notNull(),
+  fullName: varchar("fullName", { length: 255 }).notNull(),
+  age: int("age").notNull(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  guardianName: varchar("guardianName", { length: 255 }).notNull(),
+  guardianPhone: varchar("guardianPhone", { length: 20 }).notNull(),
+  friendName: varchar("friendName", { length: 255 }).notNull(),
+  friendPhone: varchar("friendPhone", { length: 20 }).notNull(),
+  attendingChurch: varchar("attendingChurch", { length: 255 }).notNull(),
+  invitedByName: varchar("invitedByName", { length: 255 }).notNull(),
+  reviewStatus: mysqlEnum("reviewStatus", ["recebida", "em_analise", "confirmada", "precisa_correcao", "rejeitada"]).default("recebida").notNull(),
+  reviewNotes: text("reviewNotes"),
+  consentAccepted: boolean("consentAccepted").notNull(),
+  consentVersion: varchar("consentVersion", { length: 20 }).default("v1").notNull(),
+  consentAcceptedAt: timestamp("consentAcceptedAt").defaultNow().notNull(),
+  submittedAt: timestamp("submittedAt").defaultNow().notNull(),
+  reviewedAt: timestamp("reviewedAt"),
+  reviewedByPersonId: int("reviewedByPersonId"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("encounter_disciple_forms_enrollment_unique").on(table.churchId, table.encounterEnrollmentId),
+  index("encounter_disciple_forms_event_review_idx").on(table.churchId, table.encounterEventId, table.reviewStatus),
+]);
+
+export type EncounterDiscipleForm = typeof encounterDiscipleForms.$inferSelect;
+
+/** Equipes eventuais do encontro; não alteram Ministérios permanentes da igreja. */
+export const encounterTeams = mysqlTable("encounter_teams", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  encounterEventId: int("encounterEventId").notNull(),
+  parentTeamId: int("parentTeamId"),
+  name: varchar("name", { length: 120 }).notNull(),
+  category: mysqlEnum("category", ["lideranca", "espiritual", "apoio", "operacional", "manual"]).default("operacional").notNull(),
+  source: mysqlEnum("source", ["padrao", "manual"]).default("padrao").notNull(),
+  requiredCount: int("requiredCount"),
+  notes: text("notes"),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("encounter_teams_event_name_unique").on(table.churchId, table.encounterEventId, table.name),
+  index("encounter_teams_parent_idx").on(table.churchId, table.encounterEventId, table.parentTeamId),
+]);
+
+export type EncounterTeam = typeof encounterTeams.$inferSelect;
+
+/** Servo e função contextual do encontro, predefinida ou informada manualmente. */
+export const encounterServantAssignments = mysqlTable("encounter_servant_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  encounterEventId: int("encounterEventId").notNull(),
+  teamId: int("teamId"),
+  personId: int("personId").notNull(),
+  roleKey: varchar("roleKey", { length: 64 }),
+  roleName: varchar("roleName", { length: 120 }).notNull(),
+  roleSource: mysqlEnum("roleSource", ["catalogo", "manual"]).default("catalogo").notNull(),
+  assignmentType: mysqlEnum("assignmentType", ["responsavel", "membro", "substituto"]).default("membro").notNull(),
+  notes: text("notes"),
+  active: boolean("active").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("encounter_servants_event_person_idx").on(table.churchId, table.encounterEventId, table.personId),
+  index("encounter_servants_event_team_idx").on(table.churchId, table.encounterEventId, table.teamId, table.active),
+]);
+
+export type EncounterServantAssignment = typeof encounterServantAssignments.$inferSelect;
+
+export const encounterChecklistItems = mysqlTable("encounter_checklist_items", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  encounterEventId: int("encounterEventId").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  category: mysqlEnum("category", ["estrutura", "discipulos", "servos", "intercessao", "alimentacao", "logistica", "comunicacao", "pos_encontro", "outro"]).default("outro").notNull(),
+  assignedPersonId: int("assignedPersonId"),
+  dueAt: timestamp("dueAt"),
+  status: mysqlEnum("status", ["pendente", "em_andamento", "concluida", "cancelada"]).default("pendente").notNull(),
+  notes: text("notes"),
+  sortOrder: int("sortOrder").default(0).notNull(),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("encounter_checklist_event_status_idx").on(table.churchId, table.encounterEventId, table.status),
+  index("encounter_checklist_assignee_idx").on(table.churchId, table.assignedPersonId, table.dueAt),
+]);
+
+export type EncounterChecklistItem = typeof encounterChecklistItems.$inferSelect;
+
+/** Trilha imutável das mudanças operacionais importantes do encontro. */
+export const encounterHistory = mysqlTable("encounter_history", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  encounterEventId: int("encounterEventId").notNull(),
+  actorPersonId: int("actorPersonId"),
+  action: varchar("action", { length: 80 }).notNull(),
+  entityType: mysqlEnum("entityType", ["encontro", "discipulo", "ficha", "equipe", "servo", "checklist", "link_publico"]).notNull(),
+  entityId: int("entityId"),
+  details: json("details"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("encounter_history_event_created_idx").on(table.churchId, table.encounterEventId, table.createdAt),
+]);
+
+export type EncounterHistory = typeof encounterHistory.$inferSelect;
 
 // ─── ESCOLA DE LÍDERES ────────────────────────────────────────────────────────
 

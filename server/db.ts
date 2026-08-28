@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, gte, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   announcements,
@@ -33,8 +33,14 @@ import {
   foundationModules,
   foundationStudyMaterials,
   foundationStudyAdministrators,
+  encounterChecklistItems,
+  encounterDiscipleForms,
   encounterEnrollments,
   encounterEvents,
+  encounterHistory,
+  encounterPublicForms,
+  encounterServantAssignments,
+  encounterTeams,
   eventRegistrations,
   events,
   families,
@@ -3417,10 +3423,152 @@ export async function updateBaptismEnrollment(id: number, churchId: number, data
 
 // ─── ENCONTRO COM DEUS ────────────────────────────────────────────────────────
 
+export type EncounterEventStatus = "rascunho" | "planejamento" | "confirmado" | "em_andamento" | "encerrado" | "cancelado";
+export type EncounterEnrollmentStatus = "inscrito" | "confirmado" | "participou" | "concluiu" | "cancelado";
+export type EncounterReviewStatus = "recebida" | "em_analise" | "confirmada" | "precisa_correcao" | "rejeitada";
+
+const DEFAULT_ENCOUNTER_TEAMS = [
+  { name: "Supervisor Espiritual", category: "lideranca" as const, requiredCount: 1, sortOrder: 0 },
+  { name: "Coordenador", category: "lideranca" as const, requiredCount: 1, sortOrder: 1 },
+  { name: "Intercessores", category: "espiritual" as const, requiredCount: null, sortOrder: 10 },
+  { name: "Stand-by", category: "apoio" as const, requiredCount: null, sortOrder: 20 },
+  { name: "Cozinha", category: "operacional" as const, requiredCount: null, sortOrder: 30 },
+  { name: "Limpeza", category: "operacional" as const, requiredCount: null, sortOrder: 40 },
+  { name: "Correios", category: "operacional" as const, requiredCount: null, sortOrder: 50 },
+] as const;
+
+function insertIdOf(result: unknown) {
+  return Number(((result as [{ insertId?: number }] | undefined)?.[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+}
+
 export async function getEncounterEventsByChurch(churchId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(encounterEvents).where(eq(encounterEvents.churchId, churchId));
+  return db.select().from(encounterEvents)
+    .where(eq(encounterEvents.churchId, churchId))
+    .orderBy(desc(encounterEvents.date), desc(encounterEvents.id));
+}
+
+export async function getEncounterManagedEventIds(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [responsibleEvents, assignmentEvents] = await Promise.all([
+    db.select({ eventId: encounterEvents.id }).from(encounterEvents)
+      .where(and(eq(encounterEvents.churchId, churchId), eq(encounterEvents.responsiblePersonId, personId), eq(encounterEvents.active, true))),
+    db.select({ eventId: encounterServantAssignments.encounterEventId }).from(encounterServantAssignments)
+      .where(and(eq(encounterServantAssignments.churchId, churchId), eq(encounterServantAssignments.personId, personId), eq(encounterServantAssignments.assignmentType, "responsavel"), eq(encounterServantAssignments.active, true))),
+  ]);
+  return Array.from(new Set([...responsibleEvents, ...assignmentEvents].map((item) => item.eventId)));
+}
+
+export async function getEncounterEventById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(encounterEvents)
+    .where(and(eq(encounterEvents.id, id), eq(encounterEvents.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getEncounterOverview(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const event = await getEncounterEventById(eventId, churchId);
+  if (!event) return null;
+  const [enrollments, confirmed, completed, teams, servants, pendingItems] = await Promise.all([
+    db.select({ value: count() }).from(encounterEnrollments).where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), ne(encounterEnrollments.status, "cancelado"))),
+    db.select({ value: count() }).from(encounterEnrollments).where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), eq(encounterEnrollments.status, "confirmado"))),
+    db.select({ value: count() }).from(encounterEnrollments).where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), eq(encounterEnrollments.status, "concluiu"))),
+    db.select({ value: count() }).from(encounterTeams).where(and(eq(encounterTeams.churchId, churchId), eq(encounterTeams.encounterEventId, eventId), eq(encounterTeams.active, true))),
+    db.select({ value: count() }).from(encounterServantAssignments).where(and(eq(encounterServantAssignments.churchId, churchId), eq(encounterServantAssignments.encounterEventId, eventId), eq(encounterServantAssignments.active, true))),
+    db.select({ value: count() }).from(encounterChecklistItems).where(and(eq(encounterChecklistItems.churchId, churchId), eq(encounterChecklistItems.encounterEventId, eventId), or(eq(encounterChecklistItems.status, "pendente"), eq(encounterChecklistItems.status, "em_andamento")))),
+  ]);
+  return {
+    event,
+    summary: {
+      enrollmentCount: Number(enrollments[0]?.value ?? 0),
+      confirmedCount: Number(confirmed[0]?.value ?? 0),
+      completedCount: Number(completed[0]?.value ?? 0),
+      teamCount: Number(teams[0]?.value ?? 0),
+      servantCount: Number(servants[0]?.value ?? 0),
+      pendingChecklistCount: Number(pendingItems[0]?.value ?? 0),
+    },
+  };
+}
+
+export async function createEncounterEvent(data: {
+  churchId: number;
+  name: string;
+  date: string;
+  endDate?: string | null;
+  location?: string | null;
+  maxParticipants?: number | null;
+  description?: string | null;
+  status?: EncounterEventStatus;
+  responsiblePersonId?: number | null;
+  generalNotes?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const result = await tx.insert(encounterEvents).values({
+      ...data,
+      endDate: data.endDate ?? null,
+      location: data.location ?? null,
+      maxParticipants: data.maxParticipants ?? null,
+      description: data.description ?? null,
+      status: data.status ?? "planejamento",
+      responsiblePersonId: data.responsiblePersonId ?? null,
+      generalNotes: data.generalNotes ?? null,
+    } as unknown as typeof encounterEvents.$inferInsert);
+    const eventId = insertIdOf(result);
+    if (!eventId) throw new Error("Falha ao criar Encontro com Deus");
+
+    let coordinatorTeamId: number | null = null;
+    for (const team of DEFAULT_ENCOUNTER_TEAMS) {
+      const teamResult = await tx.insert(encounterTeams).values({
+        churchId: data.churchId,
+        encounterEventId: eventId,
+        parentTeamId: team.category === "lideranca" ? null : coordinatorTeamId,
+        name: team.name,
+        category: team.category,
+        source: "padrao",
+        requiredCount: team.requiredCount,
+        sortOrder: team.sortOrder,
+        active: true,
+      });
+      if (team.name === "Coordenador") coordinatorTeamId = insertIdOf(teamResult);
+    }
+
+    await tx.insert(encounterHistory).values({
+      churchId: data.churchId,
+      encounterEventId: eventId,
+      actorPersonId: data.responsiblePersonId ?? null,
+      action: "encontro_criado",
+      entityType: "encontro",
+      entityId: eventId,
+      details: { name: data.name, status: data.status ?? "planejamento" },
+    });
+    return { id: eventId };
+  });
+}
+
+export async function updateEncounterEvent(id: number, churchId: number, data: Partial<{
+  name: string;
+  date: string;
+  endDate: string | null;
+  location: string | null;
+  maxParticipants: number | null;
+  description: string | null;
+  status: EncounterEventStatus;
+  responsiblePersonId: number | null;
+  generalNotes: string | null;
+  active: boolean;
+}>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(encounterEvents).set(data as unknown as Partial<typeof encounterEvents.$inferInsert>).where(and(eq(encounterEvents.id, id), eq(encounterEvents.churchId, churchId)));
+  return getEncounterEventById(id, churchId);
 }
 
 export async function getEncounterEnrollments(eventId: number, churchId: number) {
@@ -3428,34 +3576,437 @@ export async function getEncounterEnrollments(eventId: number, churchId: number)
   if (!db) return [];
   return db.select({
     enrollment: encounterEnrollments,
-    person: { id: people.id, fullName: people.fullName, phone: people.phone },
+    person: { id: people.id, fullName: people.fullName, phone: people.phone, whatsapp: people.whatsapp },
+    form: encounterDiscipleForms,
   })
-  .from(encounterEnrollments)
-  .innerJoin(people, eq(encounterEnrollments.personId, people.id))
-  .where(and(eq(encounterEnrollments.encounterEventId, eventId), eq(encounterEnrollments.churchId, churchId)));
+    .from(encounterEnrollments)
+    .innerJoin(people, and(eq(encounterEnrollments.personId, people.id), eq(people.churchId, churchId)))
+    .leftJoin(encounterDiscipleForms, and(eq(encounterDiscipleForms.encounterEnrollmentId, encounterEnrollments.id), eq(encounterDiscipleForms.churchId, churchId)))
+    .where(and(eq(encounterEnrollments.encounterEventId, eventId), eq(encounterEnrollments.churchId, churchId)))
+    .orderBy(people.fullName);
 }
 
-export async function createEncounterEvent(data: {
-  churchId: number; name: string; date: string; endDate?: string; location?: string; maxParticipants?: number; description?: string;
+export async function getEncounterEnrollmentById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(encounterEnrollments)
+    .where(and(eq(encounterEnrollments.id, id), eq(encounterEnrollments.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function enrollInEncounter(data: { encounterEventId: number; personId: number; churchId: number; source?: "manual" | "public_form"; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const eventRows = await tx.select().from(encounterEvents)
+      .where(and(eq(encounterEvents.id, data.encounterEventId), eq(encounterEvents.churchId, data.churchId), eq(encounterEvents.active, true)))
+      .limit(1);
+    const event = eventRows[0];
+    if (!event || event.status === "cancelado" || event.status === "encerrado") throw new Error("ENCOUNTER_UNAVAILABLE");
+
+    const personRows = await tx.select({ id: people.id }).from(people)
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1);
+    if (!personRows[0]) throw new Error("PERSON_NOT_FOUND");
+
+    const existing = await tx.select().from(encounterEnrollments)
+      .where(and(eq(encounterEnrollments.churchId, data.churchId), eq(encounterEnrollments.encounterEventId, data.encounterEventId), eq(encounterEnrollments.personId, data.personId)))
+      .limit(1);
+    if (existing[0]) throw new Error("ENCOUNTER_DUPLICATE_ENROLLMENT");
+
+    if (event.maxParticipants) {
+      const totals = await tx.select({ value: count() }).from(encounterEnrollments)
+        .where(and(eq(encounterEnrollments.churchId, data.churchId), eq(encounterEnrollments.encounterEventId, data.encounterEventId), ne(encounterEnrollments.status, "cancelado")));
+      if (Number(totals[0]?.value ?? 0) >= event.maxParticipants) throw new Error("ENCOUNTER_CAPACITY_REACHED");
+    }
+
+    const result = await tx.insert(encounterEnrollments).values({
+      churchId: data.churchId,
+      encounterEventId: data.encounterEventId,
+      personId: data.personId,
+      status: "inscrito",
+      source: data.source ?? "manual",
+      notes: data.notes ?? null,
+    });
+    const enrollmentId = insertIdOf(result);
+    await tx.insert(encounterHistory).values({
+      churchId: data.churchId,
+      encounterEventId: data.encounterEventId,
+      action: "discipulo_inscrito",
+      entityType: "discipulo",
+      entityId: enrollmentId,
+      details: { personId: data.personId, source: data.source ?? "manual" },
+    });
+    return { id: enrollmentId };
+  });
+}
+
+export async function updateEncounterEnrollment(id: number, churchId: number, data: { status?: EncounterEnrollmentStatus; notes?: string | null; completedAt?: Date | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await getEncounterEnrollmentById(id, churchId);
+  if (!current) return null;
+  const update: Partial<typeof encounterEnrollments.$inferInsert> = {};
+  if (data.status !== undefined) {
+    update.status = data.status;
+    if (data.status === "confirmado") update.confirmedAt = new Date();
+    if (data.status === "concluiu") update.completedAt = new Date();
+    if (data.status === "cancelado") update.cancelledAt = new Date();
+  }
+  if (data.completedAt !== undefined) update.completedAt = data.completedAt;
+  if (data.notes !== undefined) update.notes = data.notes;
+  await db.update(encounterEnrollments).set(update).where(and(eq(encounterEnrollments.id, id), eq(encounterEnrollments.churchId, churchId)));
+  await db.insert(encounterHistory).values({
+    churchId,
+    encounterEventId: current.encounterEventId,
+    action: data.status ? `discipulo_${data.status}` : "discipulo_atualizado",
+    entityType: "discipulo",
+    entityId: id,
+    details: { previousStatus: current.status, status: data.status ?? current.status },
+  });
+  return getEncounterEnrollmentById(id, churchId);
+}
+
+export async function getEncounterPublicFormByToken(publicToken: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select({
+    publicForm: encounterPublicForms,
+    event: encounterEvents,
+    church: {
+      id: churches.id,
+      name: churches.name,
+      slug: churches.slug,
+      logoUrl: churches.logoUrl,
+      primaryColor: churches.primaryColor,
+      secondaryColor: churches.secondaryColor,
+    },
+  })
+    .from(encounterPublicForms)
+    .innerJoin(encounterEvents, and(eq(encounterEvents.id, encounterPublicForms.encounterEventId), eq(encounterEvents.churchId, encounterPublicForms.churchId)))
+    .innerJoin(churches, eq(churches.id, encounterPublicForms.churchId))
+    .where(and(
+      eq(encounterPublicForms.publicToken, publicToken),
+      eq(encounterPublicForms.active, true),
+      isNull(encounterPublicForms.revokedAt),
+      or(isNull(encounterPublicForms.expiresAt), gt(encounterPublicForms.expiresAt, new Date())),
+      eq(encounterEvents.active, true),
+      ne(encounterEvents.status, "cancelado"),
+      ne(encounterEvents.status, "encerrado"),
+      eq(churches.active, true),
+    ))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getEncounterPublicFormByEvent(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(encounterPublicForms)
+    .where(and(eq(encounterPublicForms.churchId, churchId), eq(encounterPublicForms.encounterEventId, eventId), isNull(encounterPublicForms.revokedAt)))
+    .orderBy(desc(encounterPublicForms.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function rotateEncounterPublicForm(data: { churchId: number; encounterEventId: number; publicToken: string; createdByPersonId?: number | null; expiresAt?: Date | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    await tx.update(encounterPublicForms).set({ active: false, revokedAt: new Date() })
+      .where(and(eq(encounterPublicForms.churchId, data.churchId), eq(encounterPublicForms.encounterEventId, data.encounterEventId), eq(encounterPublicForms.active, true)));
+    const result = await tx.insert(encounterPublicForms).values({
+      churchId: data.churchId,
+      encounterEventId: data.encounterEventId,
+      publicToken: data.publicToken,
+      active: true,
+      expiresAt: data.expiresAt ?? null,
+      createdByPersonId: data.createdByPersonId ?? null,
+    });
+    const id = insertIdOf(result);
+    await tx.insert(encounterHistory).values({
+      churchId: data.churchId,
+      encounterEventId: data.encounterEventId,
+      actorPersonId: data.createdByPersonId ?? null,
+      action: "link_publico_renovado",
+      entityType: "link_publico",
+      entityId: id,
+    });
+    return { id, publicToken: data.publicToken };
+  });
+}
+
+export async function setEncounterPublicFormActive(data: { churchId: number; encounterEventId: number; active: boolean; actorPersonId?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(encounterPublicForms).set({ active: data.active })
+    .where(and(eq(encounterPublicForms.churchId, data.churchId), eq(encounterPublicForms.encounterEventId, data.encounterEventId), isNull(encounterPublicForms.revokedAt)));
+  await db.insert(encounterHistory).values({
+    churchId: data.churchId,
+    encounterEventId: data.encounterEventId,
+    actorPersonId: data.actorPersonId ?? null,
+    action: data.active ? "link_publico_ativado" : "link_publico_pausado",
+    entityType: "link_publico",
+    details: { active: data.active },
+  });
+}
+
+export async function submitEncounterDiscipleForm(data: {
+  publicToken: string;
+  fullName: string;
+  age: number;
+  phone: string;
+  guardianName: string;
+  guardianPhone: string;
+  friendName: string;
+  friendPhone: string;
+  attendingChurch: string;
+  invitedByName: string;
+  consentAccepted: true;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(encounterEvents).values(data as unknown as typeof encounterEvents.$inferInsert);
+  const normalizedPhone = data.phone.replace(/\D/g, "");
+  const normalizedName = data.fullName.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+  return db.transaction(async (tx) => {
+    const resolvedRows = await tx.select({ publicForm: encounterPublicForms, event: encounterEvents })
+      .from(encounterPublicForms)
+      .innerJoin(encounterEvents, and(eq(encounterEvents.id, encounterPublicForms.encounterEventId), eq(encounterEvents.churchId, encounterPublicForms.churchId)))
+      .where(and(
+        eq(encounterPublicForms.publicToken, data.publicToken),
+        eq(encounterPublicForms.active, true),
+        isNull(encounterPublicForms.revokedAt),
+        or(isNull(encounterPublicForms.expiresAt), gt(encounterPublicForms.expiresAt, new Date())),
+        eq(encounterEvents.active, true),
+        ne(encounterEvents.status, "cancelado"),
+        ne(encounterEvents.status, "encerrado"),
+      ))
+      .limit(1);
+    const resolved = resolvedRows[0];
+    if (!resolved) throw new Error("ENCOUNTER_PUBLIC_FORM_UNAVAILABLE");
+    const churchId = resolved.publicForm.churchId;
+    const eventId = resolved.publicForm.encounterEventId;
+    const phoneExpression = (column: any) => sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') = ${normalizedPhone}`;
+    const candidates = await tx.select().from(people)
+      .where(and(eq(people.churchId, churchId), eq(people.active, true), or(phoneExpression(people.phone), phoneExpression(people.whatsapp))))
+      .limit(10);
+    let person = candidates.find((candidate) => candidate.fullName.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === normalizedName) ?? null;
+    if (!person) {
+      const personResult = await tx.insert(people).values({
+        churchId,
+        fullName: data.fullName.trim(),
+        phone: normalizedPhone,
+        whatsapp: normalizedPhone,
+        discipleshipStage: "nova_alma",
+        active: true,
+      });
+      const personId = insertIdOf(personResult);
+      if (!personId) throw new Error("Falha ao criar Pessoa a partir da ficha");
+      const personRows = await tx.select().from(people).where(and(eq(people.id, personId), eq(people.churchId, churchId))).limit(1);
+      person = personRows[0] ?? null;
+    }
+    if (!person) throw new Error("Falha ao vincular Pessoa à ficha");
+
+    let enrollmentRows = await tx.select().from(encounterEnrollments)
+      .where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), eq(encounterEnrollments.personId, person.id)))
+      .limit(1);
+    let enrollment = enrollmentRows[0] ?? null;
+    if (!enrollment) {
+      if (resolved.event.maxParticipants) {
+        const totals = await tx.select({ value: count() }).from(encounterEnrollments)
+          .where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), ne(encounterEnrollments.status, "cancelado")));
+        if (Number(totals[0]?.value ?? 0) >= resolved.event.maxParticipants) throw new Error("ENCOUNTER_CAPACITY_REACHED");
+      }
+      const enrollmentResult = await tx.insert(encounterEnrollments).values({
+        churchId,
+        encounterEventId: eventId,
+        personId: person.id,
+        status: "inscrito",
+        source: "public_form",
+      });
+      const enrollmentId = insertIdOf(enrollmentResult);
+      enrollmentRows = await tx.select().from(encounterEnrollments).where(and(eq(encounterEnrollments.id, enrollmentId), eq(encounterEnrollments.churchId, churchId))).limit(1);
+      enrollment = enrollmentRows[0] ?? null;
+    } else {
+      if (enrollment.status === "cancelado") {
+        if (resolved.event.maxParticipants) {
+          const totals = await tx.select({ value: count() }).from(encounterEnrollments)
+            .where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), ne(encounterEnrollments.status, "cancelado")));
+          if (Number(totals[0]?.value ?? 0) >= resolved.event.maxParticipants) throw new Error("ENCOUNTER_CAPACITY_REACHED");
+        }
+        await tx.update(encounterEnrollments).set({ source: "public_form", status: "inscrito", cancelledAt: null }).where(and(eq(encounterEnrollments.id, enrollment.id), eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId)));
+        enrollment = { ...enrollment, source: "public_form", status: "inscrito", cancelledAt: null };
+      } else {
+        await tx.update(encounterEnrollments).set({ source: "public_form" }).where(and(eq(encounterEnrollments.id, enrollment.id), eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId)));
+      }
+    }
+    if (!enrollment) throw new Error("Falha ao criar inscrição no encontro");
+    const existingFormRows = await tx.select({ id: encounterDiscipleForms.id }).from(encounterDiscipleForms)
+      .where(and(eq(encounterDiscipleForms.churchId, churchId), eq(encounterDiscipleForms.encounterEventId, eventId), eq(encounterDiscipleForms.encounterEnrollmentId, enrollment.id)))
+      .limit(1);
+    if (existingFormRows[0]) throw new Error("ENCOUNTER_FORM_ALREADY_SUBMITTED");
+
+    const formValues = {
+      churchId,
+      encounterEventId: eventId,
+      encounterEnrollmentId: enrollment.id,
+      personId: person.id,
+      fullName: data.fullName.trim(),
+      age: data.age,
+      phone: normalizedPhone,
+      guardianName: data.guardianName.trim(),
+      guardianPhone: data.guardianPhone.replace(/\D/g, ""),
+      friendName: data.friendName.trim(),
+      friendPhone: data.friendPhone.replace(/\D/g, ""),
+      attendingChurch: data.attendingChurch.trim(),
+      invitedByName: data.invitedByName.trim(),
+      reviewStatus: "recebida" as const,
+      reviewNotes: null,
+      consentAccepted: true,
+      consentVersion: "v1",
+      consentAcceptedAt: new Date(),
+      submittedAt: new Date(),
+      reviewedAt: null,
+      reviewedByPersonId: null,
+    };
+    await tx.insert(encounterDiscipleForms).values(formValues);
+    const formRows = await tx.select().from(encounterDiscipleForms)
+      .where(and(eq(encounterDiscipleForms.churchId, churchId), eq(encounterDiscipleForms.encounterEnrollmentId, enrollment.id)))
+      .limit(1);
+    const form = formRows[0];
+    await tx.insert(encounterHistory).values({
+      churchId,
+      encounterEventId: eventId,
+      action: "ficha_publica_recebida",
+      entityType: "ficha",
+      entityId: form?.id ?? null,
+      details: { personId: person.id, enrollmentId: enrollment.id },
+    });
+    return { eventId, enrollmentId: enrollment.id, personId: person.id, formId: form?.id ?? null };
+  });
 }
 
-export async function enrollInEncounter(data: { encounterEventId: number; personId: number; churchId: number }) {
+export async function updateEncounterDiscipleFormReview(data: { id: number; eventId: number; churchId: number; reviewStatus: EncounterReviewStatus; reviewNotes?: string | null; reviewedByPersonId?: number | null }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(encounterEnrollments).values({ ...data, status: "inscrito" } as typeof encounterEnrollments.$inferInsert);
+  const rows = await db.select().from(encounterDiscipleForms)
+    .where(and(eq(encounterDiscipleForms.id, data.id), eq(encounterDiscipleForms.encounterEventId, data.eventId), eq(encounterDiscipleForms.churchId, data.churchId)))
+    .limit(1);
+  const form = rows[0];
+  if (!form) return null;
+  await db.update(encounterDiscipleForms).set({
+    reviewStatus: data.reviewStatus,
+    reviewNotes: data.reviewNotes ?? null,
+    reviewedAt: new Date(),
+    reviewedByPersonId: data.reviewedByPersonId ?? null,
+  }).where(and(eq(encounterDiscipleForms.id, data.id), eq(encounterDiscipleForms.encounterEventId, data.eventId), eq(encounterDiscipleForms.churchId, data.churchId)));
+  await db.insert(encounterHistory).values({
+    churchId: data.churchId,
+    encounterEventId: form.encounterEventId,
+    actorPersonId: data.reviewedByPersonId ?? null,
+    action: `ficha_${data.reviewStatus}`,
+    entityType: "ficha",
+    entityId: form.id,
+  });
+  return { ...form, reviewStatus: data.reviewStatus, reviewNotes: data.reviewNotes ?? null };
 }
 
-export async function updateEncounterEnrollment(id: number, churchId: number, data: { status?: string; completedAt?: Date | null }) {
+export async function getEncounterTeams(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(encounterTeams)
+    .where(and(eq(encounterTeams.churchId, churchId), eq(encounterTeams.encounterEventId, eventId), eq(encounterTeams.active, true)))
+    .orderBy(encounterTeams.sortOrder, encounterTeams.name);
+}
+
+export async function getEncounterTeamById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(encounterTeams).where(and(eq(encounterTeams.id, id), eq(encounterTeams.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createEncounterTeam(data: typeof encounterTeams.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const update: Record<string, unknown> = {};
-  if (data.status !== undefined) update.status = data.status;
-  if (data.completedAt !== undefined) update.completedAt = data.completedAt;
-  await db.update(encounterEnrollments).set(update).where(and(eq(encounterEnrollments.id, id), eq(encounterEnrollments.churchId, churchId)));
+  const result = await db.insert(encounterTeams).values(data);
+  return { id: insertIdOf(result) };
+}
+
+export async function updateEncounterTeam(id: number, churchId: number, data: Partial<typeof encounterTeams.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(encounterTeams).set(data).where(and(eq(encounterTeams.id, id), eq(encounterTeams.churchId, churchId)));
+}
+
+export async function getEncounterServants(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ assignment: encounterServantAssignments, person: { id: people.id, fullName: people.fullName, phone: people.phone, whatsapp: people.whatsapp }, team: encounterTeams })
+    .from(encounterServantAssignments)
+    .innerJoin(people, and(eq(people.id, encounterServantAssignments.personId), eq(people.churchId, churchId)))
+    .leftJoin(encounterTeams, and(eq(encounterTeams.id, encounterServantAssignments.teamId), eq(encounterTeams.churchId, churchId)))
+    .where(and(eq(encounterServantAssignments.churchId, churchId), eq(encounterServantAssignments.encounterEventId, eventId), eq(encounterServantAssignments.active, true)))
+    .orderBy(encounterServantAssignments.roleName, people.fullName);
+}
+
+export async function createEncounterServantAssignment(data: typeof encounterServantAssignments.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const duplicate = await db.select({ id: encounterServantAssignments.id }).from(encounterServantAssignments)
+    .where(and(eq(encounterServantAssignments.churchId, data.churchId), eq(encounterServantAssignments.encounterEventId, data.encounterEventId), eq(encounterServantAssignments.personId, data.personId), eq(encounterServantAssignments.roleName, data.roleName), eq(encounterServantAssignments.active, true)))
+    .limit(1);
+  if (duplicate[0]) throw new Error("ENCOUNTER_DUPLICATE_SERVANT_ASSIGNMENT");
+  const result = await db.insert(encounterServantAssignments).values(data);
+  const id = insertIdOf(result);
+  await db.insert(encounterHistory).values({ churchId: data.churchId, encounterEventId: data.encounterEventId, action: "servo_atribuido", entityType: "servo", entityId: id, details: { personId: data.personId, roleName: data.roleName } });
+  return { id };
+}
+
+export async function deactivateEncounterServantAssignment(id: number, eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(encounterServantAssignments).set({ active: false }).where(and(eq(encounterServantAssignments.id, id), eq(encounterServantAssignments.encounterEventId, eventId), eq(encounterServantAssignments.churchId, churchId)));
+}
+
+export async function getEncounterChecklist(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ item: encounterChecklistItems, assignee: { id: people.id, fullName: people.fullName } })
+    .from(encounterChecklistItems)
+    .leftJoin(people, and(eq(people.id, encounterChecklistItems.assignedPersonId), eq(people.churchId, churchId)))
+    .where(and(eq(encounterChecklistItems.churchId, churchId), eq(encounterChecklistItems.encounterEventId, eventId)))
+    .orderBy(encounterChecklistItems.sortOrder, encounterChecklistItems.dueAt, encounterChecklistItems.id);
+}
+
+export async function createEncounterChecklistItem(data: typeof encounterChecklistItems.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(encounterChecklistItems).values(data);
+  return { id: insertIdOf(result) };
+}
+
+export async function updateEncounterChecklistItem(id: number, eventId: number, churchId: number, data: Partial<typeof encounterChecklistItems.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(encounterChecklistItems).set(data).where(and(eq(encounterChecklistItems.id, id), eq(encounterChecklistItems.encounterEventId, eventId), eq(encounterChecklistItems.churchId, churchId)));
+}
+
+export async function addEncounterHistory(data: typeof encounterHistory.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(encounterHistory).values(data);
+}
+
+export async function getEncounterHistory(eventId: number, churchId: number, limit = 100) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(encounterHistory)
+    .where(and(eq(encounterHistory.churchId, churchId), eq(encounterHistory.encounterEventId, eventId)))
+    .orderBy(desc(encounterHistory.createdAt), desc(encounterHistory.id))
+    .limit(Math.min(Math.max(limit, 1), 200));
 }
 
 // ─── ESCOLA DE LÍDERES ────────────────────────────────────────────────────────

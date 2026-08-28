@@ -45,6 +45,8 @@ const CadastroSucesso = lazy(() => import("./pages/CadastroSucesso"));
 const EscolaFundamentos = lazy(() => import("./pages/EscolaFundamentos"));
 const Batismo = lazy(() => import("./pages/Batismo"));
 const EncontroComDeus = lazy(() => import("./pages/EncontroComDeus"));
+const EncontroComDeusDetalhe = lazy(() => import("./pages/EncontroComDeusDetalhe"));
+const EncontroFichaPublica = lazy(() => import("./pages/EncontroFichaPublica"));
 const EscolaLideres = lazy(() => import("./pages/EscolaLideres"));
 const GestaoLideranca = lazy(() => import("./pages/GestaoLideranca"));
 const Aconselhamento = lazy(() => import("./pages/Aconselhamento"));
@@ -99,6 +101,7 @@ function Router() {
       {/* ── Login e Portal da Igreja ── */}
       <Route path="/login" component={LoginIgreja} />
       <Route path="/cadastro" component={CadastroDiscipulo} />
+      <Route path="/encontro/ficha/:token" component={EncontroFichaPublica} />
       <Route path="/visite-nos" component={VisiteNos} />
       <Route path="/visitante" component={PortalVisitante} />
       <Route path="/cadastro-sucesso" component={CadastroSucesso} />
@@ -226,6 +229,12 @@ function Router() {
       <Route path="/app/batismo">
         <AppPage title="Batismo nas Águas">
           <Batismo />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/encontro-com-deus/:eventId">
+        <AppPage title="Encontro com Deus">
+          <EncontroComDeusDetalhe />
         </AppPage>
       </Route>
 

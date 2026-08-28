@@ -1,4 +1,5 @@
 import { COOKIE_NAME } from "@shared/const";
+import { randomBytes } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS } from "../shared/socialMedia";
@@ -213,11 +214,34 @@ import {
   enrollInBaptism,
   updateBaptismEnrollment,
   // Encontro com Deus
-  getEncounterEventsByChurch,
-  getEncounterEnrollments,
+  addEncounterHistory,
+  createEncounterChecklistItem,
   createEncounterEvent,
+  createEncounterServantAssignment,
+  createEncounterTeam,
+  deactivateEncounterServantAssignment,
   enrollInEncounter,
+  getEncounterChecklist,
+  getEncounterEnrollmentById,
+  getEncounterEnrollments,
+  getEncounterEventById,
+  getEncounterEventsByChurch,
+  getEncounterManagedEventIds,
+  getEncounterHistory,
+  getEncounterOverview,
+  getEncounterPublicFormByEvent,
+  getEncounterPublicFormByToken,
+  getEncounterServants,
+  getEncounterTeamById,
+  getEncounterTeams,
+  rotateEncounterPublicForm,
+  setEncounterPublicFormActive,
+  submitEncounterDiscipleForm,
+  updateEncounterChecklistItem,
+  updateEncounterDiscipleFormReview,
   updateEncounterEnrollment,
+  updateEncounterEvent,
+  updateEncounterTeam,
   // Escola de Líderes
   getLeadershipClassesByChurch,
   getLeadershipEnrollments,
@@ -3898,58 +3922,312 @@ const batismoRouter = router({
 });
 
 // ─── ENCONTRO COM DEUS ROUTER ─────────────────────────────────────────────────
+
+async function getEncounterAccess(userId: number, churchId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, actor);
+  const canManageAll = roles.some((role) => CHURCH_ADMIN_ROLES.has(role));
+  const managedEventIds = actor.personId ? await getEncounterManagedEventIds(churchId, actor.personId) : [];
+  return { actor, roles, canManageAll, managedEventIds };
+}
+
+async function requireEncounterModuleAccess(userId: number, churchId: number) {
+  const access = await getEncounterAccess(userId, churchId);
+  if (!access.canManageAll && access.managedEventIds.length === 0) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "A gestão do Encontro com Deus é restrita à liderança e aos responsáveis designados." });
+  }
+  return access;
+}
+
+async function requireEncounterEventAccess(userId: number, churchId: number, eventId: number) {
+  const [access, event] = await Promise.all([
+    getEncounterAccess(userId, churchId),
+    getEncounterEventById(eventId, churchId),
+  ]);
+  if (!event) throw new TRPCError({ code: "NOT_FOUND", message: "Encontro não encontrado nesta igreja." });
+  if (!access.canManageAll && !access.managedEventIds.includes(eventId)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Você não é responsável por este encontro." });
+  }
+  return { ...access, event };
+}
+
+function throwEncounterMutationError(error: unknown): never {
+  const message = error instanceof Error ? error.message : "";
+  if (message === "ENCOUNTER_UNAVAILABLE") throw new TRPCError({ code: "BAD_REQUEST", message: "Este encontro não aceita novas alterações." });
+  if (message === "ENCOUNTER_DUPLICATE_ENROLLMENT") throw new TRPCError({ code: "CONFLICT", message: "Esta Pessoa já está inscrita neste encontro." });
+  if (message === "ENCOUNTER_DUPLICATE_SERVANT_ASSIGNMENT") throw new TRPCError({ code: "CONFLICT", message: "Esta Pessoa já possui esta função no encontro." });
+  if (message === "ENCOUNTER_CAPACITY_REACHED") throw new TRPCError({ code: "CONFLICT", message: "O encontro atingiu o limite de discípulos." });
+  if (message === "ENCOUNTER_PUBLIC_FORM_UNAVAILABLE") throw new TRPCError({ code: "NOT_FOUND", message: "Esta ficha não está disponível para novos envios." });
+  if (message === "ENCOUNTER_FORM_ALREADY_SUBMITTED") throw new TRPCError({ code: "CONFLICT", message: "Sua ficha já foi recebida para este encontro. Procure a liderança se precisar corrigir alguma informação." });
+  throw error;
+}
+
+const encounterEventStatusSchema = z.enum(["rascunho", "planejamento", "confirmado", "em_andamento", "encerrado", "cancelado"]);
+const encounterEnrollmentStatusSchema = z.enum(["inscrito", "confirmado", "participou", "concluiu", "cancelado"]);
+const encounterReviewStatusSchema = z.enum(["recebida", "em_analise", "confirmada", "precisa_correcao", "rejeitada"]);
+const encounterTeamCategorySchema = z.enum(["lideranca", "espiritual", "apoio", "operacional", "manual"]);
+const encounterChecklistCategorySchema = z.enum(["estrutura", "discipulos", "servos", "intercessao", "alimentacao", "logistica", "comunicacao", "pos_encontro", "outro"]);
+
 const encontroRouter = router({
+  hasAccess: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const access = await getEncounterAccess(ctx.user.id, input.churchId);
+      return access.canManageAll || access.managedEventIds.length > 0;
+    }),
+  accessSummary: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const access = await getEncounterAccess(ctx.user.id, input.churchId);
+      return { hasAccess: access.canManageAll || access.managedEventIds.length > 0, canManageAll: access.canManageAll };
+    }),
   listEvents: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      return getEncounterEventsByChurch(input.churchId);
+      const access = await requireEncounterModuleAccess(ctx.user.id, input.churchId);
+      const events = await getEncounterEventsByChurch(input.churchId);
+      return access.canManageAll ? events : events.filter((event) => access.managedEventIds.includes(event.id));
+    }),
+  getOverview: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      const overview = await getEncounterOverview(input.eventId, input.churchId);
+      return { ...overview, access: { canManageAll: access.canManageAll } };
     }),
   getEnrollments: protectedProcedure
     .input(z.object({ eventId: z.number(), churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
       return getEncounterEnrollments(input.eventId, input.churchId);
     }),
   createEvent: protectedProcedure
     .input(z.object({
       churchId: z.number(),
-      name: z.string().min(2),
-      date: z.string(),
-      endDate: z.string().optional(),
-      location: z.string().optional(),
-      maxParticipants: z.number().optional(),
-      description: z.string().optional(),
+      name: z.string().trim().min(2).max(255),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      location: z.string().trim().max(255).optional(),
+      maxParticipants: z.number().int().min(1).max(10000).optional(),
+      description: z.string().trim().max(4000).optional(),
+      status: encounterEventStatusSchema.optional(),
+      responsiblePersonId: z.number().int().positive().optional(),
+      generalNotes: z.string().trim().max(4000).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      await createEncounterEvent(input);
-      return { success: true };
+      const actor = await requireChurchAdministrator(ctx.user.id, input.churchId);
+      if (input.endDate && input.endDate < input.date) throw new TRPCError({ code: "BAD_REQUEST", message: "A data final não pode ser anterior à data inicial." });
+      if (input.responsiblePersonId && !(await getPersonById(input.responsiblePersonId, input.churchId))) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O responsável precisa pertencer a esta igreja." });
+      }
+      const event = await createEncounterEvent({ ...input, responsiblePersonId: input.responsiblePersonId ?? actor.personId ?? null });
+      return { success: true, eventId: event.id };
     }),
-  enroll: protectedProcedure
-    .input(z.object({ encounterEventId: z.number(), personId: z.number(), churchId: z.number() }))
-    .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
-      const [event, person] = await Promise.all([
-        getEncounterEventsByChurch(input.churchId).then((items) => items.find((item) => item.id === input.encounterEventId)),
-        getPersonById(input.personId, input.churchId),
-      ]);
-      if (!event || !person) throw new TRPCError({ code: "BAD_REQUEST", message: "Encontro e Pessoa devem pertencer a esta igreja." });
-      await enrollInEncounter(input);
-      return { success: true };
-    }),
-  updateEnrollment: protectedProcedure
+  updateEvent: protectedProcedure
     .input(z.object({
       id: z.number(),
       churchId: z.number(),
-      status: z.enum(["inscrito", "confirmado", "participou", "concluiu", "cancelado"]).optional(),
-      completedAt: z.date().nullable().optional(),
+      name: z.string().trim().min(2).max(255).optional(),
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+      location: z.string().trim().max(255).nullable().optional(),
+      maxParticipants: z.number().int().min(1).max(10000).nullable().optional(),
+      description: z.string().trim().max(4000).nullable().optional(),
+      status: encounterEventStatusSchema.optional(),
+      responsiblePersonId: z.number().int().positive().nullable().optional(),
+      generalNotes: z.string().trim().max(4000).nullable().optional(),
+      active: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      await updateEncounterEnrollment(input.id, input.churchId, { status: input.status, completedAt: input.completedAt });
+      const { id, churchId, ...changes } = input;
+      const access = await requireEncounterEventAccess(ctx.user.id, churchId, id);
+      if (changes.responsiblePersonId !== undefined && !access.canManageAll) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente a administração pode alterar o responsável pelo encontro." });
+      }
+      if (changes.responsiblePersonId && !(await getPersonById(changes.responsiblePersonId, churchId))) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O responsável precisa pertencer a esta igreja." });
+      }
+      if (changes.active === false && !access.canManageAll) throw new TRPCError({ code: "FORBIDDEN", message: "Somente a administração pode arquivar encontros." });
+      await updateEncounterEvent(id, churchId, changes);
+      await addEncounterHistory({ churchId, encounterEventId: id, actorPersonId: access.actor.personId ?? null, action: changes.status ? `encontro_${changes.status}` : "encontro_atualizado", entityType: "encontro", entityId: id, details: changes });
       return { success: true };
     }),
+  enroll: protectedProcedure
+    .input(z.object({ encounterEventId: z.number(), personId: z.number(), churchId: z.number(), notes: z.string().trim().max(2000).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireEncounterEventAccess(ctx.user.id, input.churchId, input.encounterEventId);
+      if (!(await getPersonById(input.personId, input.churchId))) throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja." });
+      try {
+        const enrollment = await enrollInEncounter({ ...input, source: "manual" });
+        return { success: true, enrollmentId: enrollment.id };
+      } catch (error) {
+        throwEncounterMutationError(error);
+      }
+    }),
+  updateEnrollment: protectedProcedure
+    .input(z.object({ id: z.number(), churchId: z.number(), status: encounterEnrollmentStatusSchema.optional(), notes: z.string().trim().max(2000).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const enrollment = await getEncounterEnrollmentById(input.id, input.churchId);
+      if (!enrollment) throw new TRPCError({ code: "NOT_FOUND", message: "Inscrição não encontrada nesta igreja." });
+      await requireEncounterEventAccess(ctx.user.id, input.churchId, enrollment.encounterEventId);
+      await updateEncounterEnrollment(input.id, input.churchId, { status: input.status, notes: input.notes });
+      return { success: true };
+    }),
+  reviewDiscipleForm: protectedProcedure
+    .input(z.object({ id: z.number(), eventId: z.number(), churchId: z.number(), reviewStatus: encounterReviewStatusSchema, reviewNotes: z.string().trim().max(2000).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      const result = await updateEncounterDiscipleFormReview({ id: input.id, eventId: input.eventId, churchId: input.churchId, reviewStatus: input.reviewStatus, reviewNotes: input.reviewNotes, reviewedByPersonId: access.actor.personId ?? null });
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Ficha não encontrada neste encontro." });
+      return { success: true };
+    }),
+  listTeams: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      return getEncounterTeams(input.eventId, input.churchId);
+    }),
+  createTeam: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number(), parentTeamId: z.number().nullable().optional(), name: z.string().trim().min(2).max(120), category: encounterTeamCategorySchema, requiredCount: z.number().int().min(1).max(1000).nullable().optional(), notes: z.string().trim().max(2000).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      if (input.parentTeamId) {
+        const parent = await getEncounterTeamById(input.parentTeamId, input.churchId);
+        if (!parent || parent.encounterEventId !== input.eventId) throw new TRPCError({ code: "BAD_REQUEST", message: "A equipe superior precisa pertencer a este encontro." });
+      }
+      const result = await createEncounterTeam({ churchId: input.churchId, encounterEventId: input.eventId, parentTeamId: input.parentTeamId ?? null, name: input.name, category: input.category, source: "manual", requiredCount: input.requiredCount ?? null, notes: input.notes ?? null, active: true });
+      await addEncounterHistory({ churchId: input.churchId, encounterEventId: input.eventId, actorPersonId: access.actor.personId ?? null, action: "equipe_criada", entityType: "equipe", entityId: result.id, details: { name: input.name, category: input.category } });
+      return { success: true, teamId: result.id };
+    }),
+  updateTeam: protectedProcedure
+    .input(z.object({ id: z.number(), eventId: z.number(), churchId: z.number(), name: z.string().trim().min(2).max(120).optional(), category: encounterTeamCategorySchema.optional(), requiredCount: z.number().int().min(1).max(1000).nullable().optional(), notes: z.string().trim().max(2000).nullable().optional(), active: z.boolean().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      const team = await getEncounterTeamById(input.id, input.churchId);
+      if (!team || team.encounterEventId !== input.eventId) throw new TRPCError({ code: "NOT_FOUND", message: "Equipe não encontrada neste encontro." });
+      const { id, eventId, churchId, ...changes } = input;
+      await updateEncounterTeam(id, churchId, changes);
+      await addEncounterHistory({ churchId, encounterEventId: eventId, actorPersonId: access.actor.personId ?? null, action: changes.active === false ? "equipe_desativada" : "equipe_atualizada", entityType: "equipe", entityId: id, details: changes });
+      return { success: true };
+    }),
+  listServants: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      return getEncounterServants(input.eventId, input.churchId);
+    }),
+  assignServant: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number(), personId: z.number(), teamId: z.number().nullable().optional(), roleKey: z.string().trim().max(64).nullable().optional(), roleName: z.string().trim().min(2).max(120), roleSource: z.enum(["catalogo", "manual"]), assignmentType: z.enum(["responsavel", "membro", "substituto"]), notes: z.string().trim().max(2000).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      const [person, team] = await Promise.all([
+        getPersonById(input.personId, input.churchId),
+        input.teamId ? getEncounterTeamById(input.teamId, input.churchId) : Promise.resolve(null),
+      ]);
+      if (!person) throw new TRPCError({ code: "BAD_REQUEST", message: "O servo precisa pertencer a esta igreja." });
+      if (input.teamId && (!team || team.encounterEventId !== input.eventId)) throw new TRPCError({ code: "BAD_REQUEST", message: "A equipe precisa pertencer a este encontro." });
+      try {
+        const result = await createEncounterServantAssignment({ churchId: input.churchId, encounterEventId: input.eventId, personId: input.personId, teamId: input.teamId ?? null, roleKey: input.roleKey ?? null, roleName: input.roleName, roleSource: input.roleSource, assignmentType: input.assignmentType, notes: input.notes ?? null, active: true });
+        return { success: true, assignmentId: result.id };
+      } catch (error) {
+        throwEncounterMutationError(error);
+      }
+    }),
+  removeServant: protectedProcedure
+    .input(z.object({ id: z.number(), eventId: z.number(), churchId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      await deactivateEncounterServantAssignment(input.id, input.eventId, input.churchId);
+      await addEncounterHistory({ churchId: input.churchId, encounterEventId: input.eventId, actorPersonId: access.actor.personId ?? null, action: "servo_retirado", entityType: "servo", entityId: input.id });
+      return { success: true };
+    }),
+  listChecklist: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      return getEncounterChecklist(input.eventId, input.churchId);
+    }),
+  createChecklistItem: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number(), title: z.string().trim().min(2).max(255), category: encounterChecklistCategorySchema, assignedPersonId: z.number().nullable().optional(), dueAt: z.date().nullable().optional(), notes: z.string().trim().max(2000).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      if (input.assignedPersonId && !(await getPersonById(input.assignedPersonId, input.churchId))) throw new TRPCError({ code: "BAD_REQUEST", message: "O responsável pela tarefa precisa pertencer a esta igreja." });
+      const result = await createEncounterChecklistItem({ churchId: input.churchId, encounterEventId: input.eventId, title: input.title, category: input.category, assignedPersonId: input.assignedPersonId ?? null, dueAt: input.dueAt ?? null, notes: input.notes ?? null, status: "pendente" });
+      await addEncounterHistory({ churchId: input.churchId, encounterEventId: input.eventId, actorPersonId: access.actor.personId ?? null, action: "checklist_criado", entityType: "checklist", entityId: result.id, details: { title: input.title, category: input.category } });
+      return { success: true, itemId: result.id };
+    }),
+  updateChecklistItem: protectedProcedure
+    .input(z.object({ id: z.number(), eventId: z.number(), churchId: z.number(), title: z.string().trim().min(2).max(255).optional(), category: encounterChecklistCategorySchema.optional(), assignedPersonId: z.number().nullable().optional(), dueAt: z.date().nullable().optional(), status: z.enum(["pendente", "em_andamento", "concluida", "cancelada"]).optional(), notes: z.string().trim().max(2000).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      if (input.assignedPersonId && !(await getPersonById(input.assignedPersonId, input.churchId))) throw new TRPCError({ code: "BAD_REQUEST", message: "O responsável pela tarefa precisa pertencer a esta igreja." });
+      const { id, eventId, churchId, ...changes } = input;
+      await updateEncounterChecklistItem(id, eventId, churchId, { ...changes, completedAt: changes.status === "concluida" ? new Date() : changes.status ? null : undefined });
+      await addEncounterHistory({ churchId, encounterEventId: eventId, actorPersonId: access.actor.personId ?? null, action: changes.status ? `checklist_${changes.status}` : "checklist_atualizado", entityType: "checklist", entityId: id, details: changes });
+      return { success: true };
+    }),
+  getHistory: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      return getEncounterHistory(input.eventId, input.churchId);
+    }),
+  getPublicForm: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      return getEncounterPublicFormByEvent(input.eventId, input.churchId);
+    }),
+  rotatePublicForm: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number(), expiresAt: z.date().nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      const result = await rotateEncounterPublicForm({ churchId: input.churchId, encounterEventId: input.eventId, publicToken: randomBytes(32).toString("base64url"), createdByPersonId: access.actor.personId ?? null, expiresAt: input.expiresAt ?? null });
+      return { success: true, publicToken: result.publicToken };
+    }),
+  setPublicFormActive: protectedProcedure
+    .input(z.object({ eventId: z.number(), churchId: z.number(), active: z.boolean() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireEncounterEventAccess(ctx.user.id, input.churchId, input.eventId);
+      await setEncounterPublicFormActive({ churchId: input.churchId, encounterEventId: input.eventId, active: input.active, actorPersonId: access.actor.personId ?? null });
+      return { success: true };
+    }),
+  publicForm: router({
+    get: publicProcedure
+      .input(z.object({ token: z.string().min(32).max(96) }))
+      .query(async ({ input, ctx }) => {
+        const resolved = await getEncounterPublicFormByToken(input.token);
+        if (!resolved || !ctx.tenantChurchId || !ctx.tenantSlug || resolved.church.id !== ctx.tenantChurchId || resolved.church.slug !== ctx.tenantSlug) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Ficha não encontrada ou indisponível." });
+        }
+        return resolved;
+      }),
+    submit: publicProcedure
+      .input(z.object({
+        token: z.string().min(32).max(96),
+        fullName: z.string().trim().min(3).max(255),
+        age: z.number().int().min(1).max(120),
+        phone: z.string().trim().min(10).max(20),
+        guardianName: z.string().trim().min(2).max(255),
+        guardianPhone: z.string().trim().min(10).max(20),
+        friendName: z.string().trim().min(2).max(255),
+        friendPhone: z.string().trim().min(10).max(20),
+        attendingChurch: z.string().trim().min(2).max(255),
+        invitedByName: z.string().trim().min(2).max(255),
+        consentAccepted: z.literal(true),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const resolved = await getEncounterPublicFormByToken(input.token);
+        if (!resolved || !ctx.tenantChurchId || !ctx.tenantSlug || resolved.church.id !== ctx.tenantChurchId || resolved.church.slug !== ctx.tenantSlug) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Envie a ficha pelo endereço oficial da igreja correta." });
+        }
+        try {
+          return await submitEncounterDiscipleForm({ publicToken: input.token, fullName: input.fullName, age: input.age, phone: input.phone, guardianName: input.guardianName, guardianPhone: input.guardianPhone, friendName: input.friendName, friendPhone: input.friendPhone, attendingChurch: input.attendingChurch, invitedByName: input.invitedByName, consentAccepted: true });
+        } catch (error) {
+          throwEncounterMutationError(error);
+        }
+      }),
+  }),
 });
 
 // ─── ESCOLA DE LÍDERES ROUTER ─────────────────────────────────────────────────
