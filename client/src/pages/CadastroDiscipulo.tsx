@@ -10,6 +10,7 @@ type RegistrationForm = {
   name: string;
   email: string;
   password: string;
+  passwordConfirmation: string;
   birthDate: string;
   phone: string;
   whatsapp: string;
@@ -34,6 +35,7 @@ const INITIAL_FORM: RegistrationForm = {
   name: "",
   email: "",
   password: "",
+  passwordConfirmation: "",
   birthDate: "",
   phone: "",
   whatsapp: "",
@@ -60,6 +62,7 @@ export default function CadastroDiscipulo() {
   const { data: tenant, isLoading } = trpc.tenantPublic.current.useQuery(undefined, { enabled: Boolean(slug) });
   const [form, setForm] = useState<RegistrationForm>(INITIAL_FORM);
   const [sent, setSent] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
   const [cepStatus, setCepStatus] = useState<"idle" | "loading" | "found" | "not-found">("idle");
   const [cepError, setCepError] = useState("");
   const lookupSequence = useRef(0);
@@ -122,6 +125,11 @@ export default function CadastroDiscipulo() {
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (form.password !== form.passwordConfirmation) {
+      setPasswordError("As senhas não coincidem. Confira os dois campos antes de continuar.");
+      return;
+    }
+    setPasswordError("");
     register.mutate({
       churchSlug: slug,
       name: form.name.trim(),
@@ -171,9 +179,9 @@ export default function CadastroDiscipulo() {
             <div className="tenant-registration-form-grid"><label><span>Bairro</span><input type="text" autoComplete="address-level3" maxLength={100} value={form.neighborhood} onChange={(event) => updateField("neighborhood", event.target.value)} /></label><label><span>Cidade</span><input type="text" autoComplete="address-level2" maxLength={100} value={form.city} onChange={(event) => updateField("city", event.target.value)} /></label></div>
             <div className="tenant-registration-form-grid"><label><span>Estado</span><input type="text" autoComplete="address-level1" maxLength={2} placeholder="UF" value={form.state} onChange={(event) => updateField("state", event.target.value.toUpperCase().slice(0, 2))} /></label><div /></div>
 
-            <label><span>Crie uma senha *</span><input required minLength={8} type="password" autoComplete="new-password" value={form.password} onChange={(event) => updateField("password", event.target.value)} /><small>Você usará esta senha depois que o cadastro for aprovado.</small></label>
+            <div className="tenant-registration-form-grid"><label><span>Crie uma senha *</span><input required minLength={8} type="password" autoComplete="new-password" value={form.password} onChange={(event) => { updateField("password", event.target.value); setPasswordError(""); }} /><small>Use pelo menos 8 caracteres. Você usará esta senha depois que o cadastro for aprovado.</small></label><label><span>Confirme sua senha *</span><input required minLength={8} type="password" autoComplete="new-password" value={form.passwordConfirmation} onChange={(event) => { updateField("passwordConfirmation", event.target.value); setPasswordError(""); }} />{(passwordError || (form.passwordConfirmation && form.password !== form.passwordConfirmation)) && <small className="tenant-registration-field-error" role="alert">{passwordError || "As senhas não coincidem."}</small>}</label></div>
             {register.error && <p className="tenant-registration-error" role="alert">{register.error.message}</p>}
-            <button type="submit" disabled={register.isPending}>{register.isPending ? "Enviando cadastro..." : "Enviar cadastro"}</button>
+            <button type="submit" disabled={register.isPending || !form.passwordConfirmation || form.password !== form.passwordConfirmation}>{register.isPending ? "Enviando cadastro..." : "Enviar cadastro"}</button>
           </form>
           <p className="tenant-registration-login">Já possui acesso? <Link href="/login">Entrar na plataforma</Link></p>
         </section>}

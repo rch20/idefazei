@@ -70,6 +70,9 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(cadastroSource).toContain("Cadastro recebido");
     expect(cadastroSource).toContain("A liderança da");
     expect(cadastroSource).toContain("Data de nascimento");
+    expect(cadastroSource).toContain("Confirme sua senha");
+    expect(cadastroSource).toContain("As senhas não coincidem");
+    expect(cadastroSource).toContain("!form.passwordConfirmation");
     expect(cadastroSource).toContain("Informe o CEP primeiro");
     expect(cadastroSource).toContain("https://viacep.com.br/ws/");
     expect(cadastroSource).toContain("Endereço preenchido");
