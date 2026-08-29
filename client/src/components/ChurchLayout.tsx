@@ -361,7 +361,7 @@ function TopBar({
         )}
       </div>
       <div className="flex items-center gap-2">
-        {showPastoralSupport && pastoralSupport.url && <a href={pastoralSupport.url} target="_blank" rel="noreferrer" className="inline-flex max-w-[13rem] items-center gap-1.5 rounded-full border border-gold/35 bg-gold/10 px-2.5 py-1.5 text-xs font-semibold text-navy transition-colors hover:bg-gold/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70" aria-label={`${pastoralSupport.label} — atendimento pastoral externo`} title={pastoralSupport.label}><MessageCircle className="h-4 w-4 shrink-0 text-gold" /><span className="hidden truncate sm:inline">{pastoralSupport.label}</span><ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" /></a>}
+        {showPastoralSupport && pastoralSupport.url && <a href={pastoralSupport.url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 max-w-[min(18rem,32vw)] items-center gap-1.5 rounded-full border border-gold/35 bg-gold/10 px-2.5 py-1.5 text-xs font-semibold text-navy transition-colors hover:bg-gold/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 md:px-3" aria-label={`${pastoralSupport.label} — atendimento pastoral externo`} title={pastoralSupport.label}><MessageCircle className="h-4 w-4 shrink-0 text-gold" /><span className="hidden min-w-0 truncate sm:inline">{pastoralSupport.label}</span><ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" /></a>}
         <span className="text-xs text-muted-foreground hidden sm:block">
           Plataforma de Discipulado
         </span>

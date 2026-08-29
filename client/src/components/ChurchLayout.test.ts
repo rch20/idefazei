@@ -26,6 +26,7 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain("shouldShowPastoralSupport(pastoralSupport, \"authenticated\")");
     expect(source).toContain("atendimento pastoral externo");
     expect(source).toContain('target="_blank" rel="noreferrer"');
+    expect(source).toContain("shrink-0 max-w-[min(18rem,32vw)]");
     expect(source).toContain("const pastoralSupport = normalizePastoralSupportConfig(church?.pastoralSupport)");
   });
 
