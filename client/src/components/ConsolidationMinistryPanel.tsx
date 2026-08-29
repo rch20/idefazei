@@ -50,15 +50,17 @@ export function ConsolidationMinistryPanel({ churchId }: { churchId: number }) {
   const structure = trpc.consolidation.structure.useQuery({ churchId });
 
   if (structure.isLoading) return <section className="h-32 animate-pulse rounded-2xl bg-muted" />;
-  if (!structure.data?.ministry) return null;
+  if (!structure.data?.ministry && !structure.data?.visitsMinistry) return null;
   const canConfigure = structure.data.capabilities.canConfigure;
   const candidates = structure.data.people ?? [];
   const departments = structure.data.departments ?? [];
+  const standaloneVisits = !structure.data.ministry && Boolean(structure.data.visitsMinistry);
+  const ministryName = structure.data.ministry?.name ?? structure.data.visitsMinistry?.name ?? "Ministério de Visitas";
 
   return (
     <section className="rounded-2xl border border-gold/25 bg-gold/[0.04] p-4 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-start gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/15"><ShieldCheck className="h-5 w-5 text-gold-dark" /></div><div><h2 className="font-display text-lg font-semibold text-navy">{structure.data.ministry.name}</h2><p className="mt-1 text-xs text-muted-foreground">Pastores definem Líder e Supervisor; cada responsável gerencia somente seu Departamento.</p></div></div>
+        <div className="flex items-start gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/15"><ShieldCheck className="h-5 w-5 text-gold-dark" /></div><div><h2 className="font-display text-lg font-semibold text-navy">{ministryName}</h2><p className="mt-1 text-xs text-muted-foreground">{standaloneVisits ? "O Pastor define o líder; o líder organiza os Visitadores na aba Ministérios e a equipe aceita as visitas nesta área." : "Pastores definem Líder e Supervisor; cada responsável gerencia somente seu Departamento."}</p></div></div>
         <Badge variant="outline" className="w-fit border-gold/30 bg-background text-navy">Estrutura ministerial</Badge>
       </div>
       {canConfigure && candidates.length === 0 && <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Cadastre as Pessoas e vincule suas contas antes de definir a liderança.</p>}

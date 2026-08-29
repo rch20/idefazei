@@ -60,6 +60,7 @@ export type ChurchAccessSummary = {
   isConsolidator: boolean;
   isVisitador: boolean;
   isPastoralWorker: boolean;
+  canAccessVisits: boolean;
   canManageCells: boolean;
   canManageMinistry: boolean;
   canManageLibrary: boolean;
@@ -104,7 +105,7 @@ const navItems: NavItem[] = [
   { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "principal", accessKey: "isExecutive" },
   { icon: TreePine, label: "Árvore de Discipulado", path: "/app/arvore", group: "principal", accessKey: "isExecutive" },
   { icon: Flame, label: "Ganhar Almas", path: "/app/almas", group: "discipulado" },
-  { icon: Heart, label: "Consolidação", path: "/app/consolidacao", group: "discipulado", accessKey: "isPastoralWorker" },
+  { icon: Heart, label: "Consolidação", path: "/app/consolidacao", group: "discipulado", accessKey: "canAccessVisits" },
   { icon: ChevronRight, label: "Funil de Discipulado", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
   { icon: Users, label: "Pessoas", path: "/app/pessoas", group: "membros", accessKey: "isExecutive" },
   { icon: Home, label: "Famílias", path: "/app/familias", group: "membros", accessKey: "isExecutive" },

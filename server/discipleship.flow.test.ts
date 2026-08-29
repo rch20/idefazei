@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getEventAttendanceReport, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getEventAttendanceReport, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -195,6 +195,7 @@ vi.mock("./db", () => ({
   removePersonFromDepartment: vi.fn().mockResolvedValue(true),
   isActiveDepartmentMember: vi.fn().mockResolvedValue(true),
   isActiveConsolidationMinistryMember: vi.fn().mockResolvedValue(false),
+  isActiveVisitsMinistryMember: vi.fn().mockResolvedValue(false),
   assignDepartmentRole: vi.fn().mockResolvedValue({ id: 81, churchId: 100, departmentId: 31, personId: 10, roleKey: "coordenador_vocal", active: true }),
   endDepartmentRole: vi.fn().mockResolvedValue(true),
   isActiveMinistryMember: vi.fn().mockResolvedValue(true),
@@ -203,6 +204,7 @@ vi.mock("./db", () => ({
   updateScheduleItem: vi.fn().mockResolvedValue({ id: 41, churchId: 100, ministryId: 7, personId: 10, status: "agendada" }),
   cancelScheduleItem: vi.fn().mockResolvedValue({ id: 41, churchId: 100, ministryId: 7, personId: 10, status: "cancelada", cancelReason: "Voluntário indisponível" }),
   assignPersonToMinistry: vi.fn().mockResolvedValue({ id: 1 }),
+  acceptCareVisit: vi.fn().mockResolvedValue({ id: 1, churchId: 100, assignedToPersonId: 10, status: "solicitada" }),
   getAnnouncements: vi.fn().mockResolvedValue([]),
   getTenantPublicSiteByChurchId: vi.fn().mockResolvedValue({ site: { status: "published" }, theme: null, sections: [], revisions: [] }),
   getAnnouncementsByChurch: vi.fn().mockResolvedValue([]),
@@ -351,6 +353,7 @@ describe("Fluxo completo de discipulado", () => {
     (isActiveMinistryMember as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(true);
     (isActiveDepartmentMember as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(true);
     (isActiveConsolidationMinistryMember as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(false);
+    (isActiveVisitsMinistryMember as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue(false);
   });
 
   describe("Diagnósticos de inicialização", () => {
@@ -731,6 +734,30 @@ describe("Fluxo completo de discipulado", () => {
 
       expect(ministry).toMatchObject({ id: 9, type: "consolidacao", leaderId: 10 });
       expect(createMinistry).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, name: "Consolidação e Visitas", type: "consolidacao", leaderId: 10 }), [11]);
+    });
+
+    it("permite ao Pastor criar o Ministério de Visitas com líder e envolvidos", async () => {
+      (createMinistry as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 12, churchId: CHURCH_ID, name: "Ministério de Visitas", type: "visitas", leaderId: 10, active: true });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const ministry = await caller.ministries.create({ churchId: CHURCH_ID, name: "Ministério de Visitas", type: "visitas", leaderId: 10, participantIds: [11] });
+
+      expect(ministry).toMatchObject({ id: 12, type: "visitas", leaderId: 10 });
+      expect(createMinistry).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, name: "Ministério de Visitas", type: "visitas", leaderId: 10 }), [11]);
+    });
+
+    it("libera a aba e a função de Visitador para usuário vinculado ao Ministério de Visitas", async () => {
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "membro", active: true });
+      (isActiveVisitsMinistryMember as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      const access = await caller.churchAuth.accessSummary({ churchId: CHURCH_ID });
+
+      expect(access.isVisitador).toBe(true);
+      expect(access.isPastoralWorker).toBe(false);
+      expect(access.canAccessVisits).toBe(true);
+      expect(access.roles).toContain("visitador");
+      expect(isActiveVisitsMinistryMember).toHaveBeenCalledWith(10, CHURCH_ID);
     });
 
     it("libera a aba e a função de Consolidador para usuário vinculado a participante ativo", async () => {
@@ -1904,6 +1931,24 @@ describe("Fluxo completo de discipulado", () => {
       await caller.ministries.assignFunction({ churchId: CHURCH_ID, personId: 10, ministryId: 7, roleKey: "visitador" });
       expect(assignMinistryRole).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, personId: 10, ministryId: 7, roleKey: "visitador" }));
       expect(getMinistriesByChurch).toHaveBeenCalledWith(CHURCH_ID);
+    });
+
+    it("permite ao Visitador ver a fila e aceitar uma Visita disponível", async () => {
+      const { getActiveChurchUserById, getCareVisitsByChurch, getConsolidationReferralsByChurch, getPeopleByChurch, getCareVisitById, acceptCareVisit } = await import("./db");
+      vi.mocked(getActiveChurchUserById).mockResolvedValue({ id: 2, churchId: CHURCH_ID, personId: 10, role: "membro", active: true } as any);
+      vi.mocked(isActiveVisitsMinistryMember).mockResolvedValue(true);
+      vi.mocked(getCareVisitsByChurch).mockResolvedValueOnce([{ id: 402, churchId: CHURCH_ID, referralId: 52, assignedToPersonId: null, requestedByPersonId: 12, status: "solicitada", scheduledAt: null, reason: "Visita de cuidado", createdAt: new Date("2026-08-20T12:00:00Z") }] as any);
+      vi.mocked(getConsolidationReferralsByChurch).mockResolvedValueOnce([{ id: 52, churchId: CHURCH_ID, personId: 1, acceptedByPersonId: 12, reason: "Ausência recorrente" }] as any);
+      vi.mocked(getPeopleByChurch).mockResolvedValueOnce([{ id: 1, churchId: CHURCH_ID, fullName: "Pessoa Visitada" }, { id: 10, churchId: CHURCH_ID, fullName: "Visitador" }] as any);
+      vi.mocked(getCareVisitById).mockResolvedValue({ id: 402, churchId: CHURCH_ID, referralId: 52, assignedToPersonId: null, status: "solicitada", scheduledAt: null } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      const visits = await caller.consolidation.visits({ churchId: CHURCH_ID });
+      await caller.consolidation.acceptVisit({ churchId: CHURCH_ID, visitId: 402 });
+
+      expect(visits).toHaveLength(1);
+      expect(visits[0]).toMatchObject({ id: 402, personName: "Pessoa Visitada", canAccept: true });
+      expect(acceptCareVisit).toHaveBeenCalledWith({ churchId: CHURCH_ID, visitId: 402, personId: 10, performedByChurchUserId: 2 });
     });
 
     it("permite ao Visitador ver somente a visita atribuída à sua função", async () => {

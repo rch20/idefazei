@@ -153,6 +153,13 @@ export default function Consolidacao() {
     },
     onError: (error: { message: string }) => toast.error(error.message),
   });
+  const acceptVisit = trpc.consolidation.acceptVisit.useMutation({
+    onSuccess: async () => {
+      toast.success("Visita aceita. Ela agora está sob seu cuidado.");
+      await visitsQuery.refetch();
+    },
+    onError: (error: { message: string }) => toast.error(error.message || "Não foi possível aceitar a visita."),
+  });
   const completeVisit = trpc.consolidation.completeVisit.useMutation({
     onSuccess: async () => {
       toast.success("Visita registrada no histórico do caso.");
@@ -232,6 +239,7 @@ export default function Consolidacao() {
           <div><h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1><p className="mt-1 text-sm text-muted-foreground">Visitas atribuídas à sua função ministerial.</p></div>
           <div className="flex flex-col gap-2 sm:items-end"><div className="inline-flex rounded-lg border border-border bg-background p-1"><Button size="sm" variant="ghost" onClick={() => setActiveSection("consolidacao")}>Consolidação</Button><Button size="sm" className="bg-navy text-white hover:bg-navy-light">Visitas</Button></div><Select value={visitFilter} onValueChange={(value) => setVisitFilter(value as typeof visitFilter)}><SelectTrigger className="w-full bg-background sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendentes">Visitas pendentes</SelectItem><SelectItem value="agendadas">Agendadas</SelectItem><SelectItem value="realizadas">Realizadas</SelectItem><SelectItem value="todas">Todas as Visitas</SelectItem></SelectContent></Select></div>
         </div>
+        <ConsolidationMinistryPanel churchId={churchId} />
         {visitsQuery.isLoading ? <div className="h-44 animate-pulse rounded-xl bg-muted" /> : visits.length === 0 ? (
           <div className="card-sacred p-12 text-center"><MapPinned className="mx-auto h-8 w-8 text-amber-600" /><p className="mt-3 font-semibold text-navy">Nenhuma visita pendente</p><p className="mt-1 text-sm text-muted-foreground">Quando uma visita for atribuída a você, ela aparecerá aqui.</p></div>
         ) : <>
@@ -256,6 +264,7 @@ export default function Consolidacao() {
             <div className="mt-3 rounded-lg border border-amber-100 bg-amber-50/50 p-3 text-sm"><p><strong>Motivo:</strong> {visit.reason}</p>{visit.notes && <p className="mt-1 text-muted-foreground">{visit.notes}</p>}</div>
             {visit.contactNumber && <a href={getWhatsAppLink(visit.contactNumber, visit.personName)} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center text-sm font-medium text-green-700 hover:underline"><MessageCircle className="mr-2 h-4 w-4" />Conversar no WhatsApp</a>}
             {visit.address && <p className="mt-2 flex items-start gap-2 text-sm text-muted-foreground"><MapPinned className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />{visit.address}</p>}
+            {visit.canAccept && <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/60 p-3"><p className="text-sm text-blue-950">Esta visita está disponível para a equipe. Ao aceitar, ela ficará sob sua responsabilidade.</p><Button type="button" className="mt-2 w-full bg-navy text-white hover:bg-navy-light sm:w-auto" disabled={acceptVisit.isPending} onClick={() => acceptVisit.mutate({ churchId, visitId: visit.id })}><UserCheck className="mr-2 h-4 w-4" />{acceptVisit.isPending ? "Aceitando…" : "Aceitar visita"}</Button></div>}
             {visit.canAssign && <VisitAssignmentControl churchId={churchId} visit={{ id: visit.id, assignedToPersonId: visit.assignedToPersonId, scheduledAt: visit.scheduledAt, status: visit.status }} visitors={visitorsQuery.data ?? []} onSaved={async () => { await visitsQuery.refetch(); }} />}
             {visit.canComplete && <div className="mt-4 border-t border-border pt-3"><Label htmlFor={`visit-notes-${visit.id}`}>Registro da visita *</Label><Textarea id={`visit-notes-${visit.id}`} rows={3} className="mt-1" value={visitNotesById[visit.id] ?? ""} onChange={(event) => setVisitNotesById((current) => ({ ...current, [visit.id]: event.target.value }))} placeholder="Como foi a visita, necessidades identificadas e próximos cuidados." /><div className="mt-2 flex justify-end"><Button type="button" className="bg-green-600 text-white hover:bg-green-700" disabled={completeVisit.isPending || (visitNotesById[visit.id]?.trim().length ?? 0) < 3} onClick={() => completeVisit.mutate({ churchId, visitId: visit.id, notes: visitNotesById[visit.id].trim() })}><CheckCircle2 className="mr-2 h-4 w-4" />Registrar visita realizada</Button></div></div>}
           </article>

@@ -22,12 +22,22 @@ const MINISTRY_ICONS: Record<string, string> = {
   diaconia: "🤝",
   comunicacao: "📡",
   consolidacao: "🤍",
+  visitas: "📍",
   default: "✨",
 };
 
 function isConsolidationMinistry(ministry: { type?: string | null; name: string }) {
   const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return ministry.type === "consolidacao" || normalizedName.includes("consolidacao");
+}
+
+function isVisitsMinistry(ministry: { type?: string | null; name: string }) {
+  const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return ministry.type === "visitas" || (normalizedName.includes("visita") && !isConsolidationMinistry(ministry));
+}
+
+function isTeamMinistryType(type: string) {
+  return type === "consolidacao" || type === "visitas";
 }
 
 export default function Ministerios() {
@@ -106,9 +116,9 @@ export default function Ministerios() {
       churchId: churchId!,
       name: form.name.trim(),
       description: form.description.trim() || undefined,
-        type: form.type as "louvor" | "infantil" | "recepcao" | "midia" | "intercessao" | "evangelismo" | "casais" | "jovens" | "consolidacao" | "outro",
+        type: form.type as "louvor" | "infantil" | "recepcao" | "midia" | "intercessao" | "evangelismo" | "casais" | "jovens" | "consolidacao" | "visitas" | "outro",
         leaderId: form.leaderId ? Number(form.leaderId) : null,
-        participantIds: form.type === "consolidacao" ? form.participantIds.map(Number) : [],
+        participantIds: isTeamMinistryType(form.type) ? form.participantIds.map(Number) : [],
     });
   };
 
@@ -172,16 +182,17 @@ export default function Ministerios() {
                 </div>
                 <div>
                   <Label htmlFor="ministry-type">Tipo</Label>
-                  <Select value={form.type} onValueChange={(type) => setForm({ ...form, type, participantIds: type === "consolidacao" ? form.participantIds : [] })}>
+                  <Select value={form.type} onValueChange={(type) => setForm({ ...form, type, participantIds: isTeamMinistryType(type) ? form.participantIds : [] })}>
                     <SelectTrigger id="ministry-type" className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="louvor">Louvor</SelectItem><SelectItem value="infantil">Infantil</SelectItem><SelectItem value="recepcao">Recepção</SelectItem><SelectItem value="midia">Mídia</SelectItem><SelectItem value="intercessao">Intercessão</SelectItem><SelectItem value="evangelismo">Evangelismo</SelectItem><SelectItem value="casais">Casais</SelectItem><SelectItem value="jovens">Jovens</SelectItem><SelectItem value="consolidacao">Consolidação e Visitas</SelectItem><SelectItem value="outro">Outro</SelectItem>
+                      <SelectItem value="louvor">Louvor</SelectItem><SelectItem value="infantil">Infantil</SelectItem><SelectItem value="recepcao">Recepção</SelectItem><SelectItem value="midia">Mídia</SelectItem><SelectItem value="intercessao">Intercessão</SelectItem><SelectItem value="evangelismo">Evangelismo</SelectItem><SelectItem value="casais">Casais</SelectItem><SelectItem value="jovens">Jovens</SelectItem><SelectItem value="consolidacao">Consolidação e Visitas</SelectItem><SelectItem value="visitas">Visitas</SelectItem><SelectItem value="outro">Outro</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 {form.type === "consolidacao" && <p className="rounded-lg border border-gold/30 bg-gold/5 p-3 text-xs leading-relaxed text-navy">Os participantes deste Ministério terão acesso à aba de Consolidação como equipe de cuidado. A liderança continuará responsável por aceitar as indicações; depois da aprovação, o Consolidador atribuído poderá assumir o cuidado.</p>}
-                {form.type === "consolidacao" && canManageRoles && <div>
-                  <Label>Envolvidos na Consolidação</Label>
+                {form.type === "visitas" && <p className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs leading-relaxed text-navy">Os participantes deste Ministério terão acesso à área <strong>Consolidação → Visitas</strong> como equipe de Visitadores. O líder poderá organizar os liderados no painel da equipe, e os Visitadores poderão aceitar as visitas disponíveis para assumir o atendimento.</p>}
+                {isTeamMinistryType(form.type) && canManageRoles && <div>
+                  <Label>{form.type === "visitas" ? "Envolvidos em Visitas" : "Envolvidos na Consolidação"}</Label>
                   <div className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border bg-background p-2">
                     {(people ?? []).length === 0 ? <p className="p-2 text-xs text-muted-foreground">Nenhuma Pessoa disponível para seleção.</p> : (people ?? []).map((person) => <label key={person.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-navy hover:bg-muted"><input type="checkbox" checked={form.participantIds.includes(String(person.id))} onChange={(event) => setForm((current) => ({ ...current, participantIds: event.target.checked ? Array.from(new Set([...current.participantIds, String(person.id)])) : current.participantIds.filter((id) => id !== String(person.id)) }))} />{person.fullName}</label>)}
                   </div>
@@ -251,7 +262,7 @@ export default function Ministerios() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {filtered.map((ministry: { id: number; name: string; type?: string | null; description?: string | null; memberCount?: number; leaderId?: number | null; leaderName?: string | null }) => {
-              const key = isConsolidationMinistry(ministry) ? "consolidacao" : ministry.name.toLowerCase().replace(/\s+/g, "");
+              const key = isConsolidationMinistry(ministry) ? "consolidacao" : isVisitsMinistry(ministry) ? "visitas" : ministry.name.toLowerCase().replace(/\s+/g, "");
               const icon = Object.keys(MINISTRY_ICONS).find((k) => key.includes(k)) ?? "default";
               return (
                 <div
@@ -269,6 +280,7 @@ export default function Ministerios() {
                   </div>
                   <h3 className="font-semibold text-navy text-sm mb-1">{ministry.name}</h3>
                   {isConsolidationMinistry(ministry) && <Badge variant="outline" className="mb-2 border-gold/40 bg-gold/5 text-[10px] text-navy">Acesso à Consolidação</Badge>}
+                  {isVisitsMinistry(ministry) && <Badge variant="outline" className="mb-2 border-blue-200 bg-blue-50/70 text-[10px] text-blue-900">Acesso à Consolidação → Visitas</Badge>}
                   {ministry.description && (
                     <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{ministry.description}</p>
                   )}
@@ -291,7 +303,7 @@ export default function Ministerios() {
               <DialogTitle className="font-display text-navy">{canCreateMinistry ? "Equipe" : "Meu Ministério"}: {selectedMinistry?.name}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">{selectedMinistry && isConsolidationMinistry(selectedMinistry) ? "Adicione os envolvidos no cuidado. Cada participante ativo recebe acesso à aba de Consolidação; a aprovação da indicação e a assunção do cuidado continuam sendo etapas diferentes." : canCreateMinistry ? "Participantes, liderança e escalas permanecem isolados neste Ministério." : "Este painel mostra somente a equipe e as responsabilidades do Ministério sob sua liderança."}</p>
+              <p className="text-sm text-muted-foreground">{selectedMinistry && isConsolidationMinistry(selectedMinistry) ? "Adicione os envolvidos no cuidado. Cada participante ativo recebe acesso à aba de Consolidação; a aprovação da indicação e a assunção do cuidado continuam sendo etapas diferentes." : selectedMinistry && isVisitsMinistry(selectedMinistry) ? "Adicione os Visitadores deste Ministério. Eles poderão acessar Consolidação → Visitas e aceitar as visitas disponíveis; o líder continua responsável por organizar a equipe." : canCreateMinistry ? "Participantes, liderança e escalas permanecem isolados neste Ministério." : "Este painel mostra somente a equipe e as responsabilidades do Ministério sob sua liderança."}</p>
               {canManageRoles && <div className="rounded-xl border border-gold/30 bg-gold/5 p-3">
                 <Label htmlFor="selected-ministry-leader">Líder responsável</Label>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row">
@@ -317,7 +329,7 @@ export default function Ministerios() {
                   <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-center gap-3 px-4 py-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><span className="text-sm font-medium text-navy">{item.person.fullName}</span></div>)}</div>
                 )}
               </div>
-              {selectedMinistry?.canManage && <ConsolidationReferralBox churchId={churchId!} candidates={(ministryMembers.data ?? []).map((item) => ({ id: item.person.id, fullName: item.person.fullName }))} sourceLabel={`Ministério ${selectedMinistry.name}`} />}
+              {selectedMinistry?.canManage && isConsolidationMinistry(selectedMinistry) && <ConsolidationReferralBox churchId={churchId!} candidates={(ministryMembers.data ?? []).map((item) => ({ id: item.person.id, fullName: item.person.fullName }))} sourceLabel={`Ministério ${selectedMinistry.name}`} />}
               {selectedMinistry && churchId && <DepartmentsPanel churchId={churchId} ministry={{ id: selectedMinistry.id, name: selectedMinistry.name }} canCreateDepartment={canCreateMinistry} canAssignLeader={canManageRoles} people={people ?? []} />}
               {canCreateMinistry && <div className="rounded-xl border border-gold/30 bg-cream/40 p-4 space-y-3">
                 <p className="text-sm font-semibold text-navy">Funções personalizadas</p>

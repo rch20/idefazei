@@ -30,9 +30,15 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
 
   it("expõe o Ministério de Consolidação e seus envolvidos com acesso derivado por igreja", () => {
     expect(schemaSource).toContain('"consolidacao"');
+    expect(schemaSource).toContain('"visitas"');
     expect(routerSource).toContain("isActiveConsolidationMinistryMember");
+    expect(routerSource).toContain("isActiveVisitsMinistryMember");
+    expect(routerSource).toContain("acceptVisit");
     expect(dbSource).toContain("export async function isActiveConsolidationMinistryMember");
+    expect(dbSource).toContain("export async function isActiveVisitsMinistryMember");
+    expect(dbSource).toContain("export async function acceptCareVisit");
     expect(ministrySource).toContain('value="consolidacao"');
+    expect(ministrySource).toContain('value="visitas"');
     expect(ministrySource).toContain("participantIds");
   });
 
@@ -66,6 +72,7 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(consolidationSource).toContain("<VisitAssignmentControl");
     expect(assignmentSource).toContain("trpc.consolidation.assignmentHistory.useQuery");
     expect(visitAssignmentSource).toContain("visitId: visit.id");
+    expect(consolidationSource).toContain("Aceitar visita");
     expect(ministryPanelSource).not.toContain("Ministério ID");
     expect(ministryPanelSource).not.toContain("<Dialog");
   });

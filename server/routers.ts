@@ -33,6 +33,7 @@ import {
   createConsolidationFollowUp,
   createCareVisit,
   assignCareVisit,
+  acceptCareVisit,
   completeCareVisit,
   cancelCareVisit,
   getCareVisitById,
@@ -136,6 +137,7 @@ import {
   getDepartmentCandidates,
   isActiveDepartmentMember,
   isActiveConsolidationMinistryMember,
+  isActiveVisitsMinistryMember,
   assignPersonToDepartment,
   removePersonFromDepartment,
   getDepartmentRoleAssignments,
@@ -314,11 +316,11 @@ const PRAYER_MANAGER_ROLES = new Set(["pastor_presidente", "pastor_local", "secr
  * Novas funções podem ser acrescidas aqui sem alterar o histórico de atribuições.
  */
 const MINISTRY_FUNCTION_CATALOG = [
-  { key: "visitador", label: "Visitador", ministryTypes: ["consolidacao"], grants: ["visitador"] },
+  { key: "visitador", label: "Visitador", ministryTypes: ["consolidacao", "visitas"], grants: ["visitador"] },
   { key: "lider_consolidacao", label: "Líder de Consolidação", ministryTypes: ["consolidacao"], grants: ["consolidador", "lider_consolidacao"] },
   { key: "supervisor_consolidacao", label: "Supervisor de Consolidação", ministryTypes: ["consolidacao"], grants: ["consolidador", "lider_consolidacao", "supervisor_consolidacao"] },
-  { key: "lider_visitas", label: "Líder de Visitas", ministryTypes: ["consolidacao"], grants: ["visitador", "lider_visitas"] },
-  { key: "supervisor_visitas", label: "Supervisor de Visitas", ministryTypes: ["consolidacao"], grants: ["visitador", "lider_visitas", "supervisor_visitas"] },
+  { key: "lider_visitas", label: "Líder de Visitas", ministryTypes: ["consolidacao", "visitas"], grants: ["visitador", "lider_visitas"] },
+  { key: "supervisor_visitas", label: "Supervisor de Visitas", ministryTypes: ["consolidacao", "visitas"], grants: ["visitador", "lider_visitas", "supervisor_visitas"] },
   { key: "lider_celula", label: "Líder de Célula", ministryTypes: ["celulas"], grants: ["lider"] },
   { key: "supervisor_celulas", label: "Supervisor de Células", ministryTypes: ["celulas"], grants: ["supervisor"] },
   { key: "musico", label: "Músico", ministryTypes: ["louvor"], grants: [] },
@@ -354,7 +356,10 @@ function isConsolidationMinistry(ministry: { type: string; name: string }) {
   const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return ministry.type === "consolidacao" || normalizedName.includes("consolidacao");
 }
-
+function isVisitsMinistry(ministry: { type: string; name: string }) {
+  const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return ministry.type === "visitas" || (normalizedName.includes("visita") && !isConsolidationMinistry(ministry));
+}
 function getMinistryFunctionCatalogFor(ministry: { type: string; name: string }) {
   const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const context = isConsolidationMinistry(ministry) ? "consolidacao"
@@ -572,11 +577,12 @@ async function requireScheduleParticipant(churchId: number, ministryId: number, 
 async function getEffectiveChurchRoles(userId: number, churchId: number, actor: { role: string; personId?: number | null }) {
   if (userId >= 0) return [actor.role];
   const complementary = await getComplementaryRolesByChurchUser(Math.abs(userId), churchId);
-  const [ministryRoleKeys, departmentRoleKeys, customDefinitions, isConsolidationMember] = await Promise.all([
+  const [ministryRoleKeys, departmentRoleKeys, customDefinitions, isConsolidationMember, isVisitsMember] = await Promise.all([
     actor.personId ? getActiveMinistryRoleKeysByPerson(actor.personId, churchId) : Promise.resolve([]),
     actor.personId ? getActiveDepartmentRoleKeysByPerson(actor.personId, churchId) : Promise.resolve([]),
     getMinistryRoleDefinitionsByChurch(churchId),
     actor.personId ? isActiveConsolidationMinistryMember(actor.personId, churchId) : Promise.resolve(false),
+    actor.personId ? isActiveVisitsMinistryMember(actor.personId, churchId) : Promise.resolve(false),
   ]);
   const customGrants = new Map(customDefinitions.map((definition) => [definition.key, CUSTOM_PERMISSION_PACKAGE_GRANTS[definition.permissionPackage] ?? []]));
   const ministryGrants = ministryRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
@@ -585,6 +591,7 @@ async function getEffectiveChurchRoles(userId: number, churchId: number, actor: 
     actor.role,
     ...complementary,
     ...(isConsolidationMember ? ["consolidador"] : []),
+    ...(isVisitsMember ? ["visitador"] : []),
     ...ministryGrants,
     ...departmentGrants,
   ]));
@@ -600,6 +607,7 @@ async function getChurchAccessSummary(userId: number, churchId: number) {
   const isConsolidator = roles.includes("consolidador");
   const isVisitador = roles.includes("visitador");
   const isPastoralWorker = roles.some((role) => PASTORAL_ACTION_ROLES.has(role));
+  const canAccessVisits = roles.some((role) => VISIT_ROLES.has(role));
   const canManageCells = roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor", "lider"].includes(role));
   const canManageMinistry = roles.some((role) => CHURCH_ADMIN_ROLES.has(role) || role === "lider_ministerio" || MINISTRY_MANAGEMENT_ROLE_KEYS.has(role))
     || Boolean(actor.personId && (await getMinistriesByChurch(churchId)).some((ministry) => ministry.leaderId === actor.personId));
@@ -615,6 +623,7 @@ async function getChurchAccessSummary(userId: number, churchId: number) {
     isConsolidator,
     isVisitador,
     isPastoralWorker,
+    canAccessVisits,
     canManageCells,
     canManageMinistry,
     canManageLibrary,
@@ -648,11 +657,12 @@ async function getEffectivePersonRoles(personId: number, churchId: number) {
   const account = accounts.find((candidate) => candidate.active && candidate.personId === personId);
   if (!account) return [];
 
-  const [ministryRoleKeys, departmentRoleKeys, customDefinitions, isConsolidationMember] = await Promise.all([
+  const [ministryRoleKeys, departmentRoleKeys, customDefinitions, isConsolidationMember, isVisitsMember] = await Promise.all([
     getActiveMinistryRoleKeysByPerson(personId, churchId),
     getActiveDepartmentRoleKeysByPerson(personId, churchId),
     getMinistryRoleDefinitionsByChurch(churchId),
     isActiveConsolidationMinistryMember(personId, churchId),
+    isActiveVisitsMinistryMember(personId, churchId),
   ]);
   const customGrants = new Map(customDefinitions.map((definition) => [definition.key, CUSTOM_PERMISSION_PACKAGE_GRANTS[definition.permissionPackage] ?? []]));
   const ministryGrants = ministryRoleKeys.flatMap((key) => MINISTRY_FUNCTION_GRANTS.get(key) ?? customGrants.get(key) ?? []);
@@ -661,6 +671,7 @@ async function getEffectivePersonRoles(personId: number, churchId: number) {
     account.role,
     ...(account.complementaryRoles ?? []),
     ...(isConsolidationMember ? ["consolidador"] : []),
+    ...(isVisitsMember ? ["visitador"] : []),
     ...ministryGrants,
     ...departmentGrants,
   ]));
@@ -697,19 +708,23 @@ async function getConsolidationMinistryContext(userId: number, churchId: number)
     getCellsByChurch(churchId),
   ]);
   const ministry = ministries.find((item) => isConsolidationMinistry(item)) ?? null;
+  const visitsMinistry = ministries.find((item) => isVisitsMinistry(item)) ?? null;
   const consolidationDepartment = ministry ? departments.find((item) => item.ministryId === ministry.id && item.systemKey === "consolidacao" && item.active) ?? null : null;
-  const visitsDepartment = ministry ? departments.find((item) => item.ministryId === ministry.id && item.systemKey === "visitas" && item.active) ?? null : null;
+  const visitsDepartment = (visitsMinistry ? departments.find((item) => item.ministryId === visitsMinistry.id && item.systemKey === "visitas" && item.active) ?? null : null)
+    ?? (ministry ? departments.find((item) => item.ministryId === ministry.id && item.systemKey === "visitas" && item.active) ?? null : null);
   const isPastor = roles.some((role) => CHURCH_ROLE_MANAGER_ROLES.has(role));
   const isMinistryLeader = Boolean(actor.personId && ministry?.leaderId === actor.personId);
+  const isVisitsMinistryLeader = Boolean(actor.personId && visitsMinistry?.leaderId === actor.personId);
   const leadsAnyMinistry = Boolean(actor.personId && ministries.some((item) => item.leaderId === actor.personId));
   const leadsAnyDepartment = Boolean(actor.personId && departments.some((item) => item.active && [item.leaderId, item.supervisorId].includes(actor.personId)));
   const leadsAnyCell = Boolean(actor.personId && cells.some((item) => [item.leaderId, item.supervisorId].includes(actor.personId)));
   const managesConsolidation = Boolean(isPastor || isMinistryLeader || (actor.personId && consolidationDepartment && [consolidationDepartment.leaderId, consolidationDepartment.supervisorId].includes(actor.personId)));
-  const managesVisits = Boolean(isPastor || isMinistryLeader || (actor.personId && visitsDepartment && [visitsDepartment.leaderId, visitsDepartment.supervisorId].includes(actor.personId)));
+  const managesVisits = Boolean(isPastor || isMinistryLeader || isVisitsMinistryLeader || (actor.personId && visitsDepartment && [visitsDepartment.leaderId, visitsDepartment.supervisorId].includes(actor.personId)));
   return {
     actor,
     roles,
     ministry,
+    visitsMinistry,
     consolidationDepartment,
     visitsDepartment,
     capabilities: {
@@ -1285,6 +1300,8 @@ const consolidationRouter = router({
         ? await getPeopleByChurch(input.churchId)
         : [];
       const names = new Map(people.map((person) => [person.id, person.fullName]));
+      const visitsTeam = context.visitsMinistry ? await getMinistryMembers(context.visitsMinistry.id, input.churchId) : [];
+      const visitsTeamNames = new Map(visitsTeam.map(({ person }) => [person.id, person.fullName]));
       const departmentRows = [context.consolidationDepartment, context.visitsDepartment].filter((department): department is NonNullable<typeof department> => Boolean(department));
       const departments = await Promise.all(departmentRows.map(async (department) => ({
         ...department,
@@ -1294,6 +1311,12 @@ const consolidationRouter = router({
       })));
       return {
         ministry: context.ministry,
+        visitsMinistry: context.visitsMinistry ? {
+          ...context.visitsMinistry,
+          leaderName: context.visitsMinistry.leaderId ? visitsTeamNames.get(context.visitsMinistry.leaderId) ?? names.get(context.visitsMinistry.leaderId) ?? "Líder definido" : null,
+          memberCount: visitsTeam.length,
+          members: context.capabilities.canManageVisits ? visitsTeam.map(({ person }) => ({ id: person.id, fullName: person.fullName })) : [],
+        } : null,
         consolidationDepartment: departments.find((department) => department.systemKey === "consolidacao") ?? null,
         visitsDepartment: departments.find((department) => department.systemKey === "visitas") ?? null,
         departments,
@@ -1316,9 +1339,10 @@ const consolidationRouter = router({
     .input(z.object({ churchId: z.number(), departmentId: z.number(), leaderId: z.number().nullable(), supervisorId: z.number().nullable() }))
     .mutation(async ({ input, ctx }) => {
       const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
-      if (!context.capabilities.canConfigure || !context.ministry) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem definir Líder e Supervisor." });
+      if (!context.capabilities.canConfigure || (!context.ministry && !context.visitsMinistry)) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem definir Líder e Supervisor." });
       const department = await getDepartmentById(input.departmentId, input.churchId);
-      if (!department || department.ministryId !== context.ministry.id || !department.systemKey) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um Departamento do Ministério de Consolidação e Visitas." });
+      const validMinistryIds = new Set([context.ministry?.id, context.visitsMinistry?.id].filter((id): id is number => Boolean(id)));
+      if (!department || !validMinistryIds.has(department.ministryId) || !department.systemKey) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um Departamento válido de Consolidação ou Visitas." });
       const actorChurchUserId = ctx.user.id < 0 ? Math.abs(ctx.user.id) : null;
       if (!actorChurchUserId) throw new TRPCError({ code: "FORBIDDEN", message: "Use uma conta pastoral da igreja para definir a liderança." });
       const updated = await setConsolidationDepartmentLeadership({ churchId: input.churchId, departmentId: department.id, leaderId: input.leaderId, supervisorId: input.supervisorId, assignedByChurchUserId: actorChurchUserId });
@@ -1415,8 +1439,9 @@ const consolidationRouter = router({
       const referralsById = new Map(referrals.map((referral) => [referral.id, referral]));
       const peopleById = new Map(churchPeople.map((person) => [person.id, person]));
       const canMonitorAll = context.capabilities.canManageVisits;
+      const canAcceptVisits = Boolean(context.actor.personId && context.roles.includes("visitador"));
       return visits
-        .filter((visit) => canMonitorAll || visit.assignedToPersonId === context.actor.personId || visit.requestedByPersonId === context.actor.personId)
+        .filter((visit) => canMonitorAll || visit.assignedToPersonId === context.actor.personId || visit.requestedByPersonId === context.actor.personId || (canAcceptVisits && !visit.assignedToPersonId))
         .map((visit) => {
           const referral = referralsById.get(visit.referralId);
           const person = referral ? peopleById.get(referral.personId) : null;
@@ -1432,6 +1457,7 @@ const consolidationRouter = router({
             assignedToName: visit.assignedToPersonId ? peopleById.get(visit.assignedToPersonId)?.fullName ?? "Visitador designado" : null,
             requestedByName: peopleById.get(visit.requestedByPersonId)?.fullName ?? "Responsável de cuidado",
             canAssign: context.capabilities.canManageVisits,
+            canAccept: Boolean(canAcceptVisits && !visit.assignedToPersonId && !["realizada", "cancelada"].includes(visit.status)),
             canComplete: Boolean(context.capabilities.canManageVisits || visit.assignedToPersonId === context.actor.personId),
           };
         });
@@ -1658,6 +1684,27 @@ const consolidationRouter = router({
       await requireConsolidationDepartmentManager(ctx.user.id, input.churchId, "visitas");
       if (input.visitorId) await requireVisitorPerson(input.visitorId, input.churchId);
       return assignCareVisit({ churchId: input.churchId, visitId: input.visitId, toPersonId: input.visitorId, performedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null, scheduledAt: input.scheduledAt === undefined ? undefined : input.scheduledAt ? new Date(input.scheduledAt) : null, notes: input.notes || null });
+    }),
+
+  acceptVisit: protectedProcedure
+    .input(z.object({ churchId: z.number(), visitId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      if (!context.actor.personId || !context.roles.includes("visitador")) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente Visitadores ativos podem aceitar uma Visita." });
+      }
+      const visit = await getCareVisitById(input.visitId, input.churchId);
+      if (!visit) throw new TRPCError({ code: "NOT_FOUND", message: "Visita não encontrada nesta igreja." });
+      if (visit.assignedToPersonId && visit.assignedToPersonId !== context.actor.personId) {
+        throw new TRPCError({ code: "CONFLICT", message: "Esta Visita já foi assumida por outro Visitador." });
+      }
+      try {
+        return await acceptCareVisit({ churchId: input.churchId, visitId: input.visitId, personId: context.actor.personId, performedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("não pode mais") || message.includes("já foi assumida")) throw new TRPCError({ code: "CONFLICT", message });
+        throw error;
+      }
     }),
 
   completeVisit: protectedProcedure
@@ -2535,7 +2582,7 @@ const ministriesRouter = router({
       churchId: z.number(),
       name: z.string().trim().min(2).max(255),
       description: z.string().trim().max(3000).optional(),
-      type: z.enum(["louvor", "infantil", "recepcao", "midia", "intercessao", "evangelismo", "casais", "jovens", "consolidacao", "outro"]).default("outro"),
+      type: z.enum(["louvor", "infantil", "recepcao", "midia", "intercessao", "evangelismo", "casais", "jovens", "consolidacao", "visitas", "outro"]).default("outro"),
       leaderId: z.number().int().positive().nullable().optional(),
       participantIds: z.array(z.number().int().positive()).max(100).default([]),
     }))

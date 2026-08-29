@@ -1751,6 +1751,36 @@ export async function assignCareVisit(data: { churchId: number; visitId: number;
   });
 }
 
+export async function acceptCareVisit(data: { churchId: number; visitId: number; personId: number; performedByChurchUserId: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(careVisits).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId))).limit(1).for("update");
+    const visit = rows[0];
+    if (!visit) throw new Error("Visita não encontrada.");
+    if (["realizada", "cancelada"].includes(visit.status)) throw new Error("Esta Visita não pode mais ser aceita.");
+    if (visit.assignedToPersonId && visit.assignedToPersonId !== data.personId) throw new Error("Esta Visita já foi assumida por outro Visitador.");
+    if (visit.assignedToPersonId === data.personId) return visit;
+    await tx.update(careVisits).set({
+      assignedToPersonId: data.personId,
+      assignedByChurchUserId: data.performedByChurchUserId,
+      assignedAt: new Date(),
+      status: visit.scheduledAt ? "agendada" : "solicitada",
+    }).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)));
+    await tx.insert(careVisitEvents).values({
+      churchId: data.churchId,
+      visitId: data.visitId,
+      action: "aceita",
+      fromPersonId: visit.assignedToPersonId,
+      toPersonId: data.personId,
+      performedByChurchUserId: data.performedByChurchUserId,
+      notes: "Visita aceita pelo Visitador.",
+    });
+    const updated = await tx.select().from(careVisits).where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId))).limit(1);
+    return updated[0] ?? null;
+  });
+}
+
 export async function completeCareVisit(data: { churchId: number; visitId: number; performedByChurchUserId: number | null; notes: string }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -2201,6 +2231,16 @@ export async function createMinistry(data: typeof ministries.$inferInsert, parti
           active: true,
         });
       }
+    } else if (data.type === "visitas") {
+      await tx.insert(departments).values({
+        churchId: data.churchId,
+        ministryId,
+        name: "Visitas",
+        description: "Planejamento e execução de visitas de cuidado.",
+        systemKey: "visitas",
+        leaderId: data.leaderId ?? null,
+        active: true,
+      });
     }
     const rows = await tx.select().from(ministries).where(and(eq(ministries.id, ministryId), eq(ministries.churchId, data.churchId))).limit(1);
     return rows[0] ?? null;
@@ -2261,9 +2301,12 @@ export async function setMinistryLeader(data: { ministryId: number; churchId: nu
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   return db.transaction(async (tx) => {
-    const locked = await tx.select({ id: ministries.id }).from(ministries).where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId), eq(ministries.active, true))).limit(1).for("update");
+    const locked = await tx.select({ id: ministries.id, type: ministries.type }).from(ministries).where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId), eq(ministries.active, true))).limit(1).for("update");
     if (locked.length === 0) return null;
     await tx.update(ministries).set({ leaderId: data.leaderId }).where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId)));
+    if (locked[0].type === "visitas") {
+      await tx.update(departments).set({ leaderId: data.leaderId }).where(and(eq(departments.churchId, data.churchId), eq(departments.ministryId, data.ministryId), eq(departments.systemKey, "visitas")));
+    }
     if (data.leaderId) {
       const existing = await tx.select({ id: ministryMembers.id }).from(ministryMembers).where(and(eq(ministryMembers.ministryId, data.ministryId), eq(ministryMembers.personId, data.leaderId), eq(ministryMembers.active, true))).limit(1);
       if (existing.length === 0) await tx.insert(ministryMembers).values({ ministryId: data.ministryId, personId: data.leaderId, active: true });
@@ -2590,6 +2633,29 @@ export async function isActiveConsolidationMinistryMember(personId: number, chur
       eq(ministryMembers.personId, personId),
       eq(ministryMembers.active, true),
       or(eq(ministries.type, "consolidacao"), sql`LOWER(${ministries.name}) LIKE '%consolida%'`),
+      eq(ministries.churchId, churchId),
+      eq(ministries.active, true),
+      eq(people.id, personId),
+      eq(people.churchId, churchId),
+      eq(people.active, true),
+    ))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** Participantes ativos do Ministério de Visitas recebem a capacidade operacional de Visitador. */
+export async function isActiveVisitsMinistryMember(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: ministryMembers.id })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .innerJoin(people, eq(people.id, ministryMembers.personId))
+    .where(and(
+      eq(ministryMembers.personId, personId),
+      eq(ministryMembers.active, true),
+      or(eq(ministries.type, "visitas"), sql`(LOWER(${ministries.name}) LIKE '%visita%' AND LOWER(${ministries.name}) NOT LIKE '%consolida%')`),
       eq(ministries.churchId, churchId),
       eq(ministries.active, true),
       eq(people.id, personId),
