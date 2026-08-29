@@ -1632,7 +1632,7 @@ export async function acceptConsolidationCase(data: { churchId: number; referral
   });
 }
 
-export async function approveConsolidationCase(data: { churchId: number; referralId: number; approvedByPersonId: number; churchUserId: number | null; notes?: string | null }) {
+export async function approveConsolidationCase(data: { churchId: number; referralId: number; approvedByPersonId: number | null; churchUserId: number | null; notes?: string | null }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   return db.transaction(async (tx) => {

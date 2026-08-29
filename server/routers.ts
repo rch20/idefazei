@@ -1527,13 +1527,13 @@ const consolidationRouter = router({
     .input(z.object({ churchId: z.number(), id: z.number(), notes: z.string().trim().max(1000).optional() }))
     .mutation(async ({ input, ctx }) => {
       const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
-      if (!context.capabilities.canManageConsolidation || !context.actor.personId) {
+      if (!context.capabilities.canManageConsolidation) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Somente a liderança autorizada pode aceitar uma indicação para Consolidação." });
       }
       const referral = await getConsolidationReferralById(input.id, input.churchId);
       if (!referral || referral.status !== "pendente") throw new TRPCError({ code: "BAD_REQUEST", message: "Este caso já foi analisado ou não está disponível." });
       try {
-        return await approveConsolidationCase({ churchId: input.churchId, referralId: input.id, approvedByPersonId: context.actor.personId, churchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null, notes: input.notes?.trim() || null });
+        return await approveConsolidationCase({ churchId: input.churchId, referralId: input.id, approvedByPersonId: context.actor.personId ?? null, churchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null, notes: input.notes?.trim() || null });
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         if (message.includes("já foi analisado")) throw new TRPCError({ code: "CONFLICT", message: "Este caso já foi analisado por outra pessoa. Atualize a fila." });

@@ -1394,6 +1394,30 @@ describe("Fluxo completo de discipulado", () => {
       }));
     });
 
+    it("permite que o Pastor administrador aprove mesmo sem Pessoa vinculada", async () => {
+      const { approveConsolidationCase, getConsolidationReferralById } = await import("./db");
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: null, role: "pastor_presidente", active: true });
+      vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({
+        id: 51,
+        churchId: CHURCH_ID,
+        personId: 1,
+        referredByPersonId: 20,
+        assignedToPersonId: null,
+        preferredConsolidatorId: null,
+        status: "pendente",
+      } as any);
+      const caller = appRouter.createCaller(createMemberContext(-2));
+
+      await caller.consolidation.approveReferral({ churchId: CHURCH_ID, id: 51 });
+
+      expect(approveConsolidationCase).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        referralId: 51,
+        approvedByPersonId: null,
+        churchUserId: 2,
+      }));
+    });
+
     it("permite que um Consolidador assuma um caso já aceito pela liderança", async () => {
       const { acceptConsolidationCase, getConsolidationReferralById } = await import("./db");
       (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
