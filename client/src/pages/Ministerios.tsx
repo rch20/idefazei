@@ -3,14 +3,15 @@ import { useChurch } from "@/components/ChurchLayout";
 import { DepartmentsPanel } from "@/components/DepartmentsPanel";
 import { ConsolidationReferralBox } from "@/components/ConsolidationReferralBox";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Music, Users, Plus, Search, Star } from "lucide-react";
+import { Music, Users, Plus, Search, Star, Trash2 } from "lucide-react";
 
 const MINISTRY_ICONS: Record<string, string> = {
   louvor: "🎵",
@@ -33,6 +34,7 @@ export default function Ministerios() {
   const { churchId } = useChurch();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<{ id: number; name: string } | null>(null);
   const [form, setForm] = useState({ name: "", description: "", type: "outro", leaderId: "", participantIds: [] as string[] });
   const [selectedMinistry, setSelectedMinistry] = useState<any>(null);
   const [selectedPersonId, setSelectedPersonId] = useState("");
@@ -66,6 +68,15 @@ export default function Ministerios() {
       refetch();
     },
     onError: (err: { message: string }) => toast.error(err.message),
+  });
+  const archiveMutation = trpc.ministries.archive.useMutation({
+    onSuccess: async (result) => {
+      toast.success(result.alreadyArchived ? "Ministério já estava arquivado." : "Ministério removido da lista ativa.");
+      setArchiveTarget(null);
+      if (selectedMinistry?.id === result.ministryId) setSelectedMinistry(null);
+      await refetch();
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível remover o Ministério."),
   });
   const updateLeader = trpc.ministries.updateLeader.useMutation({
     onSuccess: async (updated) => {
@@ -183,12 +194,12 @@ export default function Ministerios() {
                     <SelectContent><SelectItem value="none">Definir depois</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>}
-                <div className="flex gap-2 justify-end pt-2">
+                <DialogFooter className="pt-3">
                   <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
                   <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>
                     {createMutation.isPending ? "Criando..." : "Criar"}
                   </Button>
-                </div>
+                </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>}
@@ -243,14 +254,19 @@ export default function Ministerios() {
               const key = isConsolidationMinistry(ministry) ? "consolidacao" : ministry.name.toLowerCase().replace(/\s+/g, "");
               const icon = Object.keys(MINISTRY_ICONS).find((k) => key.includes(k)) ?? "default";
               return (
-                <button
+                <div
                   key={ministry.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => { setSelectedMinistry(ministry); setSelectedPersonId(""); }}
-                  className="card-sacred group w-full p-5 text-left transition-all hover:border-gold/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedMinistry(ministry); setSelectedPersonId(""); } }}
+                  className="card-sacred group relative w-full cursor-pointer p-5 text-left transition-all hover:border-gold/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
                   aria-label={`Gerenciar participantes de ${ministry.name}`}
                 >
-                  <div className="text-3xl mb-3">{MINISTRY_ICONS[icon]}</div>
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <div className="text-3xl">{MINISTRY_ICONS[icon]}</div>
+                    {canCreateMinistry && <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Excluir ${ministry.name}`} onClick={(event) => { event.stopPropagation(); setArchiveTarget({ id: ministry.id, name: ministry.name }); }}><Trash2 className="h-4 w-4" /></Button>}
+                  </div>
                   <h3 className="font-semibold text-navy text-sm mb-1">{ministry.name}</h3>
                   {isConsolidationMinistry(ministry) && <Badge variant="outline" className="mb-2 border-gold/40 bg-gold/5 text-[10px] text-navy">Acesso à Consolidação</Badge>}
                   {ministry.description && (
@@ -263,7 +279,7 @@ export default function Ministerios() {
                       {ministry.memberCount ?? 0} membros
                     </Badge>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
@@ -315,9 +331,36 @@ export default function Ministerios() {
                 </div>
                 <div className="flex flex-wrap gap-2">{(customFunctions.data ?? []).filter((role) => !role.ministryId || role.ministryId === selectedMinistry?.id).map((role) => <Badge key={role.id} variant="outline">{role.name}</Badge>)}</div>
               </div>}
+              <DialogFooter className="pt-3">
+                <Button type="button" variant="outline" onClick={() => setSelectedMinistry(null)}>Fechar</Button>
+              </DialogFooter>
             </div>
           </DialogContent>
         </Dialog>
+
+        <AlertDialog open={Boolean(archiveTarget)} onOpenChange={(nextOpen) => !nextOpen && !archiveMutation.isPending && setArchiveTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir Ministério?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O Ministério <strong>{archiveTarget?.name}</strong> será removido da lista ativa. O histórico será preservado e os vínculos operacionais serão encerrados. Se houver escalas agendadas ou encaminhamentos de Consolidação vinculados, a exclusão será bloqueada.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={archiveMutation.isPending}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={archiveMutation.isPending}
+                className="bg-red-700 text-white hover:bg-red-800"
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (archiveTarget) archiveMutation.mutate({ churchId: churchId!, ministryId: archiveTarget.id });
+                }}
+              >
+                {archiveMutation.isPending ? "Excluindo…" : "Excluir Ministério"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
   );
 }

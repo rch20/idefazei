@@ -120,6 +120,7 @@ import {
   reopenFinancialPeriod,
   getMinistriesByChurch,
   getMinistryMembers,
+  archiveMinistry,
   setMinistryLeader,
   getDepartmentsByMinistry,
   getDepartmentsByChurch,
@@ -2558,6 +2559,18 @@ const ministriesRouter = router({
         leaderId: input.leaderId ?? null,
       }, participantIds);
       return ministry;
+    }),
+  archive: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), ministryId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const result = await archiveMinistry({ ministryId: input.ministryId, churchId: input.churchId });
+      if (!result.archived) {
+        if (result.reason === "not_found") throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
+        if (result.reason === "scheduled_items") throw new TRPCError({ code: "CONFLICT", message: "Não é possível excluir este Ministério enquanto existem escalas agendadas. Cancele ou conclua as escalas antes." });
+        throw new TRPCError({ code: "CONFLICT", message: "Não é possível excluir este Ministério enquanto existem encaminhamentos de Consolidação vinculados. O histórico precisa ser preservado." });
+      }
+      return result;
     }),
   updateLeader: protectedProcedure
     .input(z.object({ churchId: z.number(), ministryId: z.number().int().positive(), leaderId: z.number().int().positive().nullable() }))

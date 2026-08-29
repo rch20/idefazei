@@ -177,6 +177,7 @@ vi.mock("./db", () => ({
   getMinistries: vi.fn().mockResolvedValue([]),
   getMinistriesByChurch: vi.fn().mockResolvedValue([{ id: 7, churchId: 100, name: "Ministério de Consolidação", type: "consolidacao", active: true }]),
   createMinistry: vi.fn().mockResolvedValue({ id: 7, churchId: 100, name: "Ministério de Consolidação", type: "outro", leaderId: null, active: true }),
+  archiveMinistry: vi.fn().mockResolvedValue({ archived: true, alreadyArchived: false, ministryId: 7, name: "Ministério de Consolidação" }),
   updateMinistry: vi.fn().mockResolvedValue({ id: 7, churchId: 100, name: "Ministério de Consolidação", type: "outro", leaderId: 10, active: true }),
   setMinistryLeader: vi.fn().mockResolvedValue({ id: 7, churchId: 100, name: "Ministério de Consolidação", type: "outro", leaderId: 10, active: true }),
   getMinistryMembers: vi.fn().mockResolvedValue([]),
@@ -753,6 +754,21 @@ describe("Fluxo completo de discipulado", () => {
 
       expect(ministry).toMatchObject({ id: 8, leaderId: 10 });
       expect(createMinistry).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, name: "Louvor", type: "louvor", leaderId: 10 }), []);
+    });
+
+    it("permite ao Pastor arquivar um Ministério e preserva o escopo da igreja", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      const result = await caller.ministries.archive({ churchId: CHURCH_ID, ministryId: 7 });
+      expect(result).toMatchObject({ archived: true, ministryId: 7 });
+      const { archiveMinistry } = await import("./db");
+      expect(archiveMinistry).toHaveBeenCalledWith({ ministryId: 7, churchId: CHURCH_ID });
+    });
+
+    it("bloqueia o arquivamento quando o Ministério possui encaminhamento de Consolidação", async () => {
+      const { archiveMinistry } = await import("./db");
+      (archiveMinistry as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ archived: false, reason: "consolidation_referrals" });
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.ministries.archive({ churchId: CHURCH_ID, ministryId: 7 })).rejects.toThrow("encaminhamentos de Consolidação");
     });
 
     it("permite somente ao Pastor trocar o líder do Ministério", async () => {

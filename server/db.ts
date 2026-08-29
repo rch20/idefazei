@@ -2215,6 +2215,48 @@ export async function updateMinistry(id: number, churchId: number, data: Partial
   return rows[0] ?? null;
 }
 
+/** Arquiva um Ministério no tenant, preservando o histórico e desativando apenas os vínculos operacionais. */
+export async function archiveMinistry(data: { ministryId: number; churchId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const ministryRows = await tx.select({ id: ministries.id, name: ministries.name, active: ministries.active })
+      .from(ministries)
+      .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const ministry = ministryRows[0];
+    if (!ministry) return { archived: false as const, reason: "not_found" as const };
+    if (!ministry.active) return { archived: true as const, alreadyArchived: true as const, ministryId: ministry.id, name: ministry.name };
+
+    const scheduledRows = await tx.select({ id: scheduleItems.id })
+      .from(scheduleItems)
+      .where(and(eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.ministryId, data.ministryId), eq(scheduleItems.status, "agendada")))
+      .limit(1);
+    if (scheduledRows.length > 0) return { archived: false as const, reason: "scheduled_items" as const };
+
+    const referralRows = await tx.select({ id: consolidationReferrals.id })
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.sourceMinistryId, data.ministryId)))
+      .limit(1);
+    if (referralRows.length > 0) return { archived: false as const, reason: "consolidation_referrals" as const };
+
+    await tx.update(ministries)
+      .set({ active: false })
+      .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId)));
+    await tx.update(ministryMembers).set({ active: false }).where(eq(ministryMembers.ministryId, data.ministryId));
+    await tx.update(ministryRoleAssignments).set({ active: false, endedAt: new Date() }).where(and(eq(ministryRoleAssignments.churchId, data.churchId), eq(ministryRoleAssignments.ministryId, data.ministryId)));
+    await tx.update(ministryRoleDefinitions).set({ active: false }).where(and(eq(ministryRoleDefinitions.churchId, data.churchId), eq(ministryRoleDefinitions.ministryId, data.ministryId)));
+    const departmentRows = await tx.select({ id: departments.id }).from(departments).where(and(eq(departments.churchId, data.churchId), eq(departments.ministryId, data.ministryId)));
+    for (const department of departmentRows) {
+      await tx.update(departmentMembers).set({ active: false, leftAt: new Date() }).where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, department.id)));
+      await tx.update(departmentRoleAssignments).set({ active: false, endedAt: new Date() }).where(and(eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, department.id)));
+      await tx.update(departments).set({ active: false }).where(and(eq(departments.id, department.id), eq(departments.churchId, data.churchId)));
+    }
+    return { archived: true as const, alreadyArchived: false as const, ministryId: ministry.id, name: ministry.name };
+  });
+}
+
 export async function setMinistryLeader(data: { ministryId: number; churchId: number; leaderId: number | null }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
