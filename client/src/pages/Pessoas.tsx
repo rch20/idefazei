@@ -45,6 +45,40 @@ const CARE_ROLE_LABELS: Record<string, string> = {
   pastor: "Pastor",
 };
 
+const MINISTRY_TYPE_LABELS: Record<string, string> = {
+  consolidacao: "Consolidação",
+  visitas: "Visitas",
+  louvor: "Louvor",
+  infantil: "Infantil",
+  recepcao: "Recepção",
+  midia: "Mídia",
+  intercessao: "Intercessão",
+  evangelismo: "Evangelismo",
+  casais: "Casais",
+  jovens: "Jovens",
+  outro: "Outro",
+};
+
+const EFFECTIVE_ACCESS_LABELS: Record<string, string> = {
+  pastor_presidente: "Pastor presidente",
+  pastor_local: "Pastor local",
+  secretario: "Secretaria",
+  supervisor: "Supervisor",
+  lider: "Líder de célula",
+  consolidador: "Consolidador",
+  visitador: "Visitador",
+  lider_consolidacao: "Líder de Consolidação",
+  supervisor_consolidacao: "Supervisor de Consolidação",
+  lider_visitas: "Líder de Visitas",
+  supervisor_visitas: "Supervisor de Visitas",
+  tesoureiro: "Tesouraria",
+  comunicacao: "Comunicação",
+};
+
+function formatEffectiveAccess(role: string) {
+  return EFFECTIVE_ACCESS_LABELS[role] ?? role.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
 const defaultForm = {
   fullName: "",
   cpf: "",
@@ -97,6 +131,14 @@ export default function Pessoas() {
   const ministriesQuery = trpc.ministries.list.useQuery({ churchId });
   const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery({ churchId });
   const canManageMinistryFunctions = (effectiveRolesQuery.data ?? []).some((role) => ["pastor_presidente", "pastor_local", "secretario"].includes(role));
+  const personMembershipsQuery = trpc.ministries.personMemberships.useQuery(
+    { churchId, personId: selectedPerson?.id ?? 0 },
+    { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
+  );
+  const personAccessQuery = trpc.ministries.personAccess.useQuery(
+    { churchId, personId: selectedPerson?.id ?? 0 },
+    { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
+  );
   const personFunctionsQuery = trpc.ministries.personFunctions.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
@@ -167,14 +209,14 @@ export default function Pessoas() {
     onSuccess: async () => {
       toast.success("Função ministerial atribuída. Os acessos serão somados no próximo login.");
       setMinistryFunctionForm({ ministryId: "", roleKey: "" });
-      await Promise.all([personFunctionsQuery.refetch(), effectiveRolesQuery.refetch()]);
+      await Promise.all([personMembershipsQuery.refetch(), personFunctionsQuery.refetch(), personAccessQuery.refetch(), effectiveRolesQuery.refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível atribuir a função ministerial."),
   });
   const removeMinistryFunction = trpc.ministries.removeFunction.useMutation({
     onSuccess: async () => {
       toast.success("Função ministerial removida.");
-      await personFunctionsQuery.refetch();
+      await Promise.all([personFunctionsQuery.refetch(), personAccessQuery.refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível remover a função."),
   });
@@ -382,7 +424,7 @@ export default function Pessoas() {
                 </div>
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-shrink-0 ${STAGE_BADGE[person.discipleshipStage ?? "nova_alma"]}`}>
-                {STAGES_LABELS[person.discipleshipStage ?? "nova_alma"]}
+                Etapa: {STAGES_LABELS[person.discipleshipStage ?? "nova_alma"]}
               </span>
             </button>
           ))}
@@ -648,42 +690,88 @@ export default function Pessoas() {
               <div className="flex items-start gap-3">
                 <BriefcaseBusiness className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />
                 <div>
-                  <h3 className="text-sm font-semibold text-navy">Ministérios e Funções</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">A função define os acessos da conta vinculada a esta Pessoa. Quando houver mais de uma função, os acessos se somam.</p>
+                  <h3 className="text-sm font-semibold text-navy">Acesso ministerial</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">A etapa do discipulado é apenas um marcador. O acesso nasce da membresia e das funções ativas desta Pessoa.</p>
                 </div>
               </div>
-              {(personFunctionsQuery.data ?? []).length === 0 ? (
-                <p className="mt-3 text-xs text-muted-foreground">Nenhuma função ministerial atribuída.</p>
-              ) : (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {(personFunctionsQuery.data ?? []).map((assignment) => (
-                    <span key={assignment.id} className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-background px-2.5 py-1 text-xs text-indigo-900">
-                      <strong>{assignment.ministryName}</strong> · {assignment.roleLabel}
-                      <button type="button" aria-label={`Remover ${assignment.roleLabel}`} onClick={() => removeMinistryFunction.mutate({ churchId, id: assignment.id })} className="ml-1 rounded-sm text-indigo-500 hover:text-rose-600">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </span>
-                  ))}
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border border-indigo-100 bg-background/80 p-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Ministérios da pessoa</h4>
+                  {personMembershipsQuery.isLoading ? <p className="mt-2 text-xs text-muted-foreground">Carregando…</p> : (personMembershipsQuery.data ?? []).length === 0 ? (
+                    <p className="mt-2 text-xs text-muted-foreground">Nenhum Ministério ativo.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {(personMembershipsQuery.data ?? []).map((membership) => (
+                        <div key={membership.id} className="flex items-start justify-between gap-2 rounded-md border border-border/70 px-2.5 py-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-navy">{membership.ministryName}</p>
+                            <p className="text-[11px] text-muted-foreground">{MINISTRY_TYPE_LABELS[membership.ministryType] ?? "Ministério"} · Participante ativo</p>
+                          </div>
+                          {membership.isLeader && <Badge variant="outline" className="shrink-0 text-[10px]">Líder</Badge>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-                <div>
-                  <Label htmlFor="person-ministry">Ministério</Label>
-                  <Select value={ministryFunctionForm.ministryId} onValueChange={(value) => setMinistryFunctionForm({ ministryId: value, roleKey: "" })}>
-                    <SelectTrigger id="person-ministry" className="mt-1 bg-background"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>{(ministriesQuery.data ?? []).map((ministry) => <SelectItem key={ministry.id} value={String(ministry.id)}>{ministry.name}</SelectItem>)}</SelectContent>
-                  </Select>
+
+                <div className="rounded-lg border border-indigo-100 bg-background/80 p-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Funções atribuídas</h4>
+                  {(personFunctionsQuery.data ?? []).length === 0 ? (
+                    <p className="mt-2 text-xs text-muted-foreground">Nenhuma função manual atribuída.</p>
+                  ) : (
+                    <div className="mt-2 space-y-2">
+                      {(personFunctionsQuery.data ?? []).map((assignment) => (
+                        <div key={assignment.id} className="flex items-start justify-between gap-2 rounded-md border border-border/70 px-2.5 py-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-navy">{assignment.roleLabel}</p>
+                            <p className="truncate text-[11px] text-muted-foreground">{assignment.ministryName}</p>
+                          </div>
+                          <button type="button" aria-label={`Remover ${assignment.roleLabel}`} onClick={() => removeMinistryFunction.mutate({ churchId, id: assignment.id })} className="rounded-sm p-1 text-indigo-500 hover:text-rose-600">
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <Label htmlFor="person-ministry-role">Função</Label>
-                  <Select value={ministryFunctionForm.roleKey} onValueChange={(value) => setMinistryFunctionForm((current) => ({ ...current, roleKey: value }))} disabled={!ministryFunctionForm.ministryId}>
-                    <SelectTrigger id="person-ministry-role" className="mt-1 bg-background"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                    <SelectContent>{[...(functionCatalogQuery.data ?? []), ...(customFunctionsQuery.data ?? []).filter((role) => !role.ministryId || role.ministryId === Number(ministryFunctionForm.ministryId)).map((role) => ({ key: role.key, label: role.name }))].map((role) => <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>)}</SelectContent>
-                  </Select>
+
+                <div className="rounded-lg border border-indigo-100 bg-background/80 p-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Acessos efetivos</h4>
+                  {!personAccessQuery.data?.accountLinked ? (
+                    <p className="mt-2 text-xs text-amber-800">Sem login ativo vinculado. A membresia e as funções ficam registradas, mas não há acesso para entrar no sistema.</p>
+                  ) : (personAccessQuery.data.roles ?? []).length === 0 ? (
+                    <p className="mt-2 text-xs text-muted-foreground">Login vinculado, mas nenhum acesso ministerial efetivo.</p>
+                  ) : (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {personAccessQuery.data.roles.map((role) => <Badge key={role} variant="outline" className="text-[10px]">{formatEffectiveAccess(role)}</Badge>)}
+                    </div>
+                  )}
                 </div>
-                <Button type="button" className="self-end bg-navy text-white hover:bg-navy-light" onClick={saveMinistryFunction} disabled={assignMinistryFunction.isPending}>
-                  {assignMinistryFunction.isPending ? "Atribuindo…" : "Atribuir"}
-                </Button>
+              </div>
+
+              <div className="mt-4 rounded-lg border border-indigo-100 bg-background/60 p-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Atribuir função manual</h4>
+                <p className="mt-1 text-xs text-muted-foreground">Use somente quando a função exigir uma responsabilidade específica, como líder ou supervisor. A atribuição também garante a membresia no Ministério selecionado.</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                  <div>
+                    <Label htmlFor="person-ministry">Ministério</Label>
+                    <Select value={ministryFunctionForm.ministryId} onValueChange={(value) => setMinistryFunctionForm({ ministryId: value, roleKey: "" })}>
+                      <SelectTrigger id="person-ministry" className="mt-1 bg-background"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>{(ministriesQuery.data ?? []).map((ministry) => <SelectItem key={ministry.id} value={String(ministry.id)}>{ministry.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="person-ministry-role">Função</Label>
+                    <Select value={ministryFunctionForm.roleKey} onValueChange={(value) => setMinistryFunctionForm((current) => ({ ...current, roleKey: value }))} disabled={!ministryFunctionForm.ministryId}>
+                      <SelectTrigger id="person-ministry-role" className="mt-1 bg-background"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>{[...(functionCatalogQuery.data ?? []), ...(customFunctionsQuery.data ?? []).filter((role) => !role.ministryId || role.ministryId === Number(ministryFunctionForm.ministryId)).map((role) => ({ key: role.key, label: role.name }))].map((role) => <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <Button type="button" className="self-end bg-navy text-white hover:bg-navy-light" onClick={saveMinistryFunction} disabled={assignMinistryFunction.isPending}>
+                    {assignMinistryFunction.isPending ? "Atribuindo…" : "Atribuir"}
+                  </Button>
+                </div>
               </div>
             </section>
           )}

@@ -2206,6 +2206,26 @@ export async function getMinistriesByChurch(churchId: number) {
     .orderBy(ministries.name);
 }
 
+/** Retorna os Ministérios ativos dos quais a Pessoa participa nesta igreja. */
+export async function getMinistryMembershipsByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ membership: ministryMembers, ministry: ministries })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .innerJoin(people, eq(people.id, ministryMembers.personId))
+    .where(and(
+      eq(ministryMembers.personId, personId),
+      eq(ministryMembers.active, true),
+      eq(ministries.churchId, churchId),
+      eq(ministries.active, true),
+      eq(people.churchId, churchId),
+      eq(people.active, true),
+    ))
+    .orderBy(ministries.name);
+}
+
 export async function createMinistry(data: typeof ministries.$inferInsert, participantIds: number[] = []) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");

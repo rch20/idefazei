@@ -141,6 +141,7 @@ vi.mock("./db", () => ({
   getActiveDepartmentRoleKeysByPerson: vi.fn().mockResolvedValue([]),
   getMinistryRoleDefinitionsByChurch: vi.fn().mockResolvedValue([]),
   getMinistryRoleAssignmentsByPerson: vi.fn().mockResolvedValue([]),
+  getMinistryMembershipsByPerson: vi.fn().mockResolvedValue([]),
   assignMinistryRole: vi.fn().mockResolvedValue({ id: 1, alreadyAssigned: false }),
   deactivateMinistryRole: vi.fn().mockResolvedValue(undefined),
   setComplementaryRolesForChurchUser: vi.fn().mockResolvedValue(["diacono", "levita"]),
@@ -804,6 +805,28 @@ describe("Fluxo completo de discipulado", () => {
       await expect(caller.ministries.updateLeader({ churchId: CHURCH_ID, ministryId: 7, leaderId: 10 }))
         .resolves.toMatchObject({ leaderId: 10 });
       expect(setMinistryLeader).toHaveBeenCalledWith({ ministryId: 7, churchId: CHURCH_ID, leaderId: 10 });
+    });
+
+    it("separa a membresia do Ministério dos acessos efetivos da Pessoa", async () => {
+      const { getMinistryMembershipsByPerson, getChurchUsersByChurch, getActiveMinistryRoleKeysByPerson, getActiveDepartmentRoleKeysByPerson, getMinistryRoleDefinitionsByChurch, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember } = await import("./db");
+      (getMinistryMembershipsByPerson as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{
+        membership: { id: 41, ministryId: 9, personId: 10, active: true, joinedAt: new Date("2026-08-29T12:00:00.000Z") },
+        ministry: { id: 9, churchId: CHURCH_ID, name: "Visitas", type: "visitas", leaderId: 10, active: true },
+      }]);
+      (getChurchUsersByChurch as ReturnType<typeof vi.fn>).mockResolvedValue([{ id: 81, churchId: CHURCH_ID, personId: 10, email: "lider@igreja.test", role: "membro", active: true, complementaryRoles: [] }]);
+      (getActiveMinistryRoleKeysByPerson as ReturnType<typeof vi.fn>).mockResolvedValue(["lider_visitas"]);
+      (getActiveDepartmentRoleKeysByPerson as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (getMinistryRoleDefinitionsByChurch as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+      (isActiveConsolidationMinistryMember as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+      (isActiveVisitsMinistryMember as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const memberships = await caller.ministries.personMemberships({ churchId: CHURCH_ID, personId: 10 });
+      const access = await caller.ministries.personAccess({ churchId: CHURCH_ID, personId: 10 });
+
+      expect(memberships).toEqual([expect.objectContaining({ ministryName: "Visitas", ministryType: "visitas", isLeader: true })]);
+      expect(access).toMatchObject({ accountLinked: true, accountEmail: "lider@igreja.test" });
+      expect(access.roles).toEqual(expect.arrayContaining(["visitador", "lider_visitas"]));
     });
 
     it("bloqueia membro comum de criar Ministério, alterar participantes ou montar Escalas", async () => {

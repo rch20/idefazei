@@ -154,6 +154,7 @@ import {
   deactivateMinistryRole,
   getActiveMinistryRoleKeysByPerson,
   getMinistryRoleAssignmentsByPerson,
+  getMinistryMembershipsByPerson,
   getMinistryRoleDefinitionsByChurch,
   createMinistryRoleDefinition,
   getPeopleByChurch,
@@ -2533,6 +2534,35 @@ const ministriesRouter = router({
       }
       const definition = await createMinistryRoleDefinition({ ...input, ministryId: input.ministryId ?? null, createdByChurchUserId: actor.id });
       return definition;
+    }),
+  personMemberships: protectedProcedure
+    .input(z.object({ churchId: z.number(), personId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
+      const memberships = await getMinistryMembershipsByPerson(input.personId, input.churchId);
+      return memberships.map(({ membership, ministry }) => ({
+        id: membership.id,
+        ministryId: ministry.id,
+        ministryName: ministry.name,
+        ministryType: ministry.type,
+        isLeader: ministry.leaderId === input.personId,
+        joinedAt: membership.joinedAt,
+      }));
+    }),
+  personAccess: protectedProcedure
+    .input(z.object({ churchId: z.number(), personId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
+      const account = (await getChurchUsersByChurch(input.churchId)).find((candidate) => candidate.active && candidate.personId === input.personId);
+      return {
+        accountLinked: Boolean(account),
+        accountEmail: account?.email ?? null,
+        roles: account ? await getEffectivePersonRoles(input.personId, input.churchId) : [],
+      };
     }),
   personFunctions: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))
