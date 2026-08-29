@@ -3655,24 +3655,17 @@ const registerRouter = router({
         password: input.password,
         role: "membro",
         personId: person.id,
-        active: false,
-        registrationStatus: "pending",
+        active: true,
+        registrationStatus: "approved",
+        approvedAt: new Date(),
+        approvedByChurchUserId: null,
       });
-      const recipients = (await getChurchUsersByChurch(church.id))
-        .filter((churchUser) => churchUser.active && ["pastor_presidente", "pastor_local", "secretario"].includes(churchUser.role))
-        .map((churchUser) => churchUser.id);
-      await emitNotificationWithoutBlocking({
-        churchId: church.id,
-        type: "cadastro_pendente",
-        recipientChurchUserIds: recipients,
-        title: "Novo cadastro aguardando aprovação",
-        body: `${input.name} solicitou acesso à plataforma. Revise o cadastro em Configurações → Perfis e Hierarquia.`,
-        entityType: "church_user",
-        entityId: user.id,
-        metadata: { personId: person.id },
-        dedupeKey: `cadastro-pendente-${user.id}`,
-      });
-      return { success: true, userId: user.id, message: "Cadastro recebido. Aguarde a aprovação da liderança." };
+      return {
+        success: true,
+        userId: user.id,
+        registrationStatus: "approved" as const,
+        message: "Cadastro aprovado. Você já pode entrar na plataforma com o e-mail e a senha cadastrados.",
+      };
     }),
 });
 // ─── INVITE ROUTER ───────────────────────────────────────────────────────────

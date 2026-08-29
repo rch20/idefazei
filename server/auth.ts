@@ -90,6 +90,8 @@ export async function createChurchUser(data: {
   personId?: number;
   active?: boolean;
   registrationStatus?: "approved" | "pending" | "rejected";
+  approvedAt?: Date | null;
+  approvedByChurchUserId?: number | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -104,6 +106,8 @@ export async function createChurchUser(data: {
     personId: data.personId ?? null,
     active: data.active ?? true,
     registrationStatus: data.registrationStatus ?? "approved",
+    approvedAt: data.approvedAt ?? null,
+    approvedByChurchUserId: data.approvedByChurchUserId ?? null,
   });
 
   const rows = await db.select().from(churchUsers).where(eq(churchUsers.email, data.email.toLowerCase())).limit(1);

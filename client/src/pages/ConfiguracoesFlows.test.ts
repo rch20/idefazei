@@ -67,8 +67,8 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(cadastroSource).toContain("trpc.tenantPublic.current.useQuery");
     expect(cadastroSource).toContain("registration.enabled");
     expect(cadastroSource).toContain("TenantPublicShell");
-    expect(cadastroSource).toContain("Cadastro recebido");
-    expect(cadastroSource).toContain("A liderança da");
+    expect(cadastroSource).toContain("Cadastro aprovado");
+    expect(cadastroSource).toContain("aprovado automaticamente pelo link oficial");
     expect(cadastroSource).toContain("Data de nascimento");
     expect(cadastroSource).toContain("Confirme sua senha");
     expect(cadastroSource).toContain("As senhas não coincidem");

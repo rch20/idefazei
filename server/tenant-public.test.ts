@@ -371,9 +371,18 @@ describe("Galeria pública por tenant", () => {
     expect(routerSource).toContain("birthDate: input.birthDate ? new Date");
     expect(routerSource).toContain("zipCode: input.zipCode.replace(/\\D/g, \"\")");
     expect(routerSource).toContain("if (!church.publicRegistrationEnabled)");
+    expect(routerSource).toContain('active: true');
+    expect(routerSource).toContain('registrationStatus: "approved"');
+    expect(routerSource).toContain("approvedAt: new Date()");
+    expect(routerSource).toContain("Cadastro aprovado. Você já pode entrar");
     expect(dbSource).toContain("publicRegistration: {");
     expect(dbSource).toContain('path: "/cadastro"');
     expect(dbSource).toContain("eq(churches.slug, slug)");
+  });
+
+  it("mantém a aprovação manual separada do cadastro pelo link oficial", () => {
+    expect(routerSource).toContain('pendingRegistrations: protectedProcedure');
+    expect(routerSource).toContain('resolveRegistration: protectedProcedure');
   });
 
   it("protege o cadastro contra conta duplicada e amplia a deduplicação de Pessoas", () => {
