@@ -6,6 +6,9 @@ describe("matriz de acesso do membro", () => {
   const routers = () => readFileSync(resolve(process.cwd(), "server/routers.ts"), "utf8");
   const layout = () => readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
   const app = () => readFileSync(resolve(process.cwd(), "client/src/App.tsx"), "utf8");
+  const db = () => readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
+  const communication = () => readFileSync(resolve(process.cwd(), "client/src/pages/Comunicacao.tsx"), "utf8");
+  const prayer = () => readFileSync(resolve(process.cwd(), "client/src/pages/Oracao.tsx"), "utf8");
 
   it("mantém oração pastoral separada dos pedidos próprios", () => {
     const source = routers();
@@ -36,6 +39,20 @@ describe("matriz de acesso do membro", () => {
     expect(source).toContain("const accessiblePersonIds = await getAccessiblePersonIds(ctx.user.id, input.churchId);");
     expect(source).toContain("return souls.filter((soul) => soul.personId !== null && accessiblePersonIds.has(soul.personId));");
     expect(source).not.toContain("if (access.isExecutive || access.isPastoralWorker) return getSoulsByChurch(input.churchId);");
+  });
+
+  it("mantém pedidos privados visíveis somente na caixa da liderança autorizada", () => {
+    const source = `${routers()}\n${db()}\n${prayer()}`;
+    expect(source).toContain("await requirePrayerManager(ctx.user.id, input.churchId);");
+    expect(source).toContain("return getPrayerRequestsByChurch(input.churchId);");
+    expect(source).toContain(".where(eq(prayerRequests.churchId, churchId))");
+    expect(source).toContain("const pedidos = (requests ?? []).filter((r) => r.type === \"pedido\");");
+  });
+
+  it("explica que Comunicação registra histórico, sem simular entrega externa", () => {
+    const source = `${routers()}\n${communication()}`;
+    expect(source).toContain('await logCommunication({ ...input, status: "enviado" });');
+    expect(source).toContain("o histórico atual registra a intenção de envio, não a entrega por um provedor externo");
   });
 
   it("aplica guarda de capacidade nas rotas e mantém Biblioteca e Células disponíveis", () => {

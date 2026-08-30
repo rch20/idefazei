@@ -3029,7 +3029,7 @@ export async function getPrayerRequestsByChurch(churchId: number) {
   return db
     .select()
     .from(prayerRequests)
-    .where(and(eq(prayerRequests.churchId, churchId), eq(prayerRequests.isPrivate, false)))
+    .where(eq(prayerRequests.churchId, churchId))
     .orderBy(desc(prayerRequests.createdAt))
     .limit(50);
 }

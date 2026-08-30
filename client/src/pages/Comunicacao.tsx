@@ -128,28 +128,28 @@ export default function Comunicacao() {
             <MessageSquare className="h-6 w-6 text-[#c9a84c]" />
             Comunicação
           </h1>
-          <p className="text-muted-foreground mt-1">Central de mensagens, automações e histórico de envios</p>
+          <p className="text-muted-foreground mt-1">Organize mensagens, automações e o histórico da comunicação da igreja.</p>
         </div>
         <Dialog open={sendOpen} onOpenChange={setSendOpen}>
           <DialogTrigger asChild>
             <Button className="bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90">
-              <Send className="h-4 w-4 mr-2" /> Enviar Mensagem
+              <Send className="h-4 w-4 mr-2" /> Registrar comunicação
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Enviar Mensagem</DialogTitle>
+              <DialogTitle>Registrar comunicação</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <Label>Canal *</Label>
+                  <Label>Canal planejado *</Label>
                   <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v as typeof form.type })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="push">Push Notification</SelectItem>
+                      <SelectItem value="push">Notificação push</SelectItem>
                       <SelectItem value="email">E-mail</SelectItem>
                       <SelectItem value="whatsapp">WhatsApp</SelectItem>
                       <SelectItem value="sms">SMS</SelectItem>
@@ -171,7 +171,7 @@ export default function Comunicacao() {
                 </div>
               </div>
               <div>
-                <Label>Destinatário</Label>
+                <Label>Destinatário (opcional)</Label>
                 <Select value={form.recipientPersonId || "todos"} onValueChange={(v) => {
                   if (v === "todos") {
                     setForm({ ...form, recipientPersonId: "", recipientName: "" });
@@ -319,7 +319,7 @@ export default function Comunicacao() {
             ))}
           </div>
           <p className="text-xs text-muted-foreground mt-4 text-center">
-            As automações ativas são executadas pelo sistema de heartbeat diário. Para ativar as demais, entre em contato com o suporte.
+            As automações ativas são executadas pelo sistema diário. As demais estão disponíveis para futura ativação; o histórico atual registra a intenção de envio, não a entrega por um provedor externo.
           </p>
         </TabsContent>
       </Tabs>

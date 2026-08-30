@@ -55,15 +55,15 @@ export default function Oracao() {
     }
   }
 
-  const pedidos = (requests ?? []).filter((r) => r.type === "pedido" && (isPrayerManager ? !r.isPrivate : true));
+  const pedidos = (requests ?? []).filter((r) => r.type === "pedido");
   const testemunhos = (requests ?? []).filter((r) => r.type === "testemunho");
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-display text-navy">Pedidos de Oração</h1>
-            <p className="text-sm text-muted-foreground mt-1">{isPrayerManager ? "Intercessão e testemunhos da comunidade" : "Registre e acompanhe seus pedidos de oração"}</p>
+          <h1 className="text-2xl font-bold font-display text-navy">Oração</h1>
+            <p className="text-sm text-muted-foreground mt-1">{isPrayerManager ? "Pedidos recebidos e testemunhos da comunidade" : "Faça um pedido e acompanhe seus registros"}</p>
         </div>
         <Button onClick={() => setOpen(true)} className="bg-navy hover:bg-navy-light text-white gap-2">
           <Plus className="w-4 h-4" />
@@ -76,7 +76,7 @@ export default function Oracao() {
         <div className="card-sacred p-5">
           <h2 className="font-display font-bold text-navy mb-4 flex items-center gap-2">
             <HandHeart className="w-5 h-5 text-rose-500" />
-            {isPrayerManager ? "Pedidos de Oração" : "Meus Pedidos de Oração"} ({pedidos.length})
+            {isPrayerManager ? "Pedidos recebidos" : "Meus pedidos"} ({pedidos.length})
           </h2>
           {isLoading ? (
             <div className="space-y-3">
@@ -190,7 +190,7 @@ export default function Oracao() {
             </div>
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={form.isPrivate} onChange={(e) => setForm({ ...form, isPrivate: e.target.checked })} className="w-4 h-4 accent-navy" />
-              <span className="text-sm text-foreground">Pedido privado (apenas para liderança)</span>
+              <span className="text-sm text-foreground">Manter privado (somente liderança autorizada)</span>
             </label>
             <div className="flex gap-3">
               <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">Cancelar</Button>
