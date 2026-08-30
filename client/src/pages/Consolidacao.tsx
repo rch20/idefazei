@@ -236,7 +236,7 @@ export default function Consolidacao() {
     return (
       <div className="space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div><h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1><p className="mt-1 text-sm text-muted-foreground">Visitas atribuídas à sua função ministerial.</p></div>
+          <div><h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1><p className="mt-1 text-sm text-muted-foreground">Visitas atribuídas à sua função de cuidado.</p></div>
           <div className="flex flex-col gap-2 sm:items-end"><div className="inline-flex rounded-lg border border-border bg-background p-1"><Button size="sm" variant="ghost" onClick={() => setActiveSection("consolidacao")}>Consolidação</Button><Button size="sm" className="bg-navy text-white hover:bg-navy-light">Visitas</Button></div><Select value={visitFilter} onValueChange={(value) => setVisitFilter(value as typeof visitFilter)}><SelectTrigger className="w-full bg-background sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendentes">Visitas pendentes</SelectItem><SelectItem value="agendadas">Agendadas</SelectItem><SelectItem value="realizadas">Realizadas</SelectItem><SelectItem value="todas">Todas as Visitas</SelectItem></SelectContent></Select></div>
         </div>
         <ConsolidationMinistryPanel churchId={churchId} />
@@ -280,7 +280,7 @@ export default function Consolidacao() {
         <div>
           <h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {hasFullOverview ? "Acompanhe a consolidação das Novas Almas da igreja" : "Sua fila de Novas Almas sob responsabilidade de cuidado"}
+            {hasFullOverview ? "Acompanhe a jornada de cuidado das Pessoas da igreja" : "Acompanhe somente os casos sob sua responsabilidade"}
           </p>
         </div>
         <ReportButton
@@ -288,6 +288,21 @@ export default function Consolidacao() {
           onFetch={() => utils.reports.consolidation.fetch({ churchId })}
         />
       </div>
+
+      <section className="rounded-xl border border-border bg-background p-4 sm:p-5" aria-label="Jornada de cuidado">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-navy sm:justify-between">
+          <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800">1. Indicação</span>
+          <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
+          <span className="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-800">2. Aprovação pastoral</span>
+          <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
+          <span className="rounded-full bg-blue-50 px-3 py-1.5 text-blue-800">3. Consolidador assume</span>
+          <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
+          <span className="rounded-full bg-green-50 px-3 py-1.5 text-green-800">4. Acompanhamento</span>
+          <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
+          <span className="rounded-full bg-rose-50 px-3 py-1.5 text-rose-800">5. Visita, se necessária</span>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">A Pessoa continua com a mesma ficha; somente o estado do cuidado e o responsável mudam ao longo da jornada.</p>
+      </section>
 
       {canAccessVisits && <div className="inline-flex rounded-lg border border-border bg-background p-1"><Button size="sm" className="bg-navy text-white hover:bg-navy-light">Consolidação</Button><Button size="sm" variant="ghost" onClick={() => setActiveSection("visitas")}><MapPinned className="mr-2 h-4 w-4" />Visitas</Button></div>}
 
@@ -303,8 +318,8 @@ export default function Consolidacao() {
             <Send className="h-5 w-5 text-rose-600" />
           </div>
           <div>
-            <h2 className="font-display text-lg font-semibold text-navy">Encaminhamentos para Consolidação</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Pessoas enviadas pela liderança porque precisam de resgate e acompanhamento. Aceite um encaminhamento para iniciar o cuidado.</p>
+            <h2 className="font-display text-lg font-semibold text-navy">Fila de cuidado</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Pessoas encaminhadas porque precisam de acompanhamento. Primeiro o Pastor aprova; depois um Consolidador assume o caso.</p>
           </div></div><Select value={caseFilter} onValueChange={(value) => setCaseFilter(value as typeof caseFilter)}><SelectTrigger className="w-full bg-background sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ativos">Casos ativos</SelectItem><SelectItem value="fila">Sem responsável</SelectItem><SelectItem value="atrasados">Atrasados</SelectItem><SelectItem value="encerrados">Encerrados</SelectItem><SelectItem value="todos">Todos os casos</SelectItem></SelectContent></Select></div>
         {filteredReferrals.length === 0 ? (
           <p className="mt-4 rounded-lg border border-dashed border-rose-200 bg-background/70 p-3 text-sm text-muted-foreground">Não há encaminhamentos de resgate na sua fila neste momento.</p>
@@ -320,7 +335,7 @@ export default function Consolidacao() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-navy">{referral.personName}</p>
-                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${referral.status === "encerrado" ? "border-green-200 bg-green-50 text-green-700" : referral.status === "em_acompanhamento" ? "border-blue-200 bg-blue-50 text-blue-700" : referral.status === "aprovado" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{referral.status === "pendente" ? "Aguardando aceite da liderança" : referral.status === "aprovado" ? "Aceito pela liderança" : referral.status === "aceito" ? "Assumido pelo Consolidador" : referral.status === "em_acompanhamento" ? "Em acompanhamento" : "Encerrado"}</span>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${referral.status === "encerrado" ? "border-green-200 bg-green-50 text-green-700" : referral.status === "em_acompanhamento" ? "border-blue-200 bg-blue-50 text-blue-700" : referral.status === "aprovado" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{referral.status === "pendente" ? "Aguardando aprovação pastoral" : referral.status === "aprovado" ? "Aprovado, aguardando Consolidador" : referral.status === "aceito" ? "Assumido pelo Consolidador" : referral.status === "em_acompanhamento" ? "Em acompanhamento" : "Encerrado"}</span>
                         {referral.careDueStatus !== "encerrado" && <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${referral.careDueStatus === "atrasado" ? "border-rose-200 bg-rose-50 text-rose-700" : referral.careDueStatus === "proximo" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}><Clock3 className="h-3 w-3" />{getCareDueLabel(referral)}</span>}
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">Indicado por {referral.referredByName} · origem: {referral.sourceName} · {new Date(referral.referredAt).toLocaleDateString("pt-BR")}{referral.preferredConsolidatorName ? ` · Preferência: ${referral.preferredConsolidatorName}` : ""}</p>
@@ -329,7 +344,7 @@ export default function Consolidacao() {
                     </div>
                     <div className="flex shrink-0 flex-col gap-2 sm:w-44">
                       {referral.canAssign && <ConsolidationAssignmentControl churchId={churchId} referral={referral} candidates={consolidatorsQuery.data ?? []} canAssign={Boolean(referral.canAssign)} onSaved={async () => { await referralsQuery.refetch(); }} />}
-                      {isPending && referral.canApprove && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={approveReferral.isPending} onClick={() => approveReferral.mutate({ churchId, id: referral.id })}><CheckCircle2 className="mr-2 h-4 w-4" />Aceitar consolidação</Button>}
+                      {isPending && referral.canApprove && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={approveReferral.isPending} onClick={() => approveReferral.mutate({ churchId, id: referral.id })}><CheckCircle2 className="mr-2 h-4 w-4" />Aprovar encaminhamento</Button>}
                       {isApproved && referral.canAccept && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
                       {!isPending && referral.status !== "encerrado" && <Button size="sm" variant="outline" onClick={() => openTracking(referral.id)}><ClipboardCheck className="mr-2 h-4 w-4" />{trackingReferralId === referral.id ? "Fechar painel" : "Acompanhar caso"}</Button>}
                       {isInFollowUp && <Button size="sm" variant="outline" onClick={() => setClosingReferralId(referral.id)}>Encerrar cuidado</Button>}
