@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Music, Users, Plus, Search, Star, Trash2 } from "lucide-react";
+import { ChevronDown, Music, Users, Plus, Search, Star, Trash2 } from "lucide-react";
 
 const OPERATIONAL_FUNCTION_KEYS = new Set(["membro_ministerio", "musico", "vocalista", "visitador"]);
 
@@ -218,7 +218,7 @@ export default function Ministerios() {
                   <Select value={form.type} onValueChange={(type) => setForm({ ...form, type, participantIds: isTeamMinistryType(type) ? form.participantIds : [] })}>
                     <SelectTrigger id="ministry-type" className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="louvor">Louvor</SelectItem><SelectItem value="infantil">Infantil</SelectItem><SelectItem value="recepcao">Recepção</SelectItem><SelectItem value="midia">Mídia</SelectItem><SelectItem value="intercessao">Intercessão</SelectItem><SelectItem value="evangelismo">Evangelismo</SelectItem><SelectItem value="casais">Casais</SelectItem><SelectItem value="jovens">Jovens</SelectItem><SelectItem value="consolidacao">Consolidação e Visitas</SelectItem><SelectItem value="visitas">Visitas</SelectItem><SelectItem value="outro">Outro</SelectItem>
+                      <SelectItem value="louvor">Louvor</SelectItem><SelectItem value="infantil">Infantil</SelectItem><SelectItem value="recepcao">Recepção</SelectItem><SelectItem value="midia">Mídia</SelectItem><SelectItem value="intercessao">Intercessão</SelectItem><SelectItem value="evangelismo">Evangelismo</SelectItem><SelectItem value="casais">Casais</SelectItem><SelectItem value="jovens">Jovens</SelectItem><SelectItem value="consolidacao">Consolidação</SelectItem><SelectItem value="visitas">Visitas</SelectItem><SelectItem value="outro">Outro</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -252,9 +252,9 @@ export default function Ministerios() {
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
           {[
-            { label: "Ministérios Ativos", value: ministries?.length ?? 0, icon: Music, color: "text-purple-600" },
-            { label: "Total de Membros", value: ministries?.reduce((a: number, m: { memberCount?: number }) => a + (m.memberCount ?? 0), 0) ?? 0, icon: Users, color: "text-blue-600" },
-            { label: "Com Líder Definido", value: ministries?.filter((m: { leaderId?: number | null }) => m.leaderId).length ?? 0, icon: Star, color: "text-gold" },
+            { label: "Ministérios em funcionamento", value: ministries?.length ?? 0, icon: Music, color: "text-purple-600" },
+            { label: "Pessoas nas equipes", value: ministries?.reduce((a: number, m: { memberCount?: number }) => a + (m.memberCount ?? 0), 0) ?? 0, icon: Users, color: "text-blue-600" },
+            { label: "Com responsável definido", value: ministries?.filter((m: { leaderId?: number | null }) => m.leaderId).length ?? 0, icon: Star, color: "text-gold" },
           ].map((stat) => (
             <div key={stat.label} className="card-sacred p-4 flex items-center gap-3">
               <div className={`w-10 h-10 rounded-lg bg-muted flex items-center justify-center ${stat.color}`}>
@@ -272,7 +272,7 @@ export default function Ministerios() {
         <div className="relative mb-4">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar ministério..."
+            placeholder="Buscar equipe ou Ministério..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -305,7 +305,7 @@ export default function Ministerios() {
                   onClick={() => { setSelectedMinistry(ministry); setSelectedPersonId(""); }}
                   onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedMinistry(ministry); setSelectedPersonId(""); } }}
                   className="card-sacred group relative w-full cursor-pointer p-5 text-left transition-all hover:border-gold/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
-                  aria-label={`Gerenciar participantes de ${ministry.name}`}
+                  aria-label={`Abrir equipe do Ministério ${ministry.name}`}
                 >
                   <div className="mb-3 flex items-start justify-between gap-2">
                     <div className="text-3xl">{MINISTRY_ICONS[icon]}</div>
@@ -317,11 +317,11 @@ export default function Ministerios() {
                   {ministry.description && (
                     <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{ministry.description}</p>
                   )}
-                  <p className="text-xs text-muted-foreground mb-2">Responsável: <span className="font-medium text-navy">{ministry.leaderName ?? "Não definido"}</span></p>
+                  <p className="text-xs text-muted-foreground mb-2">Líder: <span className="font-medium text-navy">{ministry.leaderName ?? "Não definido"}</span></p>
                   <div className="flex items-center gap-2 mt-auto">
                     <Badge variant="outline" className="text-xs">
                       <Users className="w-3 h-3 mr-1" />
-                      {ministry.memberCount ?? 0} membros
+                      {ministry.memberCount ?? 0} pessoas
                     </Badge>
                   </div>
                 </div>
@@ -333,10 +333,10 @@ export default function Ministerios() {
         <Dialog open={Boolean(selectedMinistry)} onOpenChange={(nextOpen) => !nextOpen && setSelectedMinistry(null)}>
           <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-3xl">
             <DialogHeader>
-              <DialogTitle className="font-display text-navy">{canCreateMinistry ? "Equipe" : "Meu Ministério"}: {selectedMinistry?.name}</DialogTitle>
+              <DialogTitle className="font-display text-navy">{canCreateMinistry ? "Equipe do Ministério" : "Minha equipe"}: {selectedMinistry?.name}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">{selectedMinistry && isConsolidationMinistry(selectedMinistry) ? "Adicione os envolvidos no cuidado. Cada participante ativo recebe acesso à aba de Consolidação; a aprovação da indicação e a assunção do cuidado continuam sendo etapas diferentes." : selectedMinistry && isVisitsMinistry(selectedMinistry) ? "Adicione os Visitadores deste Ministério. Eles poderão acessar Consolidação → Visitas e aceitar as visitas disponíveis; o líder continua responsável por organizar a equipe." : canCreateMinistry ? "Participantes, liderança e escalas permanecem isolados neste Ministério." : "Este painel mostra somente a equipe e as responsabilidades do Ministério sob sua liderança."}</p>
+              <p className="text-sm text-muted-foreground">{selectedMinistry && isConsolidationMinistry(selectedMinistry) ? "Adicione os envolvidos no cuidado. Cada participante ativo recebe acesso à aba de Consolidação; a aprovação da indicação e a assunção do cuidado continuam sendo etapas diferentes." : selectedMinistry && isVisitsMinistry(selectedMinistry) ? "Adicione os Visitadores deste Ministério. Eles poderão acessar Consolidação → Visitas e aceitar as visitas disponíveis; o líder continua responsável por organizar a equipe." : canCreateMinistry ? "Aqui você organiza a equipe, a liderança e a rotina deste Ministério." : "Aqui você gerencia somente as Pessoas e as funções operacionais deste Ministério."}</p>
               {canManageRoles && <div className="rounded-xl border border-gold/30 bg-gold/5 p-3">
                 <Label htmlFor="selected-ministry-leader">Líder responsável</Label>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row">
@@ -353,18 +353,18 @@ export default function Ministerios() {
                   <SelectContent>{(ministryCandidates.data ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                 </Select>
                 <Button type="button" onClick={addSelectedPerson} disabled={assignPerson.isPending || ministryCandidates.isLoading} className="bg-navy text-white hover:bg-navy-light">
-                  {assignPerson.isPending ? "Adicionando…" : "Adicionar participante"}
+                  {assignPerson.isPending ? "Adicionando…" : "Adicionar pessoa à equipe"}
                 </Button>
               </div> : <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">Somente o Pastor ou o responsável deste Ministério pode alterar a equipe.</p>}
               <div className="rounded-xl border border-border">
-                <div className="border-b border-border px-4 py-3 text-sm font-semibold text-navy">Participantes ativos ({ministryMembers.data?.length ?? 0})</div>
+                <div className="border-b border-border px-4 py-3 text-sm font-semibold text-navy">Pessoas na equipe ({ministryMembers.data?.length ?? 0})</div>
                 {ministryMembers.isLoading ? <div className="p-4 text-sm text-muted-foreground">Carregando equipe…</div> : (ministryMembers.data ?? []).length === 0 ? <div className="p-4 text-sm text-muted-foreground">Nenhuma Pessoa adicionada ainda.</div> : (
                   <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-center gap-3 px-4 py-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><span className="min-w-0 flex-1 truncate text-sm font-medium text-navy">{item.person.fullName}</span>{selectedMinistry?.canManage && selectedMinistry.leaderId !== item.person.id && <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Remover ${item.person.fullName}`} onClick={() => removePerson.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: item.person.id })}><Trash2 className="h-4 w-4" /></Button>}</div>)}</div>
                 )}
               </div>
               {selectedMinistry?.canManage && (
                 <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
-                  <p className="text-sm font-semibold text-navy">Função operacional</p>
+                  <p className="text-sm font-semibold text-navy">Atuação na equipe</p>
                   <p className="mt-1 text-xs text-muted-foreground">Você pode atribuir apenas funções de operação desta equipe. Líder, co-líder e supervisor continuam sendo nomeados pelo Pastor.</p>
                   <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
                     <Select value={functionPersonId} onValueChange={setFunctionPersonId}>
@@ -380,8 +380,19 @@ export default function Ministerios() {
                 </section>
               )}
               {selectedMinistry?.canManage && isConsolidationMinistry(selectedMinistry) && <ConsolidationReferralBox churchId={churchId!} candidates={(ministryMembers.data ?? []).map((item) => ({ id: item.person.id, fullName: item.person.fullName }))} sourceLabel={`Ministério ${selectedMinistry.name}`} />}
-              {selectedMinistry && churchId && <DepartmentsPanel churchId={churchId} ministry={{ id: selectedMinistry.id, name: selectedMinistry.name }} canCreateDepartment={canCreateMinistry} canAssignLeader={canManageRoles} people={people ?? []} />}
-              {canCreateMinistry && <div className="rounded-xl border border-gold/30 bg-cream/40 p-4 space-y-3">
+              {selectedMinistry && churchId && <details className="group rounded-xl border border-border bg-muted/20">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 [&::-webkit-details-marker]:hidden">
+                  <span><span className="block text-sm font-semibold text-navy">Departamentos <span className="font-normal text-muted-foreground">(opcional)</span></span><span className="mt-0.5 block text-xs text-muted-foreground">Use quando o Ministério precisar de subequipes.</span></span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="border-t border-border p-2"><DepartmentsPanel churchId={churchId} ministry={{ id: selectedMinistry.id, name: selectedMinistry.name }} canCreateDepartment={canCreateMinistry} canAssignLeader={canManageRoles} people={people ?? []} /></div>
+              </details>}
+              {canCreateMinistry && <details className="group rounded-xl border border-gold/30 bg-cream/40">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 [&::-webkit-details-marker]:hidden">
+                  <span><span className="block text-sm font-semibold text-navy">Funções avançadas</span><span className="mt-0.5 block text-xs text-muted-foreground">Disponível somente para o Pastor.</span></span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="space-y-3 border-t border-gold/20 p-4">
                 <p className="text-sm font-semibold text-navy">Funções personalizadas</p>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Input value={customRoleName} onChange={(event) => setCustomRoleName(event.target.value)} placeholder="Ex.: Líder de Louvor" />
@@ -392,7 +403,8 @@ export default function Ministerios() {
                   <Button type="button" onClick={addCustomFunction} disabled={createCustomFunction.isPending}>Criar</Button>
                 </div>
                 <div className="flex flex-wrap gap-2">{(customFunctions.data ?? []).filter((role) => !role.ministryId || role.ministryId === selectedMinistry?.id).map((role) => <Badge key={role.id} variant="outline">{role.name}</Badge>)}</div>
-              </div>}
+                </div>
+              </details>}
               <DialogFooter className="pt-3">
                 <Button type="button" variant="outline" onClick={() => setSelectedMinistry(null)}>Fechar</Button>
               </DialogFooter>
