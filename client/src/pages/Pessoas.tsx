@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { BriefcaseBusiness, Clock3, HeartHandshake, Plus, Search, Send, ShieldCheck, User, Users } from "lucide-react";
+import { ArrowRight, BriefcaseBusiness, Clock3, HeartHandshake, Plus, Search, Send, ShieldCheck, User, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -106,7 +106,7 @@ const defaultForm = {
 
 export default function Pessoas() {
   const { churchId } = useChurch();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(defaultForm);
@@ -215,6 +215,20 @@ export default function Pessoas() {
   const currentResponsible = (people ?? []).find((person) => person.id === currentCare.data?.responsiblePersonId);
   const participationCount = (currentCell.data ? 1 : 0) + (personMembershipsQuery.data?.length ?? 0);
   const accessSummaryText = personAccessQuery.data?.accountLinked ? `${personAccessQuery.data.roles.length} acesso(s) efetivo(s)` : "Sem login vinculado";
+  const nextStepLabel = selectedAttention?.nextStep === "Registrar primeiro contato"
+    ? "Abrir Consolidação"
+    : selectedAttention?.nextStep === "Enviar para célula"
+      ? "Abrir Participações"
+      : selectedAttention?.nextStep === "Definir responsável"
+        ? "Abrir Cuidado"
+        : selectedAttention?.nextStep === "Iniciar consolidação"
+          ? "Abrir Cuidado"
+          : null;
+  const canActOnNextStep = Boolean(
+    selectedAttention && selectedAttention.nextStep !== "Acompanhamento em dia" && (
+      selectedAttention.nextStep === "Enviar para célula" ? canManageCellParticipation : canManageJourney
+    )
+  );
 
   useEffect(() => {
     const personId = Number(new URLSearchParams(location.split("?")[1] ?? "").get("personId"));
@@ -597,12 +611,32 @@ export default function Pessoas() {
 
           {personSection === "resumo" && selectedAttention && (
             <div className={`rounded-xl border p-4 ${selectedAttention.priority === "alta" ? "border-rose-200 bg-rose-50/60" : selectedAttention.priority === "media" ? "border-amber-200 bg-amber-50/60" : "border-green-200 bg-green-50/60"}`}>
-              <div className="flex items-start gap-3">
-                <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${selectedAttention.priority === "alta" ? "text-rose-600" : selectedAttention.priority === "media" ? "text-amber-600" : "text-green-600"}`} />
-                <div>
-                  <p className="text-sm font-semibold text-navy">Próximo passo: {selectedAttention.nextStep}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{selectedAttention.reasons.length > 0 ? selectedAttention.reasons.join(" · ") : "Não há pendências críticas no momento."}</p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${selectedAttention.priority === "alta" ? "text-rose-600" : selectedAttention.priority === "media" ? "text-amber-600" : "text-green-600"}`} />
+                  <div>
+                    <p className="text-sm font-semibold text-navy">Próximo passo: {selectedAttention.nextStep}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{selectedAttention.reasons.length > 0 ? selectedAttention.reasons.join(" · ") : "Não há pendências críticas no momento."}</p>
+                  </div>
                 </div>
+                {canActOnNextStep && nextStepLabel && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full shrink-0 gap-2 sm:w-auto"
+                    onClick={() => {
+                      if (selectedAttention.nextStep === "Registrar primeiro contato") {
+                        navigate("/app/consolidacao");
+                      } else if (selectedAttention.nextStep === "Enviar para célula") {
+                        setPersonSection("participacoes");
+                      } else {
+                        setPersonSection("cuidado");
+                      }
+                    }}
+                  >
+                    {nextStepLabel} <ArrowRight className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           )}

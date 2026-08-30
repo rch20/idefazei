@@ -38,6 +38,16 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).not.toContain("saveMinistryFunction");
   });
 
+  it("mostra um próximo passo único e leva cada pendência ao contexto correto", () => {
+    expect(pageSource).toContain("const nextStepLabel");
+    expect(pageSource).toContain('"Abrir Consolidação"');
+    expect(pageSource).toContain('"Abrir Participações"');
+    expect(pageSource).toContain('"Abrir Cuidado"');
+    expect(pageSource).toContain('navigate("/app/consolidacao")');
+    expect(pageSource).toContain('setPersonSection("participacoes")');
+    expect(pageSource).toContain('setPersonSection("cuidado")');
+  });
+
   it("protege a leitura de cuidado pelo escopo acessível da Pessoa", () => {
     expect(routerSource).toContain("await requireScopedPersonRead(ctx.user.id, input.churchId, input.personId);");
     expect(dbSource).toContain("coLeaderId: cells.coLeaderId");
