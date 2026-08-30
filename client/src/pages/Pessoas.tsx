@@ -111,6 +111,7 @@ export default function Pessoas() {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(defaultForm);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
+  const [personSection, setPersonSection] = useState<"resumo" | "participacoes" | "cuidado" | "historico">("resumo");
   const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
   const [selectedCellId, setSelectedCellId] = useState("");
   const [referralForm, setReferralForm] = useState({ reason: "", notes: "", preferredConsolidatorId: "" });
@@ -130,7 +131,12 @@ export default function Pessoas() {
   const cellsQuery = trpc.cells.list.useQuery({ churchId });
   const ministriesQuery = trpc.ministries.list.useQuery({ churchId });
   const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery({ churchId });
-  const canManageMinistryFunctions = (effectiveRolesQuery.data ?? []).some((role) => ["pastor_presidente", "pastor_local", "secretario"].includes(role));
+  const effectiveRoles = effectiveRolesQuery.data ?? [];
+  const isPastor = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+  const canManageJourney = isPastor || effectiveRoles.some((role) => ["lider", "supervisor", "consolidador"].includes(role));
+  const canManageCellParticipation = isPastor || effectiveRoles.some((role) => ["lider", "supervisor"].includes(role));
+  const canCreateReferral = canManageJourney;
+  const canManageMinistryFunctions = isPastor;
   const personMembershipsQuery = trpc.ministries.personMemberships.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
@@ -159,7 +165,7 @@ export default function Pessoas() {
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id) }
   );
-  const consolidatorsQuery = trpc.consolidation.consolidators.useQuery({ churchId });
+  const consolidatorsQuery = trpc.consolidation.consolidators.useQuery({ churchId }, { enabled: canCreateReferral });
   const createPerson = trpc.people.create.useMutation({
     onSuccess: () => {
       toast.success("Pessoa cadastrada com sucesso!");
@@ -275,6 +281,7 @@ export default function Pessoas() {
 
   function openPersonJourney(person: any) {
     setSelectedPerson(person);
+    setPersonSection("resumo");
     setCareForm({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
     setSelectedCellId("");
     setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "" });
@@ -600,14 +607,34 @@ export default function Pessoas() {
             <DialogDescription>Uma Pessoa, várias participações e um histórico único de cuidado.</DialogDescription>
           </DialogHeader>
 
-          {selectedPerson && <div className="grid gap-2 sm:grid-cols-4">
+          <div role="tablist" aria-label="Seções da ficha da Pessoa" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 sm:grid-cols-4">
+            {[
+              ["resumo", "Resumo"],
+              ["participacoes", "Participações"],
+              ["cuidado", "Cuidado"],
+              ["historico", "Histórico"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={personSection === value}
+                onClick={() => setPersonSection(value as typeof personSection)}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${personSection === value ? "bg-background text-navy shadow-sm" : "text-muted-foreground hover:bg-background/70 hover:text-navy"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {personSection === "resumo" && selectedPerson && <div className="grid gap-2 sm:grid-cols-4">
             <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Jornada</p><p className="mt-1 text-sm font-semibold text-navy">{STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</p></div>
             <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Participações</p><p className="mt-1 text-sm font-semibold text-navy">{participationCount} ativa(s)</p></div>
             <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Responsabilidade</p><p className="mt-1 truncate text-sm font-semibold text-navy">{currentResponsible?.fullName ?? "Não definida"}</p></div>
             {canManageMinistryFunctions && <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Acesso</p><p className="mt-1 text-sm font-semibold text-navy">{accessSummaryText}</p></div>}
           </div>}
 
-          {selectedAttention && (
+          {personSection === "resumo" && selectedAttention && (
             <div className={`rounded-xl border p-4 ${selectedAttention.priority === "alta" ? "border-rose-200 bg-rose-50/60" : selectedAttention.priority === "media" ? "border-amber-200 bg-amber-50/60" : "border-green-200 bg-green-50/60"}`}>
               <div className="flex items-start gap-3">
                 <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${selectedAttention.priority === "alta" ? "text-rose-600" : selectedAttention.priority === "media" ? "text-amber-600" : "text-green-600"}`} />
@@ -619,7 +646,7 @@ export default function Pessoas() {
             </div>
           )}
 
-          <div className="grid gap-4 md:grid-cols-2">
+          {personSection === "cuidado" && <div className="grid gap-4 md:grid-cols-2">
             <section className="rounded-xl border border-border p-4">
               <h3 className="text-sm font-semibold text-navy">Responsável atual</h3>
               {currentCare.isLoading ? <p className="mt-2 text-sm text-muted-foreground">Carregando…</p> : currentCare.data ? (
@@ -633,9 +660,9 @@ export default function Pessoas() {
               <h3 className="text-sm font-semibold text-navy">Histórico de cuidado</h3>
               <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground"><Clock3 className="h-4 w-4" />{careHistory.data?.length ?? 0} atribuição(ões) registrada(s)</p>
             </section>
-          </div>
+          </div>}
 
-          <section className="rounded-xl border border-border p-4">
+          {personSection === "historico" && <section className="rounded-xl border border-border p-4">
             <h3 className="text-sm font-semibold text-navy">Linha do tempo de acompanhamento</h3>
             {careTimeline.length === 0 ? (
               <p className="mt-2 text-sm text-muted-foreground">Ainda não há ações de cuidado registradas.</p>
@@ -651,10 +678,11 @@ export default function Pessoas() {
                 ))}
               </div>
             )}
-          </section>
+          </section>}
 
-          <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
-            <h3 className="text-sm font-semibold text-navy">Definir responsável pelo cuidado</h3>
+          {personSection === "cuidado" && canManageJourney && (
+            <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
+              <h3 className="text-sm font-semibold text-navy">Definir responsável pelo cuidado</h3>
             <p className="mt-1 text-xs text-muted-foreground">Ao atualizar, o responsável anterior é preservado no histórico e deixa de ficar ativo.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div>
@@ -692,15 +720,16 @@ export default function Pessoas() {
               {selectedAttention?.nextStep === "Iniciar consolidação" && <Button type="button" variant="outline" onClick={handleStartConsolidation} disabled={startConsolidation.isPending}>Iniciar consolidação</Button>}
               <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={saveCareAssignment} disabled={assignCare.isPending}>{assignCare.isPending ? "Salvando…" : "Atualizar responsável"}</Button>
             </div>
-          </section>
+            </section>
+          )}
 
-          {canManageMinistryFunctions && (
+          {personSection === "participacoes" && canManageMinistryFunctions && (
             <section className="rounded-xl border border-indigo-200 bg-indigo-50/35 p-4">
               <div className="flex items-start gap-3">
                 <BriefcaseBusiness className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />
                 <div>
-                  <h3 className="text-sm font-semibold text-navy">Acesso ministerial</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">A etapa do discipulado é apenas um marcador. O acesso nasce da membresia e das funções ativas desta Pessoa.</p>
+                  <h3 className="text-sm font-semibold text-navy">Participações e atuações</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">A Jornada é apenas um marcador. A Pessoa pode participar de vários Ministérios, e os acessos são calculados pelos vínculos ativos.</p>
                 </div>
               </div>
 
@@ -760,8 +789,8 @@ export default function Pessoas() {
               </div>
 
               <div className="mt-4 rounded-lg border border-indigo-100 bg-background/60 p-3">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Atribuir função manual</h4>
-                <p className="mt-1 text-xs text-muted-foreground">Use somente quando a função exigir uma responsabilidade específica, como líder ou supervisor. A atribuição também garante a membresia no Ministério selecionado.</p>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Adicionar atuação na equipe</h4>
+                <p className="mt-1 text-xs text-muted-foreground">Use para registrar uma atuação operacional nesta equipe. A liderança estrutural continua sendo nomeada somente pelo Pastor.</p>
                 <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
                   <div>
                     <Label htmlFor="person-ministry">Ministério</Label>
@@ -785,8 +814,9 @@ export default function Pessoas() {
             </section>
           )}
 
-          <section className="rounded-xl border border-rose-200 bg-rose-50/45 p-4">
-            <div className="flex items-start gap-3">
+          {personSection === "cuidado" && canCreateReferral && (
+            <section className="rounded-xl border border-rose-200 bg-rose-50/45 p-4">
+              <div className="flex items-start gap-3">
               <Send className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
               <div>
                 <h3 className="text-sm font-semibold text-navy">Enviar para Consolidação</h3>
@@ -812,15 +842,17 @@ export default function Pessoas() {
               <Label htmlFor="referral-notes">Observação para o Consolidador</Label>
               <Textarea id="referral-notes" className="mt-1 bg-background" rows={2} value={referralForm.notes} onChange={(event) => setReferralForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Contexto que ajuda no primeiro contato, sem expor informações desnecessárias." />
             </div>
-            <div className="mt-4 flex justify-end">
-              <Button type="button" variant="outline" onClick={handleCreateReferral} disabled={createReferral.isPending} className="border-rose-200 text-rose-700 hover:bg-rose-100">
+              <div className="mt-4 flex justify-end">
+                <Button type="button" variant="outline" onClick={handleCreateReferral} disabled={createReferral.isPending} className="border-rose-200 text-rose-700 hover:bg-rose-100">
                 <Send className="mr-2 h-4 w-4" />{createReferral.isPending ? "Enviando…" : "Enviar para Consolidação"}
-              </Button>
-            </div>
-          </section>
+                </Button>
+              </div>
+            </section>
+          )}
 
-          <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
-            <h3 className="text-sm font-semibold text-navy">Integração em Célula</h3>
+          {personSection === "participacoes" && (
+            <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
+              <h3 className="text-sm font-semibold text-navy">Participação em Célula</h3>
             {currentCell.isLoading ? (
               <p className="mt-2 text-sm text-muted-foreground">Carregando vínculo de célula…</p>
             ) : currentCell.data ? (
@@ -831,20 +863,23 @@ export default function Pessoas() {
             ) : (
               <p className="mt-2 text-sm text-amber-800">Esta pessoa ainda não possui uma célula ativa.</p>
             )}
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <Label htmlFor="journey-cell">Célula de destino</Label>
-                <Select value={selectedCellId} onValueChange={setSelectedCellId}>
-                  <SelectTrigger id="journey-cell" className="mt-1 bg-background"><SelectValue placeholder="Selecione uma célula ativa" /></SelectTrigger>
-                  <SelectContent>{(cellsQuery.data ?? []).map((cell) => <SelectItem key={cell.id} value={String(cell.id)}>{cell.name}</SelectItem>)}</SelectContent>
-                </Select>
+            {canManageCellParticipation ? (
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="flex-1">
+                  <Label htmlFor="journey-cell">Célula de destino</Label>
+                  <Select value={selectedCellId} onValueChange={setSelectedCellId}>
+                    <SelectTrigger id="journey-cell" className="mt-1 bg-background"><SelectValue placeholder="Selecione uma célula ativa" /></SelectTrigger>
+                    <SelectContent>{(cellsQuery.data ?? []).map((cell) => <SelectItem key={cell.id} value={String(cell.id)}>{cell.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <Button type="button" variant="outline" onClick={handleCellAssignment} disabled={assignCell.isPending || (cellsQuery.data ?? []).length === 0}>
+                  {assignCell.isPending ? "Atualizando…" : currentCell.data ? "Transferir" : "Integrar à Célula"}
+                </Button>
               </div>
-              <Button type="button" variant="outline" onClick={handleCellAssignment} disabled={assignCell.isPending || (cellsQuery.data ?? []).length === 0}>
-                {assignCell.isPending ? "Atualizando…" : currentCell.data ? "Transferir" : "Integrar à célula"}
-              </Button>
-            </div>
-            {cellHistory.data && cellHistory.data.length > 1 && <p className="mt-3 text-xs text-muted-foreground">{cellHistory.data.length - 1} vínculo(s) anterior(es) preservado(s) no histórico.</p>}
-          </section>
+            ) : <p className="mt-3 text-xs text-muted-foreground">A integração e a transferência de Célula são feitas pelo Pastor ou pela liderança responsável.</p>}
+              {cellHistory.data && cellHistory.data.length > 1 && <p className="mt-3 text-xs text-muted-foreground">{cellHistory.data.length - 1} vínculo(s) anterior(es) preservado(s) no histórico.</p>}
+            </section>
+          )}
         </DialogContent>
       </Dialog>
     </div>

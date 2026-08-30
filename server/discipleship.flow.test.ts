@@ -1776,7 +1776,7 @@ describe("Fluxo completo de discipulado", () => {
       (canChurchUserManageJourney as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
       const caller = appRouter.createCaller(createMemberContext(-2));
 
-      await expect(caller.care.history({ churchId: CHURCH_ID, personId: 99 })).rejects.toThrow("sob sua responsabilidade pastoral");
+      await expect(caller.care.history({ churchId: CHURCH_ID, personId: 99 })).rejects.toThrow("Você não tem acesso a esta Pessoa.");
     });
 
     it("bloqueia a criação de Célula por membro sem responsabilidade de liderança", async () => {

@@ -2115,7 +2115,7 @@ const careRouter = router({
   getCurrent: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireJourneyStagePermission(ctx.user.id, input.churchId, input.personId);
+      await requireScopedPersonRead(ctx.user.id, input.churchId, input.personId);
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
       return getCurrentCareAssignment(input.personId, input.churchId);
@@ -2124,7 +2124,7 @@ const careRouter = router({
   history: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireJourneyStagePermission(ctx.user.id, input.churchId, input.personId);
+      await requireScopedPersonRead(ctx.user.id, input.churchId, input.personId);
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
       return getCareHistoryByPerson(input.personId, input.churchId);

@@ -830,7 +830,7 @@ export async function canChurchUserManageJourney(input: {
 
   if (input.actorRoles.includes("lider") || input.actorRoles.includes("supervisor")) {
     const matches = await db
-      .select({ leaderId: cells.leaderId, supervisorId: cells.supervisorId })
+      .select({ leaderId: cells.leaderId, coLeaderId: cells.coLeaderId, supervisorId: cells.supervisorId })
       .from(cellMembers)
       .innerJoin(cells, eq(cells.id, cellMembers.cellId))
       .where(
@@ -842,7 +842,7 @@ export async function canChurchUserManageJourney(input: {
       )
       .limit(1);
     return matches.some((cell) =>
-      (input.actorRoles.includes("lider") && cell.leaderId === input.actorPersonId) ||
+      (input.actorRoles.includes("lider") && [cell.leaderId, cell.coLeaderId].includes(input.actorPersonId)) ||
       (input.actorRoles.includes("supervisor") && cell.supervisorId === input.actorPersonId)
     );
   }
