@@ -375,12 +375,17 @@ export default function Pessoas() {
           ))}
         </div>
       ) : (people ?? []).length === 0 ? (
-        <div className="card-sacred p-12 flex flex-col items-center gap-3 text-center">
-          <div className="w-14 h-14 rounded-full bg-navy/10 flex items-center justify-center">
-            <Users className="w-7 h-7 text-navy" />
+        <div className="card-sacred flex flex-col items-center gap-3 p-10 text-center sm:p-12">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-navy/10">
+            <Users className="h-7 w-7 text-navy" />
           </div>
-          <p className="font-semibold text-navy">Nenhuma pessoa cadastrada</p>
-          <p className="text-sm text-muted-foreground">Cadastre a primeira pessoa da sua igreja</p>
+          <p className="font-semibold text-navy">{search ? "Nenhuma Pessoa encontrada" : "Nenhuma Pessoa cadastrada"}</p>
+          <p className="max-w-sm text-sm text-muted-foreground">{search ? "Tente outro nome, e-mail ou telefone, ou limpe a busca." : "Comece pela recepção: cadastre a primeira Pessoa da sua igreja."}</p>
+          {search ? (
+            <Button type="button" variant="outline" onClick={() => setSearch("")}>Limpar busca</Button>
+          ) : (
+            <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Cadastrar primeira Pessoa</Button>
+          )}
         </div>
       ) : (
         <div className="space-y-2 animate-stagger">

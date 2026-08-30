@@ -298,12 +298,13 @@ export default function Celulas() {
               ))}
             </div>
           ) : (cells ?? []).length === 0 ? (
-            <div className="card-sacred p-12 flex flex-col items-center gap-3 text-center">
-              <div className="w-14 h-14 rounded-full bg-indigo-50 flex items-center justify-center">
-                <Globe className="w-7 h-7 text-indigo-600" />
+            <div className="card-sacred flex flex-col items-center gap-3 p-10 text-center sm:p-12">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-50">
+                <Globe className="h-7 w-7 text-indigo-600" />
               </div>
-              <p className="font-semibold text-navy">Nenhuma célula cadastrada</p>
-              <p className="text-sm text-muted-foreground">Crie a primeira célula da sua igreja</p>
+              <p className="font-semibold text-navy">{canPublishCells ? "Nenhuma Célula cadastrada" : "Nenhuma Célula no seu escopo"}</p>
+              <p className="max-w-sm text-sm text-muted-foreground">{canPublishCells ? "Crie a primeira Célula para começar a direcionar Pessoas e organizar encontros." : "Quando o Pastor direcionar você para uma Célula, ela aparecerá aqui."}</p>
+              {canPublishCells && <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Criar primeira Célula</Button>}
             </div>
           ) : (
             <div className="space-y-3 animate-stagger">

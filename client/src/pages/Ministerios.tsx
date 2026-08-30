@@ -287,10 +287,11 @@ export default function Ministerios() {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="card-sacred p-12 flex flex-col items-center gap-3 text-center">
-            <Music className="w-12 h-12 text-muted-foreground/40" />
-            <p className="font-medium text-navy">Nenhum ministério cadastrado</p>
-            <p className="text-sm text-muted-foreground">Crie o primeiro ministério da sua igreja</p>
+          <div className="card-sacred flex flex-col items-center gap-3 p-10 text-center sm:p-12">
+            <Music className="h-12 w-12 text-muted-foreground/40" />
+            <p className="font-medium text-navy">{search ? "Nenhum Ministério encontrado" : canCreateMinistry ? "Nenhum Ministério cadastrado" : "Nenhum Ministério no seu escopo"}</p>
+            <p className="max-w-sm text-sm text-muted-foreground">{search ? "Tente outro nome ou limpe a busca." : canCreateMinistry ? "Crie o primeiro Ministério para organizar uma equipe de serviço." : "Quando o Pastor direcionar você para uma equipe, ela aparecerá aqui."}</p>
+            {search ? <Button type="button" variant="outline" onClick={() => setSearch("")}>Limpar busca</Button> : canCreateMinistry ? <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Criar primeiro Ministério</Button> : null}
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
