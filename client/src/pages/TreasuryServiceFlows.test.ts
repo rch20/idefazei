@@ -63,4 +63,9 @@ describe("Fluxo estrutural de prestação por culto", () => {
     expect(pageSource).toContain("TreasuryServiceSection");
     expect(dbSource).toContain("getTreasuryReportsByChurch");
   });
+
+  it("aceita horários válidos no padrão HH:mm", () => {
+    expect(routerSource).toContain("startTime: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/");
+    expect(sectionSource).toContain('type="time"');
+  });
 });

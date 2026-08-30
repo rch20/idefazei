@@ -4911,7 +4911,7 @@ const treasuryServiceInput = z.object({
   churchId: z.number().int().positive(),
   name: z.string().trim().min(2).max(160),
   serviceDate: financialDateInput,
-  startTime: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/, "Informe um horário válido.").optional(),
+  startTime: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, "Informe um horário válido.").optional(),
   location: z.string().trim().max(160).optional(),
   notes: z.string().trim().max(2000).optional(),
 });
@@ -4919,7 +4919,7 @@ const treasuryRecurringScheduleInput = z.object({
   churchId: z.number().int().positive(),
   name: z.string().trim().min(2).max(160),
   weekday: z.number().int().min(0).max(6),
-  startTime: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/, "Informe um horário válido."),
+  startTime: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, "Informe um horário válido."),
   location: z.string().trim().max(160).optional(),
   notes: z.string().trim().max(2000).optional(),
 });
