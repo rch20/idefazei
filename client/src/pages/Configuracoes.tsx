@@ -384,7 +384,7 @@ export default function Configuracoes() {
               <Globe className="w-4 h-4" /> Página Pública
             </TabsTrigger>}
             <TabsTrigger value="membros" className="flex-none gap-2 px-3">
-              <Users className="w-4 h-4" /> Perfis e Hierarquia
+              <Users className="w-4 h-4" /> Pessoas e acessos
             </TabsTrigger>
             <TabsTrigger value="integracao" className="flex-none gap-2 px-3">
               <Plug className="w-4 h-4" /> Integração
@@ -495,7 +495,7 @@ export default function Configuracoes() {
               <ConfigMetricCard icon={ShieldCheck} label="Pendências" value={String(pendingRegistrationsQuery.data?.length ?? 0)} detail="Cadastros aguardando aprovação" tone={(pendingRegistrationsQuery.data?.length ?? 0) > 0 ? "warning" : "success"} />
             </div>
             <div className="card-sacred p-5 sm:p-6">
-              <div className="flex flex-col gap-2 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="font-semibold text-navy text-base">Hierarquia de Perfis</h2><p className="mt-1 text-sm text-muted-foreground">Use os perfis como referência para distribuir responsabilidades com segurança.</p></div><span className="w-fit rounded-full bg-navy/5 px-2.5 py-1 text-xs font-semibold text-navy">{ROLES.length} perfis disponíveis</span></div>
+              <div className="flex flex-col gap-2 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="font-semibold text-navy text-base">Perfis de acesso</h2><p className="mt-1 text-sm text-muted-foreground">Os perfis definem o alcance geral da conta. Participações e atuações são administradas dentro da Célula ou do Ministério.</p></div><span className="w-fit rounded-full bg-navy/5 px-2.5 py-1 text-xs font-semibold text-navy">{ROLES.length} perfis disponíveis</span></div>
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {ROLES.map((role, i) => (
                   <div key={role.value} className="flex min-w-0 items-center gap-3 rounded-2xl border border-border/70 bg-muted/20 p-3">
@@ -507,7 +507,7 @@ export default function Configuracoes() {
             </div>
 
             <div className="card-sacred mt-5 p-6">
-              <div className="flex flex-col gap-2 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-base font-semibold text-navy">Atribuição de Pessoas e Funções</h2><p className="mt-1 text-sm text-muted-foreground">Selecione a Pessoa e defina a função que ela exercerá no sistema. A função e o vínculo determinam o escopo de atuação no Funil de Discipulado.</p></div><span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Escopo por conta</span></div>
+              <div className="flex flex-col gap-2 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="text-base font-semibold text-navy">Vínculo da conta com a Pessoa</h2><p className="mt-1 text-sm text-muted-foreground">Vincule cada conta à sua ficha de Pessoa e defina apenas o perfil geral de acesso. Participações e atuações são gerenciadas nos painéis de Células e Ministérios.</p></div><span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Escopo por conta</span></div>
 
               {(churchUsers ?? []).some((churchUser) => !churchUser.personId) && (
                 <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -516,7 +516,7 @@ export default function Configuracoes() {
               )}
 
               {!canManageAccounts ? (
-                <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Somente Pastores e Secretários podem administrar vínculos de contas.</p>
+                <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Somente Pastores podem administrar vínculos de contas.</p>
               ) : churchUsers?.length === 0 ? (
                 <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Nenhuma conta de acesso foi criada nesta igreja.</p>
               ) : (
@@ -603,7 +603,7 @@ export default function Configuracoes() {
                 <div className="flex flex-col gap-2 border-b border-border pb-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <h2 className="text-base font-semibold text-navy">Cadastros aguardando aprovação</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">Novos discípulos só recebem acesso após a análise de um Pastor ou Secretário.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Novos cadastros só recebem acesso após a análise de um Pastor.</p>
                   </div>
                   <span className="w-fit rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">{pendingRegistrationsQuery.data?.length ?? 0} pendente{(pendingRegistrationsQuery.data?.length ?? 0) === 1 ? "" : "s"}</span>
                 </div>
@@ -636,8 +636,8 @@ export default function Configuracoes() {
             )}
 
             <div className="card-sacred mt-5 p-6">
-              <h2 className="border-b border-border pb-2 text-base font-semibold text-navy">Funções ministeriais personalizadas</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Crie funções por Ministério e escolha um pacote seguro. A função libera somente os acessos previstos pelo pacote, sem permissões administrativas individuais.</p>
+              <h2 className="border-b border-border pb-2 text-base font-semibold text-navy">Atuações avançadas (opcional)</h2>
+              <p className="mt-2 text-sm text-muted-foreground">Este é um catálogo avançado para o Pastor. No uso diário, adicione Pessoas e atribua atuações dentro do painel do próprio Ministério; não use esta área para substituir a liderança estrutural.</p>
               {!canManageRoles ? (
                 <p className="mt-4 rounded-lg bg-muted p-3 text-sm text-muted-foreground">Somente Pastores podem criar funções ministeriais personalizadas.</p>
               ) : <>

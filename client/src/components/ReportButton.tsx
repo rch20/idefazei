@@ -16,7 +16,7 @@ interface ReportButtonProps {
  * Chama onFetch() para obter o HTML em base64 e faz o download automático.
  */
 export function ReportButton({
-  label = "Exportar PDF",
+  label = "Baixar relatório",
   onFetch,
   variant = "outline",
   size = "sm",
@@ -47,7 +47,7 @@ export function ReportButton({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success("Relatório gerado! Abra o arquivo HTML e use Ctrl+P para imprimir como PDF.");
+      toast.success("Relatório baixado. Abra o arquivo e use a opção de imprimir ou salvar em PDF.");
     } catch {
       toast.error("Erro ao gerar relatório.");
     } finally {
