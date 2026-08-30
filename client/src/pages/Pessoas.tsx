@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { BriefcaseBusiness, Clock3, HeartHandshake, Plus, Search, Send, ShieldCheck, User, Users, X } from "lucide-react";
+import { BriefcaseBusiness, Clock3, HeartHandshake, Plus, Search, Send, ShieldCheck, User, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -115,7 +115,6 @@ export default function Pessoas() {
   const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
   const [selectedCellId, setSelectedCellId] = useState("");
   const [referralForm, setReferralForm] = useState({ reason: "", notes: "", preferredConsolidatorId: "" });
-  const [ministryFunctionForm, setMinistryFunctionForm] = useState({ ministryId: "", roleKey: "" });
   const utils = trpc.useUtils();
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId, search: search || undefined });
@@ -129,7 +128,6 @@ export default function Pessoas() {
     { enabled: Boolean(selectedPerson?.id) }
   );
   const cellsQuery = trpc.cells.list.useQuery({ churchId });
-  const ministriesQuery = trpc.ministries.list.useQuery({ churchId });
   const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery({ churchId });
   const effectiveRoles = effectiveRolesQuery.data ?? [];
   const isPastor = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
@@ -148,14 +146,6 @@ export default function Pessoas() {
   const personFunctionsQuery = trpc.ministries.personFunctions.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
-  );
-  const functionCatalogQuery = trpc.ministries.functionCatalog.useQuery(
-    { churchId, ministryId: Number(ministryFunctionForm.ministryId) },
-    { enabled: Boolean(ministryFunctionForm.ministryId && canManageMinistryFunctions) }
-  );
-  const customFunctionsQuery = trpc.ministries.customFunctions.useQuery(
-    { churchId },
-    { enabled: canManageMinistryFunctions }
   );
   const currentCell = trpc.cells.personMembership.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
@@ -210,21 +200,6 @@ export default function Pessoas() {
       await Promise.all([currentCell.refetch(), cellHistory.refetch(), currentCare.refetch(), careAttention.refetch(), refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível integrar a pessoa à célula."),
-  });
-  const assignMinistryFunction = trpc.ministries.assignFunction.useMutation({
-    onSuccess: async () => {
-      toast.success("Função ministerial atribuída. Os acessos serão somados no próximo login.");
-      setMinistryFunctionForm({ ministryId: "", roleKey: "" });
-      await Promise.all([personMembershipsQuery.refetch(), personFunctionsQuery.refetch(), personAccessQuery.refetch(), effectiveRolesQuery.refetch()]);
-    },
-    onError: (error) => toast.error(error.message || "Não foi possível atribuir a função ministerial."),
-  });
-  const removeMinistryFunction = trpc.ministries.removeFunction.useMutation({
-    onSuccess: async () => {
-      toast.success("Função ministerial removida.");
-      await Promise.all([personFunctionsQuery.refetch(), personAccessQuery.refetch()]);
-    },
-    onError: (error) => toast.error(error.message || "Não foi possível remover a função."),
   });
 
   function handleSubmit(e: React.FormEvent) {
@@ -285,20 +260,6 @@ export default function Pessoas() {
     setCareForm({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
     setSelectedCellId("");
     setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "" });
-    setMinistryFunctionForm({ ministryId: "", roleKey: "" });
-  }
-
-  function saveMinistryFunction() {
-    if (!selectedPerson || !ministryFunctionForm.ministryId || !ministryFunctionForm.roleKey) {
-      toast.error("Selecione o Ministério e a função que a Pessoa exercerá.");
-      return;
-    }
-    assignMinistryFunction.mutate({
-      churchId,
-      personId: selectedPerson.id,
-      ministryId: Number(ministryFunctionForm.ministryId),
-      roleKey: ministryFunctionForm.roleKey,
-    });
   }
 
   function saveCareAssignment() {
@@ -754,7 +715,7 @@ export default function Pessoas() {
                 </div>
 
                 <div className="rounded-lg border border-indigo-100 bg-background/80 p-3">
-                  <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Funções atribuídas</h4>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Atuações na equipe</h4>
                   {(personFunctionsQuery.data ?? []).length === 0 ? (
                     <p className="mt-2 text-xs text-muted-foreground">Nenhuma função manual atribuída.</p>
                   ) : (
@@ -765,9 +726,6 @@ export default function Pessoas() {
                             <p className="truncate text-sm font-medium text-navy">{assignment.roleLabel}</p>
                             <p className="truncate text-[11px] text-muted-foreground">{assignment.ministryName}</p>
                           </div>
-                          <button type="button" aria-label={`Remover ${assignment.roleLabel}`} onClick={() => removeMinistryFunction.mutate({ churchId, id: assignment.id })} className="rounded-sm p-1 text-indigo-500 hover:text-rose-600">
-                            <X className="h-3.5 w-3.5" />
-                          </button>
                         </div>
                       ))}
                     </div>
@@ -788,28 +746,8 @@ export default function Pessoas() {
                 </div>
               </div>
 
-              <div className="mt-4 rounded-lg border border-indigo-100 bg-background/60 p-3">
-                <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Adicionar atuação na equipe</h4>
-                <p className="mt-1 text-xs text-muted-foreground">Use para registrar uma atuação operacional nesta equipe. A liderança estrutural continua sendo nomeada somente pelo Pastor.</p>
-                <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
-                  <div>
-                    <Label htmlFor="person-ministry">Ministério</Label>
-                    <Select value={ministryFunctionForm.ministryId} onValueChange={(value) => setMinistryFunctionForm({ ministryId: value, roleKey: "" })}>
-                      <SelectTrigger id="person-ministry" className="mt-1 bg-background"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>{(ministriesQuery.data ?? []).map((ministry) => <SelectItem key={ministry.id} value={String(ministry.id)}>{ministry.name}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="person-ministry-role">Função</Label>
-                    <Select value={ministryFunctionForm.roleKey} onValueChange={(value) => setMinistryFunctionForm((current) => ({ ...current, roleKey: value }))} disabled={!ministryFunctionForm.ministryId}>
-                      <SelectTrigger id="person-ministry-role" className="mt-1 bg-background"><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>{[...(functionCatalogQuery.data ?? []), ...(customFunctionsQuery.data ?? []).filter((role) => !role.ministryId || role.ministryId === Number(ministryFunctionForm.ministryId)).map((role) => ({ key: role.key, label: role.name }))].map((role) => <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
-                  <Button type="button" className="self-end bg-navy text-white hover:bg-navy-light" onClick={saveMinistryFunction} disabled={assignMinistryFunction.isPending}>
-                    {assignMinistryFunction.isPending ? "Atribuindo…" : "Atribuir"}
-                  </Button>
-                </div>
+              <div className="mt-4 rounded-lg border border-indigo-100 bg-background/60 p-3 text-xs text-muted-foreground">
+                Para adicionar ou alterar uma atuação, abra o painel do Ministério correspondente. Esta ficha resume os vínculos; a equipe administra suas próprias atuações no contexto correto.
               </div>
             </section>
           )}

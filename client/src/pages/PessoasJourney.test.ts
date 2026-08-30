@@ -31,6 +31,13 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("A integração e a transferência de Célula são feitas pelo Pastor ou pela liderança responsável.");
   });
 
+  it("mantém atuações ministeriais como consulta e direciona a edição para o Ministério", () => {
+    expect(pageSource).toContain("Atuações na equipe");
+    expect(pageSource).toContain("Para adicionar ou alterar uma atuação, abra o painel do Ministério correspondente.");
+    expect(pageSource).not.toContain("Adicionar atuação na equipe");
+    expect(pageSource).not.toContain("saveMinistryFunction");
+  });
+
   it("protege a leitura de cuidado pelo escopo acessível da Pessoa", () => {
     expect(routerSource).toContain("await requireScopedPersonRead(ctx.user.id, input.churchId, input.personId);");
     expect(dbSource).toContain("coLeaderId: cells.coLeaderId");
