@@ -63,6 +63,7 @@ export default function Ministerios() {
   const roles = effectiveRoles.data ?? [];
   const canManageRoles = roles.some((role) => role === "pastor_presidente" || role === "pastor_local");
   const canCreateMinistry = roles.some((role) => role === "pastor_presidente" || role === "pastor_local");
+  const pageTitle = canCreateMinistry ? "Ministérios" : "Meus Ministérios";
   const { data: people } = trpc.people.list.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId && canManageRoles) });
   const ministryMembers = trpc.ministries.members.useQuery(
     { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0 },
@@ -177,8 +178,8 @@ export default function Ministerios() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-2xl font-display font-bold text-navy">Ministérios</h1>
-            <p className="text-sm text-muted-foreground mt-1">{canCreateMinistry ? "Gerencie os ministérios e equipes da sua igreja" : "Gerencie o Ministério atribuído a você e sua equipe"}</p>
+            <h1 className="text-2xl font-display font-bold text-navy">{pageTitle}</h1>
+            <p className="text-sm text-muted-foreground mt-1">{canCreateMinistry ? "Crie as salas de serviço e organize as equipes da sua igreja." : "Você administra somente as equipes atribuídas a você."}</p>
           </div>
           {canCreateMinistry && <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>

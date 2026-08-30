@@ -147,6 +147,8 @@ export default function Celulas() {
   const roles = Array.from(new Set([user?.role, ...(effectiveRoles.data ?? [])].filter(Boolean)));
   const canPublishCells = roles.some((role) => role === "pastor_presidente" || role === "pastor_local");
   const canCreateCell = Boolean(managementAccess.data?.canCreateAny || managementAccess.data?.canCreateOwn);
+  const pageTitle = canPublishCells ? "Células" : "Minhas Células";
+  const pageSubtitle = canPublishCells ? "Organize as Células e direcione cada Pessoa para a sua equipe." : "Consulte as Células do seu escopo e cuide da sua equipe.";
   const mappedCells = (cells ?? []).flatMap((cell) => {
     const latitude = Number(cell.latitude);
     const longitude = Number(cell.longitude);
@@ -238,9 +240,9 @@ export default function Celulas() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-display text-navy">Células</h1>
+          <h1 className="text-2xl font-bold font-display text-navy">{pageTitle}</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Gerencie os grupos de célula da sua igreja
+            {pageSubtitle}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

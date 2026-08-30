@@ -232,6 +232,8 @@ export default function Pessoas() {
 
   const selectedAttention = (careAttention.data ?? []).find((item) => item.person.id === selectedPerson?.id);
   const currentResponsible = (people ?? []).find((person) => person.id === currentCare.data?.responsiblePersonId);
+  const participationCount = (currentCell.data ? 1 : 0) + (personMembershipsQuery.data?.length ?? 0);
+  const accessSummaryText = personAccessQuery.data?.accountLinked ? `${personAccessQuery.data.roles.length} acesso(s) efetivo(s)` : "Sem login vinculado";
 
   useEffect(() => {
     const personId = Number(new URLSearchParams(location.split("?")[1] ?? "").get("personId"));
@@ -348,7 +350,7 @@ export default function Pessoas() {
         <div>
           <h1 className="text-2xl font-bold font-display text-navy">Pessoas</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Cadastro completo de membros e visitantes
+            Um cadastro único para acompanhar pessoas, participações e cuidado.
           </p>
         </div>
         <Button onClick={() => setOpen(true)} className="bg-navy hover:bg-navy-light text-white gap-2">
@@ -424,7 +426,7 @@ export default function Pessoas() {
                 </div>
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-shrink-0 ${STAGE_BADGE[person.discipleshipStage ?? "nova_alma"]}`}>
-                Etapa: {STAGES_LABELS[person.discipleshipStage ?? "nova_alma"]}
+                Jornada: {STAGES_LABELS[person.discipleshipStage ?? "nova_alma"]}
               </span>
             </button>
           ))}
@@ -594,9 +596,16 @@ export default function Pessoas() {
       <Dialog open={Boolean(selectedPerson)} onOpenChange={(nextOpen) => !nextOpen && setSelectedPerson(null)}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 font-display text-navy"><HeartHandshake className="h-5 w-5 text-rose-600" />Jornada de cuidado</DialogTitle>
-            <DialogDescription>{selectedPerson?.fullName} · {STAGES_LABELS[selectedPerson?.discipleshipStage ?? "nova_alma"]}</DialogDescription>
+            <DialogTitle className="flex items-center gap-2 font-display text-navy"><HeartHandshake className="h-5 w-5 text-rose-600" />{selectedPerson?.fullName}</DialogTitle>
+            <DialogDescription>Uma Pessoa, várias participações e um histórico único de cuidado.</DialogDescription>
           </DialogHeader>
+
+          {selectedPerson && <div className="grid gap-2 sm:grid-cols-4">
+            <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Jornada</p><p className="mt-1 text-sm font-semibold text-navy">{STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</p></div>
+            <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Participações</p><p className="mt-1 text-sm font-semibold text-navy">{participationCount} ativa(s)</p></div>
+            <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Responsabilidade</p><p className="mt-1 truncate text-sm font-semibold text-navy">{currentResponsible?.fullName ?? "Não definida"}</p></div>
+            {canManageMinistryFunctions && <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Acesso</p><p className="mt-1 text-sm font-semibold text-navy">{accessSummaryText}</p></div>}
+          </div>}
 
           {selectedAttention && (
             <div className={`rounded-xl border p-4 ${selectedAttention.priority === "alta" ? "border-rose-200 bg-rose-50/60" : selectedAttention.priority === "media" ? "border-amber-200 bg-amber-50/60" : "border-green-200 bg-green-50/60"}`}>

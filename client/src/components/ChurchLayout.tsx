@@ -100,13 +100,13 @@ export const useChurch = () => useContext(ChurchContext);
 type NavItem = { icon: typeof Home; label: string; path: string; group: string; roles?: string[]; accessKey?: keyof ChurchAccessSummary; requiresEncounterAccess?: boolean };
 
 const navItems: NavItem[] = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/app/dashboard", group: "principal", accessKey: "isExecutive" },
-  { icon: Heart, label: "Central de Cuidado", path: "/app/cuidado", group: "principal", accessKey: "isPastoralWorker" },
+  { icon: LayoutDashboard, label: "Visão geral", path: "/app/dashboard", group: "principal", accessKey: "isExecutive" },
+  { icon: Heart, label: "Cuidado", path: "/app/cuidado", group: "principal", accessKey: "isPastoralWorker" },
   { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "principal", accessKey: "isExecutive" },
   { icon: TreePine, label: "Árvore de Discipulado", path: "/app/arvore", group: "principal", accessKey: "isExecutive" },
-  { icon: Flame, label: "Ganhar Almas", path: "/app/almas", group: "discipulado" },
+  { icon: Flame, label: "Novas Almas", path: "/app/almas", group: "discipulado" },
   { icon: Heart, label: "Consolidação", path: "/app/consolidacao", group: "discipulado", accessKey: "canAccessVisits" },
-  { icon: ChevronRight, label: "Funil de Discipulado", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
+  { icon: ChevronRight, label: "Jornada de Discipulado", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
   { icon: Users, label: "Pessoas", path: "/app/pessoas", group: "membros", accessKey: "isExecutive" },
   { icon: Home, label: "Famílias", path: "/app/familias", group: "membros", accessKey: "isExecutive" },
   { icon: Globe, label: "Células", path: "/app/celulas", group: "celulas" },
@@ -118,13 +118,13 @@ const navItems: NavItem[] = [
   { icon: Droplets, label: "Batismo nas Águas", path: "/app/batismo", group: "discipulado", accessKey: "isExecutive" },
   { icon: Heart, label: "Encontro com Deus", path: "/app/encontro-com-deus", group: "discipulado", accessKey: "canManageEncounter", requiresEncounterAccess: true },
   { icon: GraduationCap, label: "Escola de Líderes", path: "/app/escola-lideres", group: "lideranca", accessKey: "isExecutive" },
-  { icon: Crown, label: "Gestão de Liderança", path: "/app/gestao-lideranca", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
+  { icon: Crown, label: "Liderança", path: "/app/gestao-lideranca", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
   { icon: Shield, label: "Aconselhamento", path: "/app/aconselhamento", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
   { icon: MessageCircle, label: "Pedidos de Oração", path: "/app/oracao", group: "comunicacao" },
   { icon: BookOpen, label: "Mural", path: "/app/mural", group: "comunicacao", accessKey: "isCommunicationManager" },
   { icon: MessageSquare, label: "Comunicação", path: "/app/comunicacao", group: "comunicacao", roles: ["pastor_presidente", "pastor_local", "secretario"], accessKey: "isCommunicationManager" },
   { icon: Shield, label: "Biblioteca", path: "/app/biblioteca", group: "comunicacao" },
-  { icon: Building2, label: "Configurações", path: "/app/configuracoes", group: "admin", roles: ["pastor_presidente", "pastor_local", "secretario"] },
+  { icon: Building2, label: "Igreja", path: "/app/configuracoes", group: "admin", roles: ["pastor_presidente", "pastor_local", "secretario"] },
   { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin", roles: ["pastor_presidente", "pastor_local", "secretario"] },
   { icon: WalletCards, label: "Tesouraria", path: "/app/tesouraria", group: "admin", accessKey: "canAccessTreasury" },
   { icon: CreditCard, label: "Faturamento", path: "/app/faturamento", group: "admin", accessKey: "isPastor" },
@@ -133,14 +133,14 @@ const navItems: NavItem[] = [
 ];
 
 const groups = [
-  { key: "principal", label: "Visão Geral" },
-  { key: "discipulado", label: "Discipulado" },
-  { key: "membros", label: "Membros" },
-  { key: "celulas", label: "Células" },
-  { key: "ministerio", label: "Ministério" },
-  { key: "lideranca", label: "Liderança" },
+  { key: "principal", label: "Início" },
+  { key: "discipulado", label: "Jornada" },
+  { key: "membros", label: "Pessoas" },
+  { key: "celulas", label: "Equipes" },
+  { key: "ministerio", label: "Atuação" },
+  { key: "lideranca", label: "Formação e liderança" },
   { key: "comunicacao", label: "Comunicação" },
-  { key: "admin", label: "Administração" },
+  { key: "admin", label: "Igreja" },
 ];
 
 const roleLabels: Record<string, string> = {
@@ -167,6 +167,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [expandedGroup, setExpandedGroup] = useState<string | null>("principal");
   const currentRole = user?.role ?? "membro";
   const effectiveRoles = Array.from(new Set([currentRole, ...(accessSummary?.roles ?? [])]));
+  const isPastoralAdmin = Boolean(accessSummary?.isPastor || ["pastor_presidente", "pastor_local"].includes(currentRole));
   const encounterAccessQuery = trpc.encontro.hasAccess.useQuery(
     { churchId: user?.churchId ?? 0 },
     { enabled: Boolean(user?.churchId) }
@@ -229,6 +230,9 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
             const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))) && (!i.accessKey || Boolean(accessSummary?.[i.accessKey])) && (!i.requiresEncounterAccess || encounterAccessQuery.data === true));
             if (!items.length) return null;
             const isExpanded = expandedGroup === group.key;
+            const contextualGroupLabel = group.key === "membros"
+              ? (isPastoralAdmin ? "Pessoas" : "Minha área")
+              : group.label;
             return (
               <section key={group.key} className="border-b border-white/5 pb-1 last:border-0">
                 <button
@@ -238,13 +242,24 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
                   aria-expanded={isExpanded}
                   aria-controls={`sidebar-group-${group.key}`}
                 >
-                  <span>{group.label}</span>
+                  <span>{contextualGroupLabel}</span>
                   <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} aria-hidden="true" />
                 </button>
                 {isExpanded && (
                   <div id={`sidebar-group-${group.key}`} className="space-y-0.5 pb-1">
                     {items.map((item) => {
                       const isActive = location === item.path || location.startsWith(item.path + "/");
+                      const contextualLabel = item.path === "/app/celulas"
+                        ? (isPastoralAdmin ? "Células" : "Minhas Células")
+                        : item.path === "/app/mapa"
+                          ? (isPastoralAdmin ? "Mapa de Células" : "Mapa das minhas Células")
+                          : item.path === "/app/ministerios"
+                            ? (isPastoralAdmin ? "Ministérios" : "Meus Ministérios")
+                            : item.path === "/app/escalas"
+                              ? (isPastoralAdmin ? "Escalas" : "Minhas Escalas")
+                              : item.path === "/app/lider"
+                                ? (isPastoralAdmin ? "App do Líder" : "Meu painel")
+                                : item.label;
                       return (
                         <button
                           key={item.path}
@@ -252,7 +267,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
                           onClick={() => { navigate(item.path); onClose(); }}
                         >
                           <item.icon className="w-4 h-4 flex-shrink-0" />
-                          <span className="min-w-0 truncate">{item.label}</span>
+                          <span className="min-w-0 truncate">{contextualLabel}</span>
                           {item.path === "/app/configuracoes" && pendingRegistrationCount > 0 && (
                             <span className="ml-auto min-w-5 rounded-full bg-gold px-1.5 py-0.5 text-center text-[10px] font-bold text-navy" aria-label={`${pendingRegistrationCount} cadastro${pendingRegistrationCount === 1 ? "" : "s"} aguardando aprovação`}>
                               {pendingRegistrationCount > 9 ? "9+" : pendingRegistrationCount}
