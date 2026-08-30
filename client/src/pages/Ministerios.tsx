@@ -13,6 +13,8 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Music, Users, Plus, Search, Star, Trash2 } from "lucide-react";
 
+const OPERATIONAL_FUNCTION_KEYS = new Set(["membro_ministerio", "musico", "vocalista", "visitador"]);
+
 const MINISTRY_ICONS: Record<string, string> = {
   louvor: "🎵",
   jovens: "⚡",
@@ -48,6 +50,8 @@ export default function Ministerios() {
   const [form, setForm] = useState({ name: "", description: "", type: "outro", leaderId: "", participantIds: [] as string[] });
   const [selectedMinistry, setSelectedMinistry] = useState<any>(null);
   const [selectedPersonId, setSelectedPersonId] = useState("");
+  const [functionPersonId, setFunctionPersonId] = useState("");
+  const [selectedRoleKey, setSelectedRoleKey] = useState("");
   const [customRoleName, setCustomRoleName] = useState("");
   const [customRolePackage, setCustomRolePackage] = useState("member");
 
@@ -58,13 +62,17 @@ export default function Ministerios() {
   const effectiveRoles = trpc.churchAuth.effectiveRoles.useQuery({ churchId: churchId! }, { enabled: !!churchId });
   const roles = effectiveRoles.data ?? [];
   const canManageRoles = roles.some((role) => role === "pastor_presidente" || role === "pastor_local");
-  const canCreateMinistry = roles.some((role) => role === "pastor_presidente" || role === "pastor_local" || role === "secretario");
+  const canCreateMinistry = roles.some((role) => role === "pastor_presidente" || role === "pastor_local");
   const { data: people } = trpc.people.list.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId && canManageRoles) });
   const ministryMembers = trpc.ministries.members.useQuery(
     { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0 },
     { enabled: Boolean(churchId && selectedMinistry?.id) }
   );
   const ministryCandidates = trpc.ministries.candidates.useQuery(
+    { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0 },
+    { enabled: Boolean(churchId && selectedMinistry?.id && selectedMinistry?.canManage) }
+  );
+  const functionCatalog = trpc.ministries.functionCatalog.useQuery(
     { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0 },
     { enabled: Boolean(churchId && selectedMinistry?.id && selectedMinistry?.canManage) }
   );
@@ -104,6 +112,22 @@ export default function Ministerios() {
     },
     onError: (error) => toast.error(error.message || "Não foi possível adicionar a pessoa."),
   });
+  const assignFunction = trpc.ministries.assignFunction.useMutation({
+    onSuccess: async () => {
+      toast.success("Função operacional atribuída.");
+      setFunctionPersonId("");
+      setSelectedRoleKey("");
+      await Promise.all([ministryMembers.refetch(), refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível atribuir a função."),
+  });
+  const removePerson = trpc.ministries.removePerson.useMutation({
+    onSuccess: async () => {
+      toast.success("Pessoa removida da equipe deste Ministério.");
+      await Promise.all([ministryMembers.refetch(), refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível remover a Pessoa."),
+  });
   const createCustomFunction = trpc.ministries.createCustomFunction.useMutation({
     onSuccess: () => { toast.success("Função ministerial criada."); setCustomRoleName(""); customFunctions.refetch(); },
     onError: (error) => toast.error(error.message || "Não foi possível criar a função."),
@@ -128,6 +152,14 @@ export default function Ministerios() {
       return;
     }
     assignPerson.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: Number(selectedPersonId) });
+  };
+
+  const saveFunction = () => {
+    if (!selectedMinistry || !functionPersonId || !selectedRoleKey) {
+      toast.error("Selecione a Pessoa e a função operacional.");
+      return;
+    }
+    assignFunction.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: Number(functionPersonId), roleKey: selectedRoleKey });
   };
 
   const addCustomFunction = () => {
@@ -322,13 +354,30 @@ export default function Ministerios() {
                 <Button type="button" onClick={addSelectedPerson} disabled={assignPerson.isPending || ministryCandidates.isLoading} className="bg-navy text-white hover:bg-navy-light">
                   {assignPerson.isPending ? "Adicionando…" : "Adicionar participante"}
                 </Button>
-              </div> : <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">Somente o Pastor, Secretário ou responsável deste Ministério pode alterar a equipe.</p>}
+              </div> : <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">Somente o Pastor ou o responsável deste Ministério pode alterar a equipe.</p>}
               <div className="rounded-xl border border-border">
                 <div className="border-b border-border px-4 py-3 text-sm font-semibold text-navy">Participantes ativos ({ministryMembers.data?.length ?? 0})</div>
                 {ministryMembers.isLoading ? <div className="p-4 text-sm text-muted-foreground">Carregando equipe…</div> : (ministryMembers.data ?? []).length === 0 ? <div className="p-4 text-sm text-muted-foreground">Nenhuma Pessoa adicionada ainda.</div> : (
-                  <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-center gap-3 px-4 py-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><span className="text-sm font-medium text-navy">{item.person.fullName}</span></div>)}</div>
+                  <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-center gap-3 px-4 py-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><span className="min-w-0 flex-1 truncate text-sm font-medium text-navy">{item.person.fullName}</span>{selectedMinistry?.canManage && selectedMinistry.leaderId !== item.person.id && <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Remover ${item.person.fullName}`} onClick={() => removePerson.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: item.person.id })}><Trash2 className="h-4 w-4" /></Button>}</div>)}</div>
                 )}
               </div>
+              {selectedMinistry?.canManage && (
+                <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
+                  <p className="text-sm font-semibold text-navy">Função operacional</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Você pode atribuir apenas funções de operação desta equipe. Líder, co-líder e supervisor continuam sendo nomeados pelo Pastor.</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                    <Select value={functionPersonId} onValueChange={setFunctionPersonId}>
+                      <SelectTrigger><SelectValue placeholder="Pessoa da equipe" /></SelectTrigger>
+                      <SelectContent>{(ministryMembers.data ?? []).map((item) => <SelectItem key={item.person.id} value={String(item.person.id)}>{item.person.fullName}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={selectedRoleKey} onValueChange={setSelectedRoleKey}>
+                      <SelectTrigger><SelectValue placeholder="Função permitida" /></SelectTrigger>
+                      <SelectContent>{(functionCatalog.data ?? []).filter((role) => canManageRoles || OPERATIONAL_FUNCTION_KEYS.has(role.key)).map((role) => <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button type="button" onClick={saveFunction} disabled={assignFunction.isPending}>{assignFunction.isPending ? "Salvando…" : "Atribuir"}</Button>
+                  </div>
+                </section>
+              )}
               {selectedMinistry?.canManage && isConsolidationMinistry(selectedMinistry) && <ConsolidationReferralBox churchId={churchId!} candidates={(ministryMembers.data ?? []).map((item) => ({ id: item.person.id, fullName: item.person.fullName }))} sourceLabel={`Ministério ${selectedMinistry.name}`} />}
               {selectedMinistry && churchId && <DepartmentsPanel churchId={churchId} ministry={{ id: selectedMinistry.id, name: selectedMinistry.name }} canCreateDepartment={canCreateMinistry} canAssignLeader={canManageRoles} people={people ?? []} />}
               {canCreateMinistry && <div className="rounded-xl border border-gold/30 bg-cream/40 p-4 space-y-3">

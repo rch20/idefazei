@@ -391,6 +391,7 @@ export const cells = mysqlTable("cells", {
   churchId: int("churchId").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   leaderId: int("leaderId").notNull(),
+  coLeaderId: int("coLeaderId"),
   supervisorId: int("supervisorId"),
   hostId: int("hostId"),
   address: text("address"),

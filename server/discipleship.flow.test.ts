@@ -95,10 +95,13 @@ vi.mock("./db", () => ({
   getCellMeetingByDate: vi.fn().mockResolvedValue(null),
   createCellMeetingWithAttendance: vi.fn().mockResolvedValue({ id: 9, cellId: 2, churchId: 100, meetingDate: "2026-08-18" }),
   getActiveCellMembership: vi.fn().mockResolvedValue(null),
+  getAccessibleCellIdsByPerson: vi.fn().mockResolvedValue([]),
+  getActiveCellRoleKeysByPerson: vi.fn().mockResolvedValue([]),
   getPeopleWithoutActiveCell: vi.fn().mockResolvedValue([{ id: 11, fullName: "Nova Pessoa" }]),
   getCellMembershipHistory: vi.fn().mockResolvedValue([]),
   assignPersonToCell: vi.fn().mockResolvedValue({ id: 3, cellId: 2, personId: 10, active: true }),
   createCell: vi.fn().mockResolvedValue({ id: 1, name: "Célula Esperança", churchId: 100 }),
+  updateCell: vi.fn().mockResolvedValue({ id: 2, churchId: 100, name: "Célula Vida", leaderId: 11, coLeaderId: 12, supervisorId: null, active: true }),
   getBaptismClassesByChurch: vi.fn().mockResolvedValue([{ id: 1, churchId: 100, name: "Turma Batismo Junho" }]),
   getBaptismEnrollments: vi.fn().mockResolvedValue([]),
   createBaptismClass: vi.fn().mockResolvedValue({ id: 1, name: "Turma Batismo Junho", churchId: 100 }),
@@ -141,6 +144,7 @@ vi.mock("./db", () => ({
   getActiveDepartmentRoleKeysByPerson: vi.fn().mockResolvedValue([]),
   getMinistryRoleDefinitionsByChurch: vi.fn().mockResolvedValue([]),
   getMinistryRoleAssignmentsByPerson: vi.fn().mockResolvedValue([]),
+  getMinistryRoleAssignmentById: vi.fn().mockResolvedValue({ id: 1, churchId: 100, ministryId: 7, personId: 10, roleKey: "membro_ministerio", active: true }),
   getMinistryMembershipsByPerson: vi.fn().mockResolvedValue([]),
   assignMinistryRole: vi.fn().mockResolvedValue({ id: 1, alreadyAssigned: false }),
   deactivateMinistryRole: vi.fn().mockResolvedValue(undefined),
@@ -205,6 +209,7 @@ vi.mock("./db", () => ({
   updateScheduleItem: vi.fn().mockResolvedValue({ id: 41, churchId: 100, ministryId: 7, personId: 10, status: "agendada" }),
   cancelScheduleItem: vi.fn().mockResolvedValue({ id: 41, churchId: 100, ministryId: 7, personId: 10, status: "cancelada", cancelReason: "Voluntário indisponível" }),
   assignPersonToMinistry: vi.fn().mockResolvedValue({ id: 1 }),
+  removePersonFromMinistry: vi.fn().mockResolvedValue(true),
   acceptCareVisit: vi.fn().mockResolvedValue({ id: 1, churchId: 100, assignedToPersonId: 10, status: "solicitada" }),
   getAnnouncements: vi.fn().mockResolvedValue([]),
   getTenantPublicSiteByChurchId: vi.fn().mockResolvedValue({ site: { status: "published" }, theme: null, sections: [], revisions: [] }),
@@ -840,8 +845,8 @@ describe("Fluxo completo de discipulado", () => {
       });
       const caller = appRouter.createCaller(createMemberContext(44));
 
-      await expect(caller.ministries.create({ churchId: CHURCH_ID, name: "Recepção" })).rejects.toThrow("não tem permissão");
-      await expect(caller.ministries.assignPerson({ churchId: CHURCH_ID, ministryId: 7, personId: 10 })).rejects.toThrow("responsáveis por este Ministério");
+      await expect(caller.ministries.create({ churchId: CHURCH_ID, name: "Recepção" })).rejects.toThrow("Somente o Pastor");
+      await expect(caller.ministries.assignPerson({ churchId: CHURCH_ID, ministryId: 7, personId: 10 })).rejects.toThrow("responsável por este Ministério");
       await expect(caller.schedules.create({
         churchId: CHURCH_ID,
         ministryId: 7,
@@ -849,7 +854,7 @@ describe("Fluxo completo de discipulado", () => {
         scheduledDate: "2026-06-28",
         startTime: "09:00",
         endTime: "11:00",
-      })).rejects.toThrow("responsáveis por este Ministério");
+      })).rejects.toThrow("responsável por este Ministério");
     });
 
     it("expõe ao líder nomeado somente os Ministérios sob sua responsabilidade", async () => {
@@ -1010,8 +1015,8 @@ describe("Fluxo completo de discipulado", () => {
       await expect(caller.schedules.update({
         id: 41, churchId: CHURCH_ID, ministryId: 7, personId: 10,
         scheduledDate: "2026-06-28", startTime: "09:30", endTime: "11:30",
-      })).rejects.toThrow("responsáveis por este Ministério");
-      await expect(caller.schedules.cancel({ id: 41, churchId: CHURCH_ID, reason: "Voluntário indisponível" })).rejects.toThrow("responsáveis por este Ministério");
+      })).rejects.toThrow("responsável por este Ministério");
+      await expect(caller.schedules.cancel({ id: 41, churchId: CHURCH_ID, reason: "Voluntário indisponível" })).rejects.toThrow("responsável por este Ministério");
 
       expect(updateScheduleItem).not.toHaveBeenCalled();
       expect(cancelScheduleItem).not.toHaveBeenCalled();
@@ -1053,7 +1058,7 @@ describe("Fluxo completo de discipulado", () => {
       (getDepartmentById as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 31, churchId: CHURCH_ID, ministryId: 7, name: "Vocal", leaderId: 10, active: true });
       const caller = appRouter.createCaller(createMemberContext(46));
 
-      await expect(caller.departments.addMember({ churchId: CHURCH_ID, departmentId: 31, personId: 11 })).rejects.toThrow("responsáveis por este Ministério");
+      await expect(caller.departments.addMember({ churchId: CHURCH_ID, departmentId: 31, personId: 11 })).rejects.toThrow("responsável por este Ministério");
       expect(assignPersonToDepartment).not.toHaveBeenCalled();
     });
 
@@ -1787,7 +1792,7 @@ describe("Fluxo completo de discipulado", () => {
 
       await expect(
         caller.cells.create({ churchId: CHURCH_ID, name: "Célula sem autorização", leaderId: 11 })
-      ).rejects.toThrow("Somente Pastores, Supervisores ou o próprio Líder");
+      ).rejects.toThrow("Somente o Pastor pode executar esta ação de governança");
     });
 
     it("bloqueia um Supervisor de ler notas de aconselhamento que não são suas", async () => {
@@ -2194,5 +2199,45 @@ describe("Fluxo completo de discipulado", () => {
       await expect(caller.consolidation.completeVisit({ churchId: CHURCH_ID, visitId: 401, notes: "Tentativa indevida de conclusão." })).rejects.toThrow("não está atribuída à sua função");
       expect(completeCareVisit).not.toHaveBeenCalled();
     });
+  });
+});
+
+
+describe("Governança transversal — escopo e acumulação de funções", () => {
+  it("permite ao Pastor criar uma Célula com liderança estrutural distinta", async () => {
+    const db = await import("./db");
+    vi.mocked(db.getChurchMemberByUserId).mockResolvedValue({ id: 1, userId: 10, churchId: CHURCH_ID, role: "pastor_presidente", active: true } as any);
+    vi.mocked(db.getPersonById).mockImplementation(async (personId, churchId) => ({ id: personId, churchId, fullName: `Pessoa ${personId}`, active: true } as any));
+    vi.mocked(db.createCell).mockResolvedValue({ id: 2, churchId: CHURCH_ID, name: "Célula Vida", leaderId: 10, coLeaderId: 11, supervisorId: 12, active: true } as any);
+    const caller = appRouter.createCaller(createMemberContext(10));
+
+    await caller.cells.create({ churchId: CHURCH_ID, name: "Célula Vida", leaderId: 10, coLeaderId: 11, supervisorId: 12 });
+
+    expect(db.createCell).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, leaderId: 10, coLeaderId: 11, supervisorId: 12 }));
+  });
+
+  it("bloqueia a leitura de membros de uma Célula fora do escopo da Pessoa", async () => {
+    const db = await import("./db");
+    vi.mocked(db.getChurchMemberByUserId).mockResolvedValue({ id: 14, userId: 44, churchId: CHURCH_ID, personId: 44, role: "membro", active: true } as any);
+    vi.mocked(db.getCellById).mockResolvedValue({ id: 2, churchId: CHURCH_ID, name: "Célula Vida", leaderId: 10, coLeaderId: 11, supervisorId: 12, active: true } as any);
+    vi.mocked(db.getActiveCellMembership).mockResolvedValue(null);
+    const caller = appRouter.createCaller(createMemberContext(44));
+
+    await expect(caller.cells.members({ churchId: CHURCH_ID, cellId: 2 })).rejects.toThrow("própria Célula");
+    expect(db.getActiveMembersByCell).not.toHaveBeenCalled();
+  });
+
+  it("permite ao líder atribuir função operacional, mas bloqueia função de liderança", async () => {
+    const db = await import("./db");
+    vi.mocked(db.getChurchMemberByUserId).mockResolvedValue({ id: 14, userId: 44, churchId: CHURCH_ID, personId: 10, role: "membro", active: true } as any);
+    vi.mocked(db.getMinistriesByChurch).mockResolvedValue([{ id: 7, churchId: CHURCH_ID, name: "Louvor", type: "louvor", leaderId: 10, active: true }] as any);
+    vi.mocked(db.getPersonById).mockImplementation(async (personId, churchId) => ({ id: personId, churchId, fullName: `Pessoa ${personId}`, active: true } as any));
+    vi.mocked(db.isActiveMinistryMember).mockResolvedValue(false);
+    const caller = appRouter.createCaller(createMemberContext(44));
+
+    await caller.ministries.assignFunction({ churchId: CHURCH_ID, ministryId: 7, personId: 11, roleKey: "membro_ministerio" });
+    expect(db.assignMinistryRole).toHaveBeenCalledWith(expect.objectContaining({ ministryId: 7, personId: 11, roleKey: "membro_ministerio" }));
+
+    await expect(caller.ministries.assignFunction({ churchId: CHURCH_ID, ministryId: 7, personId: 11, roleKey: "lider_louvor" })).rejects.toThrow("funções operacionais");
   });
 });

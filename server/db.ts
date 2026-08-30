@@ -879,7 +879,7 @@ export async function getJourneyManagedPersonIds(input: {
 
   if (input.actorRoles.includes("lider") || input.actorRoles.includes("supervisor")) {
     const rows = await db
-      .select({ personId: cellMembers.personId, leaderId: cells.leaderId, supervisorId: cells.supervisorId })
+      .select({ personId: cellMembers.personId, leaderId: cells.leaderId, coLeaderId: cells.coLeaderId, supervisorId: cells.supervisorId })
       .from(cellMembers)
       .innerJoin(cells, eq(cells.id, cellMembers.cellId))
       .where(
@@ -890,7 +890,7 @@ export async function getJourneyManagedPersonIds(input: {
       );
     rows
       .filter((cell) =>
-        (input.actorRoles.includes("lider") && cell.leaderId === input.actorPersonId) ||
+        (input.actorRoles.includes("lider") && [cell.leaderId, cell.coLeaderId].includes(input.actorPersonId)) ||
         (input.actorRoles.includes("supervisor") && cell.supervisorId === input.actorPersonId)
       )
       .forEach((cell) => personIds.add(cell.personId));
@@ -1904,7 +1904,52 @@ export async function getCellById(id: number, churchId: number) {
     .limit(1);
   return result[0] ?? null;
 }
-
+/** Retorna as Células operacionais acessíveis à Pessoa no tenant. */
+export async function getAccessibleCellIdsByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [leadershipRows, membership] = await Promise.all([
+    db
+      .select({ id: cells.id })
+      .from(cells)
+      .where(and(
+        eq(cells.churchId, churchId),
+        eq(cells.active, true),
+        or(
+          eq(cells.leaderId, personId),
+          eq(cells.coLeaderId, personId),
+          eq(cells.supervisorId, personId),
+        ),
+      )),
+    getActiveCellMembership(personId, churchId),
+  ]);
+  const ids = new Set(leadershipRows.map((row) => row.id));
+  if (membership) ids.add(membership.cellId);
+  return Array.from(ids);
+}
+/** Converte liderança estrutural de Célula em papéis efetivos deduplicados. */
+export async function getActiveCellRoleKeysByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ leaderId: cells.leaderId, coLeaderId: cells.coLeaderId, supervisorId: cells.supervisorId })
+    .from(cells)
+    .where(and(
+      eq(cells.churchId, churchId),
+      eq(cells.active, true),
+      or(
+        eq(cells.leaderId, personId),
+        eq(cells.coLeaderId, personId),
+        eq(cells.supervisorId, personId),
+      ),
+    ));
+  const roles = new Set<string>();
+  for (const row of rows) {
+    if (row.leaderId === personId || row.coLeaderId === personId) roles.add("lider");
+    if (row.supervisorId === personId) roles.add("supervisor");
+  }
+  return Array.from(roles);
+}
 export async function createCell(data: typeof cells.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -2078,7 +2123,8 @@ export async function assignPersonToCell(data: { churchId: number; personId: num
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   return db.transaction(async (tx) => {
-    await tx.select({ id: people.id }).from(people).where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId))).limit(1).for("update");
+    const personRows = await tx.select({ id: people.id }).from(people).where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true))).limit(1).for("update");
+    if (personRows.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
     const targetCells = await tx.select({ id: cells.id }).from(cells).where(and(eq(cells.id, data.cellId), eq(cells.churchId, data.churchId), eq(cells.active, true))).limit(1);
     if (targetCells.length === 0) throw new Error("Célula inválida para esta igreja.");
 
@@ -2781,22 +2827,45 @@ export async function cancelScheduleItem(data: {
   return getScheduleItemById(data.id, data.churchId);
 }
 
-export async function assignPersonToMinistry(data: { ministryId: number; personId: number }) {
+export async function assignPersonToMinistry(data: { churchId: number; ministryId: number; personId: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   return db.transaction(async (tx) => {
-    const locked = await tx.select({ id: ministries.id }).from(ministries).where(and(eq(ministries.id, data.ministryId), eq(ministries.active, true))).limit(1).for("update");
-    if (locked.length === 0) throw new Error("Ministério não encontrado.");
+    const locked = await tx.select({ id: ministries.id }).from(ministries).where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId), eq(ministries.active, true))).limit(1).for("update");
+    if (locked.length === 0) throw new Error("Ministério não encontrado nesta igreja.");
+    const person = await tx.select({ id: people.id }).from(people).where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true))).limit(1);
+    if (person.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
     const existing = await tx.select().from(ministryMembers).where(and(eq(ministryMembers.ministryId, data.ministryId), eq(ministryMembers.personId, data.personId), eq(ministryMembers.active, true))).limit(1);
     if (existing[0]) return existing[0];
-    const result = await tx.insert(ministryMembers).values({ ...data, active: true });
+    const result = await tx.insert(ministryMembers).values({ ministryId: data.ministryId, personId: data.personId, active: true });
     const membershipId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
     if (!membershipId) throw new Error("Não foi possível vincular a Pessoa ao Ministério.");
-    const rows = await tx.select().from(ministryMembers).where(eq(ministryMembers.id, membershipId)).limit(1);
+    const rows = await tx.select().from(ministryMembers).where(and(eq(ministryMembers.id, membershipId), eq(ministryMembers.ministryId, data.ministryId))).limit(1);
     return rows[0] ?? null;
   });
 }
+export async function removePersonFromMinistry(data: { churchId: number; ministryId: number; personId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const ministry = await tx.select({ id: ministries.id }).from(ministries).where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId))).limit(1).for("update");
+    if (ministry.length === 0) throw new Error("Ministério não encontrado nesta igreja.");
+    const result = await tx.update(ministryMembers).set({ active: false }).where(and(eq(ministryMembers.ministryId, data.ministryId), eq(ministryMembers.personId, data.personId), eq(ministryMembers.active, true)));
+    await tx.update(ministryRoleAssignments).set({ active: false, endedAt: new Date() }).where(and(eq(ministryRoleAssignments.churchId, data.churchId), eq(ministryRoleAssignments.ministryId, data.ministryId), eq(ministryRoleAssignments.personId, data.personId), eq(ministryRoleAssignments.active, true)));
+    return Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0;
+  });
+}
 
+export async function getMinistryRoleAssignmentById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(ministryRoleAssignments)
+    .where(and(eq(ministryRoleAssignments.id, id), eq(ministryRoleAssignments.churchId, churchId), eq(ministryRoleAssignments.active, true)))
+    .limit(1);
+  return rows[0] ?? null;
+}
 export async function getMinistryRoleAssignmentsByPerson(personId: number, churchId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -2844,11 +2913,11 @@ export async function assignMinistryRole(data: {
   return { id: result[0].insertId, alreadyAssigned: false };
 }
 
-export async function deactivateMinistryRole(id: number, churchId: number) {
+export async function deactivateMinistryRole(id: number, churchId: number, ministryId: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.update(ministryRoleAssignments).set({ active: false, endedAt: new Date() })
-    .where(and(eq(ministryRoleAssignments.id, id), eq(ministryRoleAssignments.churchId, churchId)));
+    .where(and(eq(ministryRoleAssignments.id, id), eq(ministryRoleAssignments.churchId, churchId), eq(ministryRoleAssignments.ministryId, ministryId), eq(ministryRoleAssignments.active, true)));
 }
 
 export async function getMinistryRoleDefinitionsByChurch(churchId: number) {

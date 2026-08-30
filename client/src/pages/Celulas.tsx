@@ -30,6 +30,8 @@ const DAYS = [
 const defaultForm = {
   name: "",
   leaderId: "",
+  coLeaderId: "",
+  supervisorId: "",
   address: "",
   city: "",
   neighborhood: "",
@@ -68,6 +70,7 @@ export default function Celulas() {
   const [presentByPersonId, setPresentByPersonId] = useState<Record<number, boolean>>({});
   const [memberReferralReason, setMemberReferralReason] = useState("");
   const [publicSettingsOpen, setPublicSettingsOpen] = useState(false);
+  const [leadershipForm, setLeadershipForm] = useState({ leaderId: "", coLeaderId: "", supervisorId: "" });
 
   const { data: cells, isLoading, refetch } = trpc.cells.list.useQuery({ churchId });
   const managementAccess = trpc.cells.managementAccess.useQuery({ churchId });
@@ -101,7 +104,15 @@ export default function Celulas() {
       setForm(defaultForm);
       refetch();
     },
-    onError: () => toast.error("Erro ao criar célula"),
+    onError: (error) => toast.error(error.message || "Erro ao criar célula"),
+  });
+  const updateLeadership = trpc.cells.updateLeadership.useMutation({
+    onSuccess: async (updated) => {
+      toast.success("Liderança da Célula atualizada.");
+      const refreshed = await refetch();
+      setSelectedCell(refreshed.data?.find((cell) => cell.id === updated?.id) ?? updated);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar a liderança."),
   });
   const assignPerson = trpc.cells.assignPerson.useMutation({
     onSuccess: async () => {
@@ -150,7 +161,36 @@ export default function Celulas() {
       toast.error("Selecione uma Pessoa como líder da célula.");
       return;
     }
-    createCell.mutate({ churchId, ...form, leaderId: Number(form.leaderId) });
+    createCell.mutate({
+      churchId,
+      ...form,
+      leaderId: Number(form.leaderId),
+      coLeaderId: form.coLeaderId ? Number(form.coLeaderId) : null,
+      supervisorId: form.supervisorId ? Number(form.supervisorId) : null,
+    });
+  }
+
+  function openCell(cell: any) {
+    setSelectedCell(cell);
+    setLeadershipForm({
+      leaderId: cell.leaderId ? String(cell.leaderId) : "",
+      coLeaderId: cell.coLeaderId ? String(cell.coLeaderId) : "",
+      supervisorId: cell.supervisorId ? String(cell.supervisorId) : "",
+    });
+  }
+
+  function saveLeadership() {
+    if (!selectedCell || !leadershipForm.leaderId) {
+      toast.error("Selecione o líder da Célula.");
+      return;
+    }
+    updateLeadership.mutate({
+      churchId,
+      cellId: selectedCell.id,
+      leaderId: Number(leadershipForm.leaderId),
+      coLeaderId: leadershipForm.coLeaderId ? Number(leadershipForm.coLeaderId) : null,
+      supervisorId: leadershipForm.supervisorId ? Number(leadershipForm.supervisorId) : null,
+    });
   }
 
   function openAttendanceDialog() {
@@ -269,7 +309,7 @@ export default function Celulas() {
                 <button
                   key={cell.id}
                   type="button"
-                  onClick={() => setSelectedCell(cell)}
+                  onClick={() => openCell(cell)}
                   className="card-sacred flex w-full items-center gap-4 p-4 text-left transition-colors hover:border-gold/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
                   aria-label={`Abrir membros da célula ${cell.name}`}
                 >
@@ -352,6 +392,29 @@ export default function Celulas() {
             <DialogTitle className="flex items-center gap-2 font-display text-navy"><Globe className="h-5 w-5 text-indigo-600" />{selectedCell?.name}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {canPublishCells && (
+              <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
+                <p className="text-sm font-semibold text-navy">Liderança da Célula</p>
+                <p className="mt-1 text-xs text-muted-foreground">Somente o Pastor nomeia ou remove líder, co-líder e supervisor.</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  <Select value={leadershipForm.leaderId} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, leaderId: value }))}>
+                    <SelectTrigger><SelectValue placeholder="Líder" /></SelectTrigger>
+                    <SelectContent>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Select value={leadershipForm.coLeaderId || "none"} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, coLeaderId: value === "none" ? "" : value }))}>
+                    <SelectTrigger><SelectValue placeholder="Co-líder" /></SelectTrigger>
+                    <SelectContent><SelectItem value="none">Sem co-líder</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                  </Select>
+                  <Select value={leadershipForm.supervisorId || "none"} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, supervisorId: value === "none" ? "" : value }))}>
+                    <SelectTrigger><SelectValue placeholder="Supervisor" /></SelectTrigger>
+                    <SelectContent><SelectItem value="none">Sem supervisor</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <Button type="button" size="sm" className="mt-3 bg-navy text-white hover:bg-navy-light" onClick={saveLeadership} disabled={updateLeadership.isPending}>
+                  {updateLeadership.isPending ? "Salvando…" : "Salvar liderança"}
+                </Button>
+              </section>
+            )}
             <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 text-sm text-muted-foreground">
               <p>{selectedCell?.meetingDay ? `${DAYS.find((day) => day.value === selectedCell.meetingDay)?.label} às ${selectedCell.meetingTime ?? "—"}` : "Horário ainda não definido"}</p>
               {selectedCell?.neighborhood && <p className="mt-1">{selectedCell.neighborhood}{selectedCell.city ? ` · ${selectedCell.city}` : ""}</p>}
@@ -562,10 +625,24 @@ export default function Celulas() {
               </div>
               <div className="col-span-2">
                 <Label htmlFor="cell-leader">Líder da Célula *</Label>
-                {managementAccess.data?.canCreateAny ? <Select value={form.leaderId} onValueChange={(value) => setForm({ ...form, leaderId: value })}>
+                <Select value={form.leaderId} onValueChange={(value) => setForm({ ...form, leaderId: value })}>
                   <SelectTrigger id="cell-leader"><SelectValue placeholder="Selecione uma Pessoa" /></SelectTrigger>
                   <SelectContent>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
-                </Select> : <div id="cell-leader" className="mt-1 rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-navy">Você será definido como líder desta Célula.</div>}
+                </Select>
+              </div>
+              <div>
+                <Label>Co-líder</Label>
+                <Select value={form.coLeaderId || "none"} onValueChange={(value) => setForm({ ...form, coLeaderId: value === "none" ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Sem co-líder" /></SelectTrigger>
+                  <SelectContent><SelectItem value="none">Sem co-líder</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Supervisor</Label>
+                <Select value={form.supervisorId || "none"} onValueChange={(value) => setForm({ ...form, supervisorId: value === "none" ? "" : value })}>
+                  <SelectTrigger><SelectValue placeholder="Sem supervisor" /></SelectTrigger>
+                  <SelectContent><SelectItem value="none">Sem supervisor</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                </Select>
               </div>
               <div className="col-span-2">
                 <Label>Endereço</Label>

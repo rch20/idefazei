@@ -130,8 +130,8 @@ export default function Escalas() {
   const conflictsThisMonth = activeScales.filter((scale) => scale.hasTimeConflict).length;
   const peopleById = new Map(people.map((person) => [person.id, person.fullName]));
   const ministriesById = new Map(ministries.map((ministry) => [ministry.id, ministry.name]));
-  const departmentsById = new Map(departments.map((department) => [department.id, department.name]));
-  const schedulableDepartments = departments.filter((department) => department.active && department.canManage);
+  const departmentsById = new Map(departments.filter((department) => department !== null).map((department) => [department.id, department.name]));
+  const schedulableDepartments = departments.filter((department): department is NonNullable<typeof department> => Boolean(department && department.active && department.canManage));
   const schedulableMinistries = ministries.filter((ministry) => ministry.canManage || schedulableDepartments.some((department) => department.ministryId === ministry.id));
   const selectedMinistryCanManage = ministries.find((ministry) => String(ministry.id) === form.ministryId)?.canManage ?? false;
   const departmentsForMinistry = schedulableDepartments.filter((department) => String(department.ministryId) === form.ministryId);

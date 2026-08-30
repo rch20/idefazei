@@ -61,6 +61,8 @@ import {
   getActiveCellMembership,
   getPeopleWithoutActiveCell,
   getCellMembershipHistory,
+  getAccessibleCellIdsByPerson,
+  getActiveCellRoleKeysByPerson,
   getChurchById,
   getChurchBySlug,
   getChurchMemberByUserId,
@@ -175,10 +177,12 @@ import {
   updateScheduleItem,
   cancelScheduleItem,
   assignPersonToMinistry,
+  removePersonFromMinistry,
   assignMinistryRole,
   deactivateMinistryRole,
   getActiveMinistryRoleKeysByPerson,
   getMinistryRoleAssignmentsByPerson,
+  getMinistryRoleAssignmentById,
   getMinistryMembershipsByPerson,
   getMinistryRoleDefinitionsByChurch,
   createMinistryRoleDefinition,
@@ -326,13 +330,16 @@ async function emitNotificationWithoutBlocking(data: Parameters<typeof emitInter
   }
 }
 
+const PASTOR_ROLES = new Set(["pastor_presidente", "pastor_local"]);
 const CHURCH_ADMIN_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario"]);
-const CHURCH_ROLE_MANAGER_ROLES = new Set(["pastor_presidente", "pastor_local"]);
+const CHURCH_ROLE_MANAGER_ROLES = PASTOR_ROLES;
 const COUNSELING_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor"]);
 const PASTORAL_ACTION_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"]);
 const TREASURY_ROLES = new Set(["pastor_presidente", "pastor_local", "tesoureiro"]);
 const VISIT_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor", "consolidador", "visitador"]);
 const MINISTRY_MANAGEMENT_ROLE_KEYS = new Set(["lider_louvor", "lider_consolidacao", "supervisor_consolidacao", "lider_visitas", "supervisor_visitas"]);
+const MINISTRY_LEADERSHIP_ROLE_KEYS = new Set(["lider_celula", "supervisor_celulas", "lider_consolidacao", "supervisor_consolidacao", "lider_visitas", "supervisor_visitas", "lider_louvor"]);
+const OPERATIONAL_MINISTRY_ROLE_KEYS = new Set(["membro_ministerio", "musico", "vocalista", "visitador"]);
 const EXECUTIVE_READ_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario", "supervisor"]);
 const COMMUNICATION_MANAGER_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario", "comunicacao"]);
 const PRAYER_MANAGER_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario", "supervisor"]);
@@ -401,6 +408,14 @@ async function requireChurchAdministrator(userId: number, churchId: number) {
   const roles = await getEffectiveChurchRoles(userId, churchId, member);
   if (!roles.some((role) => CHURCH_ADMIN_ROLES.has(role))) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Seu perfil não tem permissão para esta ação" });
+  }
+  return member;
+}
+async function requirePastor(userId: number, churchId: number) {
+  const member = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, member);
+  if (!roles.some((role) => PASTOR_ROLES.has(role))) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor pode executar esta ação de governança." });
   }
   return member;
 }
@@ -507,15 +522,36 @@ async function requireCounselingSessionAccess(userId: number, churchId: number, 
   return { ...authorization, session };
 }
 
-async function requireCellManagementPermission(userId: number, churchId: number, leaderId?: number) {
+async function requireCellManagementPermission(userId: number, churchId: number, cellId: number) {
   const actor = await requireChurchMember(userId, churchId);
+  const cell = await getCellById(cellId, churchId);
+  if (!cell || !cell.active) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada nesta igreja." });
   const roles = await getEffectiveChurchRoles(userId, churchId, actor);
-  const canManageAll = roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor"].includes(role));
-  const canCreateOwnCell = roles.includes("lider") && actor.personId !== null && actor.personId !== undefined && leaderId === actor.personId;
-  if (!canManageAll && !canCreateOwnCell) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores, Supervisores ou o próprio Líder podem estruturar uma Célula." });
+  const canManageAll = roles.some((role) => PASTOR_ROLES.has(role));
+  const canManageOwn = Boolean(actor.personId && [cell.leaderId, cell.coLeaderId, cell.supervisorId].includes(actor.personId));
+  if (!canManageAll && !canManageOwn) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Você só pode administrar a própria Célula." });
   }
-  return { actor, roles, canManageAll };
+  return { actor, roles, cell, canManageAll, canManageOwn };
+}
+async function requireCellScopedRead(userId: number, churchId: number, cellId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const cell = await getCellById(cellId, churchId);
+  if (!cell || !cell.active) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada nesta igreja." });
+  const roles = await getEffectiveChurchRoles(userId, churchId, actor);
+  if (roles.some((role) => PASTOR_ROLES.has(role))) return { actor, roles, cell };
+  const isResponsible = Boolean(actor.personId && [cell.leaderId, cell.coLeaderId, cell.supervisorId].includes(actor.personId));
+  const membership = actor.personId ? await getActiveCellMembership(actor.personId, churchId) : null;
+  if (!isResponsible && membership?.cellId !== cell.id) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Você só pode consultar a própria Célula." });
+  }
+  return { actor, roles, cell };
+}
+async function requireScopedPersonRead(userId: number, churchId: number, personId: number) {
+  const accessibleIds = await getAccessiblePersonIds(userId, churchId);
+  if (accessibleIds !== null && !accessibleIds.has(personId)) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta Pessoa." });
+  }
 }
 
 /**
@@ -530,7 +566,7 @@ async function requireMinistryManagementPermission(userId: number, churchId: num
     throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
   }
 
-  const canManageAll = roles.some((role) => CHURCH_ADMIN_ROLES.has(role));
+  const canManageAll = roles.some((role) => PASTOR_ROLES.has(role));
   const isNamedLeader = Boolean(actor.personId && ministry.leaderId === actor.personId);
   let hasMinistryLeadershipAssignment = false;
 
@@ -551,13 +587,23 @@ async function requireMinistryManagementPermission(userId: number, churchId: num
   if (!canManageAll && !isNamedLeader && !hasMinistryLeadershipAssignment) {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "Somente Pastores, Secretários ou responsáveis por este Ministério podem gerenciar participantes e Escalas.",
+      message: "Somente o Pastor ou o responsável por este Ministério pode gerenciar participantes e Escalas.",
     });
   }
 
-  return { actor, roles, ministry, canManageAll };
+    return { actor, roles, ministry, canManageAll };
 }
-
+async function requireMinistryScopedRead(userId: number, churchId: number, ministryId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const ministry = (await getMinistriesByChurch(churchId)).find((item) => item.id === ministryId && item.active);
+  if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
+  const roles = await getEffectiveChurchRoles(userId, churchId, actor);
+  if (roles.some((role) => PASTOR_ROLES.has(role))) return { actor, roles, ministry };
+  const isLeader = Boolean(actor.personId && ministry.leaderId === actor.personId);
+  const isMember = Boolean(actor.personId && await isActiveMinistryMember(ministryId, actor.personId, churchId));
+  if (!isLeader && !isMember) throw new TRPCError({ code: "FORBIDDEN", message: "Você só pode consultar Ministérios do seu escopo." });
+  return { actor, roles, ministry };
+}
 async function requireDepartmentManagementPermission(userId: number, churchId: number, departmentId: number) {
   const actor = await requireChurchMember(userId, churchId);
   const roles = await getEffectiveChurchRoles(userId, churchId, actor);
@@ -603,9 +649,10 @@ async function requireScheduleParticipant(churchId: number, ministryId: number, 
 async function getEffectiveChurchRoles(userId: number, churchId: number, actor: { role: string; personId?: number | null }) {
   if (userId >= 0) return [actor.role];
   const complementary = await getComplementaryRolesByChurchUser(Math.abs(userId), churchId);
-  const [ministryRoleKeys, departmentRoleKeys, customDefinitions, isConsolidationMember, isVisitsMember] = await Promise.all([
+  const [ministryRoleKeys, departmentRoleKeys, cellRoleKeys, customDefinitions, isConsolidationMember, isVisitsMember] = await Promise.all([
     actor.personId ? getActiveMinistryRoleKeysByPerson(actor.personId, churchId) : Promise.resolve([]),
     actor.personId ? getActiveDepartmentRoleKeysByPerson(actor.personId, churchId) : Promise.resolve([]),
+    actor.personId ? getActiveCellRoleKeysByPerson(actor.personId, churchId) : Promise.resolve([]),
     getMinistryRoleDefinitionsByChurch(churchId),
     actor.personId ? isActiveConsolidationMinistryMember(actor.personId, churchId) : Promise.resolve(false),
     actor.personId ? isActiveVisitsMinistryMember(actor.personId, churchId) : Promise.resolve(false),
@@ -618,6 +665,7 @@ async function getEffectiveChurchRoles(userId: number, churchId: number, actor: 
     ...complementary,
     ...(isConsolidationMember ? ["consolidador"] : []),
     ...(isVisitsMember ? ["visitador"] : []),
+    ...cellRoleKeys,
     ...ministryGrants,
     ...departmentGrants,
   ]));
@@ -635,7 +683,7 @@ async function getChurchAccessSummary(userId: number, churchId: number) {
   const isPastoralWorker = roles.some((role) => PASTORAL_ACTION_ROLES.has(role));
   const canAccessVisits = roles.some((role) => VISIT_ROLES.has(role));
   const canManageCells = roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor", "lider"].includes(role));
-  const canManageMinistry = roles.some((role) => CHURCH_ADMIN_ROLES.has(role) || role === "lider_ministerio" || MINISTRY_MANAGEMENT_ROLE_KEYS.has(role))
+  const canManageMinistry = roles.some((role) => PASTOR_ROLES.has(role) || role === "lider_ministerio" || MINISTRY_MANAGEMENT_ROLE_KEYS.has(role))
     || Boolean(actor.personId && (await getMinistriesByChurch(churchId)).some((ministry) => ministry.leaderId === actor.personId));
   const canManageLibrary = isExecutive;
   return {
@@ -683,9 +731,10 @@ async function getEffectivePersonRoles(personId: number, churchId: number) {
   const account = accounts.find((candidate) => candidate.active && candidate.personId === personId);
   if (!account) return [];
 
-  const [ministryRoleKeys, departmentRoleKeys, customDefinitions, isConsolidationMember, isVisitsMember] = await Promise.all([
+  const [ministryRoleKeys, departmentRoleKeys, cellRoleKeys, customDefinitions, isConsolidationMember, isVisitsMember] = await Promise.all([
     getActiveMinistryRoleKeysByPerson(personId, churchId),
     getActiveDepartmentRoleKeysByPerson(personId, churchId),
+    getActiveCellRoleKeysByPerson(personId, churchId),
     getMinistryRoleDefinitionsByChurch(churchId),
     isActiveConsolidationMinistryMember(personId, churchId),
     isActiveVisitsMinistryMember(personId, churchId),
@@ -698,6 +747,7 @@ async function getEffectivePersonRoles(personId: number, churchId: number) {
     ...(account.complementaryRoles ?? []),
     ...(isConsolidationMember ? ["consolidador"] : []),
     ...(isVisitsMember ? ["visitador"] : []),
+    ...cellRoleKeys,
     ...ministryGrants,
     ...departmentGrants,
   ]));
@@ -825,7 +875,7 @@ async function getCellMeetingAuthorization(userId: number, churchId: number, cel
   const actorRoles = await getEffectiveChurchRoles(userId, churchId, actor);
   const hasPastoralOversight = actorRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
   const isCellResponsible = Boolean(
-    actor.personId && (cell.leaderId === actor.personId || cell.supervisorId === actor.personId)
+    actor.personId && [cell.leaderId, cell.coLeaderId, cell.supervisorId].includes(actor.personId)
   );
   return { cell, canRecord: hasPastoralOversight || isCellResponsible };
 }
@@ -952,7 +1002,7 @@ const churchRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const { id, socialMedia, pastoralSupport, website, ...data } = input;
-      await requireChurchAdministrator(ctx.user.id, id);
+      await requirePastor(ctx.user.id, id);
       return updateChurch(id, {
         ...data,
         ...(socialMedia !== undefined ? { socialMedia: normalizeSocialMediaLinks(socialMedia) } : {}),
@@ -964,7 +1014,7 @@ const churchRouter = router({
   useLogoAsPwaIcon: protectedProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.id);
+      await requirePastor(ctx.user.id, input.id);
       return useChurchLogoAsPwaIcon(input.id);
     }),
 });
@@ -2114,8 +2164,8 @@ const cellsRouter = router({
       const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
       return {
         actorPersonId: actor.personId ?? null,
-        canCreateAny: roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor"].includes(role)),
-        canCreateOwn: roles.includes("lider") && Boolean(actor.personId),
+        canCreateAny: roles.some((role) => PASTOR_ROLES.has(role)),
+        canCreateOwn: false,
       };
     }),
   list: protectedProcedure
@@ -2123,11 +2173,14 @@ const cellsRouter = router({
     .query(async ({ input, ctx }) => {
       const actor = await requireChurchMember(ctx.user.id, input.churchId);
       const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
-      const canManageAll = roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor"].includes(role));
+      const canManageAll = roles.some((role) => PASTOR_ROLES.has(role));
       const rows = await getCellsByChurch(input.churchId);
-      return rows.map((cell) => ({
+      const accessibleIds = canManageAll || !actor.personId
+        ? new Set(rows.map((cell) => cell.id))
+        : new Set(await getAccessibleCellIdsByPerson(actor.personId, input.churchId));
+      return rows.filter((cell) => accessibleIds.has(cell.id)).map((cell) => ({
         ...cell,
-        canManage: canManageAll || Boolean(roles.includes("lider") && actor.personId && cell.leaderId === actor.personId),
+        canManage: canManageAll || Boolean(actor.personId && [cell.leaderId, cell.coLeaderId, cell.supervisorId].includes(actor.personId)),
         canTransferMembers: canManageAll,
       }));
     }),
@@ -2135,25 +2188,25 @@ const cellsRouter = router({
   members: protectedProcedure
     .input(z.object({ churchId: z.number(), cellId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      const cell = await getCellById(input.cellId, input.churchId);
-      if (!cell) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada." });
+      await requireCellScopedRead(ctx.user.id, input.churchId, input.cellId);
       return getActiveMembersByCell(input.cellId, input.churchId);
     }),
 
   memberCounts: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      return getCellMembersCount(input.churchId);
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const counts = await getCellMembersCount(input.churchId);
+      if (roles.some((role) => PASTOR_ROLES.has(role)) || !actor.personId) return counts;
+      const accessibleIds = new Set(await getAccessibleCellIdsByPerson(actor.personId, input.churchId));
+      return counts.filter((item) => accessibleIds.has(item.cellId));
     }),
 
   meetingHistory: protectedProcedure
     .input(z.object({ churchId: z.number(), cellId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      const cell = await getCellById(input.cellId, input.churchId);
-      if (!cell) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada." });
+      await requireCellScopedRead(ctx.user.id, input.churchId, input.cellId);
       return getCellMeetingSummaries(input.cellId, input.churchId);
     }),
 
@@ -2209,14 +2262,14 @@ const cellsRouter = router({
     .query(async ({ input, ctx }) => {
       const cell = await getCellById(input.cellId, input.churchId);
       if (!cell || !cell.active) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada." });
-      await requireCellManagementPermission(ctx.user.id, input.churchId, cell.leaderId);
+      await requireCellManagementPermission(ctx.user.id, input.churchId, input.cellId);
       return getPeopleWithoutActiveCell(input.churchId);
     }),
 
   personMembership: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireScopedPersonRead(ctx.user.id, input.churchId, input.personId);
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
       return getActiveCellMembership(input.personId, input.churchId);
@@ -2225,7 +2278,7 @@ const cellsRouter = router({
   membershipHistory: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireScopedPersonRead(ctx.user.id, input.churchId, input.personId);
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
       return getCellMembershipHistory(input.personId, input.churchId);
@@ -2242,7 +2295,7 @@ const cellsRouter = router({
       if (!person || !person.active || !cell || !cell.active) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou Célula inválida para esta igreja." });
       }
-      const authorization = await requireCellManagementPermission(ctx.user.id, input.churchId, cell.leaderId);
+      const authorization = await requireCellManagementPermission(ctx.user.id, input.churchId, input.cellId);
       if (previousMembership?.cellId === input.cellId) {
         return { membership: previousMembership, transferred: false };
       }
@@ -2267,7 +2320,8 @@ const cellsRouter = router({
         churchId: z.number(),
         name: z.string().min(2),
         leaderId: z.number(),
-        supervisorId: z.number().optional(),
+        coLeaderId: z.number().optional().nullable(),
+        supervisorId: z.number().optional().nullable(),
         hostId: z.number().optional(),
         address: z.string().optional(),
         city: z.string().optional(),
@@ -2280,13 +2334,32 @@ const cellsRouter = router({
         meetingTime: z.string().optional(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
-      await requireCellManagementPermission(ctx.user.id, input.churchId, input.leaderId);
-      const leader = await getPersonById(input.leaderId, input.churchId);
-      if (!leader) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um líder válido da sua igreja." });
+        .mutation(async ({ input, ctx }) => {
+      await requirePastor(ctx.user.id, input.churchId);
+      const assignedIds = [input.leaderId, input.coLeaderId ?? null, input.supervisorId ?? null].filter((id): id is number => id !== null && id !== undefined);
+      if (new Set(assignedIds).size !== assignedIds.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Líder, co-líder e supervisor devem ser Pessoas diferentes." });
+      const assignedPeople = await Promise.all(assignedIds.map((personId) => getPersonById(personId, input.churchId)));
+      if (assignedPeople.some((person) => !person)) throw new TRPCError({ code: "BAD_REQUEST", message: "Toda liderança deve pertencer a esta igreja." });
       return createCell(input as any);
     }),
-
+  updateLeadership: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      cellId: z.number().int().positive(),
+      leaderId: z.number().int().positive(),
+      coLeaderId: z.number().int().positive().nullable(),
+      supervisorId: z.number().int().positive().nullable(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requirePastor(ctx.user.id, input.churchId);
+      const assignedIds = [input.leaderId, input.coLeaderId, input.supervisorId].filter((id): id is number => id !== null);
+      if (new Set(assignedIds).size !== assignedIds.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Líder, co-líder e supervisor devem ser Pessoas diferentes." });
+      const cell = await getCellById(input.cellId, input.churchId);
+      if (!cell || !cell.active) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada nesta igreja." });
+      const assignedPeople = await Promise.all(assignedIds.map((personId) => getPersonById(personId, input.churchId)));
+      if (assignedPeople.some((person) => !person)) throw new TRPCError({ code: "BAD_REQUEST", message: "Toda liderança deve pertencer a esta igreja." });
+      return updateCell(input.cellId, input.churchId, { leaderId: input.leaderId, coLeaderId: input.coLeaderId, supervisorId: input.supervisorId });
+    }),
   updatePublicSettings: protectedProcedure
     .input(z.object({
       churchId: z.number(),
@@ -2483,7 +2556,7 @@ const ministriesRouter = router({
       const countByMinistry = new Map(counts.map((item) => [item.ministryId, Number(item.count)]));
       const nameByPerson = new Map(churchPeople.map((person) => [person.id, person.fullName]));
       const definitionByKey = new Map(definitions.map((definition) => [definition.key, definition]));
-      const canManageAll = actorRoles.some((role) => CHURCH_ADMIN_ROLES.has(role));
+      const canManageAll = actorRoles.some((role) => PASTOR_ROLES.has(role));
       const managedByAssignment = new Set(assignments.filter(({ assignment }) =>
         MINISTRY_MANAGEMENT_ROLE_KEYS.has(assignment.roleKey)
         || definitionByKey.get(assignment.roleKey)?.permissionPackage === "ministry_leader"
@@ -2502,11 +2575,16 @@ const ministriesRouter = router({
       }));
     }),
   members: protectedProcedure
-    .input(z.object({ churchId: z.number(), ministryId: z.number() }))
+    .input(z.object({ churchId: z.number(), ministryId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
-      await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
-      const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
-      if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado." });
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId && item.active);
+      if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
+      const canReadAll = roles.some((role) => PASTOR_ROLES.has(role));
+      const canManage = canReadAll || Boolean(actor.personId && ministry.leaderId === actor.personId);
+      const isMember = actor.personId ? await isActiveMinistryMember(input.ministryId, actor.personId, input.churchId) : false;
+      if (!canManage && !isMember) throw new TRPCError({ code: "FORBIDDEN", message: "Você só pode consultar Ministérios do seu escopo." });
       return getMinistryMembers(input.ministryId, input.churchId);
     }),
   candidates: protectedProcedure
@@ -2527,13 +2605,22 @@ const ministriesRouter = router({
       if (await isActiveMinistryMember(input.ministryId, input.personId, input.churchId)) {
         return { success: true, alreadyMember: true };
       }
-      await assignPersonToMinistry({ ministryId: input.ministryId, personId: input.personId });
+      await assignPersonToMinistry({ churchId: input.churchId, ministryId: input.ministryId, personId: input.personId });
       return { success: true, alreadyMember: false };
+    }),
+  removePerson: protectedProcedure
+    .input(z.object({ churchId: z.number(), ministryId: z.number(), personId: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      const authorization = await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
+      if (authorization.ministry.leaderId === input.personId) {
+        throw new TRPCError({ code: "CONFLICT", message: "O líder estrutural só pode ser removido pelo Pastor ao alterar a liderança." });
+      }
+      return { success: await removePersonFromMinistry({ ...input }) };
     }),
   functionCatalog: protectedProcedure
     .input(z.object({ churchId: z.number(), ministryId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
       const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
       if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado." });
       return getMinistryFunctionCatalogFor(ministry);
@@ -2541,7 +2628,7 @@ const ministriesRouter = router({
   customFunctions: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       return getMinistryRoleDefinitionsByChurch(input.churchId);
     }),
   createCustomFunction: protectedProcedure
@@ -2553,7 +2640,7 @@ const ministriesRouter = router({
       permissionPackage: z.enum(["member", "cell_leader", "consolidator", "visitor", "treasurer", "ministry_leader", "communication_leader"]),
     }))
     .mutation(async ({ input, ctx }) => {
-      const actor = await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const actor = await requirePastor(ctx.user.id, input.churchId);
       if (input.ministryId && !(await getMinistriesByChurch(input.churchId)).some((item) => item.id === input.ministryId)) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Ministério inválido para esta igreja." });
       }
@@ -2563,7 +2650,7 @@ const ministriesRouter = router({
   personMemberships: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
       const memberships = await getMinistryMembershipsByPerson(input.personId, input.churchId);
@@ -2579,7 +2666,7 @@ const ministriesRouter = router({
   personAccess: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
       const account = (await getChurchUsersByChurch(input.churchId)).find((candidate) => candidate.active && candidate.personId === input.personId);
@@ -2592,7 +2679,7 @@ const ministriesRouter = router({
   personFunctions: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
       const assignments = await getMinistryRoleAssignmentsByPerson(input.personId, input.churchId);
@@ -2612,24 +2699,41 @@ const ministriesRouter = router({
   assignFunction: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number(), ministryId: z.number(), roleKey: z.string().trim().min(2).max(100) }))
     .mutation(async ({ input, ctx }) => {
-      const actor = await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const member = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, member);
+      const isPastor = roles.some((role) => PASTOR_ROLES.has(role));
+      if (!isPastor) await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
+      if (!isPastor && !OPERATIONAL_MINISTRY_ROLE_KEYS.has(input.roleKey)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Líderes só podem atribuir funções operacionais da própria equipe." });
+      }
+      if (MINISTRY_LEADERSHIP_ROLE_KEYS.has(input.roleKey) && !isPastor) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor pode atribuir funções de liderança." });
+      }
       const [person, ministry] = await Promise.all([
         getPersonById(input.personId, input.churchId),
-        getMinistriesByChurch(input.churchId).then((items) => items.find((item) => item.id === input.ministryId)),
+        getMinistriesByChurch(input.churchId).then((items) => items.find((item) => item.id === input.ministryId && item.active)),
       ]);
       if (!person || !ministry) throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou Ministério inválido para esta igreja." });
       const allowed = getMinistryFunctionCatalogFor(ministry).some((item) => item.key === input.roleKey);
       if (!allowed) throw new TRPCError({ code: "BAD_REQUEST", message: "Essa função não é compatível com o Ministério selecionado." });
       if (!(await isActiveMinistryMember(input.ministryId, input.personId, input.churchId))) {
-        await assignPersonToMinistry({ ministryId: input.ministryId, personId: input.personId });
+        await assignPersonToMinistry({ churchId: input.churchId, ministryId: input.ministryId, personId: input.personId });
       }
-      return assignMinistryRole({ ...input, assignedByChurchUserId: actor.id });
+      return assignMinistryRole({ ...input, assignedByChurchUserId: member.id });
     }),
   removeFunction: protectedProcedure
     .input(z.object({ churchId: z.number(), id: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
-      await deactivateMinistryRole(input.id, input.churchId);
+      const assignment = await getMinistryRoleAssignmentById(input.id, input.churchId);
+      if (!assignment) throw new TRPCError({ code: "NOT_FOUND", message: "Função ministerial não encontrada nesta igreja." });
+      const member = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, member);
+      const isPastor = roles.some((role) => PASTOR_ROLES.has(role));
+      if (!isPastor) {
+        if (!OPERATIONAL_MINISTRY_ROLE_KEYS.has(assignment.roleKey)) throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor pode remover funções de liderança." });
+        await requireMinistryManagementPermission(ctx.user.id, input.churchId, assignment.ministryId);
+      }
+      await deactivateMinistryRole(input.id, input.churchId, assignment.ministryId);
       return { success: true };
     }),
   create: protectedProcedure
@@ -2642,7 +2746,7 @@ const ministriesRouter = router({
       participantIds: z.array(z.number().int().positive()).max(100).default([]),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       if (input.leaderId !== undefined && input.leaderId !== null) {
         await requireChurchRoleManager(ctx.user.id, input.churchId);
         const leader = await getPersonById(input.leaderId, input.churchId);
@@ -2665,7 +2769,7 @@ const ministriesRouter = router({
   archive: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), ministryId: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       const result = await archiveMinistry({ ministryId: input.ministryId, churchId: input.churchId });
       if (!result.archived) {
         if (result.reason === "not_found") throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
@@ -2692,10 +2796,10 @@ const departmentsRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), ministryId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
-      const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
-      const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
-      if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
+      const ministryAccess = await requireMinistryScopedRead(ctx.user.id, input.churchId, input.ministryId);
+      const actor = ministryAccess.actor;
+      const roles = ministryAccess.roles;
+      const ministry = ministryAccess.ministry;
       let canManageMinistry = false;
       try {
         await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
@@ -2716,8 +2820,19 @@ const departmentsRouter = router({
   listByChurch: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
       const items = await getDepartmentsByChurch(input.churchId);
+      const ministryRows = await getMinistriesByChurch(input.churchId);
+      const isPastor = roles.some((role) => PASTOR_ROLES.has(role));
+      const assignments = actor.personId ? await getMinistryRoleAssignmentsByPerson(actor.personId, input.churchId) : [];
+      const definitions = await getMinistryRoleDefinitionsByChurch(input.churchId);
+      const definitionByKey = new Map(definitions.map((definition) => [definition.key, definition]));
+      const managedMinistryIds = new Set([
+        ...ministryRows.filter((ministry) => ministry.leaderId === actor.personId).map((ministry) => ministry.id),
+        ...assignments.filter(({ assignment }) => MINISTRY_MANAGEMENT_ROLE_KEYS.has(assignment.roleKey) || definitionByKey.get(assignment.roleKey)?.permissionPackage === "ministry_leader").map(({ assignment }) => assignment.ministryId),
+      ]);
+      const accessibleMinistryIds = isPastor ? null : managedMinistryIds;
       return Promise.all(items.map(async (department) => {
         let canManage = false;
         if (department.active) {
@@ -2728,15 +2843,16 @@ const departmentsRouter = router({
             if (!(error instanceof TRPCError) || !["FORBIDDEN", "NOT_FOUND"].includes(error.code)) throw error;
           }
         }
+        if (accessibleMinistryIds && !accessibleMinistryIds.has(department.ministryId)) return null;
         return { id: department.id, ministryId: department.ministryId, name: department.name, active: department.active, canManage };
-      }));
+      })).then((rows) => rows.filter(Boolean));
     }),
   members: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
       const department = await getDepartmentById(input.departmentId, input.churchId);
       if (!department) throw new TRPCError({ code: "NOT_FOUND", message: "Departamento não encontrado nesta igreja." });
+      await requireMinistryScopedRead(ctx.user.id, input.churchId, department.ministryId);
       return (await getDepartmentMembers(input.departmentId, input.churchId)).map(({ membership, person }) => ({ membership, person: { id: person.id, fullName: person.fullName } }));
     }),
   candidates: protectedProcedure
@@ -2748,9 +2864,9 @@ const departmentsRouter = router({
   roles: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
       const department = await getDepartmentById(input.departmentId, input.churchId);
       if (!department) throw new TRPCError({ code: "NOT_FOUND", message: "Departamento não encontrado nesta igreja." });
+      await requireMinistryScopedRead(ctx.user.id, input.churchId, department.ministryId);
       return getDepartmentRoleAssignments(input.departmentId, input.churchId);
     }),
   create: protectedProcedure
@@ -2762,9 +2878,7 @@ const departmentsRouter = router({
       leaderId: z.number().int().positive().nullable().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
-      if (!roles.some((role) => CHURCH_ADMIN_ROLES.has(role))) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores ou Secretários podem criar Departamentos." });
+      const actor = await requirePastor(ctx.user.id, input.churchId);
       const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
       if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
       if (input.leaderId !== undefined && input.leaderId !== null) {
@@ -2783,7 +2897,9 @@ const departmentsRouter = router({
   update: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive(), name: z.string().trim().min(2).max(160), description: z.string().trim().max(1000).optional() }))
     .mutation(async ({ input, ctx }) => {
-      await requireDepartmentManagementPermission(ctx.user.id, input.churchId, input.departmentId);
+      await requirePastor(ctx.user.id, input.churchId);
+      const department = await getDepartmentById(input.departmentId, input.churchId);
+      if (!department) throw new TRPCError({ code: "NOT_FOUND", message: "Departamento não encontrado nesta igreja." });
       try {
         return await updateDepartment({ id: input.departmentId, churchId: input.churchId, name: input.name, description: input.description || null });
       } catch (error) {
@@ -2846,7 +2962,7 @@ const departmentsRouter = router({
   deactivate: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), departmentId: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
-      await requireDepartmentManagementPermission(ctx.user.id, input.churchId, input.departmentId);
+      await requirePastor(ctx.user.id, input.churchId);
       await updateDepartment({ id: input.departmentId, churchId: input.churchId, active: false });
       return { success: true };
     }),

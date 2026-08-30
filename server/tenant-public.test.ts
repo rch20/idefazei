@@ -331,7 +331,7 @@ describe("Galeria pública por tenant", () => {
     expect(dbSource).toContain('pwaIconAssetId: null');
     expect(dbSource).toContain('sem excluir o upload manual anterior');
     expect(routerSource).toContain('useLogoAsPwaIcon: protectedProcedure');
-    expect(routerSource).toContain('requireChurchAdministrator(ctx.user.id, input.id)');
+    expect(routerSource).toContain('requirePastor(ctx.user.id, input.id)');
   });
 
   it("permite persistir a frase de identificação no hero sem quebrar tenants legados", () => {
@@ -344,7 +344,7 @@ describe("Galeria pública por tenant", () => {
   it("valida redes sociais por allow-list HTTPS e sanitiza o payload público", () => {
     expect(routerSource).toContain("socialMediaInputSchema");
     expect(routerSource).toContain("normalizeSocialMediaLinks(socialMedia)");
-    expect(routerSource).toContain("requireChurchAdministrator(ctx.user.id, id)");
+    expect(routerSource).toContain("requirePastor(ctx.user.id, id)");
     expect(dbSource).toContain("website: church.website");
     expect(dbSource).toContain("socialMedia: normalizeSocialMediaLinks(church.socialMedia)");
     expect(dbSource).toContain("eq(churches.slug, slug)");
@@ -353,7 +353,7 @@ describe("Galeria pública por tenant", () => {
   it("valida e expõe o atendimento pastoral somente para o tenant e audiência configurados", () => {
     expect(routerSource).toContain("pastoralSupportInputSchema");
     expect(routerSource).toContain("normalizePastoralSupportConfig(pastoralSupport)");
-    expect(routerSource).toContain("requireChurchAdministrator(ctx.user.id, id)");
+    expect(routerSource).toContain("requirePastor(ctx.user.id, id)");
     expect(dbSource).toContain("normalizePastoralSupportConfig(church.pastoralSupport)");
     expect(dbSource).toContain("pastoralSupport.enabled && pastoralSupport.showPublic");
     expect(dbSource).toContain("pastoralSupport: publicPastoralSupport");
