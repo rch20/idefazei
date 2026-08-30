@@ -70,6 +70,16 @@ describe("Fluxo estrutural de prestação por culto", () => {
     expect(sectionSource).toContain('type="time"');
   });
 
+  it("explica o fluxo simples de culto até relatório", () => {
+    expect(pageSource).toContain('aria-label="Fluxo da Tesouraria"');
+    expect(pageSource).toContain("1. Culto");
+    expect(pageSource).toContain("2. Contagem");
+    expect(pageSource).toContain("3. Conferência");
+    expect(pageSource).toContain("4. Depósito");
+    expect(pageSource).toContain("5. Relatório");
+    expect(sectionSource).toContain("Para cada culto, registre a contagem por duas pessoas");
+  });
+
   it("preserva a data de calendário e compacta ações no mobile", () => {
     expect(treasurySource).toContain("value.getUTCFullYear()");
     expect(treasurySource).toContain("value.getUTCMonth()");

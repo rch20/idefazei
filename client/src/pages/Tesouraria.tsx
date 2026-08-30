@@ -424,7 +424,7 @@ export default function Tesouraria() {
         <div>
           <p className="text-gold text-xs font-semibold uppercase tracking-[0.16em]">Administração financeira</p>
           <h1 className="mt-1 font-display text-3xl text-navy">Tesouraria</h1>
-          <p className="mt-1 text-muted-foreground">Entradas, saídas, conciliação e prestação de contas da igreja.</p>
+          <p className="mt-1 text-muted-foreground">Acompanhe o dinheiro da igreja por culto, conta e período, com histórico auditável.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setReportChoiceOpen(true)} disabled={!overview || overviewQuery.isFetching || reportGenerating} className="gap-2">{reportGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />} {reportGenerating ? "Preparando PDF…" : "Gerar PDF"}</Button>
@@ -433,6 +433,21 @@ export default function Tesouraria() {
           <Button onClick={() => openTransaction("entrada")} disabled={periodClosed || accountsQuery.isLoading || categoriesQuery.isLoading} title={periodClosed ? "Reabra o período para registrar uma entrada." : undefined} className="gap-2 bg-navy hover:bg-navy/90"><ArrowDownCircle className="h-4 w-4" /> Registrar entrada</Button>
         </div>
       </header>
+
+      <section className="rounded-2xl border border-gold/30 bg-gold/5 p-4 shadow-sm sm:p-5" aria-label="Fluxo da Tesouraria">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-navy sm:justify-between">
+          <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">1. Culto</span>
+          <span className="hidden text-muted-foreground sm:block">→</span>
+          <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">2. Contagem</span>
+          <span className="hidden text-muted-foreground sm:block">→</span>
+          <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">3. Conferência</span>
+          <span className="hidden text-muted-foreground sm:block">→</span>
+          <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">4. Depósito</span>
+          <span className="hidden text-muted-foreground sm:block">→</span>
+          <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">5. Relatório</span>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">A contagem precisa de duas pessoas diferentes. Depois de fechada, ela pode receber o depósito e gerar uma prestação de contas reimprimível.</p>
+      </section>
 
       <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end">
         <label className="grid gap-1.5 text-sm font-medium text-navy">Período<Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-full sm:w-48" /></label>
