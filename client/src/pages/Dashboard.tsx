@@ -515,10 +515,10 @@ export default function Dashboard() {
   const metrics = metricValues ? [
     {
       icon: Users,
-      label: "Membros Ativos",
+      label: "Pessoas ativas",
       value: metricValues.totalMembers,
       color: "#1e3a5f",
-      sub: "Total de pessoas ativas",
+      sub: "Pessoas cadastradas na igreja",
     },
     {
       icon: Flame,
@@ -536,7 +536,7 @@ export default function Dashboard() {
     },
     {
       icon: Globe,
-      label: "Células Ativas",
+      label: "Células em funcionamento",
       value: metricValues.totalCells,
       color: "#6366f1",
       sub: "Grupos em funcionamento",
@@ -546,7 +546,7 @@ export default function Dashboard() {
       label: "Líderes",
       value: metricValues.totalLeaders,
       color: "#c9a84c",
-      sub: "Pastores, supervisores e líderes",
+      sub: "Pessoas com responsabilidade",
     },
     {
       icon: Music,
@@ -567,14 +567,14 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-display text-navy">Dashboard Executivo</h1>
+          <h1 className="text-2xl font-bold font-display text-navy">Visão geral da igreja</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Visão geral do crescimento e discipulado
+            O que precisa da sua atenção e como a igreja está avançando
           </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center gap-2 text-xs text-gold font-medium bg-gold/10 px-3 py-1.5 rounded-full border border-gold/20">
-            Ganhar → Consolidar → Discipular → Multiplicar
+            Receber → Direcionar → Cuidar → Desenvolver
           </div>
           <ReportButton
             label="Exportar Relatório"

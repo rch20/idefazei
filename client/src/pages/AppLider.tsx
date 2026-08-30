@@ -80,17 +80,17 @@ export default function AppLider() {
               <Star className="w-5 h-5 text-[#c9a84c]" />
             </div>
             <div>
-              <h1 className="font-serif text-xl font-bold">App do Líder</h1>
-              <p className="text-white/50 text-xs">Visão simplificada para líderes de célula</p>
+              <h1 className="font-serif text-xl font-bold">Minha equipe</h1>
+              <p className="text-white/50 text-xs">Acompanhe sua equipe e os próximos cuidados</p>
             </div>
           </div>
 
           {/* KPIs rápidos */}
           <div className="grid grid-cols-3 gap-3">
             {[
-              { label: "Membros na Célula", value: loadingCells ? "—" : membersInCells, icon: Users },
-              { label: "Consolidações Pendentes", value: loadingConsolidations ? "—" : pendingConsolidations.length, icon: Clock },
-              { label: "Novas Almas", value: loadingSouls ? "—" : recentSouls.length, icon: Heart },
+              { label: "Pessoas na equipe", value: loadingCells ? "—" : membersInCells, icon: Users },
+              { label: "Cuidados pendentes", value: loadingConsolidations ? "—" : pendingConsolidations.length, icon: Clock },
+              { label: "Novas pessoas", value: loadingSouls ? "—" : recentSouls.length, icon: Heart },
             ].map(({ label, value, icon: Icon }) => (
               <div key={label} className="bg-white/10 rounded-xl p-3 text-center">
                 <Icon className="w-5 h-5 text-[#c9a84c] mx-auto mb-1" />
@@ -107,9 +107,9 @@ export default function AppLider() {
         <TabsList className="bg-white border border-[#1e3a5f]/10 p-1 rounded-xl w-full">
           {[
             { id: "celula", label: "Minha Célula", icon: Users },
-            { id: "consolidacoes", label: "Consolidações", icon: CheckCircle2 },
-            { id: "novas-almas", label: "Novas Almas", icon: Heart },
-            { id: "membros", label: "Membros", icon: BookOpen },
+            { id: "consolidacoes", label: "Cuidados", icon: CheckCircle2 },
+            { id: "novas-almas", label: "Novas pessoas", icon: Heart },
+            { id: "membros", label: "Pessoas sob cuidado", icon: BookOpen },
           ].map(({ id, label, icon: Icon }) => (
             <TabsTrigger
               key={id}
@@ -154,8 +154,8 @@ export default function AppLider() {
                       <div className="flex items-start gap-2">
                         <Send className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
                         <div>
-                          <p className="text-sm font-semibold text-[#1e3a5f]">Enviar discípulo para Consolidação</p>
-                          <p className="mt-0.5 text-xs text-[#1e3a5f]/55">Escolha um membro desta Célula e registre por que ele precisa de resgate.</p>
+                          <p className="text-sm font-semibold text-[#1e3a5f]">Pedir atenção para uma pessoa</p>
+                          <p className="mt-0.5 text-xs text-[#1e3a5f]/55">Escolha alguém desta equipe e explique por que precisa de acompanhamento.</p>
                         </div>
                       </div>
                       <div className="mt-3 grid gap-2">
@@ -174,7 +174,7 @@ export default function AppLider() {
                           disabled={createReferral.isPending || !(referralByCell[myCell.id]?.personId) || (referralByCell[myCell.id]?.reason.trim().length ?? 0) < 3}
                           onClick={() => createReferral.mutate({ churchId: churchId!, personId: Number(referralByCell[myCell.id].personId), reason: referralByCell[myCell.id].reason.trim(), priority: referralByCell[myCell.id].priority ?? "normal" })}
                         >
-                          <Send className="mr-2 h-3.5 w-3.5" />{createReferral.isPending ? "Enviando…" : "Enviar para Consolidação"}
+                          <Send className="mr-2 h-3.5 w-3.5" />{createReferral.isPending ? "Enviando…" : "Enviar para cuidado"}
                         </Button>
                       </div>
                     </div>
@@ -200,7 +200,7 @@ export default function AppLider() {
             <CardHeader>
               <CardTitle className="text-[#1e3a5f] font-serif flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-[#c9a84c]" />
-                Consolidações Pendentes
+                Cuidados pendentes
                 {pendingConsolidations.length > 0 && (
                   <Badge className="bg-orange-100 text-orange-700 border-orange-200 ml-auto">
                     {pendingConsolidations.length} pendentes
@@ -241,7 +241,7 @@ export default function AppLider() {
                       </div>
                       {!c.addedToCell && (
                         <Link href="/app/consolidacao" className="mt-3 inline-flex text-xs font-medium text-navy underline decoration-gold/70 underline-offset-4">
-                          Integrar em Célula pela tela de Consolidação
+                          Continuar o cuidado na área de Consolidação
                         </Link>
                       )}
                     </div>
@@ -264,7 +264,7 @@ export default function AppLider() {
             <CardHeader>
               <CardTitle className="text-[#1e3a5f] font-serif flex items-center gap-2">
                 <Heart className="w-5 h-5 text-[#c9a84c]" />
-                Novas Almas Recentes
+                Novas pessoas
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -309,7 +309,7 @@ export default function AppLider() {
             <CardHeader>
               <CardTitle className="text-[#1e3a5f] font-serif flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-[#c9a84c]" />
-                Membros sob Cuidado
+                Pessoas sob cuidado
               </CardTitle>
             </CardHeader>
             <CardContent>

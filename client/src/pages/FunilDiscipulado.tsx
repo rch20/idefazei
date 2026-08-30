@@ -53,9 +53,9 @@ export default function FunilDiscipulado() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold font-display text-navy">Funil de Discipulado</h1>
+        <h1 className="text-2xl font-bold font-display text-navy">Acompanhamento da jornada</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Acompanhe a jornada espiritual de cada pessoa
+          Veja em que momento cada pessoa está e avance somente quando fizer sentido
         </p>
       </div>
 
@@ -159,12 +159,12 @@ export default function FunilDiscipulado() {
                       {canMovePerson(person.id) ? (
                       <div className="mt-2 flex gap-2">
                         {stage.key !== "nova_alma" && (
-                          <button onClick={() => handleMoveBackward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy" aria-label={`Retornar ${person.fullName} para a etapa anterior`}>
+                          <button onClick={() => handleMoveBackward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy" aria-label={`Retornar ${person.fullName} para o momento anterior`}>
                             <ChevronLeft className="h-3 w-3" /> Retornar
                           </button>
                         )}
                         {stage.key !== "multiplicador" && (
-                          <button onClick={() => handleMoveForward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy" aria-label={`Avançar ${person.fullName} para a próxima etapa`}>
+                          <button onClick={() => handleMoveForward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy" aria-label={`Avançar ${person.fullName} para o próximo momento`}>
                             Avançar <ChevronRight className="h-3 w-3" />
                           </button>
                         )}
@@ -187,7 +187,7 @@ export default function FunilDiscipulado() {
             <div className="flex items-center gap-3">
               <span className="h-3 w-3 rounded-full" style={{ backgroundColor: selectedStage.color }} />
               <div>
-                <p className="text-xs font-medium text-muted-foreground">Etapa selecionada</p>
+                <p className="text-xs font-medium text-muted-foreground">Momento selecionado</p>
                 <h2 id={`desktop-stage-${selectedStage.key}`} className="font-display text-xl font-bold text-navy">{selectedStage.label}</h2>
               </div>
             </div>
@@ -195,7 +195,7 @@ export default function FunilDiscipulado() {
           </div>
 
           {selectedStage.people.length === 0 ? (
-            <div className="flex min-h-40 items-center justify-center rounded-xl border-2 border-dashed border-muted text-sm text-muted-foreground">Nenhuma pessoa nesta etapa.</div>
+            <div className="flex min-h-40 items-center justify-center rounded-xl border-2 border-dashed border-muted text-sm text-muted-foreground">Nenhuma pessoa neste momento.</div>
           ) : (
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
               {selectedStage.people.map((person) => (
@@ -209,12 +209,12 @@ export default function FunilDiscipulado() {
                   {canMovePerson(person.id) ? (
                   <div className="mt-2 flex gap-2 border-t border-border pt-2">
                     {selectedStage.key !== "nova_alma" && (
-                      <button onClick={() => handleMoveBackward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy" aria-label={`Retornar ${person.fullName} para a etapa anterior`}>
+                      <button onClick={() => handleMoveBackward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy" aria-label={`Retornar ${person.fullName} para o momento anterior`}>
                         <ChevronLeft className="h-3 w-3" /> Retornar
                       </button>
                     )}
                     {selectedStage.key !== "multiplicador" && (
-                      <button onClick={() => handleMoveForward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy" aria-label={`Avançar ${person.fullName} para a próxima etapa`}>
+                      <button onClick={() => handleMoveForward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy" aria-label={`Avançar ${person.fullName} para o próximo momento`}>
                         Avançar <ChevronRight className="h-3 w-3" />
                       </button>
                     )}

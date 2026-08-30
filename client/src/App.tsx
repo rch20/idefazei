@@ -129,13 +129,13 @@ function Router() {
 
       {/* ── App — Dashboard ── */}
       <Route path="/app/dashboard">
-        <AppPage title="Dashboard" requiredAccess="isExecutive">
+        <AppPage title="Visão geral" requiredAccess="isExecutive">
           <Dashboard />
         </AppPage>
       </Route>
 
       <Route path="/app/cuidado">
-        <AppPage title="Central de Cuidado" requiredAccess="isPastoralWorker">
+        <AppPage title="Cuidado" requiredAccess="isPastoralWorker">
           <CentralCuidado />
         </AppPage>
       </Route>
@@ -154,13 +154,13 @@ function Router() {
 
       {/* ── App — Ciclo de Discipulado ── */}
       <Route path="/app/almas">
-        <AppPage title="Ganhar Almas">
+        <AppPage title="Novas Almas">
           <GanharAlmas />
         </AppPage>
       </Route>
 
       <Route path="/app/ganhar-almas">
-        <AppPage title="Ganhar Almas">
+        <AppPage title="Novas Almas">
           <GanharAlmas />
         </AppPage>
       </Route>
@@ -297,7 +297,7 @@ function Router() {
       </Route>
 
       <Route path="/app/configuracoes">
-        <AppPage title="Configurações" requiredAccess="isExecutive">
+        <AppPage title="Igreja" requiredAccess="isExecutive">
           <Configuracoes />
         </AppPage>
       </Route>
@@ -327,7 +327,7 @@ function Router() {
       </Route>
 
       <Route path="/app/lider">
-        <AppPage title="App do Líder" requiredAccess="canManageCells">
+        <AppPage title="Minha equipe" requiredAccess="canManageCells">
           <AppLider />
         </AppPage>
       </Route>

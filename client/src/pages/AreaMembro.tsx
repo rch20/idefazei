@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useChurch } from "@/components/ChurchLayout";
 import { trpc } from "@/lib/trpc";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -153,7 +154,7 @@ export default function AreaMembro() {
                 ) : member ? (
                   <>
                     {[
-                      { icon: Star, label: "Etapa no Funil", value: member.discipleshipStage ?? "Nova Alma" },
+                      { icon: Star, label: "Jornada atual", value: member.discipleshipStage ?? "Nova Alma" },
                       { icon: CheckCircle2, label: "Batizado", value: member.baptismDate ? `Sim — ${new Date(member.baptismDate).toLocaleDateString("pt-BR")}` : "Não" },
                       { icon: Heart, label: "Data de Conversão", value: member.conversionDate ? new Date(member.conversionDate).toLocaleDateString("pt-BR") : "—" },
                       { icon: MapPin, label: "Igreja Anterior", value: member.previousChurch ?? "—" },
@@ -209,9 +210,6 @@ export default function AreaMembro() {
                           </p>
                         )}
                       </div>
-                      <Button size="sm" className="bg-[#1e3a5f] hover:bg-[#162d4a] text-white text-xs">
-                        Inscrever-se
-                      </Button>
                     </div>
                   ))}
                 </div>
@@ -304,8 +302,8 @@ export default function AreaMembro() {
                 <div className="text-center py-12">
                   <Heart className="w-10 h-10 text-[#1e3a5f]/20 mx-auto mb-3" />
                   <p className="text-[#1e3a5f]/40 text-sm">Nenhum pedido de oração registrado</p>
-                  <Button size="sm" className="mt-4 bg-[#1e3a5f] hover:bg-[#162d4a] text-white">
-                    Enviar pedido de oração
+                  <Button asChild size="sm" className="mt-4 bg-[#1e3a5f] hover:bg-[#162d4a] text-white">
+                    <Link href="/app/oracao">Enviar pedido de oração</Link>
                   </Button>
                 </div>
               )}

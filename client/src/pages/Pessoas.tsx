@@ -565,7 +565,7 @@ export default function Pessoas() {
                     <Input value={form.previousChurch} onChange={(e) => setForm({ ...form, previousChurch: e.target.value })} />
                   </div>
                   <div className="col-span-2">
-                    <Label>Etapa no Funil</Label>
+                    <Label>Jornada atual</Label>
                     <Select value={form.discipleshipStage} onValueChange={(v) => setForm({ ...form, discipleshipStage: v as any })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>

@@ -106,7 +106,7 @@ const navItems: NavItem[] = [
   { icon: TreePine, label: "Árvore de Discipulado", path: "/app/arvore", group: "principal", accessKey: "isExecutive" },
   { icon: Flame, label: "Novas Almas", path: "/app/almas", group: "discipulado" },
   { icon: Heart, label: "Consolidação", path: "/app/consolidacao", group: "discipulado", accessKey: "canAccessVisits" },
-  { icon: ChevronRight, label: "Jornada de Discipulado", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
+  { icon: ChevronRight, label: "Acompanhamento", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
   { icon: Users, label: "Pessoas", path: "/app/pessoas", group: "membros", accessKey: "isExecutive" },
   { icon: Home, label: "Famílias", path: "/app/familias", group: "membros", accessKey: "isExecutive" },
   { icon: Globe, label: "Células", path: "/app/celulas", group: "celulas" },
