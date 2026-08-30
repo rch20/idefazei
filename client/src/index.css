@@ -394,6 +394,15 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-hero p { max-width: 43rem; margin: 1.5rem 0 2rem; color: rgb(255 255 255 / 82%); font-family: "Cormorant Garamond", serif; font-size: clamp(1.3rem, 4vw, 1.75rem); line-height: 1.45; }
 .tenant-public-cta { max-width: 100%; background: var(--tenant-secondary, #c9a84c); color: var(--tenant-primary, #1e3a5f); }
 .tenant-public-cta a { display: inline-flex; align-items: center; gap: .65rem; white-space: normal; }
+.tenant-public-devotional-cta { display: inline-flex; align-items: center; gap: .7rem; width: fit-content; max-width: min(100%, 24rem); margin-top: .85rem; border: 1px solid rgb(255 255 255 / 58%); border-radius: 1rem; background: rgb(255 255 255 / 14%); padding: .7rem .85rem; color: inherit; text-decoration: none; backdrop-filter: blur(8px); transition: background-color 160ms ease, transform 160ms ease; }
+.tenant-public-devotional-cta:hover { background: rgb(255 255 255 / 24%); }
+.tenant-public-devotional-cta:active { transform: scale(.98); }
+.tenant-public-devotional-cta:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+.tenant-public-devotional-cta > svg:first-child { flex: 0 0 auto; color: var(--tenant-secondary, #c9a84c); }
+.tenant-public-devotional-cta > svg:last-child { flex: 0 0 auto; opacity: .75; }
+.tenant-public-devotional-cta span { display: grid; min-width: 0; gap: .1rem; text-align: left; }
+.tenant-public-devotional-cta strong, .tenant-public-devotional-cta small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tenant-public-devotional-cta small { font-size: .76rem; opacity: .82; }
 
 .tenant-public-section { padding-block: clamp(4.5rem, 10vw, 8rem); }
 .tenant-public-prose { max-width: 52rem; }
@@ -496,6 +505,26 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-gallery-item { min-width: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--tenant-secondary) 25%, transparent); border-radius: 1rem; background: color-mix(in srgb, var(--tenant-secondary) 7%, #fffdf9); }
 .tenant-public-gallery-item img { display: block; width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: color-mix(in srgb, var(--tenant-primary) 10%, #fffdf9); }
 .tenant-public-gallery-item figcaption { padding: .7rem .8rem; color: color-mix(in srgb, var(--tenant-primary) 80%, #1f2937); font-size: .875rem; line-height: 1.4; overflow-wrap: anywhere; }
+.tenant-public-devotional-layout { display: grid; gap: 2rem; align-items: start; }
+.tenant-public-devotional-reading { min-width: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--tenant-primary, #1e3a5f) 13%, transparent); border-radius: 1.5rem; background: rgb(255 255 255 / 76%); box-shadow: 0 1rem 3rem rgb(30 58 95 / 10%); }
+.tenant-public-devotional-image { display: block; width: 100%; max-height: 25rem; object-fit: cover; }
+.tenant-public-devotional-content { padding: clamp(1.4rem, 4vw, 2.6rem); }
+.tenant-public-devotional-text { color: var(--tenant-primary, #1e3a5f); font-family: "Cormorant Garamond", Georgia, serif; font-size: clamp(1.22rem, 2.5vw, 1.48rem); line-height: 1.62; white-space: pre-line; }
+.tenant-public-devotional-aside { display: grid; gap: .75rem; }
+.tenant-public-devotional-share-card { border: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 35%, transparent); border-radius: 1.25rem; background: rgb(255 255 255 / 76%); padding: 1.2rem; box-shadow: 0 .8rem 2.5rem rgb(30 58 95 / 8%); }
+.tenant-public-devotional-share-heading { display: flex; align-items: flex-start; gap: .7rem; color: var(--tenant-primary, #1e3a5f); }
+.tenant-public-devotional-share-heading > svg { flex: 0 0 auto; margin-top: .1rem; color: var(--tenant-secondary, #c9a84c); }
+.tenant-public-devotional-share-heading div { display: grid; gap: .2rem; }
+.tenant-public-devotional-share-heading span { color: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 65%, transparent); font-size: .82rem; line-height: 1.4; }
+.tenant-public-devotional-share-actions { display: grid; gap: .55rem; margin-top: 1rem; }
+.tenant-public-devotional-share-actions button { justify-content: flex-start; gap: .55rem; min-height: 2.8rem; }
+.tenant-public-devotional-share-native { background: var(--tenant-primary, #1e3a5f); color: white; }
+.tenant-public-devotional-share-native:hover { background: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 88%, white); }
+.tenant-public-devotional-aside-note { margin: 0; color: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 60%, transparent); font-size: .78rem; text-align: center; }
+@media (min-width: 60rem) {
+  .tenant-public-devotional-layout { grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem); }
+  .tenant-public-devotional-aside { position: sticky; top: 6rem; }
+}
 
 @media (max-width: 44rem) {
   .tenant-public-contact-grid, .tenant-public-events-grid, .tenant-public-announcements-grid, .tenant-public-ministries-grid, .tenant-public-services-grid { grid-template-columns: 1fr; }

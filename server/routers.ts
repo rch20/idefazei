@@ -47,6 +47,7 @@ import {
   findPossiblePeopleByIdentity,
   getAnnouncementsByChurch,
   getPublicAnnouncementsByChurch,
+  getPublicDailyDevotionalByChurch,
   getActiveMediaAssetById,
   updateAnnouncement,
   getCellsByChurch,

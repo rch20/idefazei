@@ -2,7 +2,7 @@ import { TenantPublicShell } from "@/components/TenantPublicShell";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, ArrowUpRight, CalendarDays, ChevronDown, Clock3, HandHeart, MapPin, Maximize2, MessageCircle, Pin, UsersRound } from "lucide-react";
+import { ArrowRight, ArrowUpRight, BookOpen, CalendarDays, ChevronDown, Clock3, HandHeart, MapPin, Maximize2, MessageCircle, Pin, UsersRound } from "lucide-react";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 import { TenantPublicFooter } from "@/components/TenantPublicFooter";
 import { getPublicHeroEyebrow } from "../../../shared/publicPage";
@@ -89,6 +89,7 @@ export default function TenantPublicPage() {
             <Button asChild className="tenant-public-cta">
               <a href={primaryHref}>{primaryLabel}<ArrowRight size={18} aria-hidden="true" /></a>
             </Button>
+            {data.publicDevotional && <a className="tenant-public-devotional-cta" href="/devocional"><BookOpen size={18} aria-hidden="true" /><span><strong>Devocional diário</strong><small>Uma palavra para hoje</small></span><ArrowUpRight size={16} aria-hidden="true" /></a>}
           </div>
           <a className="tenant-public-scroll-cue" href="#tenant-public-content" aria-label="Continuar para conhecer mais sobre a igreja">
             <span>Descubra mais</span><ChevronDown size={16} aria-hidden="true" />

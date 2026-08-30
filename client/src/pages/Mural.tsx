@@ -191,10 +191,10 @@ export default function Mural() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-gold"><Megaphone className="h-4 w-4" /> Comunicação</div>
-          <h1 className="mt-2 text-2xl font-bold font-display text-navy">Mural de Avisos</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Organize os comunicados internos e escolha quais avisos merecem aparecer na página pública da igreja.</p>
+          <h1 className="mt-2 text-2xl font-bold font-display text-navy">Mural de Avisos e Devocionais</h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Organize os comunicados internos, publique o Devocional diário e escolha quais conteúdos aparecem na página pública da igreja.</p>
         </div>
-        <Button onClick={openCreate} className="w-full bg-navy text-white hover:bg-navy-light sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Novo aviso</Button>
+        <Button onClick={openCreate} className="w-full bg-navy text-white hover:bg-navy-light sm:w-auto"><Plus className="mr-2 h-4 w-4" /> Novo aviso ou devocional</Button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -205,7 +205,7 @@ export default function Mural() {
 
       <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-950">
         <p className="font-semibold">Como funciona o Mural Público</p>
-        <p className="mt-1 text-blue-900/75">O mural interno continua protegido. Um aviso só aparece no site quando um Pastor marca <strong>Exibir na página pública</strong>; datas de início e expiração controlam automaticamente sua disponibilidade.</p>
+        <p className="mt-1 text-blue-900/75">O mural interno continua protegido. Um aviso ou Devocional só aparece no site quando um Pastor marca <strong>Exibir na página pública</strong>; datas de início e expiração controlam automaticamente sua disponibilidade.</p>
         <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
           <span className="rounded-lg border border-blue-200/80 bg-white/55 px-3 py-2"><strong>{totalCount}</strong> {totalCount === 1 ? "aviso no mural" : "avisos no mural"}</span>
           <span className="rounded-lg border border-blue-200/80 bg-white/55 px-3 py-2"><strong>{publicCount}</strong> {publicCount === 1 ? "visível ou agendado" : "visíveis ou agendados"} no site</span>
@@ -231,7 +231,7 @@ export default function Mural() {
               <div><Label htmlFor="announcement-title">Título *</Label><Input id="announcement-title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required maxLength={255} /></div>
               <div><Label>Categoria</Label><Select value={form.type} onValueChange={(value) => setForm({ ...form, type: value as AnnouncementType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(TYPE_CONFIG).map(([value, config]) => <SelectItem key={value} value={value}>{config.label}</SelectItem>)}</SelectContent></Select></div>
             </div>
-            <div><Label htmlFor="announcement-content">Conteúdo *</Label><Textarea id="announcement-content" value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} rows={5} maxLength={4000} required /><p className="mt-1 text-right text-xs text-muted-foreground">{form.content.length}/4000</p></div>
+            <div><Label htmlFor="announcement-content">Conteúdo *</Label><Textarea id="announcement-content" value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} rows={5} maxLength={4000} required placeholder={form.type === "devocional" ? "Versículo e referência...\n\nReflexão para o dia...\n\nOração final..." : "Escreva o conteúdo..."} /><p className="mt-1 text-right text-xs text-muted-foreground">{form.content.length}/4000</p>{form.type === "devocional" && <p className="mt-2 rounded-lg bg-green-50 px-3 py-2 text-xs leading-relaxed text-green-900">Para o Devocional diário, recomendamos organizar o texto em três partes: <strong>versículo</strong>, <strong>reflexão</strong> e <strong>oração</strong>. O conteúdo será exibido na página pública sem exigir login.</p>}</div>
 
             <div className="rounded-xl border border-border bg-muted/20 p-4">
               <div className="flex items-start gap-3"><Globe2 className="mt-0.5 h-5 w-5 text-gold" /><div><p className="font-semibold text-navy">Visibilidade</p><p className="text-xs text-muted-foreground">A publicação pública exige autorização pastoral e nunca inclui o mural interno inteiro.</p></div></div>

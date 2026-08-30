@@ -497,6 +497,9 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
   const publicAnnouncements = site?.status === "published"
     ? await getPublicAnnouncementsByChurch(church.id)
     : [];
+  const publicDevotional = site?.status === "published"
+    ? await getPublicDailyDevotionalByChurch(church.id)
+    : null;
 
   return {
     church: {
@@ -535,6 +538,7 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
     publicMinistries,
     publicCells,
     publicAnnouncements,
+    publicDevotional,
   };
 }
 
@@ -2874,6 +2878,31 @@ export async function getAnnouncementsByChurch(churchId: number) {
     .where(eq(announcements.churchId, churchId))
     .orderBy(desc(announcements.pinned), desc(announcements.createdAt))
     .limit(50);
+}
+
+export async function getPublicDailyDevotionalByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const now = new Date();
+  const rows = await db.select({
+    id: announcements.id,
+    title: announcements.title,
+    content: announcements.content,
+    type: announcements.type,
+    imageUrl: announcements.imageUrl,
+    ctaLabel: announcements.ctaLabel,
+    ctaHref: announcements.ctaHref,
+    publishedAt: announcements.publishedAt,
+    expiresAt: announcements.expiresAt,
+  }).from(announcements).where(and(
+    eq(announcements.churchId, churchId),
+    eq(announcements.type, "devocional"),
+    eq(announcements.publicVisible, true),
+    or(eq(announcements.publicStatus, "publicado"), eq(announcements.publicStatus, "agendado")),
+    or(isNull(announcements.publicStartsAt), lte(announcements.publicStartsAt, now)),
+    or(isNull(announcements.expiresAt), gt(announcements.expiresAt, now)),
+  )).orderBy(desc(announcements.publishedAt)).limit(1);
+  return rows[0] ?? null;
 }
 
 export async function getPublicAnnouncementsByChurch(churchId: number) {

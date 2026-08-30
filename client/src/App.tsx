@@ -11,6 +11,7 @@ import ChurchLayout, { useChurch, type ChurchAccessSummary } from "./components/
 // um retorno visual claro enquanto a página solicitada é baixada.
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const TenantPublicPage = lazy(() => import("./pages/TenantPublicPage"));
+const DevocionalDiario = lazy(() => import("./pages/DevocionalDiario"));
 const LoginIgreja = lazy(() => import("./pages/LoginIgreja"));
 const CadastroIgreja = lazy(() => import("./pages/CadastroIgreja"));
 const CadastroDiscipulo = lazy(() => import("./pages/CadastroDiscipulo"));
@@ -120,6 +121,7 @@ function Router() {
       {/* ── Login e Portal da Igreja ── */}
       <Route path="/login" component={LoginIgreja} />
       <Route path="/cadastro" component={CadastroDiscipulo} />
+      <Route path="/devocional" component={DevocionalDiario} />
       <Route path="/encontro/ficha/:token" component={EncontroFichaPublica} />
       <Route path="/visite-nos" component={VisiteNos} />
       <Route path="/visitante" component={PortalVisitante} />
