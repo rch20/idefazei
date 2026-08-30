@@ -31,6 +31,13 @@ describe("matriz de acesso do membro", () => {
     expect(source).toContain("await requirePastoralAction(ctx.user.id, input.churchId);");
   });
 
+  it("limita a lista de Novas Almas ao escopo da Pessoa para perfis não pastorais", () => {
+    const source = routers();
+    expect(source).toContain("const accessiblePersonIds = await getAccessiblePersonIds(ctx.user.id, input.churchId);");
+    expect(source).toContain("return souls.filter((soul) => soul.personId !== null && accessiblePersonIds.has(soul.personId));");
+    expect(source).not.toContain("if (access.isExecutive || access.isPastoralWorker) return getSoulsByChurch(input.churchId);");
+  });
+
   it("aplica guarda de capacidade nas rotas e mantém Biblioteca e Células disponíveis", () => {
     const source = `${layout()}\n${app()}`;
     expect(source).toContain('accessKey: "isExecutive"');

@@ -48,14 +48,14 @@ export default function CentralCuidado() {
               <HeartHandshake className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="font-display text-2xl font-bold text-navy">Central de Cuidado</h1>
-              <p className="mt-0.5 text-sm text-muted-foreground">O que precisa da sua atenção agora</p>
+              <h1 className="font-display text-2xl font-bold text-navy">Cuidado</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">{scope.data?.canManageAll ? "Veja o que precisa da atenção da igreja." : "Veja o que precisa da sua atenção."}</p>
             </div>
           </div>
         </div>
-        <Button variant="outline" className="w-full gap-2 sm:w-auto" onClick={() => navigate("/app/pessoas")}>
+        {scope.data?.canManageAll && <Button variant="outline" className="w-full gap-2 sm:w-auto" onClick={() => navigate("/app/pessoas")}>
           <Users className="h-4 w-4" /> Ver todas as pessoas
-        </Button>
+        </Button>}
       </header>
 
       {!scope.isLoading && !scope.data?.canManageAll && !scope.data?.linkedPersonId && (
@@ -190,7 +190,7 @@ export default function CentralCuidado() {
         </section>
       )}
 
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />A fila é ordenada por prioridade e respeita sua responsabilidade pastoral.</p>
+      <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />A fila é ordenada por prioridade e mostra somente pessoas dentro do seu escopo de cuidado.</p>
     </div>
   );
 }

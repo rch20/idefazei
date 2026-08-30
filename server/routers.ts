@@ -1236,9 +1236,11 @@ const soulsRouter = router({
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
       const access = await getChurchAccessSummary(ctx.user.id, input.churchId);
-      if (access.isExecutive || access.isPastoralWorker) return getSoulsByChurch(input.churchId);
+      const accessiblePersonIds = await getAccessiblePersonIds(ctx.user.id, input.churchId);
+      const souls = await getSoulsByChurch(input.churchId);
+      if (accessiblePersonIds === null) return souls;
       if (!access.actorPersonId) return [];
-      return getSoulsByWinner(input.churchId, access.actorPersonId);
+      return souls.filter((soul) => soul.personId !== null && accessiblePersonIds.has(soul.personId));
     }),
 
   create: protectedProcedure

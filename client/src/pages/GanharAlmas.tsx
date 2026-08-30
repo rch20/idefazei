@@ -169,12 +169,12 @@ export default function GanharAlmas() {
     <section className="space-y-5 md:space-y-6" aria-labelledby="ganhar-almas-title">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 id="ganhar-almas-title" className="text-2xl font-bold font-display text-navy">Ganhar Almas</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{isLimitedMember ? "Indique uma nova alma para que a liderança inicie o cuidado." : "Registre decisões de fé e inicie o acompanhamento com clareza."}</p>
+          <h1 id="ganhar-almas-title" className="text-2xl font-bold font-display text-navy">Novas Almas</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{isLimitedMember ? "Indique uma pessoa para que a liderança inicie o cuidado." : "Receba novas pessoas e defina o próximo passo do cuidado."}</p>
         </div>
         <Button onClick={openNewSoulDialog} className="w-full bg-navy text-white hover:bg-navy-light sm:w-auto">
           <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-          {isLimitedMember ? "Indicar nova alma" : "Nova alma"}
+          {isLimitedMember ? "Indicar pessoa" : "Registrar nova alma"}
         </Button>
       </header>
 
@@ -219,7 +219,7 @@ export default function GanharAlmas() {
         <div className="card-sacred flex flex-col items-center gap-3 p-8 text-center sm:p-12">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50"><Flame className="h-7 w-7 text-amber-500" aria-hidden="true" /></div>
           <p className="font-semibold text-navy">{search ? "Nenhuma alma encontrada" : "Nenhuma alma registrada"}</p>
-          <p className="max-w-sm text-sm text-muted-foreground">{search ? "Ajuste sua busca ou limpe o filtro para ver todos os registros." : "Comece registrando a primeira decisão de fé."}</p>
+          <p className="max-w-sm text-sm text-muted-foreground">{search ? "Ajuste sua busca ou limpe o filtro para ver todos os registros." : "Comece registrando a primeira pessoa da jornada."}</p>
           {search ? <Button type="button" variant="outline" onClick={() => setSearch("")}>Limpar busca</Button> : <Button type="button" onClick={openNewSoulDialog} className="bg-navy text-white">Registrar nova alma</Button>}
         </div>
       ) : (
