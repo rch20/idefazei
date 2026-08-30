@@ -124,8 +124,8 @@ const navItems: NavItem[] = [
   { icon: BookOpen, label: "Mural", path: "/app/mural", group: "comunicacao", accessKey: "isCommunicationManager" },
   { icon: MessageSquare, label: "Comunicação", path: "/app/comunicacao", group: "comunicacao", roles: ["pastor_presidente", "pastor_local", "secretario"], accessKey: "isCommunicationManager" },
   { icon: Shield, label: "Biblioteca", path: "/app/biblioteca", group: "comunicacao" },
-  { icon: Building2, label: "Igreja", path: "/app/configuracoes", group: "admin", roles: ["pastor_presidente", "pastor_local", "secretario"] },
-  { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin", roles: ["pastor_presidente", "pastor_local", "secretario"] },
+  { icon: Building2, label: "Igreja", path: "/app/configuracoes", group: "admin", roles: ["pastor_presidente", "pastor_local"] },
+  { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin", roles: ["pastor_presidente", "pastor_local"] },
   { icon: WalletCards, label: "Tesouraria", path: "/app/tesouraria", group: "admin", accessKey: "canAccessTreasury" },
   { icon: CreditCard, label: "Faturamento", path: "/app/faturamento", group: "admin", accessKey: "isPastor" },
   { icon: Users, label: "Área do Membro", path: "/app/membro", group: "membros" },
@@ -176,7 +176,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     const activeGroup = groups.find((group) => navItems.some((item) => item.group === group.key && (location === item.path || location.startsWith(item.path + "/"))));
     if (activeGroup) setExpandedGroup(activeGroup.key);
   }, [location]);
-  const canReviewRegistrations = Boolean(accessSummary?.isExecutive);
+  const canReviewRegistrations = Boolean(accessSummary?.isPastor);
   const pendingRegistrationsQuery = trpc.churchAuth.pendingRegistrations.useQuery(
     { churchId: user?.churchId ?? 0 },
     { enabled: Boolean(user?.churchId && canReviewRegistrations) }

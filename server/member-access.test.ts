@@ -9,6 +9,7 @@ describe("matriz de acesso do membro", () => {
   const db = () => readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
   const communication = () => readFileSync(resolve(process.cwd(), "client/src/pages/Comunicacao.tsx"), "utf8");
   const prayer = () => readFileSync(resolve(process.cwd(), "client/src/pages/Oracao.tsx"), "utf8");
+  const onboarding = () => readFileSync(resolve(process.cwd(), "client/src/pages/Onboarding.tsx"), "utf8");
 
   it("mantém oração pastoral separada dos pedidos próprios", () => {
     const source = routers();
@@ -63,5 +64,24 @@ describe("matriz de acesso do membro", () => {
     expect(source).toContain('label: "Biblioteca"');
     expect(source).toContain("function AccessDenied");
     expect(source).toContain('requiredAccess="isExecutive"');
+  });
+
+  it("protege correspondências de Pessoas e nomeação de contas com escopo pastoral", () => {
+    const source = routers();
+    expect(source).toContain("const matches = await findPossiblePeopleByIdentity(input.churchId, input);");
+    expect(source).toContain("return accessibleIds === null ? matches : matches.filter((person) => accessibleIds.has(person.id));");
+    const authBlock = source.slice(source.indexOf("const churchAuthRouter"), source.indexOf("const adminAuthRouter"));
+    expect(authBlock).toContain("register: protectedProcedure");
+    expect(authBlock).toContain("pendingRegistrations: protectedProcedure");
+    expect(authBlock).toContain("await requirePastor(ctx.user.id, input.churchId);");
+    const inviteBlock = source.slice(source.indexOf("const inviteRouter"), source.indexOf("const reportsRouter"));
+    expect(inviteBlock).toContain("await requirePastor(ctx.user.id, input.churchId);");
+  });
+
+  it("protege a entrada visual do Onboarding para o Pastor", () => {
+    const source = onboarding();
+    expect(source).toContain('navigate("/login")');
+    expect(source).toContain("!accessSummary.isPastor");
+    expect(source).toContain("if (!user || accessLoading || !accessSummary?.isPastor) return null;");
   });
 });

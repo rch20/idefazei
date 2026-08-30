@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -66,6 +66,17 @@ export default function Onboarding() {
   const { user } = useChurchAuth();
   const churchId = user?.churchId ?? null;
   const [, navigate] = useLocation();
+  const { data: accessSummary, isLoading: accessLoading } = trpc.churchAuth.accessSummary.useQuery(
+    { churchId: churchId ?? 0 },
+    { enabled: Boolean(churchId) }
+  );
+  useEffect(() => {
+    if (!user) {
+      navigate("/login");
+    } else if (!accessLoading && accessSummary && !accessSummary.isPastor) {
+      navigate("/app/dashboard");
+    }
+  }, [accessLoading, accessSummary, navigate, user]);
   const [currentStep, setCurrentStep] = useState(0);
   const [csvRows, setCsvRows] = useState<CSVRow[]>([]);
   const [cellName, setCellName] = useState("");
@@ -115,6 +126,8 @@ export default function Onboarding() {
 
   const completedSteps = STEPS.filter((s) => progress?.[s.key]).length;
   const progressPct = Math.round((completedSteps / STEPS.length) * 100);
+
+  if (!user || accessLoading || !accessSummary?.isPastor) return null;
 
   function handleCSVUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];

@@ -79,7 +79,7 @@ export default function Configuracoes() {
   const { churchId } = useChurch();
   const utils = trpc.useUtils();
   const { user } = useChurchAuth();
-  const canManageAccounts = ["pastor_presidente", "pastor_local", "secretario"].includes(user?.role ?? "");
+  const canManageAccounts = ["pastor_presidente", "pastor_local"].includes(user?.role ?? "");
   const canManageRoles = ["pastor_presidente", "pastor_local"].includes(user?.role ?? "");
   const { data: church, isLoading, refetch } = trpc.churches.getById.useQuery(
     { id: churchId! },

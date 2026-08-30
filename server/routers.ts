@@ -1108,8 +1108,9 @@ const peopleRouter = router({
       })
     )
     .query(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
-      return findPossiblePeopleByIdentity(input.churchId, input);
+      const accessibleIds = await getAccessiblePersonIds(ctx.user.id, input.churchId);
+      const matches = await findPossiblePeopleByIdentity(input.churchId, input);
+      return accessibleIds === null ? matches : matches.filter((person) => accessibleIds.has(person.id));
     }),
 
   getById: protectedProcedure
@@ -3469,7 +3470,7 @@ const churchAuthRouter = router({
       personId: z.number().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       if (input.personId && !(await getPersonById(input.personId, input.churchId))) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja." });
       }
@@ -3487,14 +3488,14 @@ const churchAuthRouter = router({
   listUsers: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       return getChurchUsersByChurch(input.churchId);
     }),
 
   pendingRegistrations: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       return getPendingChurchUsers(input.churchId);
     }),
 
@@ -3506,7 +3507,7 @@ const churchAuthRouter = router({
       rejectionReason: z.string().min(3).max(500).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       if (!input.approved && !input.rejectionReason) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o motivo da rejeição." });
       }
@@ -3542,7 +3543,7 @@ const churchAuthRouter = router({
   linkPerson: protectedProcedure
     .input(z.object({ churchId: z.number(), userId: z.number(), personId: z.number() }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja." });
       const user = await linkChurchUserToPerson(input.userId, input.churchId, input.personId);
@@ -3816,7 +3817,7 @@ const inviteRouter = router({
   create: protectedProcedure
     .input(z.object({ churchId: z.number(), email: z.string().email(), name: z.string().min(1), role: z.enum(["pastor_presidente","pastor_local","supervisor","lider","consolidador","diacono","secretario","tesoureiro","membro"]), personId: z.number().optional() }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       if (input.personId && !(await getPersonById(input.personId, input.churchId))) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja." });
       }
@@ -3979,7 +3980,7 @@ const onboardingRouter = router({
       stepInviteLeaders: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       return upsertOnboardingProgress(input);
     }),
   importCSV: protectedProcedure
@@ -3993,7 +3994,7 @@ const onboardingRouter = router({
       })),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      await requirePastor(ctx.user.id, input.churchId);
       const count = await importPeopleFromCSV(input.churchId, input.csvData);
       await upsertOnboardingProgress({ churchId: input.churchId, stepImportMembers: true });
       return { success: true, imported: count };

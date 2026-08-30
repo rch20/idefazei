@@ -297,13 +297,13 @@ function Router() {
       </Route>
 
       <Route path="/app/configuracoes">
-        <AppPage title="Igreja" requiredAccess="isExecutive">
+        <AppPage title="Igreja" requiredAccess="isPastor">
           <Configuracoes />
         </AppPage>
       </Route>
 
       <Route path="/app/configuracoes/certificados">
-        <AppPage title="Certificados" requiredAccess="isExecutive">
+        <AppPage title="Certificados" requiredAccess="isPastor">
           <ConfiguracoesCertificados />
         </AppPage>
       </Route>
