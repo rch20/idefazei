@@ -10,6 +10,7 @@ const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 const pageSource = readFileSync(resolve(root, "client/src/pages/Tesouraria.tsx"), "utf8");
 const sectionSource = readFileSync(resolve(root, "client/src/components/TreasuryServiceSection.tsx"), "utf8");
+const treasurySource = readFileSync(resolve(root, "client/src/lib/treasury.ts"), "utf8");
 
 describe("Fluxo estrutural de prestação por culto", () => {
   it("mantém entidades de culto, contagem, depósito e relatório no schema", () => {
@@ -67,5 +68,13 @@ describe("Fluxo estrutural de prestação por culto", () => {
   it("aceita horários válidos no padrão HH:mm", () => {
     expect(routerSource).toContain("startTime: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/");
     expect(sectionSource).toContain('type="time"');
+  });
+
+  it("preserva a data de calendário e compacta ações no mobile", () => {
+    expect(treasurySource).toContain("value.getUTCFullYear()");
+    expect(treasurySource).toContain("value.getUTCMonth()");
+    expect(treasurySource).toContain("value.getUTCDate()");
+    expect(sectionSource).toContain("Abrir ações");
+    expect(sectionSource).toContain("hidden sm:flex");
   });
 });

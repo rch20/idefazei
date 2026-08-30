@@ -61,7 +61,9 @@ export function parseBrlToCents(value: string): number | null {
 }
 
 export function formatDatePtBr(value: Date | string) {
-  const date = value instanceof Date ? value : new Date(`${String(value).slice(0, 10)}T12:00:00`);
+  const date = value instanceof Date
+    ? new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 12)
+    : new Date(`${String(value).slice(0, 10)}T12:00:00`);
   if (Number.isNaN(date.getTime())) return "Data inválida";
   return date.toLocaleDateString("pt-BR");
 }
