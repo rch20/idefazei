@@ -1496,6 +1496,30 @@ export type StartupDiagnostic = typeof startupDiagnostics.$inferSelect;
 
 // ─── TESOURARIA DA IGREJA ──────────────────────────────────────────────────────
 
+/** Programações fixas semanais que geram ocorrências de culto sob demanda. */
+export const treasuryRecurringSchedules = mysqlTable(
+  "treasury_recurring_schedules",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    weekday: int("weekday").notNull(), // 0 = domingo ... 6 = sábado
+    startTime: varchar("startTime", { length: 5 }).notNull(),
+    location: varchar("location", { length: 160 }),
+    notes: text("notes"),
+    active: boolean("active").default(true).notNull(),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("treasury_recurring_schedules_church_slot_unique").on(table.churchId, table.weekday, table.startTime, table.name),
+    index("treasury_recurring_schedules_church_active_idx").on(table.churchId, table.active),
+  ]
+);
+
+export type TreasuryRecurringSchedule = typeof treasuryRecurringSchedules.$inferSelect;
+
 /** Cultos/serviços que podem originar uma prestação de contas financeira. */
 export const treasuryServices = mysqlTable(
   "treasury_services",
@@ -1507,12 +1531,18 @@ export const treasuryServices = mysqlTable(
     startTime: varchar("startTime", { length: 5 }),
     location: varchar("location", { length: 160 }),
     notes: text("notes"),
+    origin: mysqlEnum("origin", ["manual", "recorrente"]).default("manual").notNull(),
+    recurringScheduleId: int("recurringScheduleId"),
+    occurrenceOverride: boolean("occurrenceOverride").default(false).notNull(),
     status: mysqlEnum("status", ["aberto", "fechado", "cancelado"]).default("aberto").notNull(),
     createdByChurchUserId: int("createdByChurchUserId").notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   },
-  (table) => [index("treasury_services_church_date_idx").on(table.churchId, table.serviceDate)]
+  (table) => [
+    index("treasury_services_church_date_idx").on(table.churchId, table.serviceDate),
+    uniqueIndex("treasury_services_church_schedule_date_unique").on(table.churchId, table.recurringScheduleId, table.serviceDate),
+  ]
 );
 
 export type TreasuryService = typeof treasuryServices.$inferSelect;

@@ -121,6 +121,11 @@ import {
   closeFinancialPeriod,
   reopenFinancialPeriod,
   getTreasuryServices,
+  getTreasuryRecurringSchedules,
+  getTreasuryRecurringScheduleById,
+  createTreasuryRecurringSchedule,
+  updateTreasuryRecurringSchedule,
+  setTreasuryRecurringScheduleActive,
   getTreasuryServiceById,
   createTreasuryService,
   updateTreasuryService,
@@ -4910,6 +4915,14 @@ const treasuryServiceInput = z.object({
   location: z.string().trim().max(160).optional(),
   notes: z.string().trim().max(2000).optional(),
 });
+const treasuryRecurringScheduleInput = z.object({
+  churchId: z.number().int().positive(),
+  name: z.string().trim().min(2).max(160),
+  weekday: z.number().int().min(0).max(6),
+  startTime: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/, "Informe um horário válido."),
+  location: z.string().trim().max(160).optional(),
+  notes: z.string().trim().max(2000).optional(),
+});
 const treasuryCountAmountInput = z.number().int().min(0).max(MAX_FINANCIAL_CENTS);
 const treasuryCountSheetInput = z.object({
   churchId: z.number().int().positive(),
@@ -4950,8 +4963,47 @@ const treasuryRouter = router({
   services: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), includeCancelled: z.boolean().optional() }))
     .query(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      return getTreasuryServices(input.churchId, input.includeCancelled ?? false, access.actor.id);
+    }),
+
+  recurringSchedules: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), includeInactive: z.boolean().optional() }))
+    .query(async ({ input, ctx }) => {
       await requireTreasuryAccess(ctx.user.id, input.churchId);
-      return getTreasuryServices(input.churchId, input.includeCancelled ?? false);
+      return getTreasuryRecurringSchedules(input.churchId, input.includeInactive ?? false);
+    }),
+
+  createRecurringSchedule: protectedProcedure
+    .input(treasuryRecurringScheduleInput)
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem configurar cultos fixos." });
+      const created = await createTreasuryRecurringSchedule({ ...input, createdByChurchUserId: access.actor.id });
+      if (!created) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma programação fixa com este nome, dia e horário." });
+      return created;
+    }),
+
+  updateRecurringSchedule: protectedProcedure
+    .input(treasuryRecurringScheduleInput.extend({ id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem editar cultos fixos." });
+      const existing = await getTreasuryRecurringScheduleById(input.id, input.churchId);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Programação fixa não encontrada nesta igreja." });
+      const updated = await updateTreasuryRecurringSchedule(input);
+      if (!updated) throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível atualizar a programação fixa." });
+      return updated;
+    }),
+
+  setRecurringScheduleActive: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive(), active: z.boolean() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem ativar ou pausar cultos fixos." });
+      const existing = await getTreasuryRecurringScheduleById(input.id, input.churchId);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Programação fixa não encontrada nesta igreja." });
+      return setTreasuryRecurringScheduleActive(input);
     }),
 
   createService: protectedProcedure
@@ -4969,7 +5021,9 @@ const treasuryRouter = router({
       if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem editar cultos." });
       const existing = await getTreasuryServiceById(input.id, input.churchId);
       if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Culto não encontrado nesta igreja." });
-      return updateTreasuryService(input);
+      const updated = await updateTreasuryService(input);
+      if (!updated) throw new TRPCError({ code: "BAD_REQUEST", message: "Somente ocorrências abertas podem ser editadas." });
+      return updated;
     }),
 
   cancelService: protectedProcedure

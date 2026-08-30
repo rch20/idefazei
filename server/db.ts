@@ -53,6 +53,7 @@ import {
   financialReconciliations,
   financialTransactions,
   treasuryServices,
+  treasuryRecurringSchedules,
   treasuryCountSheets,
   treasuryDeposits,
   treasuryReports,
@@ -4934,12 +4935,119 @@ export function getTreasuryCountTotal(amounts: TreasuryCountAmounts) {
   return amounts.cashCents + amounts.pixCents + amounts.transferCents + amounts.cardCents + amounts.checkCents + amounts.otherCents;
 }
 
-export async function getTreasuryServices(churchId: number, includeCancelled = false) {
+export async function getTreasuryServices(churchId: number, includeCancelled = false, materializeActorChurchUserId?: number) {
   const db = await getDb();
   if (!db) return [];
+  if (materializeActorChurchUserId) {
+    await materializeTreasuryRecurringOccurrences({ churchId, actorChurchUserId: materializeActorChurchUserId });
+  }
   return db.select().from(treasuryServices)
     .where(includeCancelled ? eq(treasuryServices.churchId, churchId) : and(eq(treasuryServices.churchId, churchId), ne(treasuryServices.status, "cancelado")))
     .orderBy(desc(treasuryServices.serviceDate), desc(treasuryServices.id));
+}
+
+export async function getTreasuryRecurringSchedules(churchId: number, includeInactive = false) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(treasuryRecurringSchedules)
+    .where(includeInactive ? eq(treasuryRecurringSchedules.churchId, churchId) : and(eq(treasuryRecurringSchedules.churchId, churchId), eq(treasuryRecurringSchedules.active, true)))
+    .orderBy(treasuryRecurringSchedules.weekday, treasuryRecurringSchedules.startTime, treasuryRecurringSchedules.id);
+}
+
+export async function getTreasuryRecurringScheduleById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(treasuryRecurringSchedules).where(and(eq(treasuryRecurringSchedules.id, id), eq(treasuryRecurringSchedules.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createTreasuryRecurringSchedule(data: { churchId: number; name: string; weekday: number; startTime: string; location?: string | null; notes?: string | null; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  try {
+    const result = await db.insert(treasuryRecurringSchedules).values({
+      churchId: data.churchId,
+      name: data.name,
+      weekday: data.weekday,
+      startTime: data.startTime,
+      location: data.location ?? null,
+      notes: data.notes ?? null,
+      active: true,
+      createdByChurchUserId: data.createdByChurchUserId,
+    });
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    return id ? getTreasuryRecurringScheduleById(id, data.churchId) : null;
+  } catch (error) {
+    if (isDuplicateTreasuryRecord(error)) return null;
+    throw error;
+  }
+}
+
+export async function updateTreasuryRecurringSchedule(data: { id: number; churchId: number; name: string; weekday: number; startTime: string; location?: string | null; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(treasuryRecurringSchedules).set({
+    name: data.name,
+    weekday: data.weekday,
+    startTime: data.startTime,
+    location: data.location ?? null,
+    notes: data.notes ?? null,
+  }).where(and(eq(treasuryRecurringSchedules.id, data.id), eq(treasuryRecurringSchedules.churchId, data.churchId)));
+  return getTreasuryRecurringScheduleById(data.id, data.churchId);
+}
+
+export async function setTreasuryRecurringScheduleActive(data: { id: number; churchId: number; active: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(treasuryRecurringSchedules).set({ active: data.active }).where(and(eq(treasuryRecurringSchedules.id, data.id), eq(treasuryRecurringSchedules.churchId, data.churchId)));
+  return getTreasuryRecurringScheduleById(data.id, data.churchId);
+}
+
+function dateToIsoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addUtcDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+export async function materializeTreasuryRecurringOccurrences(data: { churchId: number; actorChurchUserId: number; fromDate?: string; toDate?: string }) {
+  const db = await getDb();
+  if (!db) return { created: 0 };
+  const today = new Date();
+  const from = new Date(`${data.fromDate ?? dateToIsoDate(addUtcDays(today, -31))}T12:00:00.000Z`);
+  const to = new Date(`${data.toDate ?? dateToIsoDate(addUtcDays(today, 62))}T12:00:00.000Z`);
+  const schedules = await db.select().from(treasuryRecurringSchedules).where(and(eq(treasuryRecurringSchedules.churchId, data.churchId), eq(treasuryRecurringSchedules.active, true)));
+  let created = 0;
+  for (let cursor = from; cursor <= to; cursor = addUtcDays(cursor, 1)) {
+    const serviceDate = dateToIsoDate(cursor);
+    const weekday = cursor.getUTCDay();
+    for (const schedule of schedules.filter((item) => item.weekday === weekday)) {
+      const existing = await db.select({ id: treasuryServices.id }).from(treasuryServices).where(and(eq(treasuryServices.churchId, data.churchId), eq(treasuryServices.recurringScheduleId, schedule.id), eq(treasuryServices.serviceDate, financialDate(serviceDate)))).limit(1);
+      if (existing.length > 0) continue;
+      try {
+        await db.insert(treasuryServices).values({
+          churchId: data.churchId,
+          name: schedule.name,
+          serviceDate: financialDate(serviceDate),
+          startTime: schedule.startTime,
+          location: schedule.location,
+          notes: schedule.notes,
+          origin: "recorrente",
+          recurringScheduleId: schedule.id,
+          occurrenceOverride: false,
+          status: "aberto",
+          createdByChurchUserId: data.actorChurchUserId,
+        });
+        created += 1;
+      } catch (error) {
+        if (!isDuplicateTreasuryRecord(error)) throw error;
+      }
+    }
+  }
+  return { created };
 }
 
 export async function getTreasuryServiceById(id: number, churchId: number) {
@@ -4959,6 +5067,9 @@ export async function createTreasuryService(data: { churchId: number; name: stri
     startTime: data.startTime ?? null,
     location: data.location ?? null,
     notes: data.notes ?? null,
+    origin: "manual",
+    recurringScheduleId: null,
+    occurrenceOverride: false,
     status: "aberto",
     createdByChurchUserId: data.createdByChurchUserId,
   });
@@ -4969,12 +5080,15 @@ export async function createTreasuryService(data: { churchId: number; name: stri
 export async function updateTreasuryService(data: { id: number; churchId: number; name: string; serviceDate: string; startTime?: string | null; location?: string | null; notes?: string | null }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  const existing = await getTreasuryServiceById(data.id, data.churchId);
+  if (!existing || existing.status !== "aberto") return null;
   await db.update(treasuryServices).set({
     name: data.name,
     serviceDate: financialDate(data.serviceDate),
     startTime: data.startTime ?? null,
     location: data.location ?? null,
     notes: data.notes ?? null,
+    occurrenceOverride: existing.origin === "recorrente" ? true : existing.occurrenceOverride,
   }).where(and(eq(treasuryServices.id, data.id), eq(treasuryServices.churchId, data.churchId), eq(treasuryServices.status, "aberto")));
   return getTreasuryServiceById(data.id, data.churchId);
 }

@@ -44,6 +44,19 @@ describe("Fluxo estrutural de prestação por culto", () => {
     expect(sectionSource).toContain("Histórico de relatórios");
   });
 
+  it("cria ocorrências recorrentes idempotentes e preserva exceções pontuais", () => {
+    expect(schemaSource).toContain('export const treasuryRecurringSchedules = mysqlTable');
+    expect(schemaSource).toContain('recurringScheduleId: int("recurringScheduleId")');
+    expect(schemaSource).toContain('occurrenceOverride: boolean("occurrenceOverride")');
+    expect(dbSource).toContain("materializeTreasuryRecurringOccurrences");
+    expect(dbSource).toContain("treasuryRecurringSchedules.weekday");
+    expect(routerSource).toContain("createRecurringSchedule");
+    expect(routerSource).toContain("setRecurringScheduleActive");
+    expect(sectionSource).toContain("Programação fixa");
+    expect(sectionSource).toContain("Culto regular");
+    expect(sectionSource).toContain("Não realizado");
+  });
+
   it("mantém o histórico reimprimível e não cria uma segunda tesouraria", () => {
     expect(sectionSource).toContain("reportsQuery");
     expect(sectionSource).toContain("printReport(report)");
