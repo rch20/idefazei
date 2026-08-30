@@ -1496,6 +1496,105 @@ export type StartupDiagnostic = typeof startupDiagnostics.$inferSelect;
 
 // ─── TESOURARIA DA IGREJA ──────────────────────────────────────────────────────
 
+/** Cultos/serviços que podem originar uma prestação de contas financeira. */
+export const treasuryServices = mysqlTable(
+  "treasury_services",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    serviceDate: date("serviceDate").notNull(),
+    startTime: varchar("startTime", { length: 5 }),
+    location: varchar("location", { length: 160 }),
+    notes: text("notes"),
+    status: mysqlEnum("status", ["aberto", "fechado", "cancelado"]).default("aberto").notNull(),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [index("treasury_services_church_date_idx").on(table.churchId, table.serviceDate)]
+);
+
+export type TreasuryService = typeof treasuryServices.$inferSelect;
+
+/** Folha de contagem por culto, com dupla conferência e totais por meio de pagamento. */
+export const treasuryCountSheets = mysqlTable(
+  "treasury_count_sheets",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    serviceId: int("serviceId").notNull(),
+    counterOnePersonId: int("counterOnePersonId").notNull(),
+    counterTwoPersonId: int("counterTwoPersonId").notNull(),
+    cashCents: int("cashCents").default(0).notNull(),
+    pixCents: int("pixCents").default(0).notNull(),
+    transferCents: int("transferCents").default(0).notNull(),
+    cardCents: int("cardCents").default(0).notNull(),
+    checkCents: int("checkCents").default(0).notNull(),
+    otherCents: int("otherCents").default(0).notNull(),
+    totalCents: int("totalCents").default(0).notNull(),
+    status: mysqlEnum("status", ["rascunho", "conferida", "fechada"]).default("rascunho").notNull(),
+    notes: text("notes"),
+    confirmedAt: timestamp("confirmedAt"),
+    confirmedByChurchUserId: int("confirmedByChurchUserId"),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [uniqueIndex("treasury_count_sheets_church_service_unique").on(table.churchId, table.serviceId)]
+);
+
+export type TreasuryCountSheet = typeof treasuryCountSheets.$inferSelect;
+
+/** Depósito relacionado a uma folha de contagem; não substitui a conciliação bancária. */
+export const treasuryDeposits = mysqlTable(
+  "treasury_deposits",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    countSheetId: int("countSheetId").notNull(),
+    accountId: int("accountId").notNull(),
+    amountCents: int("amountCents").notNull(),
+    depositDate: date("depositDate").notNull(),
+    reference: varchar("reference", { length: 160 }),
+    notes: text("notes"),
+    status: mysqlEnum("status", ["pendente", "depositado", "conferido"]).default("pendente").notNull(),
+    depositedByChurchUserId: int("depositedByChurchUserId"),
+    depositedAt: timestamp("depositedAt"),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [uniqueIndex("treasury_deposits_church_count_sheet_unique").on(table.churchId, table.countSheetId)]
+);
+
+export type TreasuryDeposit = typeof treasuryDeposits.$inferSelect;
+
+/** Histórico imutável de relatórios emitidos a partir de um snapshot do fechamento. */
+export const treasuryReports = mysqlTable(
+  "treasury_reports",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    serviceId: int("serviceId").notNull(),
+    countSheetId: int("countSheetId").notNull(),
+    reportType: mysqlEnum("reportType", ["culto_diario"]).default("culto_diario").notNull(),
+    version: int("version").default(1).notNull(),
+    status: mysqlEnum("status", ["emitido", "assinado"]).default("emitido").notNull(),
+    snapshot: json("snapshot").notNull(),
+    issuedByChurchUserId: int("issuedByChurchUserId").notNull(),
+    issuedAt: timestamp("issuedAt").defaultNow().notNull(),
+    signedByCounterOneAt: timestamp("signedByCounterOneAt"),
+    signedByCounterTwoAt: timestamp("signedByCounterTwoAt"),
+    signedByTreasurerAt: timestamp("signedByTreasurerAt"),
+    signedByPastorAt: timestamp("signedByPastorAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [index("treasury_reports_church_service_idx").on(table.churchId, table.serviceId)]
+);
+
+export type TreasuryReport = typeof treasuryReports.$inferSelect;
+
 /** Contas operacionais da igreja, como Caixa e Banco principal. */
 export const financialAccounts = mysqlTable(
   "financial_accounts",
@@ -1547,6 +1646,8 @@ export const financialTransactions = mysqlTable("financial_transactions", {
     .notNull(),
   contributorPersonId: int("contributorPersonId"),
   contributorName: varchar("contributorName", { length: 255 }),
+  serviceId: int("serviceId"),
+  countSheetId: int("countSheetId"),
   description: text("description"),
   reference: varchar("reference", { length: 160 }),
   status: mysqlEnum("status", ["rascunho", "confirmado", "estornado"]).default("rascunho").notNull(),

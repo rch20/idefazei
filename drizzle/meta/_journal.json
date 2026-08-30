@@ -330,6 +330,13 @@
       "when": 1787968572968,
       "tag": "0046_young_bloodstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "5",
+      "when": 1788091928214,
+      "tag": "0047_secret_james_howlett",
+      "breakpoints": true
     }
   ]
 }

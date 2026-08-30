@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { getChurchToken, useChurchAuth } from "@/hooks/useChurchAuth";
 import { buildTreasuryReceiptHtml, formatBrl, formatDatePtBr, openTreasuryPrintDocument, parseBrlToCents } from "@/lib/treasury";
 import { TreasuryPdfPreview } from "@/components/TreasuryPdfPreview";
+import { TreasuryServiceSection } from "@/components/TreasuryServiceSection";
 import { toast } from "sonner";
 import {
   ArrowDownCircle,
@@ -119,6 +120,8 @@ export default function Tesouraria() {
     contributorName: "",
     description: "",
     reference: "",
+    serviceId: "",
+    countSheetId: "",
     status: "confirmado" as TransactionStatus,
   });
 
@@ -129,6 +132,8 @@ export default function Tesouraria() {
   const categoriesQuery = trpc.treasury.categories.useQuery({ churchId }, { enabled: Boolean(churchId) });
   const closureQuery = trpc.treasury.periodClosure.useQuery({ churchId, periodStart: startDate }, { enabled: Boolean(churchId) });
   const peopleQuery = trpc.people.list.useQuery({ churchId }, { enabled: Boolean(churchId) });
+  const servicesQuery = trpc.treasury.services.useQuery({ churchId }, { enabled: Boolean(churchId) });
+  const countSheetsQuery = trpc.treasury.countSheets.useQuery({ churchId }, { enabled: Boolean(churchId) });
   const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery({ churchId }, { enabled: Boolean(churchId) });
   const receiptQuery = trpc.treasury.receipt.useQuery({ churchId, id: receiptOpen ?? 0 }, { enabled: Boolean(churchId && receiptOpen) });
   const bankAccounts = (accountsQuery.data ?? []).filter((account) => account.type === "banco");
@@ -180,6 +185,8 @@ export default function Tesouraria() {
       utils.treasury.categoriesManagement.invalidate(),
       utils.treasury.periodClosure.invalidate(),
       utils.treasury.reconciliation.invalidate(),
+      utils.treasury.services.invalidate(),
+      utils.treasury.countSheets.invalidate(),
     ]);
   };
 
@@ -274,6 +281,8 @@ export default function Tesouraria() {
       contributorName: "",
       description: "",
       reference: "",
+      serviceId: "",
+      countSheetId: "",
       status: "confirmado",
     });
     setTransactionOpen(true);
@@ -299,6 +308,8 @@ export default function Tesouraria() {
       contributorName: form.contributorPersonId ? undefined : form.contributorName.trim() || undefined,
       description: form.description.trim() || undefined,
       reference: form.reference.trim() || undefined,
+      serviceId: form.serviceId ? Number(form.serviceId) : undefined,
+      countSheetId: form.countSheetId ? Number(form.countSheetId) : undefined,
       status: form.status,
     });
   };
@@ -433,6 +444,8 @@ export default function Tesouraria() {
       {overviewQuery.error && <InlineError message={overviewQuery.error.message} />}
       {overviewQuery.isLoading ? <TreasurySkeleton /> : (
         <>
+          <TreasuryServiceSection churchId={churchId} people={(peopleQuery.data ?? []).map((person) => ({ id: person.id, fullName: person.fullName }))} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name, type: account.type }))} />
+
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard icon={WalletCards} label={`Saldo até ${formatDatePtBr(endDate)}`} value={formatBrl(overview?.balanceCents ?? 0)} tone="navy" helper={accountLabel} />
             <MetricCard icon={ArrowDownCircle} label="Entradas no período" value={formatBrl(overview?.entriesCents ?? 0)} tone="green" helper={periodLabel} />
@@ -494,6 +507,7 @@ export default function Tesouraria() {
             {form.type === "entrada" && <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5"><Label>Contribuinte cadastrado</Label><select value={form.contributorPersonId} onChange={(event) => setForm({ ...form, contributorPersonId: event.target.value, contributorName: event.target.value ? "" : form.contributorName })} className="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">Não vincular a uma Pessoa</option>{(peopleQuery.data ?? []).map((person) => <option key={person.id} value={person.id}>{person.fullName}</option>)}</select></label><label className="grid gap-1.5"><Label>Nome para recibo</Label><Input disabled={Boolean(form.contributorPersonId)} value={form.contributorName} onChange={(event) => setForm({ ...form, contributorName: event.target.value })} placeholder="Ex.: Visitante ou família" /></label></div>}
             <label className="grid gap-1.5"><Label>Descrição</Label><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder={form.type === "entrada" ? "Ex.: Culto de domingo à noite" : "Ex.: Referência ou fornecedor"} /></label>
             <label className="grid gap-1.5"><Label>Referência opcional</Label><Input value={form.reference} onChange={(event) => setForm({ ...form, reference: event.target.value })} placeholder="Comprovante, recibo ou nota" /></label>
+            {form.type === "entrada" && <div className="grid gap-3 rounded-xl border border-gold/30 bg-gold/5 p-3 sm:grid-cols-2"><label className="grid gap-1.5"><Label>Vincular ao culto</Label><select value={form.serviceId} onChange={(event) => setForm({ ...form, serviceId: event.target.value, countSheetId: "" })} className="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">Não vincular</option>{(servicesQuery.data ?? []).filter((service) => service.status !== "cancelado").map((service) => <option key={service.id} value={service.id}>{service.name} · {formatDatePtBr(service.serviceDate)}</option>)}</select></label><label className="grid gap-1.5"><Label>Vincular à folha de contagem</Label><select value={form.countSheetId} disabled={!form.serviceId} onChange={(event) => setForm({ ...form, countSheetId: event.target.value })} className="h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">Não vincular</option>{(countSheetsQuery.data ?? []).filter((sheet) => !form.serviceId || sheet.serviceId === Number(form.serviceId)).map((sheet) => <option key={sheet.id} value={sheet.id}>{sheet.status === "fechada" ? "Fechada" : "Rascunho"} · {formatBrl(sheet.totalCents)}</option>)}</select></label><p className="text-xs text-muted-foreground sm:col-span-2">Use esta opção para que a entrada apareça na prestação do culto. O vínculo não altera o lançamento nem o fechamento mensal.</p></div>}
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.status === "rascunho"} onChange={(event) => setForm({ ...form, status: event.target.checked ? "rascunho" : "confirmado" })} /> Salvar como rascunho</label>
             {(formError || createTransaction.error) && <InlineError message={formError || createTransaction.error?.message || "Não foi possível registrar o lançamento."} compact />}
             <Button type="submit" disabled={createTransaction.isPending} className="bg-navy hover:bg-navy/90">{createTransaction.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{form.status === "rascunho" ? "Salvar rascunho" : "Confirmar lançamento"}</Button>

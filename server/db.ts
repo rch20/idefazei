@@ -52,6 +52,10 @@ import {
   financialReconciliationAttachments,
   financialReconciliations,
   financialTransactions,
+  treasuryServices,
+  treasuryCountSheets,
+  treasuryDeposits,
+  treasuryReports,
   mediaAssets,
   InsertMediaAsset,
   InsertUser,
@@ -4689,7 +4693,7 @@ async function writeFinancialAuditLog(data: {
 
 export async function createFinancialTransaction(data: {
   churchId: number; accountId: number; categoryId: number; type: "entrada" | "saida"; amountCents: number; transactionDate: string;
-  paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; contributorPersonId?: number; contributorName?: string; description?: string; reference?: string; status: "rascunho" | "confirmado"; actorChurchUserId: number;
+  paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; contributorPersonId?: number; contributorName?: string; serviceId?: number; countSheetId?: number; description?: string; reference?: string; status: "rascunho" | "confirmado"; actorChurchUserId: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -4697,7 +4701,7 @@ export async function createFinancialTransaction(data: {
     const now = new Date();
     const insert = await tx.insert(financialTransactions).values({
       churchId: data.churchId, accountId: data.accountId, categoryId: data.categoryId, type: data.type, amountCents: data.amountCents,
-      transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, contributorPersonId: data.contributorPersonId ?? null, contributorName: data.contributorName ?? null, description: data.description ?? null, reference: data.reference ?? null,
+      transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, contributorPersonId: data.contributorPersonId ?? null, contributorName: data.contributorName ?? null, serviceId: data.serviceId ?? null, countSheetId: data.countSheetId ?? null, description: data.description ?? null, reference: data.reference ?? null,
       status: data.status, createdByChurchUserId: data.actorChurchUserId,
       confirmedByChurchUserId: data.status === "confirmado" ? data.actorChurchUserId : null,
       confirmedAt: data.status === "confirmado" ? now : null,
@@ -4714,7 +4718,7 @@ export async function createFinancialTransaction(data: {
 
 export async function updateFinancialDraft(data: {
   id: number; churchId: number; accountId: number; categoryId: number; type: "entrada" | "saida"; amountCents: number; transactionDate: string;
-  paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; contributorPersonId?: number; contributorName?: string; description?: string; reference?: string; actorChurchUserId: number;
+  paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; contributorPersonId?: number; contributorName?: string; serviceId?: number; countSheetId?: number; description?: string; reference?: string; actorChurchUserId: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -4722,7 +4726,7 @@ export async function updateFinancialDraft(data: {
     const previousRows = await tx.select().from(financialTransactions).where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho"))).limit(1);
     const previous = previousRows[0];
     if (!previous) return null;
-    const result = await tx.update(financialTransactions).set({ accountId: data.accountId, categoryId: data.categoryId, type: data.type, amountCents: data.amountCents, transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, contributorPersonId: data.contributorPersonId ?? null, contributorName: data.contributorName ?? null, description: data.description ?? null, reference: data.reference ?? null })
+    const result = await tx.update(financialTransactions).set({ accountId: data.accountId, categoryId: data.categoryId, type: data.type, amountCents: data.amountCents, transactionDate: financialDate(data.transactionDate), paymentMethod: data.paymentMethod, contributorPersonId: data.contributorPersonId ?? null, contributorName: data.contributorName ?? null, serviceId: data.serviceId ?? null, countSheetId: data.countSheetId ?? null, description: data.description ?? null, reference: data.reference ?? null })
       .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")));
     if (Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) return null;
     const updatedRows = await tx.select().from(financialTransactions).where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId))).limit(1);
@@ -4909,4 +4913,250 @@ export async function reopenFinancialPeriod(data: { churchId: number; periodStar
   if (!updated) return null;
   await writeFinancialAuditLog({ churchId: data.churchId, actorChurchUserId: data.actorChurchUserId, action: "periodo_reaberto", beforeData: closure, afterData: updated, note: data.reason });
   return updated;
+}
+
+
+// ─── PRESTAÇÃO DE CONTAS POR CULTO ────────────────────────────────────────────
+function isDuplicateTreasuryRecord(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "ER_DUP_ENTRY";
+}
+
+export type TreasuryCountAmounts = {
+  cashCents: number;
+  pixCents: number;
+  transferCents: number;
+  cardCents: number;
+  checkCents: number;
+  otherCents: number;
+};
+
+export function getTreasuryCountTotal(amounts: TreasuryCountAmounts) {
+  return amounts.cashCents + amounts.pixCents + amounts.transferCents + amounts.cardCents + amounts.checkCents + amounts.otherCents;
+}
+
+export async function getTreasuryServices(churchId: number, includeCancelled = false) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(treasuryServices)
+    .where(includeCancelled ? eq(treasuryServices.churchId, churchId) : and(eq(treasuryServices.churchId, churchId), ne(treasuryServices.status, "cancelado")))
+    .orderBy(desc(treasuryServices.serviceDate), desc(treasuryServices.id));
+}
+
+export async function getTreasuryServiceById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(treasuryServices).where(and(eq(treasuryServices.id, id), eq(treasuryServices.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createTreasuryService(data: { churchId: number; name: string; serviceDate: string; startTime?: string | null; location?: string | null; notes?: string | null; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(treasuryServices).values({
+    churchId: data.churchId,
+    name: data.name,
+    serviceDate: financialDate(data.serviceDate),
+    startTime: data.startTime ?? null,
+    location: data.location ?? null,
+    notes: data.notes ?? null,
+    status: "aberto",
+    createdByChurchUserId: data.createdByChurchUserId,
+  });
+  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+  return id ? getTreasuryServiceById(id, data.churchId) : null;
+}
+
+export async function updateTreasuryService(data: { id: number; churchId: number; name: string; serviceDate: string; startTime?: string | null; location?: string | null; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(treasuryServices).set({
+    name: data.name,
+    serviceDate: financialDate(data.serviceDate),
+    startTime: data.startTime ?? null,
+    location: data.location ?? null,
+    notes: data.notes ?? null,
+  }).where(and(eq(treasuryServices.id, data.id), eq(treasuryServices.churchId, data.churchId), eq(treasuryServices.status, "aberto")));
+  return getTreasuryServiceById(data.id, data.churchId);
+}
+
+export async function cancelTreasuryService(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(treasuryServices).set({ status: "cancelado" }).where(and(eq(treasuryServices.id, id), eq(treasuryServices.churchId, churchId), eq(treasuryServices.status, "aberto")));
+  return getTreasuryServiceById(id, churchId);
+}
+
+export async function getTreasuryCountSheetsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(treasuryCountSheets).where(eq(treasuryCountSheets.churchId, churchId)).orderBy(desc(treasuryCountSheets.updatedAt), desc(treasuryCountSheets.id));
+}
+
+export async function getTreasuryCountSheetById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(treasuryCountSheets).where(and(eq(treasuryCountSheets.id, id), eq(treasuryCountSheets.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function saveTreasuryCountSheet(data: {
+  id?: number;
+  churchId: number;
+  serviceId: number;
+  counterOnePersonId: number;
+  counterTwoPersonId: number;
+  amounts: TreasuryCountAmounts;
+  notes?: string | null;
+  createdByChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const totalCents = getTreasuryCountTotal(data.amounts);
+  const values = {
+    churchId: data.churchId,
+    serviceId: data.serviceId,
+    counterOnePersonId: data.counterOnePersonId,
+    counterTwoPersonId: data.counterTwoPersonId,
+    ...data.amounts,
+    totalCents,
+    notes: data.notes ?? null,
+  };
+  if (data.id) {
+    const existing = await getTreasuryCountSheetById(data.id, data.churchId);
+    if (!existing || existing.status === "fechada") return null;
+    await db.update(treasuryCountSheets).set(values).where(and(eq(treasuryCountSheets.id, data.id), eq(treasuryCountSheets.churchId, data.churchId), ne(treasuryCountSheets.status, "fechada")));
+    return getTreasuryCountSheetById(data.id, data.churchId);
+  }
+  try {
+    const result = await db.insert(treasuryCountSheets).values({ ...values, status: "rascunho", createdByChurchUserId: data.createdByChurchUserId });
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    return id ? getTreasuryCountSheetById(id, data.churchId) : null;
+  } catch (error) {
+    if (isDuplicateTreasuryRecord(error)) return null;
+    throw error;
+  }
+}
+
+export async function closeTreasuryCountSheet(data: { id: number; churchId: number; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await getTreasuryCountSheetById(data.id, data.churchId);
+  if (!existing) return null;
+  if (existing.status === "fechada") return existing;
+  const service = await getTreasuryServiceById(existing.serviceId, data.churchId);
+  if (!service || service.status === "cancelado") return null;
+  await db.update(treasuryCountSheets).set({ status: "fechada", confirmedAt: new Date(), confirmedByChurchUserId: data.actorChurchUserId }).where(and(eq(treasuryCountSheets.id, data.id), eq(treasuryCountSheets.churchId, data.churchId), ne(treasuryCountSheets.status, "fechada")));
+  await db.update(treasuryServices).set({ status: "fechado" }).where(and(eq(treasuryServices.id, service.id), eq(treasuryServices.churchId, data.churchId), eq(treasuryServices.status, "aberto")));
+  return getTreasuryCountSheetById(data.id, data.churchId);
+}
+
+export async function getTreasuryDepositsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(treasuryDeposits).where(eq(treasuryDeposits.churchId, churchId)).orderBy(desc(treasuryDeposits.depositDate), desc(treasuryDeposits.id));
+}
+
+export async function getTreasuryDepositByCountSheet(countSheetId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(treasuryDeposits).where(and(eq(treasuryDeposits.countSheetId, countSheetId), eq(treasuryDeposits.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function saveTreasuryDeposit(data: { id?: number; churchId: number; countSheetId: number; accountId: number; amountCents: number; depositDate: string; reference?: string | null; notes?: string | null; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const values = { accountId: data.accountId, amountCents: data.amountCents, depositDate: financialDate(data.depositDate), reference: data.reference ?? null, notes: data.notes ?? null, status: "depositado" as const, depositedByChurchUserId: data.actorChurchUserId, depositedAt: new Date() };
+  if (data.id) {
+    await db.update(treasuryDeposits).set(values).where(and(eq(treasuryDeposits.id, data.id), eq(treasuryDeposits.churchId, data.churchId), eq(treasuryDeposits.countSheetId, data.countSheetId)));
+    return db.select().from(treasuryDeposits).where(and(eq(treasuryDeposits.id, data.id), eq(treasuryDeposits.churchId, data.churchId))).limit(1).then((rows) => rows[0] ?? null);
+  }
+  try {
+    const result = await db.insert(treasuryDeposits).values({ ...values, churchId: data.churchId, countSheetId: data.countSheetId, createdByChurchUserId: data.actorChurchUserId });
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    return id ? db.select().from(treasuryDeposits).where(and(eq(treasuryDeposits.id, id), eq(treasuryDeposits.churchId, data.churchId))).limit(1).then((rows) => rows[0] ?? null) : null;
+  } catch (error) {
+    if (isDuplicateTreasuryRecord(error)) return null;
+    throw error;
+  }
+}
+
+export type TreasuryReportSnapshot = {
+  service: Record<string, unknown>;
+  countSheet: Record<string, unknown>;
+  counters: { one: string; two: string };
+  deposit: Record<string, unknown> | null;
+  transactions: Array<Record<string, unknown>>;
+  issuedAt: string;
+};
+
+export async function getTreasuryReportsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(treasuryReports).where(eq(treasuryReports.churchId, churchId)).orderBy(desc(treasuryReports.issuedAt), desc(treasuryReports.id));
+}
+
+export async function getTreasuryReportById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(treasuryReports).where(and(eq(treasuryReports.id, id), eq(treasuryReports.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function issueTreasuryReport(data: { churchId: number; serviceId: number; countSheetId: number; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [service, countSheet, deposit, existingReports, transactions] = await Promise.all([
+    getTreasuryServiceById(data.serviceId, data.churchId),
+    getTreasuryCountSheetById(data.countSheetId, data.churchId),
+    getTreasuryDepositByCountSheet(data.countSheetId, data.churchId),
+    getTreasuryReportsByChurch(data.churchId),
+    db.select().from(financialTransactions).where(and(eq(financialTransactions.churchId, data.churchId), sql`${financialTransactions.status} <> 'rascunho'`, or(eq(financialTransactions.serviceId, data.serviceId), eq(financialTransactions.countSheetId, data.countSheetId)))).orderBy(financialTransactions.transactionDate, financialTransactions.id),
+  ]);
+  if (!service || !countSheet || countSheet.serviceId !== data.serviceId || countSheet.status !== "fechada") return null;
+  const peopleIds = [countSheet.counterOnePersonId, countSheet.counterTwoPersonId];
+  const namedPeople = await db.select({ id: people.id, fullName: people.fullName }).from(people).where(and(eq(people.churchId, data.churchId), or(eq(people.id, peopleIds[0]), eq(people.id, peopleIds[1]))));
+  const nameById = new Map(namedPeople.map((person) => [person.id, person.fullName]));
+  const snapshot: TreasuryReportSnapshot = {
+    service: service as unknown as Record<string, unknown>,
+    countSheet: countSheet as unknown as Record<string, unknown>,
+    counters: { one: nameById.get(peopleIds[0]) ?? "Não informado", two: nameById.get(peopleIds[1]) ?? "Não informado" },
+    deposit: deposit as unknown as Record<string, unknown> | null,
+    transactions: transactions as unknown as Array<Record<string, unknown>>,
+    issuedAt: new Date().toISOString(),
+  };
+  const version = existingReports.filter((report) => report.serviceId === data.serviceId).length + 1;
+  const result = await db.insert(treasuryReports).values({ churchId: data.churchId, serviceId: data.serviceId, countSheetId: data.countSheetId, reportType: "culto_diario", version, status: "emitido", snapshot, issuedByChurchUserId: data.actorChurchUserId });
+  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+  return id ? getTreasuryReportById(id, data.churchId) : null;
+}
+
+export async function signTreasuryReport(data: { id: number; churchId: number; role: "contador1" | "contador2" | "tesoureiro" | "pastor" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const report = await getTreasuryReportById(data.id, data.churchId);
+  if (!report) return null;
+  const field = data.role === "contador1" ? "signedByCounterOneAt" : data.role === "contador2" ? "signedByCounterTwoAt" : data.role === "tesoureiro" ? "signedByTreasurerAt" : "signedByPastorAt";
+  await db.update(treasuryReports).set({ [field]: new Date(), status: "assinado" }).where(and(eq(treasuryReports.id, data.id), eq(treasuryReports.churchId, data.churchId)));
+  return getTreasuryReportById(data.id, data.churchId);
+}
+
+export async function getFinancialTransactionsByService(churchId: number, serviceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(financialTransactions).where(and(eq(financialTransactions.churchId, churchId), eq(financialTransactions.serviceId, serviceId))).orderBy(financialTransactions.transactionDate, financialTransactions.id);
+}
+
+export async function getFinancialTransactionsByCountSheet(churchId: number, countSheetId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(financialTransactions).where(and(eq(financialTransactions.churchId, churchId), eq(financialTransactions.countSheetId, countSheetId))).orderBy(financialTransactions.transactionDate, financialTransactions.id);
+}
+
+export async function getTreasuryServiceParticipantNames(churchId: number, ids: number[]) {
+  const db = await getDb();
+  if (!db || ids.length === 0) return [];
+  const uniqueIds = Array.from(new Set(ids.filter((id) => Number.isInteger(id) && id > 0)));
+  if (uniqueIds.length === 0) return [];
+  return db.select({ id: people.id, fullName: people.fullName }).from(people).where(and(eq(people.churchId, churchId), or(...uniqueIds.map((id) => eq(people.id, id)))));
 }

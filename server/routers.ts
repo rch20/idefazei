@@ -120,6 +120,25 @@ import {
   saveFinancialReconciliation,
   closeFinancialPeriod,
   reopenFinancialPeriod,
+  getTreasuryServices,
+  getTreasuryServiceById,
+  createTreasuryService,
+  updateTreasuryService,
+  cancelTreasuryService,
+  getTreasuryCountSheetsByChurch,
+  getTreasuryCountSheetById,
+  saveTreasuryCountSheet,
+  closeTreasuryCountSheet,
+  getTreasuryDepositsByChurch,
+  getTreasuryDepositByCountSheet,
+  saveTreasuryDeposit,
+  getTreasuryReportsByChurch,
+  getTreasuryReportById,
+  issueTreasuryReport,
+  signTreasuryReport,
+  getTreasuryServiceParticipantNames,
+  getFinancialTransactionsByService,
+  getFinancialTransactionsByCountSheet,
   getMinistriesByChurch,
   getMinistryMembers,
   archiveMinistry,
@@ -4845,6 +4864,8 @@ const financialTransactionInput = z.object({
   paymentMethod: z.enum(["dinheiro", "pix", "transferencia", "cartao", "cheque", "outro"]),
   contributorPersonId: z.number().int().positive().optional(),
   contributorName: z.string().trim().min(2).max(255).optional(),
+  serviceId: z.number().int().positive().optional(),
+  countSheetId: z.number().int().positive().optional(),
   description: z.string().trim().max(2000).optional(),
   reference: z.string().trim().max(160).optional(),
 });
@@ -4864,6 +4885,14 @@ async function validateFinancialReferences(input: z.infer<typeof financialTransa
   if (input.contributorPersonId && !contributor) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa contribuinte não pertence a esta igreja." });
   }
+  if (input.serviceId) {
+    const service = await getTreasuryServiceById(input.serviceId, input.churchId);
+    if (!service || service.status === "cancelado") throw new TRPCError({ code: "BAD_REQUEST", message: "O culto selecionado não pertence a esta igreja ou foi cancelado." });
+  }
+  if (input.countSheetId) {
+    const countSheet = await getTreasuryCountSheetById(input.countSheetId, input.churchId);
+    if (!countSheet || (input.serviceId && countSheet.serviceId !== input.serviceId)) throw new TRPCError({ code: "BAD_REQUEST", message: "A folha de contagem não pertence a este culto ou a esta igreja." });
+  }
   if (["outra_entrada", "outra_saida"].includes(category.key) && !input.description?.trim()) {
     throw new TRPCError({ code: "BAD_REQUEST", message: "Descreva o lançamento usando uma categoria manual." });
   }
@@ -4873,6 +4902,39 @@ async function validateFinancialReferences(input: z.infer<typeof financialTransa
   return { account, category };
 }
 
+const treasuryServiceInput = z.object({
+  churchId: z.number().int().positive(),
+  name: z.string().trim().min(2).max(160),
+  serviceDate: financialDateInput,
+  startTime: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/, "Informe um horário válido.").optional(),
+  location: z.string().trim().max(160).optional(),
+  notes: z.string().trim().max(2000).optional(),
+});
+const treasuryCountAmountInput = z.number().int().min(0).max(MAX_FINANCIAL_CENTS);
+const treasuryCountSheetInput = z.object({
+  churchId: z.number().int().positive(),
+  serviceId: z.number().int().positive(),
+  id: z.number().int().positive().optional(),
+  counterOnePersonId: z.number().int().positive(),
+  counterTwoPersonId: z.number().int().positive(),
+  cashCents: treasuryCountAmountInput.default(0),
+  pixCents: treasuryCountAmountInput.default(0),
+  transferCents: treasuryCountAmountInput.default(0),
+  cardCents: treasuryCountAmountInput.default(0),
+  checkCents: treasuryCountAmountInput.default(0),
+  otherCents: treasuryCountAmountInput.default(0),
+  notes: z.string().trim().max(2000).optional(),
+});
+const treasuryDepositInput = z.object({
+  churchId: z.number().int().positive(),
+  countSheetId: z.number().int().positive(),
+  id: z.number().int().positive().optional(),
+  accountId: z.number().int().positive(),
+  amountCents: z.number().int().positive().max(MAX_FINANCIAL_CENTS),
+  depositDate: financialDateInput,
+  reference: z.string().trim().max(160).optional(),
+  notes: z.string().trim().max(2000).optional(),
+});
 const treasuryRouter = router({
   overview: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), startDate: financialDateInput, endDate: financialDateInput, accountId: z.number().int().positive().optional() }))
@@ -4883,6 +4945,140 @@ const treasuryRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Conta financeira não encontrada nesta igreja." });
       }
       return getTreasuryOverview(input);
+    }),
+
+  services: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), includeCancelled: z.boolean().optional() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      return getTreasuryServices(input.churchId, input.includeCancelled ?? false);
+    }),
+
+  createService: protectedProcedure
+    .input(treasuryServiceInput)
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem cadastrar cultos." });
+      return createTreasuryService({ ...input, createdByChurchUserId: access.actor.id });
+    }),
+
+  updateService: protectedProcedure
+    .input(treasuryServiceInput.extend({ id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem editar cultos." });
+      const existing = await getTreasuryServiceById(input.id, input.churchId);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Culto não encontrado nesta igreja." });
+      return updateTreasuryService(input);
+    }),
+
+  cancelService: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem cancelar cultos." });
+      const service = await getTreasuryServiceById(input.id, input.churchId);
+      if (!service) throw new TRPCError({ code: "NOT_FOUND", message: "Culto não encontrado nesta igreja." });
+      return cancelTreasuryService(input.id, input.churchId);
+    }),
+
+  countSheets: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      return getTreasuryCountSheetsByChurch(input.churchId);
+    }),
+
+  saveCountSheet: protectedProcedure
+    .input(treasuryCountSheetInput)
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (input.counterOnePersonId === input.counterTwoPersonId) throw new TRPCError({ code: "BAD_REQUEST", message: "A contagem precisa de duas pessoas diferentes." });
+      const service = await getTreasuryServiceById(input.serviceId, input.churchId);
+      if (!service || service.status === "cancelado") throw new TRPCError({ code: "NOT_FOUND", message: "Culto não encontrado nesta igreja." });
+      const people = await getPeopleByChurch(input.churchId);
+      const personIds = new Set(people.map((person) => person.id));
+      if (!personIds.has(input.counterOnePersonId) || !personIds.has(input.counterTwoPersonId)) throw new TRPCError({ code: "BAD_REQUEST", message: "Os dois contadores precisam pertencer a esta igreja." });
+      const saved = await saveTreasuryCountSheet({ ...input, amounts: { cashCents: input.cashCents, pixCents: input.pixCents, transferCents: input.transferCents, cardCents: input.cardCents, checkCents: input.checkCents, otherCents: input.otherCents }, createdByChurchUserId: access.actor.id });
+      if (!saved) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma folha de contagem fechada ou para este culto." });
+      return saved;
+    }),
+
+  closeCountSheet: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const sheet = await getTreasuryCountSheetById(input.id, input.churchId);
+      if (!sheet) throw new TRPCError({ code: "NOT_FOUND", message: "Folha de contagem não encontrada nesta igreja." });
+      const closed = await closeTreasuryCountSheet({ ...input, actorChurchUserId: access.actor.id });
+      if (!closed) throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível fechar esta folha de contagem." });
+      return closed;
+    }),
+
+  deposits: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      return getTreasuryDepositsByChurch(input.churchId);
+    }),
+
+  saveDeposit: protectedProcedure
+    .input(treasuryDepositInput)
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const sheet = await getTreasuryCountSheetById(input.countSheetId, input.churchId);
+      if (!sheet) throw new TRPCError({ code: "NOT_FOUND", message: "Folha de contagem não encontrada nesta igreja." });
+      if (sheet.status !== "fechada") throw new TRPCError({ code: "BAD_REQUEST", message: "Feche a folha de contagem antes de registrar o depósito." });
+      if (input.amountCents > sheet.totalCents) throw new TRPCError({ code: "BAD_REQUEST", message: "O depósito não pode ser maior que o total contado." });
+      const account = await getFinancialAccountById(input.accountId, input.churchId);
+      if (!account || account.type !== "banco") throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma conta bancária desta igreja." });
+      const saved = await saveTreasuryDeposit({ ...input, actorChurchUserId: access.actor.id });
+      if (!saved) throw new TRPCError({ code: "CONFLICT", message: "Já existe um depósito para esta folha de contagem." });
+      return saved;
+    }),
+
+  reports: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      return getTreasuryReportsByChurch(input.churchId);
+    }),
+
+  report: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const report = await getTreasuryReportById(input.id, input.churchId);
+      if (!report) throw new TRPCError({ code: "NOT_FOUND", message: "Relatório financeiro não encontrado nesta igreja." });
+      return report;
+    }),
+
+  issueReport: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), serviceId: z.number().int().positive(), countSheetId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const report = await issueTreasuryReport({ ...input, actorChurchUserId: access.actor.id });
+      if (!report) throw new TRPCError({ code: "BAD_REQUEST", message: "Feche a folha de contagem e confira o vínculo com o culto antes de emitir o relatório." });
+      return report;
+    }),
+
+  signReport: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive(), role: z.enum(["contador1", "contador2", "tesoureiro", "pastor"]) }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente a liderança financeira autorizada pode registrar a assinatura." });
+      const report = await signTreasuryReport(input);
+      if (!report) throw new TRPCError({ code: "NOT_FOUND", message: "Relatório financeiro não encontrado nesta igreja." });
+      return report;
+    }),
+
+  serviceTransactions: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), serviceId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const service = await getTreasuryServiceById(input.serviceId, input.churchId);
+      if (!service) throw new TRPCError({ code: "NOT_FOUND", message: "Culto não encontrado nesta igreja." });
+      return getFinancialTransactionsByService(input.churchId, input.serviceId);
     }),
 
   accounts: protectedProcedure
