@@ -267,7 +267,7 @@ export default function Celulas() {
         <div className="metric-card">
           <Globe className="w-5 h-5 text-indigo-600" />
           <p className="text-2xl font-bold font-display text-navy">{(cells ?? []).length}</p>
-          <p className="text-sm text-muted-foreground">Células Ativas</p>
+          <p className="text-sm text-muted-foreground">Células em funcionamento</p>
         </div>
         <div className="metric-card">
           <MapPin className="w-5 h-5 text-gold" />
@@ -279,7 +279,7 @@ export default function Celulas() {
         <div className="metric-card">
           <Users className="w-5 h-5 text-green-600" />
           <p className="text-2xl font-bold font-display text-navy">{memberCounts.isLoading ? "—" : totalCellMembers}</p>
-          <p className="text-sm text-muted-foreground">Membros em Células</p>
+          <p className="text-sm text-muted-foreground">Pessoas nas Células</p>
         </div>
       </div>
 
@@ -287,7 +287,7 @@ export default function Celulas() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="lista">Lista</TabsTrigger>
-          <TabsTrigger value="mapa">Mapa Geográfico</TabsTrigger>
+          <TabsTrigger value="mapa">Mapa</TabsTrigger>
         </TabsList>
 
         <TabsContent value="lista" className="mt-4">
@@ -396,7 +396,7 @@ export default function Celulas() {
           <div className="space-y-4">
             {canPublishCells && (
               <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
-                <p className="text-sm font-semibold text-navy">Liderança da Célula</p>
+                <p className="text-sm font-semibold text-navy">Responsáveis da Célula</p>
                 <p className="mt-1 text-xs text-muted-foreground">Somente o Pastor nomeia ou remove líder, co-líder e supervisor.</p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-3">
                   <Select value={leadershipForm.leaderId} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, leaderId: value }))}>
@@ -439,7 +439,7 @@ export default function Celulas() {
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold"><CalendarCheck2 className="h-4 w-4" /></div>
                   <div>
-                    <p className="text-sm font-semibold text-navy">Encontros e presença</p>
+                    <p className="text-sm font-semibold text-navy">Rotina da Célula</p>
                     {meetingHistory.isLoading ? (
                       <p className="mt-0.5 text-xs text-muted-foreground">Carregando histórico…</p>
                     ) : latestMeeting ? (
@@ -461,8 +461,8 @@ export default function Celulas() {
               )}
             </div>
             {selectedCell?.canManage && <div className="rounded-xl border border-indigo-200 bg-indigo-50/35 p-4">
-              <p className="text-sm font-semibold text-navy">Adicionar Pessoa sem Célula</p>
-              <p className="mt-1 text-xs text-muted-foreground">Líderes podem incluir novas Pessoas somente na própria Célula. Transferências permanecem sob responsabilidade pastoral.</p>
+              <p className="text-sm font-semibold text-navy">Adicionar pessoa à equipe</p>
+              <p className="mt-1 text-xs text-muted-foreground">Escolha uma Pessoa ainda sem Célula. Transferências entre Células continuam sob responsabilidade pastoral.</p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
                   <SelectTrigger className="flex-1"><SelectValue placeholder={assignmentCandidates.isLoading ? "Carregando…" : "Selecione uma Pessoa"} /></SelectTrigger>
@@ -472,7 +472,7 @@ export default function Celulas() {
                   {assignPerson.isPending ? "Integrando…" : "Adicionar"}
                 </Button>
               </div>
-              {!assignmentCandidates.isLoading && (assignmentCandidates.data ?? []).length === 0 && <p className="mt-2 text-xs text-muted-foreground">Não há Pessoas ativas sem Célula.</p>}
+              {!assignmentCandidates.isLoading && (assignmentCandidates.data ?? []).length === 0 && <p className="mt-2 text-xs text-muted-foreground">Não há Pessoas ativas sem Célula para adicionar.</p>}
             </div>}
             <div className="rounded-xl border border-border">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
