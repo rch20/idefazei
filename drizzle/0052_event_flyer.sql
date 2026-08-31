@@ -1,0 +1,3 @@
+ALTER TABLE `media_assets` MODIFY COLUMN `purpose` enum('tenant_logo','tenant_pwa_icon','tenant_public_gallery','tenant_public_hero','certificate_logo','treasury_attachment','public_video','announcement_image','event_flyer','other') NOT NULL DEFAULT 'other';--> statement-breakpoint
+ALTER TABLE `events` ADD `flyerMediaAssetId` int;--> statement-breakpoint
+ALTER TABLE `events` ADD `flyerFormat` enum('mobile','screen','stories') DEFAULT 'mobile' NOT NULL;

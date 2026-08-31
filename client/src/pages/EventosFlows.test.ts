@@ -8,7 +8,9 @@ const tenantPage = readFileSync(resolve(process.cwd(), "client/src/pages/TenantP
 const router = readFileSync(resolve(process.cwd(), "server/routers.ts"), "utf8");
 const db = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
 const schema = readFileSync(resolve(process.cwd(), "drizzle/schema.ts"), "utf8");
+const mediaRoute = readFileSync(resolve(process.cwd(), "server/_core/index.ts"), "utf8");
 const migration = readFileSync(resolve(process.cwd(), "drizzle/0051_faithful_longshot.sql"), "utf8");
+const flyerMigration = readFileSync(resolve(process.cwd(), "drizzle/0052_event_flyer.sql"), "utf8");
 
 const eventRouter = () => router.slice(router.indexOf("const eventsRouter"), router.indexOf("const familiesRouter"));
 
@@ -43,6 +45,29 @@ describe("Eventos — inscrições e presença", () => {
     expect(page).toContain("O Mural apenas divulga o link");
     expect(tenantPage).toContain("registrationHref");
     expect(tenantPage).toContain("Inscreva-se");
+  });
+
+  it("associa o flyer ao Evento, oferece os três formatos e tenta o compartilhamento nativo", () => {
+    expect(schema).toContain('purpose: mysqlEnum("purpose"');
+    expect(schema).toContain('"event_flyer"');
+    expect(schema).toContain('flyerMediaAssetId: int("flyerMediaAssetId")');
+    expect(schema).toContain('flyerFormat: mysqlEnum("flyerFormat", ["mobile", "screen", "stories"])');
+    expect(page).toContain('purpose: "event_flyer"');
+    expect(page).toContain('label: "Celular — 4:5"');
+    expect(page).toContain('label: "Tela — 16:9"');
+    expect(page).toContain('label: "Stories — 9:16"');
+    expect(page).toContain("Compartilhar convite");
+    expect(page).toContain("navigator.canShare");
+    expect(publicPage).toContain("resolved.flyer.optimizedUrl");
+    expect(eventRouter()).toContain("validateEventFlyerAsset");
+    expect(eventRouter()).toContain("setFlyer: protectedProcedure");
+    expect(db).toContain("setEventFlyer");
+    expect(mediaRoute).toContain('"event_flyer"');
+    expect(mediaRoute).toContain("O flyer deve ter no máximo 4 MB");
+    expect(mediaRoute).toContain("adminRoles.has(churchUser.role)");
+    expect(flyerMigration).toContain("event_flyer");
+    expect(flyerMigration).toContain("flyerMediaAssetId");
+    expect(flyerMigration).toContain("flyerFormat");
   });
 
   it("controla presença e separa pendentes de quem não compareceu", () => {

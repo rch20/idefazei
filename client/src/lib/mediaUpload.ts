@@ -1,6 +1,6 @@
 import { getChurchToken } from "@/hooks/useChurchAuth";
 
-export type ClientMediaPurpose = "tenant_logo" | "tenant_pwa_icon" | "tenant_public_gallery" | "tenant_public_hero" | "certificate_logo" | "public_video" | "announcement_image";
+export type ClientMediaPurpose = "tenant_logo" | "tenant_pwa_icon" | "tenant_public_gallery" | "tenant_public_hero" | "certificate_logo" | "public_video" | "announcement_image" | "event_flyer";
 export type ClientMediaResourceType = "image" | "video";
 
 export type UploadedMediaResult = {

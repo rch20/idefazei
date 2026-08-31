@@ -85,7 +85,7 @@ import {
   onboardingProgress,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
-import { getDerivedLogoIconUrls } from "./media";
+import { getDerivedLogoIconUrls, getOptimizedMediaUrls } from "./media";
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 
@@ -2291,21 +2291,67 @@ export async function integrateConsolidationReferralIntoCell(data: { churchId: n
 
 // ─── EVENTS ───────────────────────────────────────────────────────────────────
 
+type EventFlyerAssetRow = {
+  id: number | null;
+  provider: "cloudinary" | "manus_storage" | null;
+  resourceType: "image" | "video" | "raw" | null;
+  publicId: string | null;
+  url: string | null;
+  secureUrl: string | null;
+  width: number | null;
+  height: number | null;
+};
+
+function toEventFlyer(asset: EventFlyerAssetRow | null | undefined) {
+  if (!asset?.id || !asset.url || !asset.provider || !asset.resourceType) return null;
+  const optimized = getOptimizedMediaUrls({ provider: asset.provider, publicId: asset.publicId, url: asset.secureUrl ?? asset.url, resourceType: asset.resourceType });
+  return {
+    mediaAssetId: asset.id,
+    url: asset.secureUrl ?? asset.url,
+    optimizedUrl: optimized.optimizedUrl,
+    webpUrl: optimized.webpUrl,
+    avifUrl: optimized.avifUrl,
+    width: asset.width,
+    height: asset.height,
+  };
+}
+
+function eventFlyerSelection() {
+  return {
+    id: mediaAssets.id,
+    provider: mediaAssets.provider,
+    resourceType: mediaAssets.resourceType,
+    publicId: mediaAssets.publicId,
+    url: mediaAssets.url,
+    secureUrl: mediaAssets.secureUrl,
+    width: mediaAssets.width,
+    height: mediaAssets.height,
+  } as const;
+}
+
 export async function getEventsByChurch(churchId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db
-    .select()
+  const rows = await db
+    .select({ event: events, flyer: eventFlyerSelection() })
     .from(events)
+    .leftJoin(mediaAssets, and(
+      eq(mediaAssets.id, events.flyerMediaAssetId),
+      eq(mediaAssets.churchId, events.churchId),
+      eq(mediaAssets.purpose, "event_flyer"),
+      eq(mediaAssets.resourceType, "image"),
+      eq(mediaAssets.status, "active"),
+    ))
     .where(and(eq(events.churchId, churchId), eq(events.active, true)))
     .orderBy(desc(events.startDate));
+  return rows.map(({ event, flyer }) => ({ ...event, flyer: toEventFlyer(flyer as EventFlyerAssetRow) }));
 }
 
 /** Expõe somente dados institucionais de próximos eventos ativos da mesma igreja. */
 export async function getPublicUpcomingEventsByChurchId(churchId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select({
+  const rows = await db.select({ event: {
     id: events.id,
     name: events.name,
     type: events.type,
@@ -2315,8 +2361,16 @@ export async function getPublicUpcomingEventsByChurchId(churchId: number) {
     location: events.location,
     registrationMode: events.registrationMode,
     registrationToken: events.registrationToken,
-  })
+    flyerFormat: events.flyerFormat,
+  }, flyer: eventFlyerSelection() })
     .from(events)
+    .leftJoin(mediaAssets, and(
+      eq(mediaAssets.id, events.flyerMediaAssetId),
+      eq(mediaAssets.churchId, events.churchId),
+      eq(mediaAssets.purpose, "event_flyer"),
+      eq(mediaAssets.resourceType, "image"),
+      eq(mediaAssets.status, "active"),
+    ))
     .where(and(
       eq(events.churchId, churchId),
       eq(events.active, true),
@@ -2324,6 +2378,7 @@ export async function getPublicUpcomingEventsByChurchId(churchId: number) {
     ))
     .orderBy(events.startDate)
     .limit(3);
+  return rows.map(({ event, flyer }) => ({ ...event, flyer: toEventFlyer(flyer as EventFlyerAssetRow) }));
 }
 
 /** Expõe somente Ministérios ativos selecionados pelo Pastor no rascunho publicado. */
@@ -2409,6 +2464,56 @@ export async function createEvent(data: typeof events.$inferInsert) {
   return rows[0] ?? result[0];
 }
 
+export async function setEventFlyer(data: { churchId: number; eventId: number; mediaAssetId: number | null; flyerFormat: "mobile" | "screen" | "stories" }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db.select({ id: events.id, flyerMediaAssetId: events.flyerMediaAssetId })
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  const event = eventRows[0];
+  if (!event) return null;
+
+  if (data.mediaAssetId !== null) {
+    const assetRows = await db.select({ id: mediaAssets.id })
+      .from(mediaAssets)
+      .where(and(
+        eq(mediaAssets.id, data.mediaAssetId),
+        eq(mediaAssets.churchId, data.churchId),
+        eq(mediaAssets.purpose, "event_flyer"),
+        eq(mediaAssets.resourceType, "image"),
+        eq(mediaAssets.status, "active"),
+      ))
+      .limit(1);
+    if (!assetRows[0]) return null;
+    const usedByOtherEvent = await db.select({ id: events.id })
+      .from(events)
+      .where(and(
+        eq(events.churchId, data.churchId),
+        eq(events.flyerMediaAssetId, data.mediaAssetId),
+        ne(events.id, data.eventId),
+      ))
+      .limit(1);
+    if (usedByOtherEvent[0]) return null;
+  }
+
+  await db.update(events)
+    .set({ flyerMediaAssetId: data.mediaAssetId, flyerFormat: data.flyerFormat })
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+  if (event.flyerMediaAssetId && event.flyerMediaAssetId !== data.mediaAssetId) {
+    await db.update(mediaAssets).set({ entityType: null, entityId: null })
+      .where(and(eq(mediaAssets.id, event.flyerMediaAssetId), eq(mediaAssets.churchId, data.churchId)));
+  }
+  if (data.mediaAssetId) {
+    await db.update(mediaAssets).set({ entityType: "event", entityId: data.eventId })
+      .where(and(eq(mediaAssets.id, data.mediaAssetId), eq(mediaAssets.churchId, data.churchId)));
+  }
+  const updatedRows = await db.select().from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  return updatedRows[0] ?? null;
+}
+
 export async function setEventRegistrationMode(data: { churchId: number; eventId: number; registrationMode: "none" | "individual" | "casal"; registrationToken: string | null }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -2422,9 +2527,16 @@ export async function setEventRegistrationMode(data: { churchId: number; eventId
 export async function getPublicEventRegistrationByToken(token: string) {
   const db = await getDb();
   if (!db) return null;
-  const rows = await db.select({ event: events, church: churches })
+  const rows = await db.select({ event: events, church: churches, flyer: eventFlyerSelection() })
     .from(events)
     .innerJoin(churches, eq(churches.id, events.churchId))
+    .leftJoin(mediaAssets, and(
+      eq(mediaAssets.id, events.flyerMediaAssetId),
+      eq(mediaAssets.churchId, events.churchId),
+      eq(mediaAssets.purpose, "event_flyer"),
+      eq(mediaAssets.resourceType, "image"),
+      eq(mediaAssets.status, "active"),
+    ))
     .where(and(
       eq(events.registrationToken, token),
       ne(events.registrationMode, "none"),
@@ -2434,7 +2546,7 @@ export async function getPublicEventRegistrationByToken(token: string) {
     .limit(1);
   const resolved = rows[0];
   if (!resolved) return null;
-  return { event: resolved.event, church: resolved.church };
+  return { event: resolved.event, church: resolved.church, flyer: toEventFlyer(resolved.flyer as EventFlyerAssetRow) };
 }
 
 export async function createPublicEventRegistration(data: {

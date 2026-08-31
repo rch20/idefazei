@@ -6,13 +6,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Copy, ExternalLink, Link2, Loader2, MapPin, Plus, Printer, QrCode, Send, UserCheck, UserRound, UserX, Users } from "lucide-react";
-import { useState } from "react";
+import { uploadChurchMedia } from "@/lib/mediaUpload";
+import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Copy, Download, ExternalLink, Image as ImageIcon, Link2, Loader2, MapPin, Plus, Printer, QrCode, Send, Share2, Trash2, Upload, UserCheck, UserRound, UserX, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 
 type RegistrationMode = "none" | "individual" | "casal";
 type PresenceStatus = "pendente" | "presente" | "ausente" | "cancelado";
+type FlyerFormat = "mobile" | "screen" | "stories";
 
 type EventRecord = {
   id: number;
@@ -27,6 +29,17 @@ type EventRecord = {
   registrationMode: RegistrationMode;
   registrationToken: string | null;
   qrCode: string | null;
+  flyerMediaAssetId: number | null;
+  flyerFormat: FlyerFormat;
+  flyer: {
+    mediaAssetId: number;
+    url: string;
+    optimizedUrl: string;
+    webpUrl: string | null;
+    avifUrl: string | null;
+    width: number | null;
+    height: number | null;
+  } | null;
 };
 
 const EVENT_TYPES = [
@@ -44,6 +57,18 @@ const REGISTRATION_MODES: Array<{ value: RegistrationMode; label: string; descri
   { value: "individual", label: "Inscrição individual", description: "Cada ficha representa uma pessoa." },
   { value: "casal", label: "Inscrição de casal", description: "Cada ficha representa duas pessoas." },
 ];
+
+const FLYER_FORMATS: Array<{ value: FlyerFormat; label: string; description: string }> = [
+  { value: "mobile", label: "Celular — 4:5", description: "Convite vertical equilibrado para WhatsApp e página pública." },
+  { value: "screen", label: "Tela — 16:9", description: "Formato horizontal para TV, projetor e computador." },
+  { value: "stories", label: "Stories — 9:16", description: "Formato vertical para Status e Stories." },
+];
+
+function flyerAspectClass(format: FlyerFormat | null | undefined) {
+  if (format === "screen") return "aspect-video";
+  if (format === "stories") return "aspect-[9/16]";
+  return "aspect-[4/5]";
+}
 
 const TYPE_COLORS: Record<string, string> = {
   congresso: "bg-purple-50 text-purple-700 border-purple-200",
@@ -94,31 +119,74 @@ export default function Eventos() {
   const { churchId, churchSlug } = useChurch();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
+  const [flyerFile, setFlyerFile] = useState<File | null>(null);
+  const [flyerPreviewUrl, setFlyerPreviewUrl] = useState<string | null>(null);
+  const [flyerFormat, setFlyerFormat] = useState<FlyerFormat>("mobile");
+  const [isUploadingFlyer, setIsUploadingFlyer] = useState(false);
 
   const { data: events, isLoading, refetch } = trpc.events.list.useQuery({ churchId });
-  const createEvent = trpc.events.create.useMutation({
-    onSuccess: () => {
-      toast.success("Evento criado com sucesso!");
+  const createEvent = trpc.events.create.useMutation();
+  const setEventFlyer = trpc.events.setFlyer.useMutation();
+
+  function clearFlyerSelection() {
+    if (flyerPreviewUrl) URL.revokeObjectURL(flyerPreviewUrl);
+    setFlyerFile(null);
+    setFlyerPreviewUrl(null);
+  }
+
+  function handleFlyerChange(file: File | undefined) {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      toast.error("Envie o flyer em PNG, JPEG ou WebP.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error("O flyer deve ter no máximo 4 MB.");
+      return;
+    }
+    if (flyerPreviewUrl) URL.revokeObjectURL(flyerPreviewUrl);
+    setFlyerFile(file);
+    setFlyerPreviewUrl(URL.createObjectURL(file));
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      const created = await createEvent.mutateAsync({
+        churchId,
+        name: form.name.trim(),
+        type: form.type,
+        description: form.description.trim() || undefined,
+        startDate: form.startDate,
+        endDate: form.endDate || undefined,
+        location: form.location.trim() || undefined,
+        maxCapacity: form.maxCapacity ? Number(form.maxCapacity) : undefined,
+        registrationMode: form.registrationMode,
+      });
+      const createdId = created && typeof created === "object" && "id" in created ? Number(created.id) : 0;
+      let flyerSaved = !flyerFile;
+      if (flyerFile && createdId > 0) {
+        setIsUploadingFlyer(true);
+        try {
+          const uploaded = await uploadChurchMedia(flyerFile, { purpose: "event_flyer", resourceType: "image" });
+          if (!uploaded.mediaAssetId) throw new Error("O flyer foi enviado, mas não foi possível vinculá-lo ao evento.");
+          await setEventFlyer.mutateAsync({ churchId, eventId: createdId, mediaAssetId: uploaded.mediaAssetId, flyerFormat });
+          flyerSaved = true;
+        } catch (error) {
+          toast.error(error instanceof Error ? `Evento criado, mas o flyer não foi associado: ${error.message}` : "Evento criado, mas o flyer não foi associado. Você pode adicioná-lo em Gerenciar.");
+        }
+      }
+      toast.success(flyerSaved ? (flyerFile ? "Evento criado com flyer!" : "Evento criado com sucesso!") : "Evento criado. Você pode adicionar o flyer em Gerenciar.");
       setOpen(false);
       setForm(defaultForm);
-      refetch();
-    },
-    onError: (error) => toast.error(error.message || "Erro ao criar evento"),
-  });
-
-  function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-    createEvent.mutate({
-      churchId,
-      name: form.name.trim(),
-      type: form.type,
-      description: form.description.trim() || undefined,
-      startDate: form.startDate,
-      endDate: form.endDate || undefined,
-      location: form.location.trim() || undefined,
-      maxCapacity: form.maxCapacity ? Number(form.maxCapacity) : undefined,
-      registrationMode: form.registrationMode,
-    });
+      clearFlyerSelection();
+      setFlyerFormat("mobile");
+      await refetch();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao criar evento");
+    } finally {
+      setIsUploadingFlyer(false);
+    }
   }
 
   const upcoming = (events ?? []).filter((event) => new Date(event.startDate) >= new Date());
@@ -181,7 +249,7 @@ export default function Eventos() {
               <div className="sm:col-span-2"><Label>Inscrições</Label><Select value={form.registrationMode} onValueChange={(value) => setForm({ ...form, registrationMode: value as RegistrationMode })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{REGISTRATION_MODES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select><p className="mt-1 text-xs text-muted-foreground">{REGISTRATION_MODES.find((item) => item.value === form.registrationMode)?.description}</p></div>
               <div className="sm:col-span-2"><Label>Descrição</Label><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} maxLength={4000} /></div>
             </div>
-            <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row"><Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">Cancelar</Button><Button type="submit" className="flex-1 bg-navy hover:bg-navy-light text-white" disabled={createEvent.isPending}>{createEvent.isPending ? "Salvando..." : "Criar Evento"}</Button></div>
+            <section className="space-y-3 rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/55 p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1e3a5f]"><ImageIcon className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Flyer do convite <span className="font-normal text-muted-foreground">(opcional)</span></p><p className="mt-1 text-xs leading-5 text-muted-foreground">PNG, JPEG ou WebP até 4 MB. O flyer fica ligado a este evento, não ao Mural.</p></div></div><Input type="file" accept="image/png,image/jpeg,image/webp" className="bg-white" onChange={(event) => handleFlyerChange(event.target.files?.[0])} />{flyerPreviewUrl && <div className="grid gap-3 sm:grid-cols-[9rem_1fr] sm:items-start"><div className={`overflow-hidden rounded-xl border border-[#1e3a5f]/10 bg-white ${flyerAspectClass(flyerFormat)}`}><img src={flyerPreviewUrl} alt="Pré-visualização do flyer" className="h-full w-full object-contain" /></div><div className="space-y-3"><div><Label>Formato de uso</Label><Select value={flyerFormat} onValueChange={(value) => setFlyerFormat(value as FlyerFormat)}><SelectTrigger className="mt-1 bg-white"><SelectValue /></SelectTrigger><SelectContent>{FLYER_FORMATS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select><p className="mt-1 text-xs leading-5 text-muted-foreground">{FLYER_FORMATS.find((item) => item.value === flyerFormat)?.description}</p></div><Button type="button" variant="ghost" size="sm" className="px-0 text-rose-700 hover:bg-transparent hover:text-rose-800" onClick={clearFlyerSelection}><Trash2 className="mr-1 h-3.5 w-3.5" /> Remover flyer</Button></div></div>}</section><div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row"><Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">Cancelar</Button><Button type="submit" className="flex-1 bg-navy hover:bg-navy-light text-white" disabled={createEvent.isPending || isUploadingFlyer || setEventFlyer.isPending}>{createEvent.isPending || isUploadingFlyer ? "Salvando..." : "Criar Evento"}</Button></div>
           </form>
         </DialogContent>
       </Dialog>
@@ -197,6 +265,11 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   const [managementOpen, setManagementOpen] = useState(false);
   const [qrValue, setQrValue] = useState<string | null>(event.qrCode ?? null);
   const [modeDraft, setModeDraft] = useState<RegistrationMode>(event.registrationMode ?? "none");
+  const [flyerDraftFormat, setFlyerDraftFormat] = useState<FlyerFormat>(event.flyerFormat ?? "mobile");
+  const [flyerFile, setFlyerFile] = useState<File | null>(null);
+  const [flyerPreviewUrl, setFlyerPreviewUrl] = useState<string | null>(null);
+  const [isUploadingFlyer, setIsUploadingFlyer] = useState(false);
+  const [flyerShareFile, setFlyerShareFile] = useState<File | null>(null);
   const registrationUrl = event.registrationToken ? publicEventUrl(churchSlug, event.registrationToken) : null;
   const attendanceReport = trpc.events.attendanceReport.useQuery({ churchId, eventId: event.id }, { enabled: managementOpen });
 
@@ -212,9 +285,29 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     onSuccess: async () => { await attendanceReport.refetch(); toast.success("Presença atualizada."); },
     onError: (error) => toast.error(error.message || "Não foi possível atualizar a presença"),
   });
+  const setFlyer = trpc.events.setFlyer.useMutation({
+    onSuccess: () => { toast.success("Flyer do evento atualizado."); setFlyerFile(null); if (flyerPreviewUrl) URL.revokeObjectURL(flyerPreviewUrl); setFlyerPreviewUrl(null); onChanged(); },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar o flyer"),
+  });
 
   const checkinUrl = qrValue ? `${window.location.origin}/checkin?event=${event.id}&token=${qrValue.split(":")[2]}` : null;
   const typeHasRegistration = event.registrationMode !== "none";
+
+  useEffect(() => {
+    let cancelled = false;
+    setFlyerShareFile(null);
+    if (!event.flyer?.url) return () => { cancelled = true; };
+    void fetch(event.flyer.optimizedUrl || event.flyer.url)
+      .then((response) => response.ok ? response.blob() : null)
+      .then((blob) => {
+        if (!blob || cancelled) return;
+        const slug = event.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "evento";
+        const type = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
+        setFlyerShareFile(new File([blob], `flyer-${slug}.${type}`, { type: blob.type || "image/jpeg" }));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [event.flyer?.optimizedUrl, event.flyer?.url, event.name]);
 
   async function copyRegistrationLink() {
     if (!registrationUrl) return;
@@ -226,6 +319,58 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     if (!registrationUrl) return;
     const message = `Olá! Faça sua inscrição para o evento ${event.name}:\n\n${registrationUrl}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  }
+
+  async function shareInvite() {
+    if (!registrationUrl) return;
+    const message = `Olá! Faça sua inscrição para o evento ${event.name}:\n\n${registrationUrl}`;
+    try {
+      if (flyerShareFile && typeof navigator.share === "function" && (!navigator.canShare || navigator.canShare({ files: [flyerShareFile] }))) {
+        await navigator.share({ files: [flyerShareFile], title: event.name, text: message });
+        return;
+      }
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: event.name, text: message, url: registrationUrl });
+        return;
+      }
+      shareWhatsApp();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      toast.error("Não foi possível abrir o compartilhamento. Use WhatsApp ou abra o flyer.");
+    }
+  }
+
+  function handleExistingFlyerChange(file: File | undefined) {
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) { toast.error("Envie o flyer em PNG, JPEG ou WebP."); return; }
+    if (file.size > 4 * 1024 * 1024) { toast.error("O flyer deve ter no máximo 4 MB."); return; }
+    if (flyerPreviewUrl) URL.revokeObjectURL(flyerPreviewUrl);
+    setFlyerFile(file);
+    setFlyerPreviewUrl(URL.createObjectURL(file));
+  }
+
+  async function saveExistingFlyer() {
+    const selectedFlyer = flyerFile;
+    if (!selectedFlyer && !event.flyer?.mediaAssetId) return;
+    if (!selectedFlyer && event.flyer?.mediaAssetId) {
+      setFlyer.mutate({ churchId, eventId: event.id, mediaAssetId: event.flyer.mediaAssetId, flyerFormat: flyerDraftFormat });
+      return;
+    }
+    if (!selectedFlyer) return;
+    setIsUploadingFlyer(true);
+    try {
+      const uploaded = await uploadChurchMedia(selectedFlyer, { purpose: "event_flyer", resourceType: "image" });
+      if (!uploaded.mediaAssetId) throw new Error("O flyer foi enviado, mas não foi possível vinculá-lo ao evento.");
+      await setFlyer.mutateAsync({ churchId, eventId: event.id, mediaAssetId: uploaded.mediaAssetId, flyerFormat: flyerDraftFormat });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível atualizar o flyer");
+    } finally {
+      setIsUploadingFlyer(false);
+    }
+  }
+
+  function removeExistingFlyer() {
+    setFlyer.mutate({ churchId, eventId: event.id, mediaAssetId: null, flyerFormat: flyerDraftFormat });
   }
 
   function saveRegistrationMode(mode: RegistrationMode = modeDraft) {
@@ -244,9 +389,11 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
 
   return <>
     <div className="card-sacred p-4 flex flex-col gap-4 sm:flex-row sm:items-center">
+      {event.flyer && <div className={`hidden w-14 shrink-0 overflow-hidden rounded-xl border border-[#1e3a5f]/10 bg-white sm:block ${flyerAspectClass(event.flyerFormat)}`}><img src={event.flyer.optimizedUrl || event.flyer.url} alt={`Flyer de ${event.name}`} className="h-full w-full object-contain" /></div>}
       <div className="w-14 h-14 rounded-xl bg-cream-dark flex flex-col items-center justify-center flex-shrink-0 text-center"><span className="text-lg font-bold font-display text-navy leading-none">{new Date(event.startDate).getDate()}</span><span className="text-[10px] text-muted-foreground uppercase tracking-wide">{new Date(event.startDate).toLocaleString("pt-BR", { month: "short" })}</span></div>
       <div className="flex-1 min-w-0"><p className="font-semibold text-navy truncate">{event.name}</p><div className="flex flex-wrap items-center gap-2 mt-1">{event.location && <span className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{event.location}</span>}{event.maxCapacity && <span className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" />{event.maxCapacity} vagas</span>}</div><div className="mt-2 flex flex-wrap items-center gap-2"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorClass}`}>{typeLabel}</span>{typeHasRegistration && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"><Link2 className="h-3 w-3" />{registrationModeLabel(event.registrationMode)}</span>}</div></div>
       <div className="flex flex-wrap items-center gap-2 shrink-0 sm:justify-end">
+        {registrationUrl && <Button size="sm" variant="outline" className="h-8 px-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => void shareInvite()} title="Compartilhar convite"><Share2 className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Convite</span></Button>}
         <Button size="sm" variant="outline" className="h-8 px-2 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5" onClick={() => setManagementOpen(true)} title="Gerenciar inscrições e presença"><ClipboardCheck className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Gerenciar</span></Button>
         <Button size="sm" variant="outline" className="h-8 px-2 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5" onClick={() => { if (qrValue) setQrOpen(true); else generateQr.mutate({ eventId: event.id, churchId }); }} disabled={generateQr.isPending} title="QR Code de check-in"><QrCode className="w-4 h-4" /></Button>
       </div>
@@ -260,6 +407,13 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-[#1e3a5f]">Inscrição pública</p><p className="mt-1 text-xs text-muted-foreground">{typeHasRegistration ? `${registrationModeLabel(event.registrationMode)} ativa para este evento.` : "Ative um formulário simples para receber inscrições sem login."}</p></div>{registrationUrl && <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Recebendo inscrições</span>}</div>
             {registrationUrl ? <><div className="mt-3 flex items-start gap-2 rounded-xl border bg-white p-3"><Link2 className="mt-0.5 h-4 w-4 shrink-0 text-[#c9a84c]" /><p className="break-all font-mono text-xs text-[#1e3a5f]">{registrationUrl}</p></div><div className="mt-3 flex flex-col gap-2 sm:flex-row"><Button variant="outline" className="flex-1 gap-2" onClick={() => void copyRegistrationLink()}><Copy className="h-4 w-4" /> Copiar link</Button><Button variant="outline" className="flex-1 gap-2" onClick={shareWhatsApp}><Send className="h-4 w-4" /> WhatsApp</Button><a href={registrationUrl} target="_blank" rel="noreferrer" className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"><ExternalLink className="h-4 w-4" /> Abrir página</a></div></> : <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end"><div className="flex-1"><Label>Modelo de inscrição</Label><Select value={modeDraft} onValueChange={(value) => setModeDraft(value as RegistrationMode)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{REGISTRATION_MODES.filter((item) => item.value !== "none").map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div><Button className="gap-2 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={() => saveRegistrationMode()} disabled={setRegistrationMode.isPending}><Link2 className="h-4 w-4" />{setRegistrationMode.isPending ? "Criando..." : "Criar link"}</Button></div>}
             {registrationUrl && <div className="mt-3 flex flex-col gap-2 border-t border-[#1e3a5f]/10 pt-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">Trocar o modelo renova o link atual e o endereço antigo deixa de funcionar.</p><Button variant="ghost" size="sm" className="justify-start text-amber-700 hover:bg-amber-50 hover:text-amber-800 sm:justify-center" onClick={() => { setModeDraft("none"); saveRegistrationMode("none"); }} disabled={setRegistrationMode.isPending}>Pausar inscrições</Button></div>}
+          </section>
+
+          <section className="rounded-2xl border border-[#1e3a5f]/10 bg-white p-4">
+            <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#1e3a5f]/5 text-[#1e3a5f]"><ImageIcon className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Flyer do convite</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Associe uma imagem a este evento. Ela aparecerá na inscrição pública e poderá ser enviada pelo compartilhamento do celular.</p></div></div>
+            {event.flyer && <div className="mt-4 flex flex-col gap-4 rounded-xl bg-[#f5f0e8]/60 p-3 sm:flex-row sm:items-start"><div className={`w-24 shrink-0 overflow-hidden rounded-lg border border-[#1e3a5f]/10 bg-white ${flyerAspectClass(event.flyerFormat)}`}><img src={event.flyer.optimizedUrl || event.flyer.url} alt={`Flyer atual de ${event.name}`} className="h-full w-full object-contain" /></div><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-[#1e3a5f]">{FLYER_FORMATS.find((item) => item.value === event.flyerFormat)?.label ?? "Formato do convite"}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">O mesmo flyer é usado na página pública. Escolha outro arquivo abaixo para substituir.</p><div className="mt-3 flex flex-wrap gap-2">{registrationUrl && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => void shareInvite()}><Share2 className="h-3.5 w-3.5" /> Compartilhar convite</Button>}<a href={event.flyer.optimizedUrl || event.flyer.url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"><Download className="h-3.5 w-3.5" /> Abrir flyer</a><Button type="button" size="sm" variant="ghost" className="gap-1.5 text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={removeExistingFlyer} disabled={setFlyer.isPending}><Trash2 className="h-3.5 w-3.5" /> Remover</Button></div></div></div>}
+            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem_auto] sm:items-end"><div><Label>Substituir ou adicionar</Label><Input type="file" accept="image/png,image/jpeg,image/webp" className="mt-1" onChange={(event) => handleExistingFlyerChange(event.target.files?.[0])} /></div><div><Label>Formato</Label><Select value={flyerDraftFormat} onValueChange={(value) => setFlyerDraftFormat(value as FlyerFormat)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{FLYER_FORMATS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div><Button type="button" className="gap-1.5 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={() => void saveExistingFlyer()} disabled={(!flyerFile && !event.flyer) || isUploadingFlyer || setFlyer.isPending}>{isUploadingFlyer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Salvar flyer</Button></div>
+            {flyerPreviewUrl && <div className="mt-4 flex items-start gap-3 rounded-xl border border-dashed border-[#c9a84c] bg-[#fffdf7] p-3"><div className={`w-20 shrink-0 overflow-hidden rounded-lg bg-white ${flyerAspectClass(flyerDraftFormat)}`}><img src={flyerPreviewUrl} alt="Pré-visualização do novo flyer" className="h-full w-full object-contain" /></div><p className="text-xs leading-5 text-muted-foreground">Pré-visualização pronta. Clique em <strong>Salvar flyer</strong> para associar esta imagem ao evento.</p></div>}
           </section>
 
           {attendanceReport.isLoading ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[1, 2, 3, 4].map((item) => <div key={item} className="h-20 animate-pulse rounded-xl bg-muted" />)}</div> : attendanceReport.error ? <div className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">Você não tem permissão para consultar este relatório ou o evento não foi encontrado.</div> : attendanceReport.data ? <>

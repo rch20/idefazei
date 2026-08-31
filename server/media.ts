@@ -14,6 +14,7 @@ export type MediaPurpose =
   | "treasury_attachment"
   | "public_video"
   | "announcement_image"
+  | "event_flyer"
   | "other";
 
 export interface UploadMediaInput {

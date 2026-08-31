@@ -100,6 +100,7 @@ import {
   createPublicEventRegistration,
   updateEventRegistrationPresence,
   setEventRegistrationMode,
+  setEventFlyer,
   createFinancialAccount,
   createFinancialCategory,
   createFinancialTransaction,
@@ -2479,6 +2480,14 @@ const cellsRouter = router({
     }),
 });
 
+async function validateEventFlyerAsset(churchId: number, mediaAssetId: number) {
+  const asset = await getActiveMediaAssetById(mediaAssetId, churchId);
+  if (!asset || asset.purpose !== "event_flyer" || asset.resourceType !== "image") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "O flyer não pertence a esta igreja ou não é uma imagem válida." });
+  }
+  return asset;
+}
+
 const eventsRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number() }))
@@ -2516,6 +2525,21 @@ const eventsRouter = router({
       await requireChurchAdministrator(ctx.user.id, input.churchId);
       const result = await updateEventRegistrationPresence(input);
       if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Inscrição não encontrada nesta igreja." });
+      return result;
+    }),
+
+  setFlyer: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      eventId: z.number().int().positive(),
+      mediaAssetId: z.number().int().positive().nullable(),
+      flyerFormat: z.enum(["mobile", "screen", "stories"]).default("mobile"),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      if (input.mediaAssetId !== null) await validateEventFlyerAsset(input.churchId, input.mediaAssetId);
+      const result = await setEventFlyer(input);
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento ou flyer não encontrado nesta igreja." });
       return result;
     }),
 
@@ -2585,7 +2609,9 @@ const eventsRouter = router({
             location: resolved.event.location,
             maxCapacity: resolved.event.maxCapacity,
             registrationMode: resolved.event.registrationMode,
+            flyerFormat: resolved.event.flyerFormat,
           },
+          flyer: resolved.flyer,
           church: {
             id: resolved.church.id,
             name: resolved.church.name,
