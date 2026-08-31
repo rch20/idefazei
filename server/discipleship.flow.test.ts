@@ -75,6 +75,7 @@ vi.mock("./db", () => ({
   updateConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "aceito" }),
   assignConsolidationCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, assignedToPersonId: 10 }, assignment: { id: 1, action: "atribuido" } }),
   acceptConsolidationCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, acceptedByPersonId: 10, status: "aceito" }, assignment: { id: 2, action: "aceito" } }),
+  assumeConsolidationCaseByChurchUser: vi.fn().mockImplementation(async (data: { churchUserId: number }) => ({ id: 51, churchId: 100, acceptedByChurchUserId: data.churchUserId, status: "aceito" })),
   approveConsolidationCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, approvedByPersonId: 10, status: "aprovado" }, assignment: { id: 3, action: "aprovado" } }),
   getConsolidationCaseAssignments: vi.fn().mockResolvedValue([]),
   getConsolidationFollowUpsByReferral: vi.fn().mockResolvedValue([]),
@@ -532,6 +533,32 @@ describe("Fluxo completo de discipulado", () => {
       expect(result).toBeDefined();
       expect(result.soulId).toBe(1);
       expect(result.churchId).toBe(CHURCH_ID);
+    });
+
+    it("permite ao Pastor assumir um caso mesmo sem Pessoa vinculada à conta", async () => {
+      const { assumeConsolidationCaseByChurchUser, getActiveChurchUserById } = await import("./db");
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 77, userId: 77, churchId: CHURCH_ID, personId: null, role: "pastor_presidente", active: true });
+      const caller = appRouter.createCaller(createMemberContext(-77));
+
+      await expect(caller.consolidation.assumeAsPastor({ churchId: CHURCH_ID, id: 51 })).resolves.toMatchObject({ acceptedByChurchUserId: 77, status: "aceito" });
+      expect(assumeConsolidationCaseByChurchUser).toHaveBeenCalledWith({ churchId: CHURCH_ID, referralId: 51, churchUserId: 77 });
+    });
+
+    it("permite ao Pastor sem Pessoa registrar acompanhamento do caso assumido", async () => {
+      const { getActiveChurchUserById, getConsolidationReferralById, createConsolidationFollowUp } = await import("./db");
+      (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 78, userId: 78, churchId: CHURCH_ID, personId: null, role: "pastor_presidente", active: true });
+      (getConsolidationReferralById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 51, churchId: CHURCH_ID, personId: 1, status: "aceito", acceptedByPersonId: null, acceptedByChurchUserId: 78, priority: "normal" });
+      const caller = appRouter.createCaller(createMemberContext(-78));
+
+      await expect(caller.consolidation.recordFollowUp({
+        churchId: CHURCH_ID,
+        referralId: 51,
+        contactChannel: "ligacao",
+        outcome: "conversou",
+        notes: "Conversa realizada pelo Pastor.",
+        visitStatus: "nao_necessaria",
+      })).resolves.toMatchObject({ followUp: { referralId: 51 } });
+      expect(createConsolidationFollowUp).toHaveBeenCalledWith(expect.objectContaining({ recordedByPersonId: null, recordedByChurchUserId: 78 }));
     });
 
     it("atualiza o checklist de consolidação marcando visita e entrega de bíblia", async () => {
@@ -1422,7 +1449,7 @@ describe("Fluxo completo de discipulado", () => {
       const caller = appRouter.createCaller(createMemberContext(-2));
       const careDueAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
-      await expect(caller.consolidation.updateReferralCareDue({ churchId: CHURCH_ID, id: 51, careDueAt })).rejects.toThrow("Somente o Consolidador responsável");
+      await expect(caller.consolidation.updateReferralCareDue({ churchId: CHURCH_ID, id: 51, careDueAt })).rejects.toThrow("Somente o responsável atual");
     });
 
     it("permite que a liderança pastoral aceite a indicação antes do cuidado", async () => {
@@ -1506,7 +1533,7 @@ describe("Fluxo completo de discipulado", () => {
       } as any);
       const caller = appRouter.createCaller(createMemberContext(-2));
 
-      await expect(caller.consolidation.registerReferralContact({ churchId: CHURCH_ID, id: 51 })).rejects.toThrow("Somente o Consolidador responsável");
+      await expect(caller.consolidation.registerReferralContact({ churchId: CHURCH_ID, id: 51 })).rejects.toThrow("Somente o responsável atual");
     });
 
     it("preserva o resultado ao encerrar o acompanhamento assumido", async () => {
