@@ -42,6 +42,8 @@ import {
   getCareVisitEvents,
   getCareVisitsByChurch,
   createEvent,
+  updateEvent,
+  removeEvent,
   createMinistry,
   createPerson,
   createPrayerRequest,
@@ -2496,6 +2498,49 @@ const eventsRouter = router({
     .query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
       return getEventsByChurch(input.churchId);
+    }),
+
+  update: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      eventId: z.number().int().positive(),
+      name: z.string().trim().min(2).max(255),
+      type: z.enum(["congresso", "conferencia", "vigilia", "retiro", "seminario", "culto", "outro"]),
+      description: z.string().trim().max(4000).nullable().optional(),
+      startDate: z.string(),
+      endDate: z.string().trim().max(10).nullable().optional(),
+      location: z.string().trim().max(500).nullable().optional(),
+      maxCapacity: z.number().int().positive().nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const startDate = new Date(input.startDate);
+      const endDate = input.endDate?.trim() ? new Date(input.endDate) : null;
+      if (Number.isNaN(startDate.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de início do evento é inválida." });
+      if (endDate && Number.isNaN(endDate.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim do evento é inválida." });
+      if (endDate && endDate < startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim não pode ser anterior à data de início." });
+      const result = await updateEvent({
+        churchId: input.churchId,
+        eventId: input.eventId,
+        name: input.name.trim(),
+        type: input.type,
+        description: input.description?.trim() || null,
+        startDate,
+        endDate,
+        location: input.location?.trim() || null,
+        maxCapacity: input.maxCapacity ?? null,
+      });
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento não encontrado nesta igreja." });
+      return result;
+    }),
+
+  remove: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), eventId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const result = await removeEvent(input);
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento não encontrado nesta igreja." });
+      return result;
     }),
 
   attendanceReport: protectedProcedure

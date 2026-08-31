@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { formatBrl, formatDatePtBr, parseBrlToCents } from "@/lib/treasury";
-import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Copy, Download, ExternalLink, Image as ImageIcon, Link2, Loader2, MapPin, Plus, Printer, QrCode, Send, Share2, Trash2, Upload, UserCheck, UserRound, UserX, Users } from "lucide-react";
+import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Copy, Download, ExternalLink, Image as ImageIcon, Link2, Loader2, MapPin, Pencil, Plus, Printer, QrCode, Send, Share2, Trash2, Upload, UserCheck, UserRound, UserX, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
@@ -17,12 +17,22 @@ type RegistrationMode = "none" | "individual" | "casal";
 type PresenceStatus = "pendente" | "presente" | "ausente" | "cancelado";
 type PaymentStatus = "pendente" | "pago" | "isento" | "reembolsado";
 type FlyerFormat = "mobile" | "screen" | "stories";
+type EventType = "congresso" | "conferencia" | "vigilia" | "retiro" | "seminario" | "culto" | "outro";
+type EventEditDraft = {
+  name: string;
+  type: EventType;
+  description: string;
+  startDate: string;
+  endDate: string;
+  location: string;
+  maxCapacity: string;
+};
 
 type EventRecord = {
   id: number;
   churchId: number;
   name: string;
-  type: string;
+  type: EventType;
   description: string | null;
   startDate: Date | string;
   endDate: Date | string | null;
@@ -315,6 +325,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   const [flyerPreviewUrl, setFlyerPreviewUrl] = useState<string | null>(null);
   const [isUploadingFlyer, setIsUploadingFlyer] = useState(false);
   const [flyerShareFile, setFlyerShareFile] = useState<File | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editDraft, setEditDraft] = useState<EventEditDraft>(() => ({ name: event.name, type: event.type, description: event.description ?? "", startDate: formatDateInput(event.startDate), endDate: formatDateInput(event.endDate), location: event.location ?? "", maxCapacity: event.maxCapacity?.toString() ?? "" }));
   const [paymentFeeDraft, setPaymentFeeDraft] = useState(() => formatCentsForInput(event.registrationFeeCents));
   const [paymentDueDateDraft, setPaymentDueDateDraft] = useState(() => formatDateInput(event.paymentDueDate));
   const [paymentInstructionsDraft, setPaymentInstructionsDraft] = useState(() => event.paymentInstructions ?? "");
@@ -344,6 +356,14 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   const setFlyer = trpc.events.setFlyer.useMutation({
     onSuccess: () => { toast.success("Flyer do evento atualizado."); setFlyerFile(null); if (flyerPreviewUrl) URL.revokeObjectURL(flyerPreviewUrl); setFlyerPreviewUrl(null); onChanged(); },
     onError: (error) => toast.error(error.message || "Não foi possível atualizar o flyer"),
+  });
+  const updateEvent = trpc.events.update.useMutation({
+    onSuccess: () => { toast.success("Evento atualizado."); setEditOpen(false); onChanged(); },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar o evento"),
+  });
+  const removeEvent = trpc.events.remove.useMutation({
+    onSuccess: (result) => { toast.success(result.mode === "archived" ? "Evento arquivado para preservar as inscrições." : "Evento excluído."); setManagementOpen(false); setEditOpen(false); onChanged(); },
+    onError: (error) => toast.error(error.message || "Não foi possível remover o evento"),
   });
 
   const checkinUrl = qrValue ? `${window.location.origin}/checkin?event=${event.id}&token=${qrValue.split(":")[2]}` : null;
@@ -441,6 +461,45 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     setFlyer.mutate({ churchId, eventId: event.id, mediaAssetId: null, flyerFormat: flyerDraftFormat });
   }
 
+  function openEdit() {
+    setEditDraft({
+      name: event.name,
+      type: event.type,
+      description: event.description ?? "",
+      startDate: formatDateInput(event.startDate),
+      endDate: formatDateInput(event.endDate),
+      location: event.location ?? "",
+      maxCapacity: event.maxCapacity?.toString() ?? "",
+    });
+    setManagementOpen(false);
+    setEditOpen(true);
+  }
+
+  function saveEventEdit(formEvent: React.FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    const maxCapacity = editDraft.maxCapacity.trim() ? Number(editDraft.maxCapacity) : null;
+    if (maxCapacity !== null && (!Number.isInteger(maxCapacity) || maxCapacity <= 0)) {
+      toast.error("Informe uma capacidade máxima válida ou deixe o campo em branco.");
+      return;
+    }
+    updateEvent.mutate({
+      churchId,
+      eventId: event.id,
+      name: editDraft.name.trim(),
+      type: editDraft.type,
+      description: editDraft.description.trim() || null,
+      startDate: editDraft.startDate,
+      endDate: editDraft.endDate || null,
+      location: editDraft.location.trim() || null,
+      maxCapacity,
+    });
+  }
+
+  function requestRemove() {
+    const confirmed = window.confirm(`Remover o evento "${event.name}"? Se ele já tiver inscrições, será arquivado para preservar o histórico.`);
+    if (confirmed) removeEvent.mutate({ churchId, eventId: event.id });
+  }
+
   function saveRegistrationMode(mode: RegistrationMode = modeDraft) {
     setRegistrationMode.mutate({ churchId, eventId: event.id, registrationMode: mode });
   }
@@ -481,6 +540,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
       <div className="flex-1 min-w-0"><p className="font-semibold text-navy truncate">{event.name}</p><div className="flex flex-wrap items-center gap-2 mt-1">{event.location && <span className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{event.location}</span>}{event.maxCapacity && <span className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" />{event.maxCapacity} vagas</span>}</div><div className="mt-2 flex flex-wrap items-center gap-2"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorClass}`}>{typeLabel}</span>{typeHasRegistration && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"><Link2 className="h-3 w-3" />{registrationModeLabel(event.registrationMode)}</span>}{event.registrationFeeCents > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">{formatBrl(event.registrationFeeCents)} {event.registrationMode === "casal" ? "por casal" : "por pessoa"}</span>}</div></div>
       <div className="flex flex-wrap items-center gap-2 shrink-0 sm:justify-end">
         {registrationUrl && <Button size="sm" variant="outline" className="h-8 px-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => void shareInvite()} title="Compartilhar convite"><Share2 className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Convite</span></Button>}
+        <Button size="sm" variant="outline" className="h-8 px-2 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5" onClick={openEdit} title="Editar evento"><Pencil className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Editar</span></Button>
+        <Button size="sm" variant="outline" className="h-8 px-2 border-rose-200 text-rose-700 hover:bg-rose-50" onClick={requestRemove} disabled={removeEvent.isPending} title="Excluir ou arquivar evento"><Trash2 className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Excluir</span></Button>
         <Button size="sm" variant="outline" className="h-8 px-2 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5" onClick={() => setManagementOpen(true)} title="Gerenciar inscrições e presença"><ClipboardCheck className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Gerenciar</span></Button>
         <Button size="sm" variant="outline" className="h-8 px-2 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5" onClick={() => { if (qrValue) setQrOpen(true); else generateQr.mutate({ eventId: event.id, churchId }); }} disabled={generateQr.isPending} title="QR Code de check-in"><QrCode className="w-4 h-4" /></Button>
       </div>
@@ -512,6 +573,21 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
             <div className="flex flex-col gap-2 sm:flex-row"><Button variant="outline" className="flex-1 gap-2 border-[#1e3a5f]/20 text-[#1e3a5f]" onClick={printAttendanceReport}><Printer className="w-4 h-4" /> Imprimir relatório</Button><Button variant="ghost" className="flex-1" onClick={() => void attendanceReport.refetch()}>Atualizar lista</Button></div>
           </> : null}
         </div>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      <DialogContent className="max-h-[92dvh] max-w-lg overflow-hidden p-0">
+        <DialogHeader className="border-b border-border px-6 py-5"><DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2"><Pencil className="h-5 w-5 text-[#c9a84c]" />Editar evento</DialogTitle><DialogDescription>Atualize os dados do evento. As inscrições, pagamentos e flyer continuam preservados.</DialogDescription></DialogHeader>
+        <form onSubmit={saveEventEdit} className="max-h-[calc(92dvh-7rem)] space-y-4 overflow-y-auto px-6 py-5">
+          <div><Label>Nome do evento *</Label><Input value={editDraft.name} onChange={(inputEvent) => setEditDraft({ ...editDraft, name: inputEvent.target.value })} required minLength={2} maxLength={255} /></div>
+          <div><Label>Tipo *</Label><Select value={editDraft.type} onValueChange={(value) => setEditDraft({ ...editDraft, type: value as EventType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{EVENT_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+          <div className="grid gap-4 sm:grid-cols-2"><div><Label>Data de início *</Label><Input type="date" value={editDraft.startDate} onChange={(inputEvent) => setEditDraft({ ...editDraft, startDate: inputEvent.target.value })} required /></div><div><Label>Data de fim</Label><Input type="date" value={editDraft.endDate} onChange={(inputEvent) => setEditDraft({ ...editDraft, endDate: inputEvent.target.value })} /></div></div>
+          <div><Label>Local</Label><Input value={editDraft.location} onChange={(inputEvent) => setEditDraft({ ...editDraft, location: inputEvent.target.value })} maxLength={500} /></div>
+          <div><Label>Capacidade máxima</Label><Input type="number" min={1} value={editDraft.maxCapacity} onChange={(inputEvent) => setEditDraft({ ...editDraft, maxCapacity: inputEvent.target.value })} placeholder="Em branco = sem limite" /></div>
+          <div><Label>Descrição</Label><Textarea value={editDraft.description} onChange={(inputEvent) => setEditDraft({ ...editDraft, description: inputEvent.target.value })} rows={5} maxLength={4000} placeholder="Descreva o objetivo e os detalhes do evento." /><p className="mt-1 text-right text-xs text-muted-foreground">{editDraft.description.length}/4000</p></div>
+          <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={() => setEditOpen(false)} className="sm:min-w-28">Cancelar</Button><Button type="submit" className="bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90 sm:min-w-36" disabled={updateEvent.isPending}>{updateEvent.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Salvar alterações</Button></div>
+        </form>
       </DialogContent>
     </Dialog>
 

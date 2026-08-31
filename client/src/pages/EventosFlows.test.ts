@@ -93,6 +93,29 @@ describe("Eventos — inscrições e presença", () => {
     expect(paymentMigration).not.toContain("financial_transactions");
   });
 
+  it("permite editar os dados principais do Evento e atualizar a descrição", () => {
+    expect(page).toContain("trpc.events.update.useMutation");
+    expect(page).toContain('title="Editar evento"');
+    expect(page).toContain("Editar evento");
+    expect(page).toContain("Descrição");
+    expect(page).toContain("Salvar alterações");
+    expect(eventRouter()).toContain("update: protectedProcedure");
+    expect(eventRouter()).toContain("A data de fim não pode ser anterior à data de início.");
+    expect(db).toContain("export async function updateEvent");
+    expect(db).toContain("eq(events.id, data.eventId), eq(events.churchId, data.churchId)");
+  });
+
+  it("remove sem destruir histórico: exclui sem inscrições e arquiva com inscrições", () => {
+    expect(page).toContain("trpc.events.remove.useMutation");
+    expect(page).toContain('title="Excluir ou arquivar evento"');
+    expect(page).toContain("Se ele já tiver inscrições, será arquivado para preservar o histórico.");
+    expect(eventRouter()).toContain("remove: protectedProcedure");
+    expect(db).toContain("export async function removeEvent");
+    expect(db).toContain('mode: "archived"');
+    expect(db).toContain('mode: "deleted"');
+    expect(db).toContain("registrationToken: null");
+  });
+
   it("controla presença e separa pendentes de quem não compareceu", () => {
     expect(page).toContain("events.setPresence.useMutation");
     expect(page).toContain("Não compareceu");

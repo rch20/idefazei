@@ -2476,6 +2476,69 @@ export async function createEvent(data: typeof events.$inferInsert) {
   return rows[0] ?? result[0];
 }
 
+export async function updateEvent(data: {
+  churchId: number;
+  eventId: number;
+  name: string;
+  type: "congresso" | "conferencia" | "vigilia" | "retiro" | "seminario" | "culto" | "outro";
+  description: string | null;
+  startDate: Date;
+  endDate: Date | null;
+  location: string | null;
+  maxCapacity: number | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db.select({ id: events.id }).from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  if (!eventRows[0]) return null;
+  await db.update(events).set({
+    name: data.name,
+    type: data.type,
+    description: data.description,
+    startDate: data.startDate,
+    endDate: data.endDate,
+    location: data.location,
+    maxCapacity: data.maxCapacity,
+  }).where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+  const updatedRows = await db.select().from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  return updatedRows[0] ?? null;
+}
+
+export async function removeEvent(data: { churchId: number; eventId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db.select({ id: events.id, name: events.name, flyerMediaAssetId: events.flyerMediaAssetId })
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  const event = eventRows[0];
+  if (!event) return null;
+
+  const registrationRows = await db.select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(and(
+      eq(eventRegistrations.eventId, data.eventId),
+      or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, data.churchId)),
+    ))
+    .limit(1);
+  if (registrationRows[0]) {
+    await db.update(events).set({ active: false, registrationToken: null })
+      .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+    return { mode: "archived" as const, eventId: data.eventId, eventName: event.name };
+  }
+
+  if (event.flyerMediaAssetId) {
+    await db.update(mediaAssets).set({ entityType: null, entityId: null })
+      .where(and(eq(mediaAssets.id, event.flyerMediaAssetId), eq(mediaAssets.churchId, data.churchId)));
+  }
+  await db.delete(events).where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+  return { mode: "deleted" as const, eventId: data.eventId, eventName: event.name };
+}
+
 export async function setEventFlyer(data: { churchId: number; eventId: number; mediaAssetId: number | null; flyerFormat: "mobile" | "screen" | "stories" }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
