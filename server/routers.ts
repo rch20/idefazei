@@ -1063,6 +1063,7 @@ const tenantPublicRouter = router({
         heroImagePresetId: z.enum(HERO_PRESET_IDS).nullable().optional(),
         heroImageUrl: z.string().trim().max(2048).refine((value) => /^https:\/\//.test(value), "A imagem do Hero precisa usar HTTPS.").nullable().optional(),
         heroImageAssetId: z.number().int().positive().nullable().optional(),
+        publicMinistryIds: z.array(z.number().int().positive()).max(6).optional(),
         services: z.array(z.object({
           day: z.string().trim().min(2).max(32),
           time: z.string().trim().min(2).max(24),

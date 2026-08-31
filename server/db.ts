@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, gte, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   announcements,
@@ -493,8 +493,13 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
   const upcomingEvents = site?.status === "published"
     ? await getPublicUpcomingEventsByChurchId(church.id)
     : [];
+  const publishedMinistryIds = publishedSections
+    .find((section) => section.sectionType === "ministries")?.content
+    && typeof publishedSections.find((section) => section.sectionType === "ministries")?.content === "object"
+    ? (publishedSections.find((section) => section.sectionType === "ministries")?.content as { publicMinistryIds?: unknown }).publicMinistryIds
+    : undefined;
   const publicMinistries = site?.status === "published"
-    ? await getPublicMinistriesByChurchId(church.id)
+    ? await getPublicMinistriesByChurchId(church.id, Array.isArray(publishedMinistryIds) ? publishedMinistryIds : undefined)
     : [];
   const publicCells = site?.status === "published"
     ? await getPublicCellsByChurchId(church.id)
@@ -566,7 +571,7 @@ export type TenantPublicDraftInput = {
   seoTitle?: string | null;
   seoDescription?: string | null;
   theme: { primaryColor: string; secondaryColor: string; accentColor?: string | null; fontPair?: "sacred_serif"; logoUrl?: string | null; faviconUrl?: string | null };
-  sections: Array<{ sectionType: "hero" | "welcome" | "about" | "schedule" | "events" | "ministries" | "gallery" | "contact" | "footer"; enabled: boolean; sortOrder: number; content: Record<string, unknown> }>;
+  sections: Array<{ sectionType: "hero" | "welcome" | "about" | "schedule" | "events" | "ministries" | "gallery" | "contact" | "footer"; enabled: boolean; sortOrder: number; content: Record<string, unknown> & { publicMinistryIds?: number[] } }>;
 };
 
 const DEFAULT_PUBLIC_SECTIONS = [
@@ -607,6 +612,17 @@ export async function saveTenantPublicDraftByChurchId(churchId: number, input: T
   if (!db) return null;
   const site = await ensureTenantPublicSiteByChurchId(churchId);
   if (!site) return null;
+  const ministriesSection = input.sections.find((section) => section.sectionType === "ministries");
+  const selectedMinistryIds = ministriesSection?.content.publicMinistryIds;
+  if (selectedMinistryIds !== undefined) {
+    if (!Array.isArray(selectedMinistryIds) || selectedMinistryIds.length > 6 || selectedMinistryIds.some((id) => !Number.isInteger(id) || id <= 0) || new Set(selectedMinistryIds).size !== selectedMinistryIds.length) {
+      throw new Error("Selecione no máximo seis Ministérios públicos válidos, sem repetição.");
+    }
+    if (selectedMinistryIds.length > 0) {
+      const selectedRows = await db.select({ id: ministries.id }).from(ministries).where(and(eq(ministries.churchId, churchId), eq(ministries.active, true), inArray(ministries.id, selectedMinistryIds))).limit(6);
+      if (selectedRows.length !== selectedMinistryIds.length) throw new Error("Um dos Ministérios selecionados não pertence a esta igreja ou está arquivado.");
+    }
+  }
   for (const section of input.sections) {
     if (section.sectionType !== "gallery") continue;
     const items = Array.isArray(section.content.items) ? section.content.items : [];
@@ -2270,10 +2286,12 @@ export async function getPublicUpcomingEventsByChurchId(churchId: number) {
     .limit(3);
 }
 
-/** Expõe somente a identidade institucional de Ministérios ativos da mesma igreja. */
-export async function getPublicMinistriesByChurchId(churchId: number) {
+/** Expõe somente Ministérios ativos selecionados pelo Pastor no rascunho publicado. */
+export async function getPublicMinistriesByChurchId(churchId: number, selectedIds?: number[]) {
   const db = await getDb();
-  if (!db) return [];
+  if (!db || (selectedIds && selectedIds.length === 0)) return [];
+  const filters = [eq(ministries.churchId, churchId), eq(ministries.active, true)];
+  if (selectedIds) filters.push(inArray(ministries.id, selectedIds));
   return db.select({
     id: ministries.id,
     name: ministries.name,
@@ -2281,10 +2299,7 @@ export async function getPublicMinistriesByChurchId(churchId: number) {
     description: ministries.description,
   })
     .from(ministries)
-    .where(and(
-      eq(ministries.churchId, churchId),
-      eq(ministries.active, true),
-    ))
+    .where(and(...filters))
     .orderBy(ministries.name)
     .limit(6);
 }

@@ -484,7 +484,7 @@ export default function Configuracoes() {
           </TabsContent>
 
           {canManageRoles && <TabsContent value="pagina-publica">
-            <TenantPublicSettings />
+            <TenantPublicSettings ministries={ministries} />
           </TabsContent>}
 
           {/* Perfis e Hierarquia */}

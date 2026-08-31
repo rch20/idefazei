@@ -178,6 +178,8 @@ describe("Eventos públicos por tenant", () => {
 
 describe("Ministérios públicos por tenant", () => {
   const dbSource = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
+  const routerSource = readFileSync(resolve(process.cwd(), "server/routers.ts"), "utf8");
+  const configSource = readFileSync(resolve(process.cwd(), "client/src/components/TenantPublicSettings.tsx"), "utf8");
 
   it("retorna somente Ministérios ativos da igreja e não consulta participantes, funções ou escalas", () => {
     const helperStart = dbSource.indexOf("export async function getPublicMinistriesByChurchId");
@@ -187,10 +189,19 @@ describe("Ministérios públicos por tenant", () => {
     expect(helper).toContain("eq(ministries.churchId, churchId)");
     expect(helper).toContain("eq(ministries.active, true)");
     expect(helper).toContain(".limit(6)");
+    expect(helper).toContain("selectedIds");
+    expect(helper).toContain("inArray(ministries.id, selectedIds)");
     expect(helper).not.toContain("leaderId:");
     expect(helper).not.toContain("ministryMembers");
     expect(helper).not.toContain("ministryRoleAssignments");
     expect(helper).not.toContain("scheduleItems");
+  });
+
+  it("permite ao Pastor selecionar até seis Ministérios públicos sem publicar novos automaticamente", () => {
+    expect(routerSource).toContain("publicMinistryIds: z.array(z.number().int().positive()).max(6).optional()");
+    expect(dbSource).toContain("Um dos Ministérios selecionados não pertence a esta igreja ou está arquivado.");
+    expect(configSource).toContain("Criar um Ministério não o publica automaticamente.");
+    expect(configSource).toContain("Ministérios exibidos publicamente");
   });
 });
 
