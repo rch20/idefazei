@@ -42,6 +42,12 @@ describe("Eventos — inscrições e presença", () => {
     expect(publicPage).toContain("Você não precisa criar conta nem fazer login");
   });
 
+  it("mantém um único link no texto do convite", () => {
+    expect(page).toContain("function invitationText()");
+    expect(page).toContain("return `${invitationText()}\\n\\n${registrationUrl ?? \"\"}`.trim();");
+    expect(page).toContain("text: invitationText(), url: registrationUrl");
+  });
+
   it("distingue casal como duas pessoas sem criar uma Pessoa fictícia", () => {
     expect(schema).toContain('registrationMode: mysqlEnum("registrationMode", ["none", "individual", "casal"])');
     expect(schema).toContain('companionName: varchar("companionName"');

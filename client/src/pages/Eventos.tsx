@@ -369,11 +369,15 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   const checkinUrl = qrValue ? `${window.location.origin}/checkin?event=${event.id}&token=${qrValue.split(":")[2]}` : null;
   const typeHasRegistration = event.registrationMode !== "none";
 
-  function invitationMessage() {
+  function invitationText() {
     const paymentLine = event.registrationFeeCents > 0
       ? `\nInscrição: ${formatBrl(event.registrationFeeCents)} ${event.registrationMode === "casal" ? "por casal" : "por pessoa"}${event.paymentDueDate ? ` · pagamento até ${formatDatePtBr(event.paymentDueDate)}` : ""}`
       : "\nEvento gratuito";
-    return `Olá! Faça sua inscrição para o evento ${event.name}.${paymentLine}\n\n${registrationUrl ?? ""}`;
+    return `Olá! Faça sua inscrição para o evento ${event.name}.${paymentLine}`;
+  }
+
+  function invitationMessage() {
+    return `${invitationText()}\n\n${registrationUrl ?? ""}`.trim();
   }
 
   useEffect(() => {
@@ -418,7 +422,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
         return;
       }
       if (typeof navigator.share === "function") {
-        await navigator.share({ title: event.name, text: message, url: registrationUrl });
+        await navigator.share({ title: event.name, text: invitationText(), url: registrationUrl });
         return;
       }
       shareWhatsApp();
