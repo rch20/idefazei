@@ -24,6 +24,14 @@ describe("Eventos — inscrições e presença", () => {
     expect(page).toContain("Sem inscrição online");
   });
 
+  it("identifica os dois participantes do casal sem repetir o nome", () => {
+    expect(publicPage).toContain("Nome do primeiro participante");
+    expect(publicPage).toContain("Nome do segundo participante");
+    expect(publicPage).not.toContain("Nome do casal");
+    expect(publicPage).toContain("Dados do casal");
+    expect(publicPage).toContain("responsável pelo contato do casal");
+  });
+
   it("gera e compartilha um link público por evento", () => {
     expect(page).toContain("registrationToken");
     expect(page).toContain("publicEventUrl");
