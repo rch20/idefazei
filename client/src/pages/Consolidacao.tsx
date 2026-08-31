@@ -93,6 +93,7 @@ export default function Consolidacao() {
   const visitsQuery = trpc.consolidation.visits.useQuery({ churchId }, { enabled: rolesReady && canAccessVisits });
   const { data: cells = [] } = trpc.cells.list.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
   const [selectedCellByConsolidation, setSelectedCellByConsolidation] = useState<Record<number, string>>({});
+  const [selectedCellByReferral, setSelectedCellByReferral] = useState<Record<number, string>>({});
   const [closingReferralId, setClosingReferralId] = useState<number | null>(null);
   const [closeReferralNotes, setCloseReferralNotes] = useState("");
   const [trackingReferralId, setTrackingReferralId] = useState<number | null>(null);
@@ -146,12 +147,24 @@ export default function Consolidacao() {
   });
   const closeReferral = trpc.consolidation.closeReferral.useMutation({
     onSuccess: () => {
-      toast.success("Encaminhamento encerrado com histórico preservado.");
+      toast.success("Cuidado encerrado com histórico preservado.");
       setClosingReferralId(null);
       setCloseReferralNotes("");
       referralsQuery.refetch();
     },
     onError: (error: { message: string }) => toast.error(error.message),
+  });
+  const integrateReferralIntoCell = trpc.consolidation.integrateReferralIntoCell.useMutation({
+    onSuccess: async (result) => {
+      toast.success(`Pessoa integrada à ${result.cellName}. O cuidado agora segue com o líder da Célula.`);
+      setSelectedCellByReferral((current) => {
+        const next = { ...current };
+        delete next[result.referral?.id ?? 0];
+        return next;
+      });
+      await referralsQuery.refetch();
+    },
+    onError: (error: { message: string }) => toast.error(error.message || "Não foi possível integrar a Pessoa em uma Célula."),
   });
   const acceptVisit = trpc.consolidation.acceptVisit.useMutation({
     onSuccess: async () => {
@@ -351,6 +364,33 @@ export default function Consolidacao() {
                       {referral.acceptedByName && <p className="text-center text-[11px] text-muted-foreground">Responsável: {referral.acceptedByName}</p>}
                     </div>
                   </div>
+                  {referral.canIntegrate && (
+                    <div className="mt-4 rounded-lg border border-green-200 bg-green-50/70 p-3">
+                      <p className="text-sm font-semibold text-green-900">Próximo destino da Pessoa</p>
+                      <p className="mt-1 text-xs text-green-800">O cuidado já teve acompanhamento. O Pastor pode concluir esta etapa integrando a Pessoa em uma Célula ativa.</p>
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                        <label className="sr-only" htmlFor={`referral-cell-${referral.id}`}>Célula de destino</label>
+                        <select
+                          id={`referral-cell-${referral.id}`}
+                          value={selectedCellByReferral[referral.id] ?? ""}
+                          onChange={(event) => setSelectedCellByReferral((current) => ({ ...current, [referral.id]: event.target.value }))}
+                          className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500/70"
+                        >
+                          <option value="">Selecione a Célula de destino</option>
+                          {cells.filter((cell) => Boolean(cell.leaderId)).map((cell) => <option key={cell.id} value={cell.id}>{cell.name}</option>)}
+                        </select>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-green-600 text-white hover:bg-green-700"
+                          disabled={!selectedCellByReferral[referral.id] || integrateReferralIntoCell.isPending}
+                          onClick={() => integrateReferralIntoCell.mutate({ churchId, referralId: referral.id, cellId: Number(selectedCellByReferral[referral.id]) })}
+                        >
+                          {integrateReferralIntoCell.isPending ? "Concluindo…" : "Concluir e integrar"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                   {referral.contactNumber && (
                     <div className="mt-3 flex flex-col gap-2 rounded-lg border border-green-200 bg-green-50/60 p-3 sm:flex-row sm:items-center sm:justify-between">
                       <p className="flex items-center gap-2 text-sm text-green-800"><Phone className="h-4 w-4" />{referral.contactNumber}</p>
@@ -456,6 +496,9 @@ export default function Consolidacao() {
         )}
       </section>
 
+      <details className="rounded-2xl border border-border bg-background p-4 sm:p-5">
+        <summary className="cursor-pointer list-none text-sm font-semibold text-navy outline-none focus-visible:ring-2 focus-visible:ring-gold/70">Registros antigos de checklist <span className="ml-1 text-xs font-normal text-muted-foreground">(mantidos apenas para histórico)</span></summary>
+        <div className="mt-4">
       {isLoading ? (
         <div className="space-y-4">
           {[1, 2].map((i) => (
@@ -620,6 +663,8 @@ export default function Consolidacao() {
           })}
         </div>
       )}
+        </div>
+      </details>
     </div>
   );
 }

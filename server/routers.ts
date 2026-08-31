@@ -22,6 +22,7 @@ import {
   createCell,
   updateCell,
   assignPersonToCell,
+  integrateConsolidationReferralIntoCell,
   createChurch,
   createConsolidationReferral,
   createConsolidationReferralCase,
@@ -1474,6 +1475,7 @@ const consolidationRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Sua função não possui acesso aos casos de Consolidação." });
       }
       const canViewAll = context.capabilities.canManageConsolidation;
+      const isPastor = context.roles.some((role) => PASTOR_ROLES.has(role));
       const [referrals, managedPersonIds, churchPeople] = await Promise.all([
         getConsolidationReferralsByChurch(input.churchId),
         canViewAll || !actor.personId
@@ -1502,6 +1504,7 @@ const consolidationRouter = router({
           canAssign: canViewAll,
           canApprove: Boolean(context.capabilities.canManageConsolidation && referral.status === "pendente"),
           canAccept: Boolean(context.roles.includes("consolidador") && actor.personId && referral.status === "aprovado" && (!referral.assignedToPersonId || referral.assignedToPersonId === actor.personId)),
+          canIntegrate: Boolean(isPastor && referral.status === "em_acompanhamento"),
         };
       });
     }),
@@ -1722,6 +1725,8 @@ const consolidationRouter = router({
       const referral = await getConsolidationReferralById(input.referralId, input.churchId);
       if (!referral || !referral.acceptedByPersonId) throw new TRPCError({ code: "BAD_REQUEST", message: "O caso precisa ser assumido antes do acompanhamento." });
       if (!context.capabilities.canManageConsolidation && referral.acceptedByPersonId !== actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável, Líder ou Supervisor pode registrar este acompanhamento." });
+      if (["encerrado", "cancelado"].includes(referral.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "Este caso já foi encerrado e não aceita novos acompanhamentos." });
+      if (referral.status !== "aceito" && referral.status !== "em_acompanhamento") throw new TRPCError({ code: "BAD_REQUEST", message: "O caso precisa estar pronto para acompanhamento." });
       if (input.visitAssigneePersonId) await requireVisitorPerson(input.visitAssigneePersonId, input.churchId);
       const followUp = await createConsolidationFollowUp({
         churchId: input.churchId,
@@ -1828,11 +1833,38 @@ const consolidationRouter = router({
       if (!context.capabilities.canManageConsolidation && referral.acceptedByPersonId !== context.actor.personId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável, Líder ou Supervisor pode encerrar este acompanhamento." });
       }
+      if (referral.status !== "em_acompanhamento") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O cuidado só pode ser encerrado depois do primeiro acompanhamento." });
+      }
+      const followUps = await getConsolidationFollowUpsByReferral(input.id, input.churchId);
+      if (followUps.length === 0) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Registre pelo menos um acompanhamento antes de encerrar o cuidado." });
+      }
       return updateConsolidationReferral(input.id, input.churchId, {
         status: "encerrado",
         closedAt: new Date(),
         closeNotes: input.closeNotes,
       });
+    }),
+
+  integrateReferralIntoCell: protectedProcedure
+    .input(z.object({ churchId: z.number(), referralId: z.number(), cellId: z.number(), closeNotes: z.string().trim().max(2000).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      if (!context.roles.some((role) => PASTOR_ROLES.has(role))) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor pode concluir a integração de uma Pessoa em uma Célula." });
+      }
+      try {
+        return await integrateConsolidationReferralIntoCell({
+          churchId: input.churchId,
+          referralId: input.referralId,
+          cellId: input.cellId,
+          closeNotes: input.closeNotes?.trim() || "Cuidado concluído com integração em Célula.",
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        throw new TRPCError({ code: "BAD_REQUEST", message: message || "Não foi possível concluir a integração em Célula." });
+      }
     }),
 
   souls: protectedProcedure

@@ -1575,6 +1575,27 @@ export async function getConsolidationReferralById(id: number, churchId: number)
   return rows[0] ?? null;
 }
 
+export async function getActiveConsolidationReferralByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(consolidationReferrals)
+    .where(and(
+      eq(consolidationReferrals.personId, personId),
+      eq(consolidationReferrals.churchId, churchId),
+      or(
+        eq(consolidationReferrals.status, "pendente"),
+        eq(consolidationReferrals.status, "aprovado"),
+        eq(consolidationReferrals.status, "aceito"),
+        eq(consolidationReferrals.status, "em_acompanhamento"),
+      ),
+    ))
+    .orderBy(desc(consolidationReferrals.referredAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 export async function createConsolidationReferral(data: typeof consolidationReferrals.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -1588,7 +1609,7 @@ export async function createConsolidationReferralCase(data: typeof consolidation
   return db.transaction(async (tx) => {
     const target = await tx.select({ id: people.id }).from(people).where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true))).limit(1).for("update");
     if (target.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
-    const active = await tx.select({ id: consolidationReferrals.id }).from(consolidationReferrals).where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.personId, data.personId), or(eq(consolidationReferrals.status, "pendente"), eq(consolidationReferrals.status, "aceito"), eq(consolidationReferrals.status, "em_acompanhamento")))).limit(1);
+    const active = await tx.select({ id: consolidationReferrals.id }).from(consolidationReferrals).where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.personId, data.personId), or(eq(consolidationReferrals.status, "pendente"), eq(consolidationReferrals.status, "aprovado"), eq(consolidationReferrals.status, "aceito"), eq(consolidationReferrals.status, "em_acompanhamento")))).limit(1);
     if (active.length > 0) throw new Error("Esta Pessoa já possui um caso ativo na Consolidação.");
     const result = await tx.insert(consolidationReferrals).values(data);
     const referralId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
@@ -2147,6 +2168,70 @@ export async function assignPersonToCell(data: { churchId: number; personId: num
     if (!membershipId) throw new Error("Failed to assign person to cell");
     const rows = await tx.select().from(cellMembers).where(eq(cellMembers.id, membershipId)).limit(1);
     return rows[0] ?? null;
+  });
+}
+
+/** Integra um caso moderno em Célula e encerra o cuidado na mesma transação. */
+export async function integrateConsolidationReferralIntoCell(data: { churchId: number; referralId: number; cellId: number; closeNotes: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const referralRows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const referral = referralRows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (referral.status !== "em_acompanhamento") throw new Error("Registre um acompanhamento antes de integrar a Pessoa em uma Célula.");
+    if (!referral.acceptedByPersonId) throw new Error("O caso precisa ter um Consolidador responsável antes da integração.");
+
+    const targetCells = await tx
+      .select({ id: cells.id, name: cells.name, leaderId: cells.leaderId })
+      .from(cells)
+      .where(and(eq(cells.id, data.cellId), eq(cells.churchId, data.churchId), eq(cells.active, true)))
+      .limit(1);
+    const targetCell = targetCells[0];
+    if (!targetCell) throw new Error("Célula inválida para esta igreja.");
+    if (!targetCell.leaderId) throw new Error("A Célula precisa ter um líder definido antes de receber esta Pessoa.");
+
+    const personRows = await tx
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.id, referral.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1)
+      .for("update");
+    if (personRows.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
+
+    const now = new Date();
+    const activeMemberships = await tx
+      .select({ membershipId: cellMembers.id, cellId: cellMembers.cellId })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cellMembers.personId, referral.personId), eq(cellMembers.active, true), eq(cells.churchId, data.churchId)));
+    const current = activeMemberships.find((membership) => membership.cellId === data.cellId);
+    let membership;
+    if (current) {
+      const rows = await tx.select().from(cellMembers).where(eq(cellMembers.id, current.membershipId)).limit(1);
+      membership = rows[0] ?? null;
+    } else {
+      for (const activeMembership of activeMemberships) {
+        await tx.update(cellMembers).set({ active: false, leftAt: now }).where(eq(cellMembers.id, activeMembership.membershipId));
+      }
+      const result = await tx.insert(cellMembers).values({ cellId: data.cellId, personId: referral.personId, active: true, joinedAt: now });
+      const membershipId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      if (!membershipId) throw new Error("Não foi possível integrar a Pessoa à Célula.");
+      const rows = await tx.select().from(cellMembers).where(eq(cellMembers.id, membershipId)).limit(1);
+      membership = rows[0] ?? null;
+    }
+
+    await tx.update(consolidationReferrals).set({ status: "encerrado", closedAt: now, closeNotes: data.closeNotes }).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
+    await tx.update(careAssignments).set({ active: false, endedAt: now }).where(and(eq(careAssignments.personId, referral.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.active, true)));
+    await tx.insert(careAssignments).values({ churchId: data.churchId, personId: referral.personId, responsiblePersonId: targetCell.leaderId, role: "lider_celula", notes: `Cuidado transferido após integração na ${targetCell.name}.`, active: true, startedAt: now });
+
+    const updatedRows = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1);
+    return { referral: updatedRows[0] ?? null, membership, cellName: targetCell.name };
   });
 }
 

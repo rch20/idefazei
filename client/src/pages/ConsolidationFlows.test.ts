@@ -84,4 +84,16 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(careSource).toContain("visit.caseReason");
     expect(routerSource).toContain("getCareVisitsByChurch(input.churchId)");
   });
+
+  it("torna o encerramento e a integração em Célula decisões explícitas da jornada", () => {
+    expect(routerSource).toContain('if (referral.status !== "em_acompanhamento")');
+    expect(routerSource).toContain("getConsolidationFollowUpsByReferral(input.id, input.churchId)");
+    expect(routerSource).toContain("integrateReferralIntoCell");
+    expect(dbSource).toContain("export async function integrateConsolidationReferralIntoCell");
+    expect(dbSource).toContain('status: "encerrado"');
+    expect(dbSource).toContain("Cuidado transferido após integração");
+    expect(consolidationSource).toContain("Próximo destino da Pessoa");
+    expect(consolidationSource).toContain("Concluir e integrar");
+    expect(consolidationSource).toContain("Registros antigos de checklist");
+  });
 });
