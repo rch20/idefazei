@@ -2416,6 +2416,10 @@ export async function getEventAttendanceReport(data: { churchId: number; eventId
     companionName: eventRegistrations.companionName,
     email: eventRegistrations.email,
     attendeeCount: eventRegistrations.attendeeCount,
+    amountCents: eventRegistrations.amountCents,
+    paymentStatus: eventRegistrations.paymentStatus,
+    paymentConfirmedAt: eventRegistrations.paymentConfirmedAt,
+    paymentConfirmedByChurchUserId: eventRegistrations.paymentConfirmedByChurchUserId,
     source: eventRegistrations.source,
     presenceStatus: eventRegistrations.presenceStatus,
     registeredAt: eventRegistrations.registeredAt,
@@ -2445,6 +2449,14 @@ export async function getEventAttendanceReport(data: { churchId: number; eventId
       pendingCount: pending.length,
       pendingAttendeeCount: pending.reduce((total, row) => total + (row.attendeeCount ?? 1), 0),
       cancelledCount: rows.length - registrations.length,
+      paymentPendingCount: registrations.filter((row) => row.paymentStatus === "pendente").length,
+      paymentPaidCount: registrations.filter((row) => row.paymentStatus === "pago").length,
+      paymentExemptCount: registrations.filter((row) => row.paymentStatus === "isento").length,
+      paymentRefundedCount: registrations.filter((row) => row.paymentStatus === "reembolsado").length,
+      expectedAmountCents: registrations.reduce((total, row) => total + (row.amountCents ?? 0), 0),
+      paidAmountCents: registrations.filter((row) => row.paymentStatus === "pago").reduce((total, row) => total + (row.amountCents ?? 0), 0),
+      pendingAmountCents: registrations.filter((row) => row.paymentStatus === "pendente").reduce((total, row) => total + (row.amountCents ?? 0), 0),
+      refundedAmountCents: registrations.filter((row) => row.paymentStatus === "reembolsado").reduce((total, row) => total + (row.amountCents ?? 0), 0),
     },
     registrations: registrations.map((row) => ({
       ...row,
@@ -2524,6 +2536,53 @@ export async function setEventRegistrationMode(data: { churchId: number; eventId
   return updatedRows[0] ?? null;
 }
 
+export async function setEventPaymentSettings(data: { churchId: number; eventId: number; registrationFeeCents: number; paymentDueDate: Date | null; paymentInstructions: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const rows = await db.select({ id: events.id, registrationMode: events.registrationMode })
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  const event = rows[0];
+  if (!event) return null;
+  if (event.registrationMode === "none" && data.registrationFeeCents > 0) return { invalid: "paid_without_registration" as const };
+  await db.update(events).set({
+    registrationFeeCents: data.registrationFeeCents,
+    paymentDueDate: data.paymentDueDate,
+    paymentInstructions: data.paymentInstructions,
+  }).where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+  const updatedRows = await db.select().from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  return updatedRows[0] ?? null;
+}
+
+export async function updateEventRegistrationPayment(data: { churchId: number; eventId: number; registrationId: number; paymentStatus: "pendente" | "pago" | "isento" | "reembolsado"; confirmedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db.select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  if (!eventRows[0]) return null;
+  const registrationRows = await db.select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(and(
+      eq(eventRegistrations.id, data.registrationId),
+      eq(eventRegistrations.eventId, data.eventId),
+      or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, data.churchId)),
+    ))
+    .limit(1);
+  if (!registrationRows[0]) return null;
+  const confirmed = data.paymentStatus !== "pendente";
+  await db.update(eventRegistrations).set({
+    paymentStatus: data.paymentStatus,
+    paymentConfirmedAt: confirmed ? new Date() : null,
+    paymentConfirmedByChurchUserId: confirmed ? data.confirmedByChurchUserId : null,
+  }).where(and(eq(eventRegistrations.id, data.registrationId), eq(eventRegistrations.eventId, data.eventId)));
+  return { success: true };
+}
+
 export async function getPublicEventRegistrationByToken(token: string) {
   const db = await getDb();
   if (!db) return null;
@@ -2592,6 +2651,8 @@ export async function createPublicEventRegistration(data: {
     companionName: data.companionName?.trim() || null,
     email: data.email?.trim() || null,
     attendeeCount,
+    amountCents: event.registrationFeeCents ?? 0,
+    paymentStatus: "pendente",
     source: "public_form",
     presenceStatus: "pendente",
     status: "inscrito",

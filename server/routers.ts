@@ -101,6 +101,8 @@ import {
   updateEventRegistrationPresence,
   setEventRegistrationMode,
   setEventFlyer,
+  setEventPaymentSettings,
+  updateEventRegistrationPayment,
   createFinancialAccount,
   createFinancialCategory,
   createFinancialTransaction,
@@ -2543,6 +2545,49 @@ const eventsRouter = router({
       return result;
     }),
 
+  setPaymentSettings: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      eventId: z.number().int().positive(),
+      registrationFeeCents: z.number().int().min(0).max(100_000_000),
+      paymentDueDate: z.string().trim().max(10).nullable().optional(),
+      paymentInstructions: z.string().trim().max(1200).nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const paymentDueDateText = input.paymentDueDate?.trim() || null;
+      if (paymentDueDateText && (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDueDateText) || Number.isNaN(new Date(`${paymentDueDateText}T12:00:00Z`).getTime()))) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A data limite de pagamento é inválida." });
+      }
+      const paymentDueDate = paymentDueDateText ? new Date(`${paymentDueDateText}T12:00:00Z`) : null;
+      const result = await setEventPaymentSettings({
+        churchId: input.churchId,
+        eventId: input.eventId,
+        registrationFeeCents: input.registrationFeeCents,
+        paymentDueDate,
+        paymentInstructions: input.paymentInstructions?.trim() || null,
+      });
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento não encontrado nesta igreja." });
+      if ("invalid" in result) throw new TRPCError({ code: "BAD_REQUEST", message: "Ative uma inscrição individual ou de casal antes de cobrar." });
+      return result;
+    }),
+
+  setPaymentStatus: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      eventId: z.number().int().positive(),
+      registrationId: z.number().int().positive(),
+      paymentStatus: z.enum(["pendente", "pago", "isento", "reembolsado"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const churchUser = await getChurchMemberByUserId(ctx.user.id, input.churchId);
+      if (!churchUser) throw new TRPCError({ code: "FORBIDDEN", message: "A conta não pertence a esta igreja." });
+      const result = await updateEventRegistrationPayment({ ...input, confirmedByChurchUserId: churchUser.id });
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Inscrição não encontrada nesta igreja." });
+      return result;
+    }),
+
   setRegistrationMode: protectedProcedure
     .input(z.object({
       churchId: z.number().int().positive(),
@@ -2577,6 +2622,9 @@ const eventsRouter = router({
         location: z.string().trim().max(500).optional(),
         maxCapacity: z.number().int().positive().optional(),
         registrationMode: z.enum(["none", "individual", "casal"]).default("none"),
+        registrationFeeCents: z.number().int().min(0).max(100_000_000).default(0),
+        paymentDueDate: z.string().trim().max(10).nullable().optional(),
+        paymentInstructions: z.string().trim().max(1200).nullable().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -2586,8 +2634,12 @@ const eventsRouter = router({
       if (Number.isNaN(startDate.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de início do evento é inválida." });
       if (endDate && Number.isNaN(endDate.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim do evento é inválida." });
       if (endDate && endDate < startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim não pode ser anterior à data de início." });
+      const paymentDueDateText = input.paymentDueDate?.trim() || null;
+      if (paymentDueDateText && (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDueDateText) || Number.isNaN(new Date(`${paymentDueDateText}T12:00:00Z`).getTime()))) throw new TRPCError({ code: "BAD_REQUEST", message: "A data limite de pagamento é inválida." });
+      if (input.registrationMode === "none" && input.registrationFeeCents > 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Ative uma inscrição individual ou de casal antes de cobrar." });
+      const paymentDueDate = paymentDueDateText ? new Date(`${paymentDueDateText}T12:00:00Z`) : null;
       const registrationToken = input.registrationMode === "none" ? null : randomBytes(32).toString("base64url");
-      return createEvent({ ...input, startDate, endDate, registrationToken } as any);
+      return createEvent({ ...input, startDate, endDate, registrationToken, paymentDueDate, paymentInstructions: input.paymentInstructions?.trim() || null } as any);
     }),
 
   publicRegistration: router({
@@ -2609,6 +2661,9 @@ const eventsRouter = router({
             location: resolved.event.location,
             maxCapacity: resolved.event.maxCapacity,
             registrationMode: resolved.event.registrationMode,
+            registrationFeeCents: resolved.event.registrationFeeCents,
+            paymentDueDate: resolved.event.paymentDueDate,
+            paymentInstructions: resolved.event.paymentInstructions,
             flyerFormat: resolved.event.flyerFormat,
           },
           flyer: resolved.flyer,
@@ -2639,7 +2694,7 @@ const eventsRouter = router({
         if (resolved.event.registrationMode === "individual" && input.companionName?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta inscrição é individual." });
         const result = await createPublicEventRegistration(input);
         if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Inscrição indisponível." });
-        return result;
+        return { ...result, amountCents: resolved.event.registrationFeeCents ?? 0, paymentStatus: "pendente" as const };
       }),
   }),
 

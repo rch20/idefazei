@@ -372,6 +372,13 @@
       "when": 1788201658739,
       "tag": "0052_event_flyer",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "5",
+      "when": 1788206940806,
+      "tag": "0053_event_payment",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
+import { formatBrl, formatDatePtBr, parseBrlToCents } from "@/lib/treasury";
 import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Copy, Download, ExternalLink, Image as ImageIcon, Link2, Loader2, MapPin, Plus, Printer, QrCode, Send, Share2, Trash2, Upload, UserCheck, UserRound, UserX, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +15,7 @@ import { QRCodeSVG } from "qrcode.react";
 
 type RegistrationMode = "none" | "individual" | "casal";
 type PresenceStatus = "pendente" | "presente" | "ausente" | "cancelado";
+type PaymentStatus = "pendente" | "pago" | "isento" | "reembolsado";
 type FlyerFormat = "mobile" | "screen" | "stories";
 
 type EventRecord = {
@@ -27,6 +29,9 @@ type EventRecord = {
   location: string | null;
   maxCapacity: number | null;
   registrationMode: RegistrationMode;
+  registrationFeeCents: number;
+  paymentDueDate: Date | string | null;
+  paymentInstructions: string | null;
   registrationToken: string | null;
   qrCode: string | null;
   flyerMediaAssetId: number | null;
@@ -89,12 +94,38 @@ const defaultForm = {
   location: "",
   maxCapacity: "",
   registrationMode: "none" as RegistrationMode,
+  isPaid: false,
+  registrationFee: "",
+  paymentDueDate: "",
+  paymentInstructions: "",
 };
 
 const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
 
 function registrationModeLabel(mode: RegistrationMode | null | undefined) {
   return REGISTRATION_MODES.find((item) => item.value === (mode ?? "none"))?.label ?? "Sem inscrição online";
+}
+
+function formatCentsForInput(cents: number | null | undefined) {
+  if (!cents) return "";
+  return (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  pendente: "Pendente",
+  pago: "Pago",
+  isento: "Isento",
+  reembolsado: "Reembolsado",
+};
+
+function paymentStatusLabel(status: PaymentStatus | null | undefined) {
+  return PAYMENT_STATUS_LABELS[status ?? "pendente"];
+}
+
+function formatDateInput(value: Date | string | null | undefined) {
+  if (!value) return "";
+  const iso = value instanceof Date ? value.toISOString() : String(value);
+  return iso.slice(0, 10);
 }
 
 function formatDate(value: Date | string | null | undefined) {
@@ -151,6 +182,16 @@ export default function Eventos() {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    const parsedRegistrationFeeCents = form.isPaid ? parseBrlToCents(form.registrationFee) : 0;
+    if (form.isPaid && form.registrationMode === "none") {
+      toast.error("Ative uma inscrição individual ou de casal antes de cobrar.");
+      return;
+    }
+    if (form.isPaid && (parsedRegistrationFeeCents === null || parsedRegistrationFeeCents <= 0)) {
+      toast.error("Informe um valor de inscrição válido.");
+      return;
+    }
+    const registrationFeeCents = parsedRegistrationFeeCents ?? 0;
     try {
       const created = await createEvent.mutateAsync({
         churchId,
@@ -162,6 +203,9 @@ export default function Eventos() {
         location: form.location.trim() || undefined,
         maxCapacity: form.maxCapacity ? Number(form.maxCapacity) : undefined,
         registrationMode: form.registrationMode,
+        registrationFeeCents,
+        paymentDueDate: form.isPaid ? form.paymentDueDate || undefined : undefined,
+        paymentInstructions: form.isPaid ? form.paymentInstructions.trim() || undefined : undefined,
       });
       const createdId = created && typeof created === "object" && "id" in created ? Number(created.id) : 0;
       let flyerSaved = !flyerFile;
@@ -247,6 +291,7 @@ export default function Eventos() {
               <div className="sm:col-span-2"><Label>Local</Label><Input value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder="Endereço ou nome do local" maxLength={500} /></div>
               <div><Label>Capacidade máxima</Label><Input type="number" min={1} value={form.maxCapacity} onChange={(event) => setForm({ ...form, maxCapacity: event.target.value })} placeholder="Ex.: 100" /></div>
               <div className="sm:col-span-2"><Label>Inscrições</Label><Select value={form.registrationMode} onValueChange={(value) => setForm({ ...form, registrationMode: value as RegistrationMode })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{REGISTRATION_MODES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select><p className="mt-1 text-xs text-muted-foreground">{REGISTRATION_MODES.find((item) => item.value === form.registrationMode)?.description}</p></div>
+              <div className="sm:col-span-2 rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/55 p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1e3a5f]"><BarChart3 className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Inscrição e pagamento</p><p className="mt-1 text-xs leading-5 text-muted-foreground">O pagamento é conferido manualmente e não cria lançamento automático na Tesouraria.</p></div></div><div className="mt-3"><Label>Cobrança</Label><Select value={form.isPaid ? "paid" : "free"} onValueChange={(value) => setForm({ ...form, isPaid: value === "paid" })}><SelectTrigger className="mt-1 bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="free">Evento gratuito</SelectItem><SelectItem value="paid">Inscrição paga</SelectItem></SelectContent></Select></div>{form.isPaid && <div className="mt-3 grid gap-3 sm:grid-cols-2"><div><Label>Valor {form.registrationMode === "casal" ? "por casal" : "por pessoa"} *</Label><Input value={form.registrationFee} onChange={(event) => setForm({ ...form, registrationFee: event.target.value })} inputMode="decimal" placeholder="Ex.: 120,00" required={form.isPaid} className="mt-1 bg-white" /></div><div><Label>Pagamento até <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="date" value={form.paymentDueDate} onChange={(event) => setForm({ ...form, paymentDueDate: event.target.value })} className="mt-1 bg-white" /></div><div className="sm:col-span-2"><Label>Instruções de pagamento <span className="font-normal text-muted-foreground">(opcional)</span></Label><Textarea value={form.paymentInstructions} onChange={(event) => setForm({ ...form, paymentInstructions: event.target.value })} rows={3} maxLength={1200} placeholder="Ex.: Faça o Pix e envie o comprovante para a secretaria." className="mt-1 bg-white" /></div></div>}</div>
               <div className="sm:col-span-2"><Label>Descrição</Label><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} maxLength={4000} /></div>
             </div>
             <section className="space-y-3 rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/55 p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1e3a5f]"><ImageIcon className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Flyer do convite <span className="font-normal text-muted-foreground">(opcional)</span></p><p className="mt-1 text-xs leading-5 text-muted-foreground">PNG, JPEG ou WebP até 4 MB. O flyer fica ligado a este evento, não ao Mural.</p></div></div><Input type="file" accept="image/png,image/jpeg,image/webp" className="bg-white" onChange={(event) => handleFlyerChange(event.target.files?.[0])} />{flyerPreviewUrl && <div className="grid gap-3 sm:grid-cols-[9rem_1fr] sm:items-start"><div className={`overflow-hidden rounded-xl border border-[#1e3a5f]/10 bg-white ${flyerAspectClass(flyerFormat)}`}><img src={flyerPreviewUrl} alt="Pré-visualização do flyer" className="h-full w-full object-contain" /></div><div className="space-y-3"><div><Label>Formato de uso</Label><Select value={flyerFormat} onValueChange={(value) => setFlyerFormat(value as FlyerFormat)}><SelectTrigger className="mt-1 bg-white"><SelectValue /></SelectTrigger><SelectContent>{FLYER_FORMATS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select><p className="mt-1 text-xs leading-5 text-muted-foreground">{FLYER_FORMATS.find((item) => item.value === flyerFormat)?.description}</p></div><Button type="button" variant="ghost" size="sm" className="px-0 text-rose-700 hover:bg-transparent hover:text-rose-800" onClick={clearFlyerSelection}><Trash2 className="mr-1 h-3.5 w-3.5" /> Remover flyer</Button></div></div>}</section><div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row"><Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">Cancelar</Button><Button type="submit" className="flex-1 bg-navy hover:bg-navy-light text-white" disabled={createEvent.isPending || isUploadingFlyer || setEventFlyer.isPending}>{createEvent.isPending || isUploadingFlyer ? "Salvando..." : "Criar Evento"}</Button></div>
@@ -270,6 +315,9 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   const [flyerPreviewUrl, setFlyerPreviewUrl] = useState<string | null>(null);
   const [isUploadingFlyer, setIsUploadingFlyer] = useState(false);
   const [flyerShareFile, setFlyerShareFile] = useState<File | null>(null);
+  const [paymentFeeDraft, setPaymentFeeDraft] = useState(() => formatCentsForInput(event.registrationFeeCents));
+  const [paymentDueDateDraft, setPaymentDueDateDraft] = useState(() => formatDateInput(event.paymentDueDate));
+  const [paymentInstructionsDraft, setPaymentInstructionsDraft] = useState(() => event.paymentInstructions ?? "");
   const registrationUrl = event.registrationToken ? publicEventUrl(churchSlug, event.registrationToken) : null;
   const attendanceReport = trpc.events.attendanceReport.useQuery({ churchId, eventId: event.id }, { enabled: managementOpen });
 
@@ -285,6 +333,14 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     onSuccess: async () => { await attendanceReport.refetch(); toast.success("Presença atualizada."); },
     onError: (error) => toast.error(error.message || "Não foi possível atualizar a presença"),
   });
+  const setPaymentStatus = trpc.events.setPaymentStatus.useMutation({
+    onSuccess: async () => { await attendanceReport.refetch(); toast.success("Pagamento atualizado."); },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar o pagamento"),
+  });
+  const setPaymentSettings = trpc.events.setPaymentSettings.useMutation({
+    onSuccess: () => { toast.success("Configuração de pagamento salva."); onChanged(); },
+    onError: (error) => toast.error(error.message || "Não foi possível salvar a configuração de pagamento"),
+  });
   const setFlyer = trpc.events.setFlyer.useMutation({
     onSuccess: () => { toast.success("Flyer do evento atualizado."); setFlyerFile(null); if (flyerPreviewUrl) URL.revokeObjectURL(flyerPreviewUrl); setFlyerPreviewUrl(null); onChanged(); },
     onError: (error) => toast.error(error.message || "Não foi possível atualizar o flyer"),
@@ -292,6 +348,19 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
 
   const checkinUrl = qrValue ? `${window.location.origin}/checkin?event=${event.id}&token=${qrValue.split(":")[2]}` : null;
   const typeHasRegistration = event.registrationMode !== "none";
+
+  function invitationMessage() {
+    const paymentLine = event.registrationFeeCents > 0
+      ? `\nInscrição: ${formatBrl(event.registrationFeeCents)} ${event.registrationMode === "casal" ? "por casal" : "por pessoa"}${event.paymentDueDate ? ` · pagamento até ${formatDatePtBr(event.paymentDueDate)}` : ""}`
+      : "\nEvento gratuito";
+    return `Olá! Faça sua inscrição para o evento ${event.name}.${paymentLine}\n\n${registrationUrl ?? ""}`;
+  }
+
+  useEffect(() => {
+    setPaymentFeeDraft(formatCentsForInput(event.registrationFeeCents));
+    setPaymentDueDateDraft(formatDateInput(event.paymentDueDate));
+    setPaymentInstructionsDraft(event.paymentInstructions ?? "");
+  }, [event.id, event.registrationFeeCents, event.paymentDueDate, event.paymentInstructions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -317,13 +386,12 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
 
   function shareWhatsApp() {
     if (!registrationUrl) return;
-    const message = `Olá! Faça sua inscrição para o evento ${event.name}:\n\n${registrationUrl}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+    window.open(`https://wa.me/?text=${encodeURIComponent(invitationMessage())}`, "_blank", "noopener,noreferrer");
   }
 
   async function shareInvite() {
     if (!registrationUrl) return;
-    const message = `Olá! Faça sua inscrição para o evento ${event.name}:\n\n${registrationUrl}`;
+    const message = invitationMessage();
     try {
       if (flyerShareFile && typeof navigator.share === "function" && (!navigator.canShare || navigator.canShare({ files: [flyerShareFile] }))) {
         await navigator.share({ files: [flyerShareFile], title: event.name, text: message });
@@ -377,13 +445,32 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     setRegistrationMode.mutate({ churchId, eventId: event.id, registrationMode: mode });
   }
 
+  function savePaymentSettings() {
+    const registrationFeeCents = paymentFeeDraft.trim() ? parseBrlToCents(paymentFeeDraft) : 0;
+    if (registrationFeeCents === null || registrationFeeCents < 0) {
+      toast.error("Informe um valor válido ou deixe em branco para evento gratuito.");
+      return;
+    }
+    if (event.registrationMode === "none" && registrationFeeCents > 0) {
+      toast.error("Ative uma inscrição individual ou de casal antes de cobrar.");
+      return;
+    }
+    setPaymentSettings.mutate({
+      churchId,
+      eventId: event.id,
+      registrationFeeCents,
+      paymentDueDate: paymentDueDateDraft || null,
+      paymentInstructions: paymentInstructionsDraft.trim() || null,
+    });
+  }
+
   function printAttendanceReport() {
     const report = attendanceReport.data;
     if (!report) return;
-    const rows = report.registrations.map((registration: any) => `<tr><td>${escapeHtml(registration.displayName)}</td><td>${escapeHtml(registration.companionName ?? "—")}</td><td>${registration.attendance === "presente" ? "Presente" : registration.attendance === "ausente" ? "Não compareceu" : "Pendente"}</td><td>${registration.participantPhone ? escapeHtml(registration.participantPhone) : "—"}</td></tr>`).join("");
+    const rows = report.registrations.map((registration: any) => `<tr><td>${escapeHtml(registration.displayName)}</td><td>${escapeHtml(registration.companionName ?? "—")}</td><td>${registration.participantPhone ? escapeHtml(registration.participantPhone) : "—"}</td><td>${event.registrationFeeCents > 0 ? `${formatBrl(registration.amountCents ?? 0)} · ${paymentStatusLabel(registration.paymentStatus as PaymentStatus)}` : "Sem cobrança"}</td><td>${registration.attendance === "presente" ? "Presente" : registration.attendance === "ausente" ? "Não compareceu" : "Pendente"}</td></tr>`).join("");
     const printWindow = window.open("", "_blank", "noopener,noreferrer");
     if (!printWindow) { toast.error("Permita pop-ups para imprimir o relatório."); return; }
-    printWindow.document.write(`<!doctype html><html><head><title>Presença — ${escapeHtml(report.event.name)}</title><style>body{font-family:Arial,sans-serif;color:#1e3a5f;padding:32px}h1{margin:0 0 4px}p{color:#556274}.metrics{display:flex;gap:12px;margin:24px 0}.metric{border:1px solid #ded4bd;border-radius:8px;padding:12px;min-width:120px}.metric strong{font-size:24px;display:block}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:10px;border-bottom:1px solid #e4e4e7;text-align:left}th{color:#7b6323;font-size:12px;text-transform:uppercase}</style></head><body><h1>${escapeHtml(report.event.name)}</h1><p>${formatDate(report.event.startDate)}${report.event.location ? ` · ${escapeHtml(report.event.location)}` : ""}</p><div class="metrics"><div class="metric"><span>Inscritos</span><strong>${report.summary.registeredCount}</strong></div><div class="metric"><span>Pessoas</span><strong>${report.summary.attendeeCount}</strong></div><div class="metric"><span>Presentes</span><strong>${report.summary.checkedInAttendeeCount}</strong></div><div class="metric"><span>Faltas</span><strong>${report.summary.absentAttendeeCount}</strong></div></div><table><thead><tr><th>Inscrição</th><th>Acompanhante</th><th>Situação</th><th>Telefone</th></tr></thead><tbody>${rows || "<tr><td colspan='4'>Sem inscrições registradas.</td></tr>"}</tbody></table></body></html>`);
+    printWindow.document.write(`<!doctype html><html><head><title>Presença e pagamentos — ${escapeHtml(report.event.name)}</title><style>body{font-family:Arial,sans-serif;color:#1e3a5f;padding:32px}h1{margin:0 0 4px}p{color:#556274}.metrics{display:flex;gap:12px;margin:24px 0;flex-wrap:wrap}.metric{border:1px solid #ded4bd;border-radius:8px;padding:12px;min-width:120px}.metric strong{font-size:24px;display:block}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:10px;border-bottom:1px solid #e4e4e7;text-align:left}th{color:#7b6323;font-size:12px;text-transform:uppercase}</style></head><body><h1>${escapeHtml(report.event.name)}</h1><p>${formatDate(report.event.startDate)}${report.event.location ? ` · ${escapeHtml(report.event.location)}` : ""}</p><div class="metrics"><div class="metric"><span>Inscritos</span><strong>${report.summary.registeredCount}</strong></div><div class="metric"><span>Pessoas</span><strong>${report.summary.attendeeCount}</strong></div><div class="metric"><span>Presentes</span><strong>${report.summary.checkedInAttendeeCount}</strong></div><div class="metric"><span>Faltas</span><strong>${report.summary.absentAttendeeCount}</strong></div>${event.registrationFeeCents > 0 ? `<div class="metric"><span>Previsto</span><strong>${formatBrl(report.summary.expectedAmountCents)}</strong></div><div class="metric"><span>Recebido</span><strong>${formatBrl(report.summary.paidAmountCents)}</strong></div><div class="metric"><span>Pendente</span><strong>${formatBrl(report.summary.pendingAmountCents)}</strong></div>` : ""}</div><table><thead><tr><th>Inscrição</th><th>Acompanhante</th><th>Telefone</th><th>Pagamento</th><th>Presença</th></tr></thead><tbody>${rows || "<tr><td colspan='5'>Sem inscrições registradas.</td></tr>"}</tbody></table></body></html>`);
     printWindow.document.close(); printWindow.focus(); printWindow.print();
   }
 
@@ -391,7 +478,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     <div className="card-sacred p-4 flex flex-col gap-4 sm:flex-row sm:items-center">
       {event.flyer && <div className={`hidden w-14 shrink-0 overflow-hidden rounded-xl border border-[#1e3a5f]/10 bg-white sm:block ${flyerAspectClass(event.flyerFormat)}`}><img src={event.flyer.optimizedUrl || event.flyer.url} alt={`Flyer de ${event.name}`} className="h-full w-full object-contain" /></div>}
       <div className="w-14 h-14 rounded-xl bg-cream-dark flex flex-col items-center justify-center flex-shrink-0 text-center"><span className="text-lg font-bold font-display text-navy leading-none">{new Date(event.startDate).getDate()}</span><span className="text-[10px] text-muted-foreground uppercase tracking-wide">{new Date(event.startDate).toLocaleString("pt-BR", { month: "short" })}</span></div>
-      <div className="flex-1 min-w-0"><p className="font-semibold text-navy truncate">{event.name}</p><div className="flex flex-wrap items-center gap-2 mt-1">{event.location && <span className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{event.location}</span>}{event.maxCapacity && <span className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" />{event.maxCapacity} vagas</span>}</div><div className="mt-2 flex flex-wrap items-center gap-2"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorClass}`}>{typeLabel}</span>{typeHasRegistration && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"><Link2 className="h-3 w-3" />{registrationModeLabel(event.registrationMode)}</span>}</div></div>
+      <div className="flex-1 min-w-0"><p className="font-semibold text-navy truncate">{event.name}</p><div className="flex flex-wrap items-center gap-2 mt-1">{event.location && <span className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{event.location}</span>}{event.maxCapacity && <span className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" />{event.maxCapacity} vagas</span>}</div><div className="mt-2 flex flex-wrap items-center gap-2"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorClass}`}>{typeLabel}</span>{typeHasRegistration && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"><Link2 className="h-3 w-3" />{registrationModeLabel(event.registrationMode)}</span>}{event.registrationFeeCents > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">{formatBrl(event.registrationFeeCents)} {event.registrationMode === "casal" ? "por casal" : "por pessoa"}</span>}</div></div>
       <div className="flex flex-wrap items-center gap-2 shrink-0 sm:justify-end">
         {registrationUrl && <Button size="sm" variant="outline" className="h-8 px-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => void shareInvite()} title="Compartilhar convite"><Share2 className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Convite</span></Button>}
         <Button size="sm" variant="outline" className="h-8 px-2 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5" onClick={() => setManagementOpen(true)} title="Gerenciar inscrições e presença"><ClipboardCheck className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Gerenciar</span></Button>
@@ -409,6 +496,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
             {registrationUrl && <div className="mt-3 flex flex-col gap-2 border-t border-[#1e3a5f]/10 pt-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">Trocar o modelo renova o link atual e o endereço antigo deixa de funcionar.</p><Button variant="ghost" size="sm" className="justify-start text-amber-700 hover:bg-amber-50 hover:text-amber-800 sm:justify-center" onClick={() => { setModeDraft("none"); saveRegistrationMode("none"); }} disabled={setRegistrationMode.isPending}>Pausar inscrições</Button></div>}
           </section>
 
+          <section className="rounded-2xl border border-[#1e3a5f]/10 bg-white p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#1e3a5f]/5 text-[#1e3a5f]"><BarChart3 className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Inscrição e pagamento</p><p className="mt-1 text-xs leading-5 text-muted-foreground">O valor é informado no convite. A equipe confirma o recebimento manualmente; nenhuma entrada é lançada automaticamente na Tesouraria.</p></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><div><Label>Valor {event.registrationMode === "casal" ? "por casal" : "por pessoa"}</Label><Input value={paymentFeeDraft} onChange={(inputEvent) => setPaymentFeeDraft(inputEvent.target.value)} inputMode="decimal" placeholder="Em branco = evento gratuito" className="mt-1" disabled={!typeHasRegistration} /></div><div><Label>Pagamento até <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="date" value={paymentDueDateDraft} onChange={(inputEvent) => setPaymentDueDateDraft(inputEvent.target.value)} className="mt-1" disabled={!typeHasRegistration} /></div><div className="sm:col-span-2"><Label>Instruções de pagamento <span className="font-normal text-muted-foreground">(opcional)</span></Label><Textarea value={paymentInstructionsDraft} onChange={(inputEvent) => setPaymentInstructionsDraft(inputEvent.target.value)} rows={3} maxLength={1200} placeholder="Ex.: Faça o Pix e envie o comprovante para a secretaria." className="mt-1" disabled={!typeHasRegistration} /></div></div><div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">{event.registrationFeeCents > 0 ? `Atual: ${formatBrl(event.registrationFeeCents)} ${event.registrationMode === "casal" ? "por casal" : "por pessoa"}.` : "Este evento está configurado como gratuito."}</p><Button type="button" size="sm" className="gap-1.5 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={savePaymentSettings} disabled={setPaymentSettings.isPending || !typeHasRegistration}>{setPaymentSettings.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Salvar pagamento</Button></div></section>
+
           <section className="rounded-2xl border border-[#1e3a5f]/10 bg-white p-4">
             <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#1e3a5f]/5 text-[#1e3a5f]"><ImageIcon className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Flyer do convite</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Associe uma imagem a este evento. Ela aparecerá na inscrição pública e poderá ser enviada pelo compartilhamento do celular.</p></div></div>
             {event.flyer && <div className="mt-4 flex flex-col gap-4 rounded-xl bg-[#f5f0e8]/60 p-3 sm:flex-row sm:items-start"><div className={`w-24 shrink-0 overflow-hidden rounded-lg border border-[#1e3a5f]/10 bg-white ${flyerAspectClass(event.flyerFormat)}`}><img src={event.flyer.optimizedUrl || event.flyer.url} alt={`Flyer atual de ${event.name}`} className="h-full w-full object-contain" /></div><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-[#1e3a5f]">{FLYER_FORMATS.find((item) => item.value === event.flyerFormat)?.label ?? "Formato do convite"}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">O mesmo flyer é usado na página pública. Escolha outro arquivo abaixo para substituir.</p><div className="mt-3 flex flex-wrap gap-2">{registrationUrl && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => void shareInvite()}><Share2 className="h-3.5 w-3.5" /> Compartilhar convite</Button>}<a href={event.flyer.optimizedUrl || event.flyer.url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"><Download className="h-3.5 w-3.5" /> Abrir flyer</a><Button type="button" size="sm" variant="ghost" className="gap-1.5 text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={removeExistingFlyer} disabled={setFlyer.isPending}><Trash2 className="h-3.5 w-3.5" /> Remover</Button></div></div></div>}
@@ -418,7 +507,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
 
           {attendanceReport.isLoading ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[1, 2, 3, 4].map((item) => <div key={item} className="h-20 animate-pulse rounded-xl bg-muted" />)}</div> : attendanceReport.error ? <div className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">Você não tem permissão para consultar este relatório ou o evento não foi encontrado.</div> : attendanceReport.data ? <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-5"><AttendanceMetric icon={Users} label="Inscritos" value={attendanceReport.data.summary.registeredCount} tone="navy" /><AttendanceMetric icon={UserRound} label="Pessoas" value={attendanceReport.data.summary.attendeeCount} tone="navy" /><AttendanceMetric icon={UserCheck} label="Presentes" value={attendanceReport.data.summary.checkedInAttendeeCount} tone="green" /><AttendanceMetric icon={UserX} label="Não vieram" value={attendanceReport.data.summary.absentAttendeeCount} tone="amber" /><AttendanceMetric icon={Loader2} label="Pendentes" value={attendanceReport.data.summary.pendingAttendeeCount} tone="slate" /></div>
-            <div className="overflow-hidden rounded-xl border border-[#1e3a5f]/10"><div className="hidden grid-cols-[1fr_1fr_10rem_9rem] gap-3 bg-[#f5f0e8] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#1e3a5f]/70 sm:grid"><span>Inscrição</span><span>Acompanhante</span><span>Telefone</span><span>Situação</span></div><div className="max-h-80 overflow-y-auto divide-y divide-[#1e3a5f]/10">{attendanceReport.data.registrations.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">Ainda não há inscrições para este evento.</p> : attendanceReport.data.registrations.map((registration: any) => <div key={registration.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1fr_1fr_10rem_9rem] sm:items-center"><div className="min-w-0"><p className="truncate font-medium text-[#1e3a5f]">{registration.displayName}</p><p className="mt-0.5 text-xs text-muted-foreground sm:hidden">{registration.participantPhone || "Sem telefone"}{registration.companionName ? ` · ${registration.companionName}` : ""}</p></div><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.companionName || "—"}</p><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.participantPhone || "—"}</p><Select value={(registration.presenceStatus ?? "pendente") as PresenceStatus} onValueChange={(value) => setPresence.mutate({ churchId, eventId: event.id, registrationId: registration.id, presenceStatus: value as PresenceStatus })} disabled={setPresence.isPending}><SelectTrigger className="h-8 w-full text-xs sm:w-36"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="presente">Presente</SelectItem><SelectItem value="ausente">Não compareceu</SelectItem><SelectItem value="cancelado">Cancelado</SelectItem></SelectContent></Select></div>)}</div></div>
+            {event.registrationFeeCents > 0 && <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><AttendanceMetric icon={BarChart3} label="Valor previsto" value={formatBrl(attendanceReport.data.summary.expectedAmountCents)} tone="navy" /><AttendanceMetric icon={CheckCircle2} label="Recebido" value={formatBrl(attendanceReport.data.summary.paidAmountCents)} tone="green" /><AttendanceMetric icon={Loader2} label="Pendente" value={formatBrl(attendanceReport.data.summary.pendingAmountCents)} tone="slate" /><AttendanceMetric icon={UserRound} label="Pagos" value={attendanceReport.data.summary.paymentPaidCount} tone="navy" /></div>}
+            <div className="overflow-hidden rounded-xl border border-[#1e3a5f]/10"><div className="hidden grid-cols-[1.2fr_1fr_8rem_9rem_9rem] gap-3 bg-[#f5f0e8] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#1e3a5f]/70 sm:grid"><span>Inscrição</span><span>Acompanhante</span><span>Telefone</span><span>Pagamento</span><span>Presença</span></div><div className="max-h-80 overflow-y-auto divide-y divide-[#1e3a5f]/10">{attendanceReport.data.registrations.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">Ainda não há inscrições para este evento.</p> : attendanceReport.data.registrations.map((registration: any) => <div key={registration.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1.2fr_1fr_8rem_9rem_9rem] sm:items-center"><div className="min-w-0"><p className="truncate font-medium text-[#1e3a5f]">{registration.displayName}</p><p className="mt-0.5 text-xs text-muted-foreground sm:hidden">{registration.participantPhone || "Sem telefone"}{registration.companionName ? ` · ${registration.companionName}` : ""} · {event.registrationFeeCents > 0 ? `${formatBrl(registration.amountCents ?? 0)} · ${paymentStatusLabel(registration.paymentStatus as PaymentStatus)}` : "Sem cobrança"}</p></div><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.companionName || "—"}</p><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.participantPhone || "—"}</p>{event.registrationFeeCents > 0 ? <Select value={(registration.paymentStatus ?? "pendente") as PaymentStatus} onValueChange={(value) => setPaymentStatus.mutate({ churchId, eventId: event.id, registrationId: registration.id, paymentStatus: value as PaymentStatus })} disabled={setPaymentStatus.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="pago">Pago</SelectItem><SelectItem value="isento">Isento</SelectItem><SelectItem value="reembolsado">Reembolsado</SelectItem></SelectContent></Select> : <span className="text-xs text-muted-foreground">Sem cobrança</span>}<Select value={(registration.presenceStatus ?? "pendente") as PresenceStatus} onValueChange={(value) => setPresence.mutate({ churchId, eventId: event.id, registrationId: registration.id, presenceStatus: value as PresenceStatus })} disabled={setPresence.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="presente">Presente</SelectItem><SelectItem value="ausente">Não compareceu</SelectItem><SelectItem value="cancelado">Cancelado</SelectItem></SelectContent></Select></div>)}</div></div>
             <div className="flex flex-col gap-2 sm:flex-row"><Button variant="outline" className="flex-1 gap-2 border-[#1e3a5f]/20 text-[#1e3a5f]" onClick={printAttendanceReport}><Printer className="w-4 h-4" /> Imprimir relatório</Button><Button variant="ghost" className="flex-1" onClick={() => void attendanceReport.refetch()}>Atualizar lista</Button></div>
           </> : null}
         </div>
@@ -429,7 +519,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   </>;
 }
 
-function AttendanceMetric({ icon: Icon, label, value, tone }: { icon: typeof Users; label: string; value: number; tone: "navy" | "green" | "amber" | "slate" }) {
+function AttendanceMetric({ icon: Icon, label, value, tone }: { icon: typeof Users; label: string; value: number | string; tone: "navy" | "green" | "amber" | "slate" }) {
   const toneClass = tone === "green" ? "bg-emerald-50 text-emerald-700" : tone === "amber" ? "bg-amber-50 text-amber-700" : tone === "slate" ? "bg-slate-100 text-slate-600" : "bg-[#1e3a5f]/5 text-[#1e3a5f]";
   return <div className="rounded-xl border border-[#1e3a5f]/10 bg-white p-3"><div className={`mb-2 flex h-7 w-7 items-center justify-center rounded-lg ${toneClass}`}><Icon className={`h-4 w-4 ${tone === "slate" ? "animate-pulse" : ""}`} /></div><p className="text-xl font-bold text-[#1e3a5f]">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>;
 }

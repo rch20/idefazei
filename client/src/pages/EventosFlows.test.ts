@@ -11,6 +11,7 @@ const schema = readFileSync(resolve(process.cwd(), "drizzle/schema.ts"), "utf8")
 const mediaRoute = readFileSync(resolve(process.cwd(), "server/_core/index.ts"), "utf8");
 const migration = readFileSync(resolve(process.cwd(), "drizzle/0051_faithful_longshot.sql"), "utf8");
 const flyerMigration = readFileSync(resolve(process.cwd(), "drizzle/0052_event_flyer.sql"), "utf8");
+const paymentMigration = readFileSync(resolve(process.cwd(), "drizzle/0053_event_payment.sql"), "utf8");
 
 const eventRouter = () => router.slice(router.indexOf("const eventsRouter"), router.indexOf("const familiesRouter"));
 
@@ -68,6 +69,28 @@ describe("Eventos — inscrições e presença", () => {
     expect(flyerMigration).toContain("event_flyer");
     expect(flyerMigration).toContain("flyerMediaAssetId");
     expect(flyerMigration).toContain("flyerFormat");
+  });
+
+  it("configura cobrança sem misturar inscrição com Tesouraria", () => {
+    expect(schema).toContain('registrationFeeCents: int("registrationFeeCents").default(0).notNull()');
+    expect(schema).toContain('paymentStatus: mysqlEnum("paymentStatus", ["pendente", "pago", "isento", "reembolsado"])');
+    expect(schema).toContain('amountCents: int("amountCents").default(0).notNull()');
+    expect(page).toContain("Inscrição e pagamento");
+    expect(page).toContain("Evento gratuito");
+    expect(page).toContain("Salvar pagamento");
+    expect(page).toContain("setPaymentStatus.useMutation");
+    expect(page).toContain("Valor previsto");
+    expect(page).toContain("Recebido");
+    expect(page).toContain("Pendente");
+    expect(publicPage).toContain("Pagamento da inscrição");
+    expect(publicPage).toContain("A equipe da igreja confirmará o pagamento manualmente.");
+    expect(router).toContain("Ative uma inscrição individual ou de casal antes de cobrar.");
+    expect(router).toContain("updateEventRegistrationPayment");
+    expect(db).toContain("paidAmountCents");
+    expect(db).toContain("amountCents: event.registrationFeeCents ?? 0");
+    expect(paymentMigration).toContain("registrationFeeCents");
+    expect(paymentMigration).toContain("paymentStatus");
+    expect(paymentMigration).not.toContain("financial_transactions");
   });
 
   it("controla presença e separa pendentes de quem não compareceu", () => {
