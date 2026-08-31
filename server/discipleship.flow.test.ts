@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, getEventAttendanceReport, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, createEvent, getEventAttendanceReport, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -1853,7 +1853,41 @@ describe("Fluxo completo de discipulado", () => {
     });
   });
 
-  describe("Eventos — relatório de presença", () => {
+  describe("Eventos — criação e relatório de presença", () => {
+    it("converte a data de fim do formulário para Date antes de persistir", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      await caller.events.create({
+        churchId: CHURCH_ID,
+        name: "Encontro de Casais",
+        type: "outro",
+        startDate: "2026-09-10",
+        endDate: "2026-09-11",
+        location: "Salão da Igreja",
+        maxCapacity: 40,
+        registrationMode: "casal",
+      });
+
+      expect(createEvent).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        startDate: new Date("2026-09-10"),
+        endDate: new Date("2026-09-11"),
+        registrationToken: expect.any(String),
+      }));
+    });
+
+    it("rejeita data de fim anterior à data de início", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+      await expect(caller.events.create({
+        churchId: CHURCH_ID,
+        name: "Evento inválido",
+        type: "outro",
+        startDate: "2026-09-11",
+        endDate: "2026-09-10",
+        registrationMode: "none",
+      })).rejects.toThrow("não pode ser anterior");
+      expect(createEvent).not.toHaveBeenCalled();
+    });
+
     it("consulta inscritos, check-ins e ausentes somente dentro do tenant administrativo", async () => {
       const caller = appRouter.createCaller(createMemberContext());
       const report = await caller.events.attendanceReport({ churchId: CHURCH_ID, eventId: 31 });

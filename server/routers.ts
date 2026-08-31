@@ -2557,8 +2557,13 @@ const eventsRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const startDate = new Date(input.startDate);
+      const endDate = input.endDate ? new Date(input.endDate) : undefined;
+      if (Number.isNaN(startDate.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de início do evento é inválida." });
+      if (endDate && Number.isNaN(endDate.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim do evento é inválida." });
+      if (endDate && endDate < startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim não pode ser anterior à data de início." });
       const registrationToken = input.registrationMode === "none" ? null : randomBytes(32).toString("base64url");
-      return createEvent({ ...input, startDate: new Date(input.startDate), registrationToken } as any);
+      return createEvent({ ...input, startDate, endDate, registrationToken } as any);
     }),
 
   publicRegistration: router({
