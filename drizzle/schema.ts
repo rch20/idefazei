@@ -467,21 +467,37 @@ export const events = mysqlTable("events", {
   endDate: timestamp("endDate"),
   location: text("location"),
   maxCapacity: int("maxCapacity"),
+  registrationMode: mysqlEnum("registrationMode", ["none", "individual", "casal"]).default("none").notNull(),
+  registrationToken: varchar("registrationToken", { length: 96 }),
   qrCode: text("qrCode"),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("events_registration_token_unique").on(table.registrationToken),
+  index("events_church_date_idx").on(table.churchId, table.startDate),
+]);
 
 export const eventRegistrations = mysqlTable("event_registrations", {
   id: int("id").autoincrement().primaryKey(),
   eventId: int("eventId").notNull(),
-  personId: int("personId").notNull(),
+  churchId: int("churchId"),
+  personId: int("personId"),
+  participantName: varchar("participantName", { length: 255 }),
+  participantPhone: varchar("participantPhone", { length: 20 }),
+  companionName: varchar("companionName", { length: 255 }),
+  email: varchar("email", { length: 320 }),
+  attendeeCount: int("attendeeCount").default(1).notNull(),
+  source: mysqlEnum("source", ["manual", "public_form"]).default("manual").notNull(),
+  presenceStatus: mysqlEnum("presenceStatus", ["pendente", "presente", "ausente", "cancelado"]).default("pendente").notNull(),
   registeredAt: timestamp("registeredAt").defaultNow().notNull(),
   checkedIn: boolean("checkedIn").default(false),
   checkedInAt: timestamp("checkedInAt"),
   status: mysqlEnum("status", ["inscrito", "participou", "cancelado"]).default("inscrito"),
-});
+}, (table) => [
+  index("event_registrations_event_status_idx").on(table.eventId, table.presenceStatus),
+  index("event_registrations_church_idx").on(table.churchId, table.eventId),
+]);
 
 // ─── MINISTÉRIOS ──────────────────────────────────────────────────────────────
 

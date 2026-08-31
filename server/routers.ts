@@ -96,6 +96,10 @@ import {
   getDiscipleshipTree,
   getEventAttendanceReport,
   getEventsByChurch,
+  getPublicEventRegistrationByToken,
+  createPublicEventRegistration,
+  updateEventRegistrationPresence,
+  setEventRegistrationMode,
   createFinancialAccount,
   createFinancialCategory,
   createFinancialTransaction,
@@ -2492,11 +2496,48 @@ const eventsRouter = router({
       return report;
     }),
 
-    create: protectedProcedure
+  registrations: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), eventId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const event = await getEventAttendanceReport(input);
+      if (!event) throw new TRPCError({ code: "NOT_FOUND", message: "Evento não encontrado nesta igreja." });
+      return event.registrations;
+    }),
+
+  setPresence: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      eventId: z.number().int().positive(),
+      registrationId: z.number().int().positive(),
+      presenceStatus: z.enum(["pendente", "presente", "ausente", "cancelado"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const result = await updateEventRegistrationPresence(input);
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Inscrição não encontrada nesta igreja." });
+      return result;
+    }),
+
+  setRegistrationMode: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      eventId: z.number().int().positive(),
+      registrationMode: z.enum(["none", "individual", "casal"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const registrationToken = input.registrationMode === "none" ? null : randomBytes(32).toString("base64url");
+      const result = await setEventRegistrationMode({ ...input, registrationToken });
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento não encontrado nesta igreja." });
+      return result;
+    }),
+
+  create: protectedProcedure
     .input(
       z.object({
         churchId: z.number(),
-        name: z.string().min(2),
+        name: z.string().trim().min(2).max(255),
         type: z.enum([
           "congresso",
           "conferencia",
@@ -2506,17 +2547,71 @@ const eventsRouter = router({
           "culto",
           "outro",
         ]),
-        description: z.string().optional(),
+        description: z.string().trim().max(4000).optional(),
         startDate: z.string(),
         endDate: z.string().optional(),
-        location: z.string().optional(),
-        maxCapacity: z.number().optional(),
+        location: z.string().trim().max(500).optional(),
+        maxCapacity: z.number().int().positive().optional(),
+        registrationMode: z.enum(["none", "individual", "casal"]).default("none"),
       })
     )
     .mutation(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
-      return createEvent({ ...input, startDate: new Date(input.startDate) } as any);
+      const registrationToken = input.registrationMode === "none" ? null : randomBytes(32).toString("base64url");
+      return createEvent({ ...input, startDate: new Date(input.startDate), registrationToken } as any);
     }),
+
+  publicRegistration: router({
+    get: publicProcedure
+      .input(z.object({ token: z.string().trim().min(32).max(96) }))
+      .query(async ({ input, ctx }) => {
+        const resolved = await getPublicEventRegistrationByToken(input.token);
+        if (!resolved) throw new TRPCError({ code: "NOT_FOUND", message: "Inscrição indisponível." });
+        if (ctx.tenantChurchId !== null && ctx.tenantChurchId !== resolved.church.id) throw new TRPCError({ code: "FORBIDDEN", message: "Este link não pertence a esta igreja." });
+        if (ctx.tenantSlug && ctx.tenantSlug !== resolved.church.slug) throw new TRPCError({ code: "FORBIDDEN", message: "Este link não pertence a esta igreja." });
+        return {
+          event: {
+            id: resolved.event.id,
+            name: resolved.event.name,
+            type: resolved.event.type,
+            description: resolved.event.description,
+            startDate: resolved.event.startDate,
+            endDate: resolved.event.endDate,
+            location: resolved.event.location,
+            maxCapacity: resolved.event.maxCapacity,
+            registrationMode: resolved.event.registrationMode,
+          },
+          church: {
+            id: resolved.church.id,
+            name: resolved.church.name,
+            slug: resolved.church.slug,
+            logoUrl: resolved.church.logoUrl,
+            primaryColor: resolved.church.primaryColor,
+            secondaryColor: resolved.church.secondaryColor,
+          },
+        };
+      }),
+    submit: publicProcedure
+      .input(z.object({
+        token: z.string().trim().min(32).max(96),
+        participantName: z.string().trim().min(2).max(255),
+        participantPhone: z.string().trim().min(8).max(20),
+        companionName: z.string().trim().max(255).optional(),
+        email: z.string().trim().email().max(320).optional().or(z.literal("")),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const resolved = await getPublicEventRegistrationByToken(input.token);
+        if (!resolved) throw new TRPCError({ code: "NOT_FOUND", message: "Inscrição indisponível." });
+        if (ctx.tenantChurchId !== null && ctx.tenantChurchId !== resolved.church.id) throw new TRPCError({ code: "FORBIDDEN", message: "Este link não pertence a esta igreja." });
+        if (ctx.tenantSlug && ctx.tenantSlug !== resolved.church.slug) throw new TRPCError({ code: "FORBIDDEN", message: "Este link não pertence a esta igreja." });
+        if (resolved.event.registrationMode === "casal" && !input.companionName?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o nome do casal." });
+        if (resolved.event.registrationMode === "individual" && input.companionName?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Esta inscrição é individual." });
+        const result = await createPublicEventRegistration(input);
+        if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Inscrição indisponível." });
+        return result;
+      }),
+  }),
+
   generateQrCode: protectedProcedure
     .input(z.object({ eventId: z.number(), churchId: z.number() }))
     .mutation(async ({ input, ctx }) => {
@@ -2551,7 +2646,6 @@ const eventsRouter = router({
       if (!expectedToken || expectedToken !== input.token) {
         throw new TRPCError({ code: "UNAUTHORIZED", message: "QR Code inválido" });
       }
-      // Registrar check-in em event_registrations
       const { eventRegistrations } = await import("../drizzle/schema");
       if (input.personId) {
         const { people } = await import("../drizzle/schema");
@@ -2560,30 +2654,15 @@ const eventsRouter = router({
           .from(people)
           .where(and(eq(people.id, input.personId), eq(people.churchId, event.churchId)))
           .limit(1);
-        if (!personRows[0]) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Pessoa não pertence à igreja deste evento." });
-        }
-        // Verificar se já fez check-in
-        const existing = await db.select().from(eventRegistrations)
-          .where(eq(eventRegistrations.eventId, input.eventId))
-          .limit(50);
+        if (!personRows[0]) throw new TRPCError({ code: "FORBIDDEN", message: "Pessoa não pertence à igreja deste evento." });
+        const existing = await db.select().from(eventRegistrations).where(eq(eventRegistrations.eventId, input.eventId)).limit(50);
         const alreadyCheckedIn = existing.find((r: any) => r.personId === input.personId && r.checkedIn);
-        if (alreadyCheckedIn) {
-          return { success: true, eventName: event.name, checkedIn: alreadyCheckedIn.checkedInAt, alreadyRegistered: true };
-        }
-        // Upsert: se já inscrito, atualizar; senão inserir
+        if (alreadyCheckedIn) return { success: true, eventName: event.name, checkedIn: alreadyCheckedIn.checkedInAt, alreadyRegistered: true };
         const alreadyRegistered = existing.find((r: any) => r.personId === input.personId);
         if (alreadyRegistered) {
-          await db.update(eventRegistrations)
-            .set({ checkedIn: true, checkedInAt: new Date() })
-            .where(eq(eventRegistrations.id, alreadyRegistered.id));
+          await db.update(eventRegistrations).set({ checkedIn: true, checkedInAt: new Date(), presenceStatus: "presente", status: "participou" }).where(eq(eventRegistrations.id, alreadyRegistered.id));
         } else {
-          await db.insert(eventRegistrations).values({
-            eventId: input.eventId,
-            personId: input.personId,
-            checkedIn: true,
-            checkedInAt: new Date(),
-          });
+          await db.insert(eventRegistrations).values({ eventId: input.eventId, churchId: event.churchId, personId: input.personId, checkedIn: true, checkedInAt: new Date(), presenceStatus: "presente" });
         }
       }
       return { success: true, eventName: event.name, checkedIn: new Date(), alreadyRegistered: false };

@@ -2313,6 +2313,8 @@ export async function getPublicUpcomingEventsByChurchId(churchId: number) {
     startDate: events.startDate,
     endDate: events.endDate,
     location: events.location,
+    registrationMode: events.registrationMode,
+    registrationToken: events.registrationToken,
   })
     .from(events)
     .where(and(
@@ -2354,6 +2356,13 @@ export async function getEventAttendanceReport(data: { churchId: number; eventId
   const rows = await db.select({
     id: eventRegistrations.id,
     personId: eventRegistrations.personId,
+    participantName: eventRegistrations.participantName,
+    participantPhone: eventRegistrations.participantPhone,
+    companionName: eventRegistrations.companionName,
+    email: eventRegistrations.email,
+    attendeeCount: eventRegistrations.attendeeCount,
+    source: eventRegistrations.source,
+    presenceStatus: eventRegistrations.presenceStatus,
     registeredAt: eventRegistrations.registeredAt,
     checkedIn: eventRegistrations.checkedIn,
     checkedInAt: eventRegistrations.checkedInAt,
@@ -2361,22 +2370,32 @@ export async function getEventAttendanceReport(data: { churchId: number; eventId
     personName: people.fullName,
   })
     .from(eventRegistrations)
-    .innerJoin(people, and(eq(people.id, eventRegistrations.personId), eq(people.churchId, data.churchId)))
-    .where(eq(eventRegistrations.eventId, event.id))
+    .leftJoin(people, and(eq(people.id, eventRegistrations.personId), eq(people.churchId, data.churchId)))
+    .where(and(eq(eventRegistrations.eventId, event.id), or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, data.churchId))))
     .orderBy(desc(eventRegistrations.checkedInAt), desc(eventRegistrations.registeredAt));
 
-  const registrations = rows.filter((row) => row.status !== "cancelado");
-  const checkedIn = registrations.filter((row) => row.checkedIn || row.status === "participou");
-  const absent = registrations.filter((row) => !row.checkedIn && row.status !== "participou");
+  const registrations = rows.filter((row) => row.status !== "cancelado" && row.presenceStatus !== "cancelado");
+  const checkedIn = registrations.filter((row) => row.checkedIn || row.status === "participou" || row.presenceStatus === "presente");
+  const absent = registrations.filter((row) => row.presenceStatus === "ausente");
+  const pending = registrations.filter((row) => !checkedIn.includes(row) && !absent.includes(row));
   return {
     event,
     summary: {
       registeredCount: registrations.length,
+      attendeeCount: registrations.reduce((total, row) => total + (row.attendeeCount ?? 1), 0),
       checkedInCount: checkedIn.length,
+      checkedInAttendeeCount: checkedIn.reduce((total, row) => total + (row.attendeeCount ?? 1), 0),
       absentCount: absent.length,
+      absentAttendeeCount: absent.reduce((total, row) => total + (row.attendeeCount ?? 1), 0),
+      pendingCount: pending.length,
+      pendingAttendeeCount: pending.reduce((total, row) => total + (row.attendeeCount ?? 1), 0),
       cancelledCount: rows.length - registrations.length,
     },
-    registrations: registrations.map((row) => ({ ...row, attendance: row.checkedIn || row.status === "participou" ? "presente" as const : "ausente" as const })),
+    registrations: registrations.map((row) => ({
+      ...row,
+      displayName: row.participantName ?? row.personName ?? "Participante",
+      attendance: row.checkedIn || row.status === "participou" || row.presenceStatus === "presente" ? "presente" as const : row.presenceStatus === "ausente" ? "ausente" as const : "pendente" as const,
+    })),
   };
 }
 
@@ -2384,7 +2403,105 @@ export async function createEvent(data: typeof events.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   const result = await db.insert(events).values(data);
-  return result[0];
+  const id = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+  if (!id) return result[0];
+  const rows = await db.select().from(events).where(and(eq(events.id, id), eq(events.churchId, data.churchId))).limit(1);
+  return rows[0] ?? result[0];
+}
+
+export async function setEventRegistrationMode(data: { churchId: number; eventId: number; registrationMode: "none" | "individual" | "casal"; registrationToken: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const rows = await db.select({ id: events.id }).from(events).where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId))).limit(1);
+  if (!rows[0]) return null;
+  await db.update(events).set({ registrationMode: data.registrationMode, registrationToken: data.registrationToken }).where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+  const updatedRows = await db.select().from(events).where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId))).limit(1);
+  return updatedRows[0] ?? null;
+}
+
+export async function getPublicEventRegistrationByToken(token: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select({ event: events, church: churches })
+    .from(events)
+    .innerJoin(churches, eq(churches.id, events.churchId))
+    .where(and(
+      eq(events.registrationToken, token),
+      ne(events.registrationMode, "none"),
+      eq(events.active, true),
+      eq(churches.active, true),
+    ))
+    .limit(1);
+  const resolved = rows[0];
+  if (!resolved) return null;
+  return { event: resolved.event, church: resolved.church };
+}
+
+export async function createPublicEventRegistration(data: {
+  token: string;
+  participantName: string;
+  participantPhone: string;
+  companionName?: string | null;
+  email?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const resolved = await getPublicEventRegistrationByToken(data.token);
+  if (!resolved) return null;
+  const { event } = resolved;
+  const attendeeCount = event.registrationMode === "casal" ? 2 : 1;
+  const phone = data.participantPhone.replace(/\D/g, "");
+  if (phone.length < 8) throw new Error("Informe um telefone válido.");
+  const duplicateRows = await db.select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(and(
+      eq(eventRegistrations.eventId, event.id),
+      or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, event.churchId)),
+      eq(eventRegistrations.participantPhone, phone),
+      ne(eventRegistrations.presenceStatus, "cancelado"),
+    ))
+    .limit(1);
+  if (duplicateRows[0]) throw new Error("Já existe uma inscrição ativa com este telefone para este evento.");
+
+  if (event.maxCapacity) {
+    const currentRows = await db.select({ attendeeCount: eventRegistrations.attendeeCount })
+      .from(eventRegistrations)
+      .where(and(eq(eventRegistrations.eventId, event.id), or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, event.churchId)), ne(eventRegistrations.presenceStatus, "cancelado")));
+    const currentCount = currentRows.reduce((total, row) => total + (row.attendeeCount ?? 1), 0);
+    if (currentCount + attendeeCount > event.maxCapacity) throw new Error("As vagas deste evento já foram preenchidas.");
+  }
+
+  const result = await db.insert(eventRegistrations).values({
+    eventId: event.id,
+    churchId: event.churchId,
+    personId: null,
+    participantName: data.participantName.trim(),
+    participantPhone: phone,
+    companionName: data.companionName?.trim() || null,
+    email: data.email?.trim() || null,
+    attendeeCount,
+    source: "public_form",
+    presenceStatus: "pendente",
+    status: "inscrito",
+  });
+  return { id: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0), eventName: event.name, attendeeCount };
+}
+
+export async function updateEventRegistrationPresence(data: { churchId: number; eventId: number; registrationId: number; presenceStatus: "pendente" | "presente" | "ausente" | "cancelado" }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db.select({ id: events.id }).from(events).where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId))).limit(1);
+  if (!eventRows[0]) return null;
+  const registrationRows = await db.select({ id: eventRegistrations.id }).from(eventRegistrations).where(and(eq(eventRegistrations.id, data.registrationId), eq(eventRegistrations.eventId, data.eventId), or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, data.churchId)))).limit(1);
+  if (!registrationRows[0]) return null;
+  const isPresent = data.presenceStatus === "presente";
+  await db.update(eventRegistrations).set({
+    presenceStatus: data.presenceStatus,
+    checkedIn: isPresent,
+    checkedInAt: isPresent ? new Date() : null,
+    status: data.presenceStatus === "cancelado" ? "cancelado" : isPresent ? "participou" : "inscrito",
+  }).where(and(eq(eventRegistrations.id, data.registrationId), eq(eventRegistrations.eventId, data.eventId)));
+  return { success: true };
 }
 
 // ─── MINISTRIES ───────────────────────────────────────────────────────────────

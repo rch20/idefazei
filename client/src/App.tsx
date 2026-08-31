@@ -40,6 +40,7 @@ const Biblioteca = lazy(() => import("./pages/Biblioteca"));
 const AreaMembro = lazy(() => import("./pages/AreaMembro"));
 const AppLider = lazy(() => import("./pages/AppLider"));
 const CheckinEvento = lazy(() => import("./pages/CheckinEvento"));
+const EventoInscricaoPublica = lazy(() => import("./pages/EventoInscricaoPublica"));
 const Demo = lazy(() => import("./pages/Demo"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const CadastroSucesso = lazy(() => import("./pages/CadastroSucesso"));
@@ -123,6 +124,7 @@ function Router() {
       <Route path="/cadastro" component={CadastroDiscipulo} />
       <Route path="/devocional" component={DevocionalDiario} />
       <Route path="/encontro/ficha/:token" component={EncontroFichaPublica} />
+      <Route path="/evento/inscricao/:token" component={EventoInscricaoPublica} />
       <Route path="/visite-nos" component={VisiteNos} />
       <Route path="/visitante" component={PortalVisitante} />
       <Route path="/cadastro-sucesso" component={CadastroSucesso} />
