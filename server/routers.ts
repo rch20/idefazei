@@ -2528,7 +2528,11 @@ const cellsRouter = router({
       churchId: z.number(),
       cellId: z.number(),
       address: z.string().trim().max(500).nullable(),
+      addressNumber: z.string().trim().max(20).nullable().optional(),
+      addressComplement: z.string().trim().max(120).nullable().optional(),
+      zipCode: z.string().trim().regex(/^\d{5}-?\d{3}$/, "Informe um CEP válido com 8 números.").nullable().optional(),
       city: z.string().trim().max(100).nullable(),
+      state: z.string().trim().regex(/^[A-Za-z]{2}$/, "Informe a UF com 2 letras.").nullable().optional(),
       neighborhood: z.string().trim().max(100).nullable(),
       latitude: z.number().min(-90).max(90).nullable(),
       longitude: z.number().min(-180).max(180).nullable(),
@@ -2553,7 +2557,11 @@ const cellsRouter = router({
       }
       return updateCell(input.cellId, input.churchId, {
         address: input.address || null,
+        addressNumber: input.addressNumber === undefined ? cell.addressNumber : input.addressNumber?.trim() || null,
+        addressComplement: input.addressComplement === undefined ? cell.addressComplement : input.addressComplement?.trim() || null,
+        zipCode: input.zipCode === undefined ? cell.zipCode : input.zipCode?.replace(/\D/g, "") || null,
         city: input.city || null,
+        state: input.state === undefined ? cell.state : input.state?.trim().toUpperCase() || null,
         neighborhood: input.neighborhood || null,
         latitude: input.latitude === null ? null : String(input.latitude),
         longitude: input.longitude === null ? null : String(input.longitude),

@@ -22,6 +22,9 @@ type PublicCell = {
   longitude: number;
   locationMode: "approximate" | "exact";
   address: string | null;
+  addressNumber: string | null;
+  addressComplement: string | null;
+  zipCode: string | null;
   meetingDay: string | null;
   meetingTime: string | null;
   leaderName: string;
@@ -48,14 +51,18 @@ function locationLabel(cell: PublicCell) {
   return [cell.neighborhood, cell.city, cell.state].filter(Boolean).join(" · ") || "Região informada no mapa";
 }
 
+function mapsDestination(cell: PublicCell) {
+  const street = [cell.address, cell.addressNumber].filter(Boolean).join(", ");
+  const locality = [cell.zipCode, cell.neighborhood, cell.city, cell.state, "Brasil"].filter(Boolean).join(", ");
+  return [street, cell.addressComplement, locality].filter(Boolean).join(", ") || `${cell.latitude},${cell.longitude}`;
+}
+
 function mapsSearchLink(cell: PublicCell) {
-  const destination = [cell.address, cell.city, cell.state].filter(Boolean).join(", ") || `${cell.latitude},${cell.longitude}`;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsDestination(cell))}`;
 }
 
 function mapsDirectionsLink(cell: PublicCell) {
-  const destination = [cell.address, cell.city, cell.state].filter(Boolean).join(", ") || `${cell.latitude},${cell.longitude}`;
-  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(mapsDestination(cell))}&travelmode=driving`;
 }
 
 function meetingLabel(cell: PublicCell) {

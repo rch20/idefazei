@@ -24,7 +24,11 @@ type PublicCell = {
   id: number;
   name: string;
   address?: string | null;
+  addressNumber?: string | null;
+  addressComplement?: string | null;
+  zipCode?: string | null;
   city?: string | null;
+  state?: string | null;
   neighborhood?: string | null;
   latitude?: string | number | null;
   longitude?: string | number | null;
@@ -53,7 +57,11 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
   const utils = trpc.useUtils();
   const [form, setForm] = useState({
     address: "",
+    addressNumber: "",
+    addressComplement: "",
+    zipCode: "",
     city: "",
+    state: "",
     neighborhood: "",
     latitude: "",
     longitude: "",
@@ -68,7 +76,11 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
     if (!cell || !open) return;
     setForm({
       address: cell.address ?? "",
+      addressNumber: cell.addressNumber ?? "",
+      addressComplement: cell.addressComplement ?? "",
+      zipCode: cell.zipCode ?? "",
       city: cell.city ?? "",
+      state: cell.state ?? "",
       neighborhood: cell.neighborhood ?? "",
       latitude: coordinateValue(cell.latitude),
       longitude: coordinateValue(cell.longitude),
@@ -117,7 +129,11 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
       churchId,
       cellId: cell.id,
       address: form.address.trim() || null,
+      addressNumber: form.addressNumber.trim() || null,
+      addressComplement: form.addressComplement.trim() || null,
+      zipCode: form.zipCode.replace(/\D/g, "") || null,
       city: form.city.trim() || null,
+      state: form.state.trim().toUpperCase() || null,
       neighborhood: form.neighborhood.trim() || null,
       latitude,
       longitude,
@@ -166,7 +182,11 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
           <section className="space-y-4 rounded-xl border border-border p-4">
             <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-gold" /><h3 className="text-sm font-semibold text-navy">Local e encontro</h3></div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="sm:col-span-2"><Label>Endereço interno</Label><Input className="mt-1" value={form.address} maxLength={500} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} placeholder="Rua, número e complemento" /></label>
+              <label className="sm:col-span-2"><Label>Logradouro</Label><Input className="mt-1" value={form.address} maxLength={500} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} placeholder="Rua, avenida ou estrada" /></label>
+              <label><Label>Número</Label><Input className="mt-1" value={form.addressNumber} maxLength={20} onChange={(event) => setForm((current) => ({ ...current, addressNumber: event.target.value }))} placeholder="359" /></label>
+              <label><Label>Complemento</Label><Input className="mt-1" value={form.addressComplement} maxLength={120} onChange={(event) => setForm((current) => ({ ...current, addressComplement: event.target.value }))} placeholder="Portão, salão, fundos…" /></label>
+              <label><Label>CEP</Label><Input className="mt-1" value={form.zipCode} maxLength={9} inputMode="numeric" onChange={(event) => setForm((current) => ({ ...current, zipCode: event.target.value }))} placeholder="00000-000" /></label>
+              <label><Label>Estado (UF)</Label><Input className="mt-1" value={form.state} maxLength={2} onChange={(event) => setForm((current) => ({ ...current, state: event.target.value.toUpperCase() }))} placeholder="SP" /></label>
               <label><Label>Bairro</Label><Input className="mt-1" value={form.neighborhood} maxLength={100} onChange={(event) => setForm((current) => ({ ...current, neighborhood: event.target.value }))} /></label>
               <label><Label>Cidade</Label><Input className="mt-1" value={form.city} maxLength={100} onChange={(event) => setForm((current) => ({ ...current, city: event.target.value }))} /></label>
               <label><Label>Dia da semana</Label><Select value={form.meetingDay || "none"} onValueChange={(value) => setForm((current) => ({ ...current, meetingDay: value === "none" ? "" : value as typeof DAYS[number]["value"] }))}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Não informado</SelectItem>{DAYS.map((day) => <SelectItem key={day.value} value={day.value}>{day.label}</SelectItem>)}</SelectContent></Select></label>
