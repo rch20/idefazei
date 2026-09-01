@@ -128,6 +128,20 @@ describe("Eventos — inscrições e presença", () => {
     expect(paymentMigration).not.toContain("financial_transactions");
   });
 
+  it("oferece inscrição assistida na mesma lista de inscrições públicas", () => {
+    expect(page).toContain("Inscrição assistida");
+    expect(page).toContain("Adicionar inscrição manual");
+    expect(page).toContain("trpc.events.createManualRegistration.useMutation");
+    expect(page).toContain("Adicionada pelo painel");
+    expect(router).toContain("createManualRegistration: protectedProcedure");
+    expect(router).toContain("requireChurchAdministrator(ctx.user.id, input.churchId)");
+    expect(router).toContain('registrationMode: z.enum(["individual", "casal"])');
+    expect(db).toContain("export async function createManualEventRegistration");
+    expect(db).toContain('source: "manual"');
+    expect(db).toContain("attendeeCount");
+    expect(db).toContain("eq(events.churchId, data.churchId)");
+  });
+
   it("permite editar os dados principais do Evento e atualizar a descrição", () => {
     expect(page).toContain("trpc.events.update.useMutation");
     expect(page).toContain('title="Editar evento"');

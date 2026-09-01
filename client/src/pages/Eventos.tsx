@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { formatBrl, formatDatePtBr, formatEventTimeRange, formatMonthShortPtBr, getCivilDateParts, getTodayCivilDateInput, parseBrlToCents } from "@/lib/treasury";
-import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Clock, Copy, Download, ExternalLink, Image as ImageIcon, Link2, Loader2, MapPin, Pencil, Plus, Printer, QrCode, Send, Share2, Trash2, Upload, UserCheck, UserRound, UserX, Users } from "lucide-react";
+import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Clock, Copy, Download, ExternalLink, Image as ImageIcon, Link2, Loader2, MapPin, Pencil, Plus, Printer, QrCode, Send, Share2, Trash2, Upload, UserCheck, UserPlus, UserRound, UserX, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
@@ -28,6 +28,20 @@ type EventEditDraft = {
   endTime: string;
   location: string;
   maxCapacity: string;
+};
+
+type ManualRegistrationDraft = {
+  participantName: string;
+  participantPhone: string;
+  companionName: string;
+  email: string;
+};
+
+const emptyManualRegistrationDraft: ManualRegistrationDraft = {
+  participantName: "",
+  participantPhone: "",
+  companionName: "",
+  email: "",
 };
 
 type EventRecord = {
@@ -341,6 +355,9 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   const [paymentFeeDraft, setPaymentFeeDraft] = useState(() => formatCentsForInput(event.registrationFeeCents));
   const [paymentDueDateDraft, setPaymentDueDateDraft] = useState(() => formatDateInput(event.paymentDueDate));
   const [paymentInstructionsDraft, setPaymentInstructionsDraft] = useState(() => event.paymentInstructions ?? "");
+  const [manualRegistrationOpen, setManualRegistrationOpen] = useState(false);
+  const [manualRegistrationMode, setManualRegistrationMode] = useState<Exclude<RegistrationMode, "none">>("individual");
+  const [manualRegistrationDraft, setManualRegistrationDraft] = useState<ManualRegistrationDraft>(emptyManualRegistrationDraft);
   const registrationUrl = event.registrationToken ? publicEventUrl(churchSlug, event.registrationToken) : null;
   const attendanceReport = trpc.events.attendanceReport.useQuery({ churchId, eventId: event.id }, { enabled: managementOpen });
 
@@ -359,6 +376,15 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   const setPaymentStatus = trpc.events.setPaymentStatus.useMutation({
     onSuccess: async () => { await attendanceReport.refetch(); toast.success("Pagamento atualizado."); },
     onError: (error) => toast.error(error.message || "Não foi possível atualizar o pagamento"),
+  });
+  const createManualRegistration = trpc.events.createManualRegistration.useMutation({
+    onSuccess: async (result) => {
+      await attendanceReport.refetch();
+      setManualRegistrationDraft(emptyManualRegistrationDraft);
+      setManualRegistrationOpen(false);
+      toast.success(result.attendeeCount === 2 ? "Casal adicionado à lista do evento." : "Participante adicionado à lista do evento.");
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível adicionar a inscrição manual."),
   });
   const setPaymentSettings = trpc.events.setPaymentSettings.useMutation({
     onSuccess: () => { toast.success("Configuração de pagamento salva."); onChanged(); },
@@ -543,6 +569,25 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     });
   }
 
+  function openManualRegistration() {
+    setManualRegistrationMode(event.registrationMode === "casal" ? "casal" : "individual");
+    setManualRegistrationDraft(emptyManualRegistrationDraft);
+    setManualRegistrationOpen(true);
+  }
+
+  function submitManualRegistration(formEvent: React.FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    createManualRegistration.mutate({
+      churchId,
+      eventId: event.id,
+      registrationMode: manualRegistrationMode,
+      participantName: manualRegistrationDraft.participantName.trim(),
+      participantPhone: manualRegistrationDraft.participantPhone.trim(),
+      companionName: manualRegistrationMode === "casal" ? manualRegistrationDraft.companionName.trim() : "",
+      email: manualRegistrationDraft.email.trim(),
+    });
+  }
+
   function printAttendanceReport() {
     const report = attendanceReport.data;
     if (!report) return;
@@ -577,6 +622,26 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
             {registrationUrl && <div className="mt-3 flex flex-col gap-2 border-t border-[#1e3a5f]/10 pt-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">Trocar o modelo renova o link atual e o endereço antigo deixa de funcionar.</p><Button variant="ghost" size="sm" className="justify-start text-amber-700 hover:bg-amber-50 hover:text-amber-800 sm:justify-center" onClick={() => { setModeDraft("none"); saveRegistrationMode("none"); }} disabled={setRegistrationMode.isPending}>Pausar inscrições</Button></div>}
           </section>
 
+          <section className="rounded-2xl border border-[#c9a84c]/35 bg-[#fffdf7] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#c9a84c]/15 text-[#8a6a16]"><UserPlus className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Inscrição assistida</p><p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">Adicione pelo painel quem não consegue usar o link. Não é necessário criar login ou cadastrar a pessoa na igreja.</p></div></div>
+              <Button type="button" size="sm" className="gap-1.5 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={openManualRegistration} disabled={createManualRegistration.isPending}><UserPlus className="h-4 w-4" /> Adicionar inscrição manual</Button>
+            </div>
+            {!typeHasRegistration && <p className="mt-3 rounded-lg bg-white px-3 py-2 text-xs text-muted-foreground">O link público está pausado, mas você ainda pode registrar uma inscrição pelo painel.</p>}
+            {manualRegistrationOpen && <form onSubmit={submitManualRegistration} className="mt-4 space-y-4 border-t border-[#c9a84c]/25 pt-4">
+              <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-[#1e3a5f]">Nova inscrição {manualRegistrationMode === "casal" ? "de casal" : "individual"}</p><p className="mt-1 text-xs text-muted-foreground">Ela aparecerá junto com as inscrições feitas pelo link público.</p></div><span className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-[#1e3a5f]">{manualRegistrationMode === "casal" ? "2 pessoas" : "1 pessoa"}</span></div>
+              {event.registrationMode === "none" && <div><Label>Tipo da inscrição *</Label><Select value={manualRegistrationMode} onValueChange={(value) => { setManualRegistrationMode(value as Exclude<RegistrationMode, "none">); setManualRegistrationDraft({ ...manualRegistrationDraft, companionName: "" }); }}><SelectTrigger className="mt-1 bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="individual">Individual — 1 pessoa</SelectItem><SelectItem value="casal">Casal — 2 pessoas</SelectItem></SelectContent></Select><p className="mt-1 text-xs text-muted-foreground">O tipo escolhido define a quantidade contabilizada no evento.</p></div>}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2"><Label>Nome completo *</Label><Input className="mt-1 bg-white" value={manualRegistrationDraft.participantName} onChange={(inputEvent) => setManualRegistrationDraft({ ...manualRegistrationDraft, participantName: inputEvent.target.value })} placeholder="Nome do participante" required minLength={2} maxLength={255} /></div>
+                {manualRegistrationMode === "casal" && <div className="sm:col-span-2"><Label>Nome do segundo participante *</Label><Input className="mt-1 bg-white" value={manualRegistrationDraft.companionName} onChange={(inputEvent) => setManualRegistrationDraft({ ...manualRegistrationDraft, companionName: inputEvent.target.value })} placeholder="Nome do cônjuge ou acompanhante" required maxLength={255} /></div>}
+                <div><Label>Telefone <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input className="mt-1 bg-white" value={manualRegistrationDraft.participantPhone} onChange={(inputEvent) => setManualRegistrationDraft({ ...manualRegistrationDraft, participantPhone: inputEvent.target.value })} placeholder="(00) 00000-0000" inputMode="tel" maxLength={20} /><p className="mt-1 text-xs text-muted-foreground">Recomendado para evitar duplicidade.</p></div>
+                <div><Label>E-mail <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="email" className="mt-1 bg-white" value={manualRegistrationDraft.email} onChange={(inputEvent) => setManualRegistrationDraft({ ...manualRegistrationDraft, email: inputEvent.target.value })} placeholder="pessoa@email.com" maxLength={320} /></div>
+              </div>
+              <p className="rounded-lg bg-white px-3 py-2 text-xs leading-5 text-muted-foreground">O cadastro será salvo como inscrição manual, começará com pagamento pendente e usará o valor configurado neste evento. Depois você poderá atualizar pagamento e presença na mesma lista.</p>
+              <div className="flex flex-col-reverse gap-2 border-t border-[#c9a84c]/25 pt-3 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={() => { setManualRegistrationOpen(false); setManualRegistrationDraft(emptyManualRegistrationDraft); }} className="sm:min-w-28">Cancelar</Button><Button type="submit" className="gap-1.5 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90 sm:min-w-44" disabled={createManualRegistration.isPending}>{createManualRegistration.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} {createManualRegistration.isPending ? "Adicionando..." : "Adicionar à lista"}</Button></div>
+            </form>}
+          </section>
+
           <section className="rounded-2xl border border-[#1e3a5f]/10 bg-white p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#1e3a5f]/5 text-[#1e3a5f]"><BarChart3 className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Inscrição e pagamento</p><p className="mt-1 text-xs leading-5 text-muted-foreground">O valor é informado no convite. A equipe confirma o recebimento manualmente; nenhuma entrada é lançada automaticamente na Tesouraria.</p></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><div><Label>Valor {event.registrationMode === "casal" ? "por casal" : "por pessoa"}</Label><Input value={paymentFeeDraft} onChange={(inputEvent) => setPaymentFeeDraft(inputEvent.target.value)} inputMode="decimal" placeholder="Em branco = evento gratuito" className="mt-1" disabled={!typeHasRegistration} /></div><div><Label>Pagamento até <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="date" value={paymentDueDateDraft} onChange={(inputEvent) => setPaymentDueDateDraft(inputEvent.target.value)} className="mt-1" disabled={!typeHasRegistration} /></div><div className="sm:col-span-2"><Label>Instruções de pagamento <span className="font-normal text-muted-foreground">(opcional)</span></Label><Textarea value={paymentInstructionsDraft} onChange={(inputEvent) => setPaymentInstructionsDraft(inputEvent.target.value)} rows={3} maxLength={1200} placeholder="Ex.: Faça o Pix e envie o comprovante para a secretaria." className="mt-1" disabled={!typeHasRegistration} /></div></div><div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">{event.registrationFeeCents > 0 ? `Atual: ${formatBrl(event.registrationFeeCents)} ${event.registrationMode === "casal" ? "por casal" : "por pessoa"}.` : "Este evento está configurado como gratuito."}</p><Button type="button" size="sm" className="gap-1.5 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={savePaymentSettings} disabled={setPaymentSettings.isPending || !typeHasRegistration}>{setPaymentSettings.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Salvar pagamento</Button></div></section>
 
           <section className="rounded-2xl border border-[#1e3a5f]/10 bg-white p-4">
@@ -589,7 +654,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
           {attendanceReport.isLoading ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[1, 2, 3, 4].map((item) => <div key={item} className="h-20 animate-pulse rounded-xl bg-muted" />)}</div> : attendanceReport.error ? <div className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">Você não tem permissão para consultar este relatório ou o evento não foi encontrado.</div> : attendanceReport.data ? <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-5"><AttendanceMetric icon={Users} label="Inscritos" value={attendanceReport.data.summary.registeredCount} tone="navy" /><AttendanceMetric icon={UserRound} label="Pessoas" value={attendanceReport.data.summary.attendeeCount} tone="navy" /><AttendanceMetric icon={UserCheck} label="Presentes" value={attendanceReport.data.summary.checkedInAttendeeCount} tone="green" /><AttendanceMetric icon={UserX} label="Não vieram" value={attendanceReport.data.summary.absentAttendeeCount} tone="amber" /><AttendanceMetric icon={Loader2} label="Pendentes" value={attendanceReport.data.summary.pendingAttendeeCount} tone="slate" /></div>
             {event.registrationFeeCents > 0 && <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><AttendanceMetric icon={BarChart3} label="Valor previsto" value={formatBrl(attendanceReport.data.summary.expectedAmountCents)} tone="navy" /><AttendanceMetric icon={CheckCircle2} label="Recebido" value={formatBrl(attendanceReport.data.summary.paidAmountCents)} tone="green" /><AttendanceMetric icon={Loader2} label="Pendente" value={formatBrl(attendanceReport.data.summary.pendingAmountCents)} tone="slate" /><AttendanceMetric icon={UserRound} label="Pagos" value={attendanceReport.data.summary.paymentPaidCount} tone="navy" /></div>}
-            <div className="overflow-hidden rounded-xl border border-[#1e3a5f]/10"><div className="hidden grid-cols-[1.2fr_1fr_8rem_9rem_9rem] gap-3 bg-[#f5f0e8] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#1e3a5f]/70 sm:grid"><span>Inscrição</span><span>Acompanhante</span><span>Telefone</span><span>Pagamento</span><span>Presença</span></div><div className="max-h-80 overflow-y-auto divide-y divide-[#1e3a5f]/10">{attendanceReport.data.registrations.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">Ainda não há inscrições para este evento.</p> : attendanceReport.data.registrations.map((registration: any) => <div key={registration.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1.2fr_1fr_8rem_9rem_9rem] sm:items-center"><div className="min-w-0"><p className="truncate font-medium text-[#1e3a5f]">{registration.displayName}</p><p className="mt-0.5 text-xs text-muted-foreground sm:hidden">{registration.participantPhone || "Sem telefone"}{registration.companionName ? ` · ${registration.companionName}` : ""} · {event.registrationFeeCents > 0 ? `${formatBrl(registration.amountCents ?? 0)} · ${paymentStatusLabel(registration.paymentStatus as PaymentStatus)}` : "Sem cobrança"}</p></div><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.companionName || "—"}</p><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.participantPhone || "—"}</p>{event.registrationFeeCents > 0 ? <Select value={(registration.paymentStatus ?? "pendente") as PaymentStatus} onValueChange={(value) => setPaymentStatus.mutate({ churchId, eventId: event.id, registrationId: registration.id, paymentStatus: value as PaymentStatus })} disabled={setPaymentStatus.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="pago">Pago</SelectItem><SelectItem value="isento">Isento</SelectItem><SelectItem value="reembolsado">Reembolsado</SelectItem></SelectContent></Select> : <span className="text-xs text-muted-foreground">Sem cobrança</span>}<Select value={(registration.presenceStatus ?? "pendente") as PresenceStatus} onValueChange={(value) => setPresence.mutate({ churchId, eventId: event.id, registrationId: registration.id, presenceStatus: value as PresenceStatus })} disabled={setPresence.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="presente">Presente</SelectItem><SelectItem value="ausente">Não compareceu</SelectItem><SelectItem value="cancelado">Cancelado</SelectItem></SelectContent></Select></div>)}</div></div>
+            <div className="overflow-hidden rounded-xl border border-[#1e3a5f]/10"><div className="hidden grid-cols-[1.2fr_1fr_8rem_9rem_9rem] gap-3 bg-[#f5f0e8] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#1e3a5f]/70 sm:grid"><span>Inscrição</span><span>Acompanhante</span><span>Telefone</span><span>Pagamento</span><span>Presença</span></div><div className="max-h-80 overflow-y-auto divide-y divide-[#1e3a5f]/10">{attendanceReport.data.registrations.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">Ainda não há inscrições para este evento.</p> : attendanceReport.data.registrations.map((registration: any) => <div key={registration.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1.2fr_1fr_8rem_9rem_9rem] sm:items-center"><div className="min-w-0"><p className="truncate font-medium text-[#1e3a5f]">{registration.displayName}</p><p className="mt-0.5 text-[11px] font-medium text-[#8a6a16]">{registration.source === "manual" ? "Adicionada pelo painel" : "Inscrição pelo link"}</p><p className="mt-0.5 text-xs text-muted-foreground sm:hidden">{registration.participantPhone || "Sem telefone"}{registration.companionName ? ` · ${registration.companionName}` : ""} · {event.registrationFeeCents > 0 ? `${formatBrl(registration.amountCents ?? 0)} · ${paymentStatusLabel(registration.paymentStatus as PaymentStatus)}` : "Sem cobrança"}</p></div><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.companionName || "—"}</p><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.participantPhone || "—"}</p>{event.registrationFeeCents > 0 ? <Select value={(registration.paymentStatus ?? "pendente") as PaymentStatus} onValueChange={(value) => setPaymentStatus.mutate({ churchId, eventId: event.id, registrationId: registration.id, paymentStatus: value as PaymentStatus })} disabled={setPaymentStatus.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="pago">Pago</SelectItem><SelectItem value="isento">Isento</SelectItem><SelectItem value="reembolsado">Reembolsado</SelectItem></SelectContent></Select> : <span className="text-xs text-muted-foreground">Sem cobrança</span>}<Select value={(registration.presenceStatus ?? "pendente") as PresenceStatus} onValueChange={(value) => setPresence.mutate({ churchId, eventId: event.id, registrationId: registration.id, presenceStatus: value as PresenceStatus })} disabled={setPresence.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="presente">Presente</SelectItem><SelectItem value="ausente">Não compareceu</SelectItem><SelectItem value="cancelado">Cancelado</SelectItem></SelectContent></Select></div>)}</div></div>
             <div className="flex flex-col gap-2 sm:flex-row"><Button variant="outline" className="flex-1 gap-2 border-[#1e3a5f]/20 text-[#1e3a5f]" onClick={printAttendanceReport}><Printer className="w-4 h-4" /> Imprimir relatório</Button><Button variant="ghost" className="flex-1" onClick={() => void attendanceReport.refetch()}>Atualizar lista</Button></div>
           </> : null}
         </div>

@@ -101,6 +101,7 @@ import {
   getEventsByChurch,
   getPublicEventRegistrationByToken,
   createPublicEventRegistration,
+  createManualEventRegistration,
   updateEventRegistrationPresence,
   setEventRegistrationMode,
   setEventFlyer,
@@ -2615,6 +2616,28 @@ const eventsRouter = router({
       const event = await getEventAttendanceReport(input);
       if (!event) throw new TRPCError({ code: "NOT_FOUND", message: "Evento não encontrado nesta igreja." });
       return event.registrations;
+    }),
+
+  createManualRegistration: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      eventId: z.number().int().positive(),
+      registrationMode: z.enum(["individual", "casal"]),
+      participantName: z.string().trim().min(2).max(255),
+      participantPhone: z.string().trim().max(20).optional().or(z.literal("")),
+      companionName: z.string().trim().max(255).optional().or(z.literal("")),
+      email: z.string().trim().email().max(320).optional().or(z.literal("")),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const result = await createManualEventRegistration({
+        ...input,
+        participantPhone: input.participantPhone || null,
+        companionName: input.companionName || null,
+        email: input.email || null,
+      });
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Evento não encontrado nesta igreja." });
+      return result;
     }),
 
   setPresence: protectedProcedure

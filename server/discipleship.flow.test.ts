@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, createEvent, getEventAttendanceReport, updateEventRegistrationPayment, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, createEvent, createManualEventRegistration, getEventAttendanceReport, updateEventRegistrationPayment, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -157,6 +157,7 @@ vi.mock("./db", () => ({
     registrations: [],
   }),
   createEvent: vi.fn().mockResolvedValue({ id: 1 }),
+  createManualEventRegistration: vi.fn().mockResolvedValue({ id: 501, eventName: "Encontro de Casais", attendeeCount: 2 }),
   updateEventRegistrationPayment: vi.fn().mockResolvedValue({ success: true }),
   getFinancialAccountsByChurch: vi.fn().mockResolvedValue([{ id: 91, churchId: 100, name: "Caixa", type: "caixa", openingBalanceCents: 0 }]),
   getFinancialAccountById: vi.fn().mockResolvedValue({ id: 91, churchId: 100, name: "Caixa", type: "caixa", openingBalanceCents: 0, active: true }),
@@ -1894,6 +1895,45 @@ describe("Fluxo completo de discipulado", () => {
       const report = await caller.events.attendanceReport({ churchId: CHURCH_ID, eventId: 31 });
       expect(report.summary).toEqual({ registeredCount: 3, checkedInCount: 2, absentCount: 1, cancelledCount: 0 });
       expect(getEventAttendanceReport).toHaveBeenCalledWith({ churchId: CHURCH_ID, eventId: 31 });
+    });
+
+    it("permite ao administrador adicionar uma inscrição manual de casal sem login do participante", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      const result = await caller.events.createManualRegistration({
+        churchId: CHURCH_ID,
+        eventId: 31,
+        registrationMode: "casal",
+        participantName: "Luiz Rocha",
+        participantPhone: "(11) 91919-5085",
+        companionName: "Maria Rocha",
+        email: "casal@example.com",
+      });
+
+      expect(result).toEqual({ id: 501, eventName: "Encontro de Casais", attendeeCount: 2 });
+      expect(createManualEventRegistration).toHaveBeenCalledWith({
+        churchId: CHURCH_ID,
+        eventId: 31,
+        registrationMode: "casal",
+        participantName: "Luiz Rocha",
+        participantPhone: "(11) 91919-5085",
+        companionName: "Maria Rocha",
+        email: "casal@example.com",
+      });
+    });
+
+    it("bloqueia o cadastro manual quando o administrador informa outro tenant", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.events.createManualRegistration({
+        churchId: 999,
+        eventId: 31,
+        registrationMode: "individual",
+        participantName: "Participante Externo",
+        participantPhone: "11999999999",
+      })).rejects.toThrow("Acesso negado a esta igreja");
+      expect(createManualEventRegistration).not.toHaveBeenCalled();
     });
 
     it("permite ao Pastor confirmar pagamento de inscrição pública sem Pessoa vinculada", async () => {

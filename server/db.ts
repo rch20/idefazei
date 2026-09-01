@@ -2733,6 +2733,78 @@ export async function createPublicEventRegistration(data: {
   return { id: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0), eventName: event.name, attendeeCount };
 }
 
+export async function createManualEventRegistration(data: {
+  churchId: number;
+  eventId: number;
+  registrationMode: "individual" | "casal";
+  participantName: string;
+  participantPhone?: string | null;
+  companionName?: string | null;
+  email?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db.select().from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId), eq(events.active, true)))
+    .limit(1);
+  const event = eventRows[0];
+  if (!event) return null;
+  if (event.registrationMode !== "none" && event.registrationMode !== data.registrationMode) {
+    throw new Error("Use o mesmo modelo de inscrição configurado para este evento.");
+  }
+
+  const participantName = data.participantName.trim();
+  if (participantName.length < 2) throw new Error("Informe o nome completo do participante.");
+  const phone = data.participantPhone?.replace(/\D/g, "") ?? "";
+  if (phone && phone.length < 8) throw new Error("Informe um telefone válido ou deixe o campo em branco.");
+  const companionName = data.companionName?.trim() || null;
+  if (data.registrationMode === "casal" && !companionName) throw new Error("Informe o nome do segundo participante.");
+  if (data.registrationMode === "individual" && companionName) throw new Error("Esta inscrição é individual.");
+
+  if (phone) {
+    const duplicateRows = await db.select({ id: eventRegistrations.id })
+      .from(eventRegistrations)
+      .where(and(
+        eq(eventRegistrations.eventId, event.id),
+        or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, event.churchId)),
+        eq(eventRegistrations.participantPhone, phone),
+        ne(eventRegistrations.presenceStatus, "cancelado"),
+      ))
+      .limit(1);
+    if (duplicateRows[0]) throw new Error("Já existe uma inscrição ativa com este telefone para este evento.");
+  }
+
+  const attendeeCount = data.registrationMode === "casal" ? 2 : 1;
+  if (event.maxCapacity && event.maxCapacity > 0) {
+    const currentRows = await db.select({ attendeeCount: eventRegistrations.attendeeCount })
+      .from(eventRegistrations)
+      .where(and(
+        eq(eventRegistrations.eventId, event.id),
+        or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, event.churchId)),
+        ne(eventRegistrations.presenceStatus, "cancelado"),
+      ));
+    const currentCount = currentRows.reduce((total, row) => total + (row.attendeeCount ?? 1), 0);
+    if (currentCount + attendeeCount > event.maxCapacity) throw new Error("As vagas deste evento já foram preenchidas.");
+  }
+
+  const result = await db.insert(eventRegistrations).values({
+    eventId: event.id,
+    churchId: event.churchId,
+    personId: null,
+    participantName,
+    participantPhone: phone || null,
+    companionName,
+    email: data.email?.trim() || null,
+    attendeeCount,
+    amountCents: event.registrationFeeCents ?? 0,
+    paymentStatus: "pendente",
+    source: "manual",
+    presenceStatus: "pendente",
+    status: "inscrito",
+  });
+  return { id: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0), eventName: event.name, attendeeCount };
+}
+
 export async function updateEventRegistrationPresence(data: { churchId: number; eventId: number; registrationId: number; presenceStatus: "pendente" | "presente" | "ausente" | "cancelado" }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
