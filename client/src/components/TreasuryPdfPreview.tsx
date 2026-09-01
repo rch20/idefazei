@@ -2,13 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { ArrowLeft, Download, Loader2, Printer, Share2 } from "lucide-react";
+import { ArrowLeft, Download, Loader2, Printer, Send, Share2 } from "lucide-react";
 
 type TreasuryPdfPreviewProps = {
   open: boolean;
   blob: Blob | null;
   fileName: string;
   title: string;
+  whatsappText?: string;
   onClose: () => void;
 };
 
@@ -31,7 +32,7 @@ export async function shareTreasuryPdf(blob: Blob, fileName: string, title: stri
   return true;
 }
 
-export function TreasuryPdfPreview({ open, blob, fileName, title, onClose }: TreasuryPdfPreviewProps) {
+export function TreasuryPdfPreview({ open, blob, fileName, title, whatsappText, onClose }: TreasuryPdfPreviewProps) {
   const [sharing, setSharing] = useState(false);
   const printFrameRef = useRef<HTMLIFrameElement | null>(null);
   const url = useMemo(() => blob ? URL.createObjectURL(blob) : "", [blob]);
@@ -56,6 +57,13 @@ export function TreasuryPdfPreview({ open, blob, fileName, title, onClose }: Tre
     }
   };
 
+  const handleWhatsApp = () => {
+    if (!whatsappText) return toast.error("Não há uma mensagem preparada para este relatório.");
+    const url = `https://wa.me/?text=${encodeURIComponent(whatsappText)}`;
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) toast.error("Permita novas abas para abrir o WhatsApp.");
+  };
+
   const handlePrint = () => {
     const frame = printFrameRef.current;
     if (!frame?.contentWindow) return toast.error("Não foi possível preparar a impressão neste navegador.");
@@ -76,10 +84,11 @@ export function TreasuryPdfPreview({ open, blob, fileName, title, onClose }: Tre
             <Button variant="ghost" size="sm" onClick={onClose} className="gap-2 text-navy"><ArrowLeft className="h-4 w-4" /> Voltar</Button>
             <div className="min-w-0 flex-1 sm:flex-none"><p className="truncate text-sm font-semibold text-navy">{title}</p><p className="truncate text-[11px] text-muted-foreground">Prévia do arquivo PDF</p></div>
           </div>
-          <div className="mt-2 grid min-w-0 grid-cols-3 gap-2 sm:ml-auto sm:mt-0 sm:flex">
-            <Button variant="outline" size="sm" aria-label="Compartilhar" onClick={() => void handleShare()} disabled={!blob || sharing} className="min-w-0 gap-1.5 px-2 sm:px-3">{sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}<span className="sr-only sm:not-sr-only">Compartilhar</span></Button>
-            <Button variant="outline" size="sm" aria-label="Baixar" onClick={() => blob && downloadTreasuryPdf(blob, fileName)} disabled={!blob} className="min-w-0 gap-1.5 px-2 sm:px-3"><Download className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Baixar</span></Button>
-            <Button variant="outline" size="sm" aria-label="Imprimir" onClick={handlePrint} disabled={!blob} className="min-w-0 gap-1.5 px-2 sm:px-3"><Printer className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Imprimir</span></Button>
+          <div className="mt-2 grid min-w-0 grid-cols-4 gap-2 sm:ml-auto sm:mt-0 sm:flex">
+            <Button variant="outline" size="sm" aria-label="Compartilhar" title="Compartilhar pelo celular" onClick={() => void handleShare()} disabled={!blob || sharing} className="min-w-0 gap-1.5 px-2 sm:px-3">{sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}<span className="sr-only sm:not-sr-only">Compartilhar</span></Button>
+            <Button variant="outline" size="sm" aria-label="WhatsApp" onClick={handleWhatsApp} disabled={!whatsappText} className="min-w-0 gap-1.5 px-2 sm:px-3"><Send className="h-4 w-4" /><span className="sr-only sm:not-sr-only">WhatsApp</span></Button>
+            <Button variant="outline" size="sm" aria-label="Baixar" title="Baixar PDF" onClick={() => blob && downloadTreasuryPdf(blob, fileName)} disabled={!blob} className="min-w-0 gap-1.5 px-2 sm:px-3"><Download className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Baixar</span></Button>
+            <Button variant="outline" size="sm" aria-label="Imprimir" title="Imprimir ou salvar PDF" onClick={handlePrint} disabled={!blob} className="min-w-0 gap-1.5 px-2 sm:px-3"><Printer className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Imprimir</span></Button>
           </div>
         </header>
         <main className="min-h-0 min-w-0 flex-1 overflow-hidden bg-slate-100 p-1.5 sm:p-3">

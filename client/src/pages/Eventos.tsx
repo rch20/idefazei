@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { formatBrl, formatDatePtBr, formatEventTimeRange, formatMonthShortPtBr, getCivilDateParts, getTodayCivilDateInput, parseBrlToCents } from "@/lib/treasury";
+import { createEventReportPdf, eventReportPdfFileName } from "@/lib/eventReportPdf";
+import { TreasuryPdfPreview } from "@/components/TreasuryPdfPreview";
 import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Clock, Copy, Download, ExternalLink, Image as ImageIcon, Link2, Loader2, MapPin, Pencil, Plus, Printer, QrCode, Send, Share2, Trash2, Upload, UserCheck, UserPlus, UserRound, UserX, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -161,6 +163,28 @@ function formatDateInput(value: Date | string | null | undefined) {
 function formatDate(value: Date | string | null | undefined) {
   if (!value) return "";
   return formatDatePtBr(value);
+}
+
+function buildEventReportWhatsappText(report: any) {
+  const event = report.event;
+  const summary = report.summary;
+  const registrations = report.registrations.slice(0, 20).map((registration: any) => {
+    const person = registration.companionName ? `${registration.displayName} e ${registration.companionName}` : registration.displayName;
+    const payment = event.registrationFeeCents > 0 ? ` · ${paymentStatusLabel(registration.paymentStatus as PaymentStatus)}` : "";
+    const presence = registration.presenceStatus === "presente" ? "Presente" : registration.presenceStatus === "ausente" ? "Não compareceu" : "Pendente";
+    return `• ${person} — ${presence}${payment}`;
+  });
+  const more = report.registrations.length > 20 ? `\n... e mais ${report.registrations.length - 20} inscrição(ões).` : "";
+  const financial = event.registrationFeeCents > 0 ? `\nRecebido: ${formatBrl(summary.paidAmountCents)} · Pendente: ${formatBrl(summary.pendingAmountCents)}` : "";
+  return [
+    `Relatório do evento: ${event.name}`,
+    `${formatDate(event.startDate)}${event.startTime ? ` · ${formatEventTimeRange(event.startTime, event.endTime)}` : ""}${event.location ? ` · ${event.location}` : ""}`,
+    `Inscritos: ${summary.registeredCount} · Pessoas: ${summary.attendeeCount} · Presentes: ${summary.checkedInAttendeeCount} · Não compareceram: ${summary.absentAttendeeCount}${financial}`,
+    "",
+    "Participantes:",
+    registrations.length ? registrations.join("\\n") : "Nenhuma inscrição registrada.",
+    more,
+  ].join("\\n").trim();
 }
 
 function publicEventUrl(slug: string | null | undefined, token: string) {
@@ -358,6 +382,10 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   const [manualRegistrationOpen, setManualRegistrationOpen] = useState(false);
   const [manualRegistrationMode, setManualRegistrationMode] = useState<Exclude<RegistrationMode, "none">>("individual");
   const [manualRegistrationDraft, setManualRegistrationDraft] = useState<ManualRegistrationDraft>(emptyManualRegistrationDraft);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportBlob, setReportBlob] = useState<Blob | null>(null);
+  const [reportFileName, setReportFileName] = useState("relatorio-evento.pdf");
+  const [reportLoading, setReportLoading] = useState(false);
   const registrationUrl = event.registrationToken ? publicEventUrl(churchSlug, event.registrationToken) : null;
   const attendanceReport = trpc.events.attendanceReport.useQuery({ churchId, eventId: event.id }, { enabled: managementOpen });
 
@@ -588,14 +616,37 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     });
   }
 
-  function printAttendanceReport() {
+  async function openEventReportPreview() {
     const report = attendanceReport.data;
-    if (!report) return;
-    const rows = report.registrations.map((registration: any) => `<tr><td>${escapeHtml(registration.displayName)}</td><td>${escapeHtml(registration.companionName ?? "—")}</td><td>${registration.participantPhone ? escapeHtml(registration.participantPhone) : "—"}</td><td>${event.registrationFeeCents > 0 ? `${formatBrl(registration.amountCents ?? 0)} · ${paymentStatusLabel(registration.paymentStatus as PaymentStatus)}` : "Sem cobrança"}</td><td>${registration.attendance === "presente" ? "Presente" : registration.attendance === "ausente" ? "Não compareceu" : "Pendente"}</td></tr>`).join("");
-    const printWindow = window.open("", "_blank", "noopener,noreferrer");
-    if (!printWindow) { toast.error("Permita pop-ups para imprimir o relatório."); return; }
-    printWindow.document.write(`<!doctype html><html><head><title>Presença e pagamentos — ${escapeHtml(report.event.name)}</title><style>body{font-family:Arial,sans-serif;color:#1e3a5f;padding:32px}h1{margin:0 0 4px}p{color:#556274}.metrics{display:flex;gap:12px;margin:24px 0;flex-wrap:wrap}.metric{border:1px solid #ded4bd;border-radius:8px;padding:12px;min-width:120px}.metric strong{font-size:24px;display:block}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:10px;border-bottom:1px solid #e4e4e7;text-align:left}th{color:#7b6323;font-size:12px;text-transform:uppercase}</style></head><body><h1>${escapeHtml(report.event.name)}</h1><p>${formatDate(report.event.startDate)}${event.startTime ? ` · ${escapeHtml(formatEventTimeRange(event.startTime, event.endTime))}` : ""}${report.event.location ? ` · ${escapeHtml(report.event.location)}` : ""}</p><div class="metrics"><div class="metric"><span>Inscritos</span><strong>${report.summary.registeredCount}</strong></div><div class="metric"><span>Pessoas</span><strong>${report.summary.attendeeCount}</strong></div><div class="metric"><span>Presentes</span><strong>${report.summary.checkedInAttendeeCount}</strong></div><div class="metric"><span>Faltas</span><strong>${report.summary.absentAttendeeCount}</strong></div>${event.registrationFeeCents > 0 ? `<div class="metric"><span>Previsto</span><strong>${formatBrl(report.summary.expectedAmountCents)}</strong></div><div class="metric"><span>Recebido</span><strong>${formatBrl(report.summary.paidAmountCents)}</strong></div><div class="metric"><span>Pendente</span><strong>${formatBrl(report.summary.pendingAmountCents)}</strong></div>` : ""}</div><table><thead><tr><th>Inscrição</th><th>Acompanhante</th><th>Telefone</th><th>Pagamento</th><th>Presença</th></tr></thead><tbody>${rows || "<tr><td colspan='5'>Sem inscrições registradas.</td></tr>"}</tbody></table></body></html>`);
-    printWindow.document.close(); printWindow.focus(); printWindow.print();
+    if (!report || reportLoading) {
+      toast.error("Aguarde o carregamento dos dados do relatório.");
+      return;
+    }
+    setReportLoading(true);
+    setReportBlob(null);
+    setReportFileName(eventReportPdfFileName(report.event.name, report.event.startDate));
+    setManagementOpen(false);
+    setReportOpen(true);
+    try {
+      const blob = await createEventReportPdf({
+        eventName: report.event.name,
+        startDate: report.event.startDate,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        location: report.event.location,
+        registrationFeeCents: event.registrationFeeCents,
+        summary: report.summary,
+        registrations: report.registrations,
+      });
+      setReportBlob(blob);
+    } catch (error) {
+      console.error("Falha ao gerar relatório do evento", error);
+      setReportOpen(false);
+      setManagementOpen(true);
+      toast.error("Não foi possível gerar o PDF do relatório.");
+    } finally {
+      setReportLoading(false);
+    }
   }
 
   return <>
@@ -655,7 +706,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-5"><AttendanceMetric icon={Users} label="Inscritos" value={attendanceReport.data.summary.registeredCount} tone="navy" /><AttendanceMetric icon={UserRound} label="Pessoas" value={attendanceReport.data.summary.attendeeCount} tone="navy" /><AttendanceMetric icon={UserCheck} label="Presentes" value={attendanceReport.data.summary.checkedInAttendeeCount} tone="green" /><AttendanceMetric icon={UserX} label="Não vieram" value={attendanceReport.data.summary.absentAttendeeCount} tone="amber" /><AttendanceMetric icon={Loader2} label="Pendentes" value={attendanceReport.data.summary.pendingAttendeeCount} tone="slate" /></div>
             {event.registrationFeeCents > 0 && <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><AttendanceMetric icon={BarChart3} label="Valor previsto" value={formatBrl(attendanceReport.data.summary.expectedAmountCents)} tone="navy" /><AttendanceMetric icon={CheckCircle2} label="Recebido" value={formatBrl(attendanceReport.data.summary.paidAmountCents)} tone="green" /><AttendanceMetric icon={Loader2} label="Pendente" value={formatBrl(attendanceReport.data.summary.pendingAmountCents)} tone="slate" /><AttendanceMetric icon={UserRound} label="Pagos" value={attendanceReport.data.summary.paymentPaidCount} tone="navy" /></div>}
             <div className="overflow-hidden rounded-xl border border-[#1e3a5f]/10"><div className="hidden grid-cols-[1.2fr_1fr_8rem_9rem_9rem] gap-3 bg-[#f5f0e8] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#1e3a5f]/70 sm:grid"><span>Inscrição</span><span>Acompanhante</span><span>Telefone</span><span>Pagamento</span><span>Presença</span></div><div className="max-h-80 overflow-y-auto divide-y divide-[#1e3a5f]/10">{attendanceReport.data.registrations.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">Ainda não há inscrições para este evento.</p> : attendanceReport.data.registrations.map((registration: any) => <div key={registration.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1.2fr_1fr_8rem_9rem_9rem] sm:items-center"><div className="min-w-0"><p className="truncate font-medium text-[#1e3a5f]">{registration.displayName}</p><p className="mt-0.5 text-[11px] font-medium text-[#8a6a16]">{registration.source === "manual" ? "Adicionada pelo painel" : "Inscrição pelo link"}</p><p className="mt-0.5 text-xs text-muted-foreground sm:hidden">{registration.participantPhone || "Sem telefone"}{registration.companionName ? ` · ${registration.companionName}` : ""} · {event.registrationFeeCents > 0 ? `${formatBrl(registration.amountCents ?? 0)} · ${paymentStatusLabel(registration.paymentStatus as PaymentStatus)}` : "Sem cobrança"}</p></div><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.companionName || "—"}</p><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.participantPhone || "—"}</p>{event.registrationFeeCents > 0 ? <Select value={(registration.paymentStatus ?? "pendente") as PaymentStatus} onValueChange={(value) => setPaymentStatus.mutate({ churchId, eventId: event.id, registrationId: registration.id, paymentStatus: value as PaymentStatus })} disabled={setPaymentStatus.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="pago">Pago</SelectItem><SelectItem value="isento">Isento</SelectItem><SelectItem value="reembolsado">Reembolsado</SelectItem></SelectContent></Select> : <span className="text-xs text-muted-foreground">Sem cobrança</span>}<Select value={(registration.presenceStatus ?? "pendente") as PresenceStatus} onValueChange={(value) => setPresence.mutate({ churchId, eventId: event.id, registrationId: registration.id, presenceStatus: value as PresenceStatus })} disabled={setPresence.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="presente">Presente</SelectItem><SelectItem value="ausente">Não compareceu</SelectItem><SelectItem value="cancelado">Cancelado</SelectItem></SelectContent></Select></div>)}</div></div>
-            <div className="flex flex-col gap-2 sm:flex-row"><Button variant="outline" className="flex-1 gap-2 border-[#1e3a5f]/20 text-[#1e3a5f]" onClick={printAttendanceReport}><Printer className="w-4 h-4" /> Imprimir relatório</Button><Button variant="ghost" className="flex-1" onClick={() => void attendanceReport.refetch()}>Atualizar lista</Button></div>
+            <div className="flex flex-col gap-2 sm:flex-row"><Button variant="outline" className="flex-1 gap-2 border-[#1e3a5f]/20 text-[#1e3a5f]" onClick={() => void openEventReportPreview()} disabled={reportLoading}><Printer className="w-4 h-4" /> {reportLoading ? "Preparando relatório..." : "Abrir relatório / PDF"}</Button><Button variant="ghost" className="flex-1" onClick={() => void attendanceReport.refetch()}>Atualizar lista</Button></div>
           </> : null}
         </div>
       </DialogContent>
@@ -677,6 +728,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     </Dialog>
 
     <Dialog open={qrOpen} onOpenChange={setQrOpen}><DialogContent className="max-w-sm"><DialogHeader><DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2"><QrCode className="w-5 h-5 text-[#c9a84c]" />Check-in — {event.name}</DialogTitle></DialogHeader><div className="flex flex-col items-center gap-4 py-4">{checkinUrl && <><div className="p-4 bg-white rounded-2xl border border-[#1e3a5f]/10 shadow-sm"><QRCodeSVG value={checkinUrl} size={200} fgColor="#1e3a5f" bgColor="#ffffff" level="M" /></div><p className="text-xs text-center text-[#1e3a5f]/50 leading-relaxed">Mostre este QR Code na entrada do evento.<br />Os participantes escaneiam para confirmar presença.</p><div className="w-full p-3 bg-[#f5f0e8] rounded-xl"><p className="text-[10px] text-[#1e3a5f]/40 uppercase tracking-wider mb-1">Link de check-in</p><p className="text-xs text-[#1e3a5f] font-mono break-all">{checkinUrl}</p></div></>}</div></DialogContent></Dialog>
+
+    <TreasuryPdfPreview open={reportOpen} blob={reportBlob} fileName={reportFileName} title={`Relatório — ${event.name}`} whatsappText={attendanceReport.data ? buildEventReportWhatsappText(attendanceReport.data) : undefined} onClose={() => { setReportOpen(false); setReportBlob(null); }} />
   </>;
 }
 

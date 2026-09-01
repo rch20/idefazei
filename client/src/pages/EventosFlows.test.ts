@@ -12,6 +12,7 @@ const mediaRoute = readFileSync(resolve(process.cwd(), "server/_core/index.ts"),
 const migration = readFileSync(resolve(process.cwd(), "drizzle/0051_faithful_longshot.sql"), "utf8");
 const flyerMigration = readFileSync(resolve(process.cwd(), "drizzle/0052_event_flyer.sql"), "utf8");
 const paymentMigration = readFileSync(resolve(process.cwd(), "drizzle/0053_event_payment.sql"), "utf8");
+const eventPdf = readFileSync(resolve(process.cwd(), "client/src/lib/eventReportPdf.ts"), "utf8");
 
 const eventRouter = () => router.slice(router.indexOf("const eventsRouter"), router.indexOf("const familiesRouter"));
 
@@ -126,6 +127,17 @@ describe("Eventos — inscrições e presença", () => {
     expect(paymentMigration).toContain("registrationFeeCents");
     expect(paymentMigration).toContain("paymentStatus");
     expect(paymentMigration).not.toContain("financial_transactions");
+  });
+
+  it("abre o relatório dentro do app com PDF, impressão e compartilhamento", () => {
+    expect(page).toContain("openEventReportPreview");
+    expect(page).toContain("<TreasuryPdfPreview");
+    expect(page).toContain("eventReportPdfFileName");
+    expect(page).toContain("Compartilhar");
+    expect(page).toContain("Abrir relatório / PDF");
+    expect(eventPdf).toContain("PDFDocument.create");
+    expect(eventPdf).toContain('application/pdf');
+    expect(page).not.toContain('window.open("", "_blank"');
   });
 
   it("oferece inscrição assistida na mesma lista de inscrições públicas", () => {
