@@ -34,6 +34,16 @@ describe("Cadastro de Células com endereço por CEP", () => {
     expect(routerSource).toContain("Toda liderança deve pertencer a esta igreja.");
   });
 
+  it("explica o status público e leva o administrador para Visite-nos", () => {
+    const dialogSource = readFileSync(resolve(root, "client/src/components/CellPublicSettingsDialog.tsx"), "utf8");
+    expect(pageSource).toContain("Pública · sem localização");
+    expect(pageSource).toContain("Marcada como pública, mas falta um ponto no mapa");
+    expect(pageSource).toContain('href="/visite-nos"');
+    expect(dialogSource).toContain("trpc.tenantPublic.adminPreview.useQuery");
+    expect(dialogSource).toContain("A Célula só aparecerá em “Visite-nos”");
+    expect(dialogSource).toContain("O CEP preenche o endereço, mas não substitui a localização do mapa.");
+  });
+
   it("usa migration nullable para preservar Células existentes", () => {
     expect(migrationSource).toContain("ALTER TABLE `cells` ADD `addressNumber` varchar(20);");
     expect(migrationSource).toContain("ALTER TABLE `cells` ADD `addressComplement` varchar(120);");

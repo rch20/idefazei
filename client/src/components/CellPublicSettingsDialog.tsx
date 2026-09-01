@@ -87,6 +87,9 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
     return [{ id: cell.id, title: cell.name, latitude, longitude }];
   }, [cell, form.latitude, form.longitude]);
 
+  const publicPreview = trpc.tenantPublic.adminPreview.useQuery(undefined, { enabled: open });
+  const publicPagePublished = publicPreview.data?.site?.status === "published";
+
   const updateSettings = trpc.cells.updatePublicSettings.useMutation({
     onSuccess: async (saved) => {
       await utils.cells.list.invalidate({ churchId });
@@ -140,8 +143,17 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
         </DialogHeader>
 
         <form onSubmit={submit} className="space-y-5">
-          <section className="rounded-xl border border-border bg-muted/20 p-4">
-            <div className="flex items-start justify-between gap-4">
+          <section className={`rounded-xl border p-4 ${form.publicVisible ? "border-indigo-200 bg-indigo-50/50" : "border-border bg-muted/20"}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <Label className="flex items-center gap-2 text-sm font-semibold text-navy"><Eye className="h-4 w-4" />Status da publicação</Label>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {!form.publicVisible ? "Esta Célula está privada e não aparece para visitantes." : publicPreview.isLoading ? "Verificando a página pública…" : publicPagePublished ? "Esta Célula poderá ser vista em Visite-nos quando houver coordenadas válidas." : "A Célula está marcada, mas a Página Pública da igreja ainda não foi publicada."}
+                </p>
+              </div>
+              {form.publicVisible && publicPagePublished && <Button type="button" size="sm" variant="outline" asChild className="shrink-0"><a href="/visite-nos" target="_blank" rel="noreferrer"><Eye className="mr-1.5 h-4 w-4" />Visualizar Visite-nos</a></Button>}
+            </div>
+            <div className="mt-4 flex items-start justify-between gap-4 border-t border-black/5 pt-4">
               <div>
                 <Label htmlFor="cell-public-visible" className="flex items-center gap-2 text-sm font-semibold text-navy"><Eye className="h-4 w-4" />Publicar esta Célula</Label>
                 <p className="mt-1 text-xs text-muted-foreground">A Célula só aparecerá em “Visite-nos” quando esta opção estiver ativa e houver coordenadas.</p>
@@ -149,6 +161,7 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
               <Switch id="cell-public-visible" checked={form.publicVisible} onCheckedChange={(publicVisible) => setForm((current) => ({ ...current, publicVisible }))} />
             </div>
           </section>
+          {form.publicVisible && (form.latitude.trim() === "" || form.longitude.trim() === "") && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">A publicação ainda não está pronta: marque o ponto da Célula no mapa ou informe latitude e longitude. O CEP preenche o endereço, mas não substitui a localização do mapa.</div>}
 
           <section className="space-y-4 rounded-xl border border-border p-4">
             <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-gold" /><h3 className="text-sm font-semibold text-navy">Local e encontro</h3></div>

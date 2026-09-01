@@ -72,6 +72,10 @@ function formatMeetingDate(value: Date | string) {
   return date.toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
+function hasPublicCellLocation(cell: { latitude?: string | number | null; longitude?: string | number | null }) {
+  return Number.isFinite(Number(cell.latitude)) && Number.isFinite(Number(cell.longitude));
+}
+
 export default function Celulas() {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
@@ -416,12 +420,16 @@ export default function Celulas() {
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
-                    {cell.publicVisible && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-700">
-                        <Eye className="h-3 w-3" /> Pública
+                    {cell.publicVisible ? (
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${hasPublicCellLocation(cell) ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                        <Eye className="h-3 w-3" /> {hasPublicCellLocation(cell) ? "Pública" : "Pública · sem localização"}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                        Privada
                       </span>
                     )}
-                    {cell.latitude && (
+                    {hasPublicCellLocation(cell) && (
                       <span className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">
                         No mapa
                       </span>
@@ -507,11 +515,18 @@ export default function Celulas() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="flex items-center gap-2 text-sm font-semibold text-navy"><Eye className="h-4 w-4 text-indigo-600" />Página pública</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{selectedCell?.publicVisible ? "Esta Célula está publicada em Visite-nos." : "Esta Célula permanece privada."}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {selectedCell?.publicVisible
+                        ? hasPublicCellLocation(selectedCell) ? "Publicada em Visite-nos, com localização configurada." : "Marcada como pública, mas falta um ponto no mapa para aparecer em Visite-nos."
+                        : "Esta Célula permanece privada."}
+                    </p>
                   </div>
-                  <Button type="button" size="sm" variant="outline" onClick={() => setPublicSettingsOpen(true)}>
-                    <Settings2 className="mr-1.5 h-4 w-4" />Configurar
-                  </Button>
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
+                    {selectedCell?.publicVisible && hasPublicCellLocation(selectedCell) && <Button type="button" size="sm" variant="outline" asChild><a href="/visite-nos" target="_blank" rel="noreferrer"><Eye className="mr-1.5 h-4 w-4" />Visualizar Visite-nos</a></Button>}
+                    <Button type="button" size="sm" variant="outline" onClick={() => setPublicSettingsOpen(true)}>
+                      <Settings2 className="mr-1.5 h-4 w-4" />Configurar
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
