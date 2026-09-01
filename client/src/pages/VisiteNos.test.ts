@@ -38,7 +38,13 @@ describe("Visite-nos público", () => {
     expect(pageSource).toContain("function mapsSearchLink(cell: PublicCell)");
     expect(pageSource).toContain("function mapsDestination(cell: PublicCell)");
     expect(pageSource).toContain("function mapsDirectionsLink(cell: PublicCell)");
-    expect(pageSource).toContain("[cell.address, cell.city, cell.state].filter(Boolean).join");
+    expect(pageSource).toContain("const street = [addressWithoutComplement, hasNumber ? null : cell.addressNumber?.trim()]");
+    expect(pageSource).toContain("const postalCode = digits.length === 8");
+    const destinationSource = pageSource.slice(pageSource.indexOf("function mapsDestination"), pageSource.indexOf("function mapsSearchLink"));
+    expect(destinationSource).not.toContain("cell.neighborhood");
+    expect(destinationSource).not.toContain("cell.city");
+    expect(destinationSource).not.toContain("cell.state");
+    expect(destinationSource).toContain("return [street, postalCode].filter(Boolean).join");
     expect(pageSource).toContain("href={mapsSearchLink(cell)}");
     expect(pageSource).toContain("href={mapsDirectionsLink(cell)}");
     expect(dbSource).toContain("state: cells.state");

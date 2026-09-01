@@ -52,9 +52,17 @@ function locationLabel(cell: PublicCell) {
 }
 
 function mapsDestination(cell: PublicCell) {
-  const street = [cell.address, cell.addressNumber].filter(Boolean).join(", ");
-  const locality = [cell.zipCode, cell.neighborhood, cell.city, cell.state, "Brasil"].filter(Boolean).join(", ");
-  return [street, cell.addressComplement, locality].filter(Boolean).join(", ") || `${cell.latitude},${cell.longitude}`;
+  const address = cell.address?.trim() ?? "";
+  const complement = cell.addressComplement?.trim() ?? "";
+  const escapedComplement = complement.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const addressWithoutComplement = escapedComplement
+    ? address.replace(new RegExp(`(?:,\s*)?${escapedComplement}`, "ig"), "").replace(/,\s*$/, "").trim()
+    : address;
+  const hasNumber = /(?:^|\s|,)(?:n[ºo°.]?\s*)?\d+[a-z]?\b/i.test(addressWithoutComplement);
+  const street = [addressWithoutComplement, hasNumber ? null : cell.addressNumber?.trim()].filter(Boolean).join(", ");
+  const digits = cell.zipCode?.replace(/\D/g, "") ?? "";
+  const postalCode = digits.length === 8 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+  return [street, postalCode].filter(Boolean).join(", ") || `${cell.latitude},${cell.longitude}`;
 }
 
 function mapsSearchLink(cell: PublicCell) {
