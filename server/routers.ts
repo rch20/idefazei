@@ -261,6 +261,7 @@ import {
   getCellStudyById,
   getCellStudiesWithAttachments,
   createCellStudy,
+  createReadyCellStudy,
   updateCellStudy,
   getCellStudyAttachments,
   createCellStudyAttachment,
@@ -3495,7 +3496,7 @@ const cellStudiesRouter = router({
     .input(z.object({
       churchId: z.number().int().positive(),
       title: z.string().trim().min(3).max(180),
-      weekStart: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+      weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       biblicalText: z.string().trim().max(500).optional(),
       objective: z.string().trim().max(4000).optional(),
       introduction: z.string().trim().max(8000).optional(),
@@ -3513,7 +3514,7 @@ const cellStudiesRouter = router({
     .input(z.object({
       id: z.number().int().positive(), churchId: z.number().int().positive(),
       title: z.string().trim().min(3).max(180).optional(),
-      weekStart: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(),
+      weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
       biblicalText: z.string().trim().max(500).nullable().optional(),
       objective: z.string().trim().max(4000).nullable().optional(),
       introduction: z.string().trim().max(8000).nullable().optional(),
@@ -3530,6 +3531,29 @@ const cellStudiesRouter = router({
       }
       if (!(await getCellStudyById(input.id, input.churchId))) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
       return updateCellStudy({ ...input, updatedByChurchUserId: access.member.id });
+    }),
+  createReady: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      title: z.string().trim().min(3).max(180),
+      weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      biblicalText: z.string().trim().max(500).optional(),
+      observation: z.string().trim().max(4000).optional(),
+      mediaAssetId: z.number().int().positive(),
+      url: z.string().url(),
+      mimeType: z.string().max(160).optional(),
+      originalFilename: z.string().max(255).optional(),
+      publish: z.boolean().default(false),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireCellStudyManager(ctx.user.id, input.churchId);
+      try { parseCivilDateAsUtcNoon(input.weekStart); } catch { throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma semana válida." }); }
+      try {
+        return await createReadyCellStudy({ ...input, createdByChurchUserId: access.member.id });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        throw new TRPCError({ code: "BAD_REQUEST", message: message || "Não foi possível criar o estudo pronto." });
+      }
     }),
   attachFile: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive(), title: z.string().trim().min(2).max(180), mediaAssetId: z.number().int().positive(), url: z.string().url(), mimeType: z.string().max(160).optional(), originalFilename: z.string().max(255).optional() }))

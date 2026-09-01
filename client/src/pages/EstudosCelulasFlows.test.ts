@@ -52,4 +52,26 @@ describe("Estudos de Células — biblioteca semanal", () => {
     expect(migration).toContain("cell_study_attachments");
     expect(migration).toContain("cell_study_attachment");
   });
+
+  it("oferece o fluxo integrado de estudo pronto, com PDF principal e publicação", () => {
+    expect(page).toContain("Adicionar estudo pronto");
+    expect(page).toContain("PDF recomendado");
+    expect(page).toContain("Título do estudo");
+    expect(page).toContain("Semana de aplicação");
+    expect(page).toContain("Salvar como rascunho");
+    expect(page).toContain("Publicar para líderes");
+    expect(page).toContain("cellStudies.createReady");
+    expect(page).toContain('purpose: "cell_study_attachment"');
+    expect(router).toContain("createReady: protectedProcedure");
+    expect(router).toContain("createReadyCellStudy");
+    expect(db).toContain("db.transaction(async (tx)");
+    expect(db).toContain("position: 0");
+  });
+
+  it("mantém a mesma biblioteca e valida o asset no tenant antes de associá-lo", () => {
+    expect(page).not.toContain("ReadyStudyLibrary");
+    expect(router).toContain("createReadyCellStudy");
+    expect(db).toContain('eq(mediaAssets.churchId, data.churchId)');
+    expect(db).toContain('eq(mediaAssets.purpose, "cell_study_attachment")');
+  });
 });

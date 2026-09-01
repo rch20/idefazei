@@ -5896,6 +5896,89 @@ export async function createCellStudy(data: {
   return getCellStudyById(Number(result.insertId), data.churchId);
 }
 
+/** Cria um estudo pronto e seu material principal de forma atômica, sem criar uma biblioteca paralela. */
+export async function createReadyCellStudy(data: {
+  churchId: number;
+  title: string;
+  weekStart: string;
+  biblicalText?: string | null;
+  observation?: string | null;
+  mediaAssetId: number;
+  url: string;
+  mimeType?: string | null;
+  originalFilename?: string | null;
+  createdByChurchUserId: number;
+  publish: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async (tx) => {
+    const assetRows = await tx
+      .select({
+        id: mediaAssets.id,
+        url: mediaAssets.url,
+        secureUrl: mediaAssets.secureUrl,
+        mimeType: mediaAssets.mimeType,
+        originalFilename: mediaAssets.originalFilename,
+      })
+      .from(mediaAssets)
+      .where(and(
+        eq(mediaAssets.id, data.mediaAssetId),
+        eq(mediaAssets.churchId, data.churchId),
+        eq(mediaAssets.purpose, "cell_study_attachment"),
+        eq(mediaAssets.status, "active"),
+      ))
+      .limit(1);
+    const asset = assetRows[0];
+    if (!asset || (asset.url !== data.url && asset.secureUrl !== data.url)) {
+      throw new Error("O arquivo não pertence a esta igreja ou não corresponde ao asset enviado.");
+    }
+
+    const title = data.title.trim();
+    const status = data.publish ? "publicado" : "rascunho";
+    const [studyResult] = await tx.insert(cellStudies).values({
+      churchId: data.churchId,
+      title,
+      weekStart: data.weekStart,
+      biblicalText: data.biblicalText?.trim() || null,
+      objective: data.observation?.trim() || null,
+      introduction: null,
+      development: null,
+      discussionQuestions: null,
+      practicalApplication: null,
+      prayer: null,
+      status,
+      publishedAt: data.publish ? new Date() : null,
+      createdByChurchUserId: data.createdByChurchUserId,
+      updatedByChurchUserId: data.createdByChurchUserId,
+    });
+    const studyId = Number(studyResult.insertId);
+    if (!studyId) throw new Error("Não foi possível criar o estudo pronto.");
+
+    const [attachmentResult] = await tx.insert(cellStudyAttachments).values({
+      churchId: data.churchId,
+      studyId,
+      title,
+      kind: "arquivo",
+      mediaAssetId: data.mediaAssetId,
+      url: data.url,
+      mimeType: data.mimeType ?? asset.mimeType,
+      originalFilename: data.originalFilename ?? asset.originalFilename,
+      position: 0,
+      createdByChurchUserId: data.createdByChurchUserId,
+    });
+    const attachmentId = Number(attachmentResult.insertId);
+    if (!attachmentId) throw new Error("Não foi possível registrar o arquivo principal do estudo.");
+
+    const [studyRows, attachmentRows] = await Promise.all([
+      tx.select().from(cellStudies).where(and(eq(cellStudies.id, studyId), eq(cellStudies.churchId, data.churchId))).limit(1),
+      tx.select().from(cellStudyAttachments).where(and(eq(cellStudyAttachments.id, attachmentId), eq(cellStudyAttachments.churchId, data.churchId), eq(cellStudyAttachments.studyId, studyId))).limit(1),
+    ]);
+    return { study: studyRows[0] ?? null, attachment: attachmentRows[0] ?? null };
+  });
+}
+
 export async function updateCellStudy(data: {
   id: number;
   churchId: number;
