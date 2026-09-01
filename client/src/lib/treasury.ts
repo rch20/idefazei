@@ -60,12 +60,42 @@ export function parseBrlToCents(value: string): number | null {
   return negative ? -cents : cents;
 }
 
+export type CivilDateParts = { year: number; month: number; day: number };
+
+export function getCivilDateParts(value: Date | string): CivilDateParts | null {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return { year: value.getUTCFullYear(), month: value.getUTCMonth() + 1, day: value.getUTCDate() };
+  }
+  const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const validationDate = new Date(Date.UTC(year, month - 1, day, 12));
+  if (validationDate.getUTCFullYear() !== year || validationDate.getUTCMonth() + 1 !== month || validationDate.getUTCDate() !== day) return null;
+  return { year, month, day };
+}
+
 export function formatDatePtBr(value: Date | string) {
-  const date = value instanceof Date
-    ? new Date(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate(), 12)
-    : new Date(`${String(value).slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return "Data inválida";
+  const parts = getCivilDateParts(value);
+  if (!parts) return "Data inválida";
+  const date = new Date(parts.year, parts.month - 1, parts.day, 12);
   return date.toLocaleDateString("pt-BR");
+}
+
+export function formatDateLongPtBr(value: Date | string) {
+  const parts = getCivilDateParts(value);
+  if (!parts) return "Data inválida";
+  const date = new Date(parts.year, parts.month - 1, parts.day, 12);
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+}
+
+export function formatMonthShortPtBr(value: Date | string) {
+  const parts = getCivilDateParts(value);
+  if (!parts) return "Data inválida";
+  return new Date(parts.year, parts.month - 1, 1, 12).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
 }
 
 export function escapeTreasuryHtml(value: string) {

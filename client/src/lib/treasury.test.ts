@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTreasuryReceiptHtml, buildTreasuryReportHtml, escapeTreasuryHtml, parseBrlToCents } from "./treasury";
+import { buildTreasuryReceiptHtml, buildTreasuryReportHtml, escapeTreasuryHtml, formatDateLongPtBr, formatDatePtBr, getCivilDateParts, parseBrlToCents } from "./treasury";
 
 describe("utilitários da Tesouraria", () => {
   it("converte valores brasileiros em centavos sem usar ponto flutuante financeiro", () => {
@@ -14,6 +14,14 @@ describe("utilitários da Tesouraria", () => {
     expect(parseBrlToCents("abc")).toBeNull();
     expect(parseBrlToCents("10,999")).toBe(1099900);
     expect(parseBrlToCents("1,2,3")).toBeNull();
+  });
+
+  it("preserva a data civil quando recebe timestamp em meia-noite UTC", () => {
+    const value = new Date("2026-09-19T00:00:00.000Z");
+    expect(getCivilDateParts(value)).toEqual({ year: 2026, month: 9, day: 19 });
+    expect(formatDatePtBr(value)).toBe("19/09/2026");
+    expect(formatDateLongPtBr(value)).toContain("19");
+    expect(formatDateLongPtBr(value)).toContain("2026");
   });
 
   it("escapa conteúdo financeiro antes de gerar recibos e relatórios", () => {

@@ -62,6 +62,14 @@ describe("Eventos — inscrições e presença", () => {
     expect(tenantPage).toContain("Inscreva-se");
   });
 
+  it("trata a data do Evento como data civil sem exibir o dia anterior", () => {
+    expect(router).toContain("parseCivilDateAsUtcNoon");
+    expect(router).not.toContain("const startDate = new Date(input.startDate)");
+    expect(page).toContain("getCivilDateParts(event.startDate)");
+    expect(tenantPage).toContain("formatDatePtBr(event.startDate)");
+    expect(publicPage).toContain("formatDateLongPtBr(value)");
+  });
+
   it("associa o flyer ao Evento, oferece os três formatos e tenta o compartilhamento nativo", () => {
     expect(schema).toContain('purpose: mysqlEnum("purpose"');
     expect(schema).toContain('"event_flyer"');

@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
-import { formatBrl, formatDatePtBr, parseBrlToCents } from "@/lib/treasury";
+import { formatBrl, formatDatePtBr, formatMonthShortPtBr, getCivilDateParts, parseBrlToCents } from "@/lib/treasury";
 import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Copy, Download, ExternalLink, Image as ImageIcon, Link2, Loader2, MapPin, Pencil, Plus, Printer, QrCode, Send, Share2, Trash2, Upload, UserCheck, UserRound, UserX, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -134,13 +134,13 @@ function paymentStatusLabel(status: PaymentStatus | null | undefined) {
 
 function formatDateInput(value: Date | string | null | undefined) {
   if (!value) return "";
-  const iso = value instanceof Date ? value.toISOString() : String(value);
-  return iso.slice(0, 10);
+  const parts = getCivilDateParts(value);
+  return parts ? `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}` : "";
 }
 
 function formatDate(value: Date | string | null | undefined) {
   if (!value) return "";
-  return new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(" de ", " ");
+  return formatDatePtBr(value);
 }
 
 function publicEventUrl(slug: string | null | undefined, token: string) {
@@ -540,7 +540,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   return <>
     <div className="card-sacred p-4 flex flex-col gap-4 sm:flex-row sm:items-center">
       {event.flyer && <div className={`hidden w-14 shrink-0 overflow-hidden rounded-xl border border-[#1e3a5f]/10 bg-white sm:block ${flyerAspectClass(event.flyerFormat)}`}><img src={event.flyer.optimizedUrl || event.flyer.url} alt={`Flyer de ${event.name}`} className="h-full w-full object-contain" /></div>}
-      <div className="w-14 h-14 rounded-xl bg-cream-dark flex flex-col items-center justify-center flex-shrink-0 text-center"><span className="text-lg font-bold font-display text-navy leading-none">{new Date(event.startDate).getDate()}</span><span className="text-[10px] text-muted-foreground uppercase tracking-wide">{new Date(event.startDate).toLocaleString("pt-BR", { month: "short" })}</span></div>
+      <div className="w-14 h-14 rounded-xl bg-cream-dark flex flex-col items-center justify-center flex-shrink-0 text-center"><span className="text-lg font-bold font-display text-navy leading-none">{getCivilDateParts(event.startDate)?.day ?? "—"}</span><span className="text-[10px] text-muted-foreground uppercase tracking-wide">{formatMonthShortPtBr(event.startDate)}</span></div>
       <div className="flex-1 min-w-0"><p className="font-semibold text-navy truncate">{event.name}</p><div className="flex flex-wrap items-center gap-2 mt-1">{event.location && <span className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{event.location}</span>}{event.maxCapacity && <span className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" />{event.maxCapacity} vagas</span>}</div><div className="mt-2 flex flex-wrap items-center gap-2"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorClass}`}>{typeLabel}</span>{typeHasRegistration && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"><Link2 className="h-3 w-3" />{registrationModeLabel(event.registrationMode)}</span>}{event.registrationFeeCents > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">{formatBrl(event.registrationFeeCents)} {event.registrationMode === "casal" ? "por casal" : "por pessoa"}</span>}</div></div>
       <div className="flex flex-wrap items-center gap-2 shrink-0 sm:justify-end">
         {registrationUrl && <Button size="sm" variant="outline" className="h-8 px-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => void shareInvite()} title="Compartilhar convite"><Share2 className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Convite</span></Button>}

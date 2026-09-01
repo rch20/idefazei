@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
-import { formatBrl, formatDatePtBr } from "@/lib/treasury";
+import { formatBrl, formatDateLongPtBr, formatDatePtBr } from "@/lib/treasury";
 
 const EMPTY_FORM = {
   participantName: "",
@@ -18,7 +18,7 @@ const EMPTY_FORM = {
 
 function formatDate(value: Date | string | null | undefined) {
   if (!value) return "";
-  return new Date(value).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+  return formatDateLongPtBr(value);
 }
 
 function formatPhone(value: string) {

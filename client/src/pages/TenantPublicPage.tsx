@@ -7,6 +7,7 @@ import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 import { TenantPublicFooter } from "@/components/TenantPublicFooter";
 import { getPublicHeroEyebrow } from "../../../shared/publicPage";
 import { resolveHeroImage } from "../../../shared/publicHero";
+import { formatDatePtBr, formatMonthShortPtBr, getCivilDateParts } from "@/lib/treasury";
 import { useState } from "react";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
@@ -125,11 +126,11 @@ export default function TenantPublicPage() {
               </div>
               <div className="tenant-public-events-grid">
                 {data.upcomingEvents.map((event) => {
-                  const startsAt = new Date(event.startDate);
+                  const civilDate = getCivilDateParts(event.startDate);
                   const registrationHref = event.registrationMode !== "none" && event.registrationToken ? `/evento/inscricao/${event.registrationToken}` : null;
                   return <article key={event.id} className="tenant-public-event-card">
-                    <div className="tenant-public-event-date"><strong>{startsAt.toLocaleDateString("pt-BR", { day: "2-digit" })}</strong><span>{startsAt.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "")}</span></div>
-                    <div className="min-w-0"><span className="tenant-public-event-type">{event.type}</span><h3>{event.name}</h3>{event.description && <p>{event.description}</p>}<div className="tenant-public-event-meta"><span><Clock3 aria-hidden="true" />{startsAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>{event.location && <span><MapPin aria-hidden="true" />{event.location}</span>}</div>{registrationHref && <a href={registrationHref} className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#1e3a5f]/20 px-3 py-1.5 text-sm font-semibold text-[#1e3a5f] transition-colors hover:bg-[#1e3a5f]/5">Inscreva-se <ArrowRight aria-hidden="true" className="h-4 w-4" /></a>}</div>
+                    <div className="tenant-public-event-date"><strong>{civilDate?.day ?? "—"}</strong><span>{formatMonthShortPtBr(event.startDate)}</span></div>
+                    <div className="min-w-0"><span className="tenant-public-event-type">{event.type}</span><h3>{event.name}</h3>{event.description && <p>{event.description}</p>}<div className="tenant-public-event-meta"><span><CalendarDays aria-hidden="true" />{formatDatePtBr(event.startDate)}{event.endDate ? ` a ${formatDatePtBr(event.endDate)}` : ""}</span>{event.location && <span><MapPin aria-hidden="true" />{event.location}</span>}</div>{registrationHref && <a href={registrationHref} className="mt-4 inline-flex items-center gap-2 rounded-full border border-[#1e3a5f]/20 px-3 py-1.5 text-sm font-semibold text-[#1e3a5f] transition-colors hover:bg-[#1e3a5f]/5">Inscreva-se <ArrowRight aria-hidden="true" className="h-4 w-4" /></a>}</div>
                   </article>;
                 })}
               </div>

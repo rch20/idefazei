@@ -6,6 +6,7 @@ import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaL
 import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
 import { HERO_PRESET_IDS } from "../shared/publicHero";
 import { getOptimizedMediaUrls } from "./media";
+import { parseCivilDateAsUtcNoon } from "./civilDate";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -2514,10 +2515,10 @@ const eventsRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
-      const startDate = new Date(input.startDate);
-      const endDate = input.endDate?.trim() ? new Date(input.endDate) : null;
-      if (Number.isNaN(startDate.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de início do evento é inválida." });
-      if (endDate && Number.isNaN(endDate.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim do evento é inválida." });
+      const startDate = parseCivilDateAsUtcNoon(input.startDate);
+      const endDate = input.endDate?.trim() ? parseCivilDateAsUtcNoon(input.endDate) : null;
+      if (!startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de início do evento é inválida." });
+      if (input.endDate?.trim() && !endDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim do evento é inválida." });
       if (endDate && endDate < startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim não pode ser anterior à data de início." });
       const result = await updateEvent({
         churchId: input.churchId,
@@ -2674,10 +2675,10 @@ const eventsRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
-      const startDate = new Date(input.startDate);
-      const endDate = input.endDate ? new Date(input.endDate) : undefined;
-      if (Number.isNaN(startDate.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de início do evento é inválida." });
-      if (endDate && Number.isNaN(endDate.getTime())) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim do evento é inválida." });
+      const startDate = parseCivilDateAsUtcNoon(input.startDate);
+      const endDate = input.endDate?.trim() ? parseCivilDateAsUtcNoon(input.endDate) : undefined;
+      if (!startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de início do evento é inválida." });
+      if (input.endDate?.trim() && !endDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim do evento é inválida." });
       if (endDate && endDate < startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim não pode ser anterior à data de início." });
       const paymentDueDateText = input.paymentDueDate?.trim() || null;
       if (paymentDueDateText && (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDueDateText) || Number.isNaN(new Date(`${paymentDueDateText}T12:00:00Z`).getTime()))) throw new TRPCError({ code: "BAD_REQUEST", message: "A data limite de pagamento é inválida." });

@@ -1869,8 +1869,8 @@ describe("Fluxo completo de discipulado", () => {
 
       expect(createEvent).toHaveBeenCalledWith(expect.objectContaining({
         churchId: CHURCH_ID,
-        startDate: new Date("2026-09-10"),
-        endDate: new Date("2026-09-11"),
+        startDate: new Date("2026-09-10T12:00:00.000Z"),
+        endDate: new Date("2026-09-11T12:00:00.000Z"),
         registrationToken: expect.any(String),
       }));
     });
