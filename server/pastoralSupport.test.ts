@@ -19,6 +19,8 @@ describe("pastoral support contract", () => {
 
   it("normalizes labels and uses a safe default", () => {
     expect(normalizePastoralSupportLabel("  Fale   com  a equipe  ")).toBe("Fale com a equipe");
+    expect(DEFAULT_PASTORAL_SUPPORT_LABEL).toBe("Atendimento pastoral");
+    expect(normalizePastoralSupportLabel("Converse com o Pastor")).toBe("Atendimento pastoral");
     expect(normalizePastoralSupportLabel("   ")).toBe(DEFAULT_PASTORAL_SUPPORT_LABEL);
     expect(normalizePastoralSupportLabel("x".repeat(100))).toHaveLength(80);
   });

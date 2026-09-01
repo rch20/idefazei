@@ -1,4 +1,5 @@
-export const DEFAULT_PASTORAL_SUPPORT_LABEL = "Converse com o Pastor";
+export const DEFAULT_PASTORAL_SUPPORT_LABEL = "Atendimento pastoral";
+const LEGACY_PASTORAL_SUPPORT_LABEL = "Converse com o Pastor";
 export const DEFAULT_PASTORAL_SUPPORT_URL = "https://dedodeprosa.diaebeleza.com.br";
 
 export type PastoralSupportAudience = "public" | "authenticated";
@@ -33,7 +34,7 @@ export function normalizePastoralSupportUrl(value: unknown): string | null {
 export function normalizePastoralSupportLabel(value: unknown): string {
   if (typeof value !== "string") return DEFAULT_PASTORAL_SUPPORT_LABEL;
   const label = value.trim().replace(/\s+/g, " ").slice(0, 80);
-  return label || DEFAULT_PASTORAL_SUPPORT_LABEL;
+  return !label || label === LEGACY_PASTORAL_SUPPORT_LABEL ? DEFAULT_PASTORAL_SUPPORT_LABEL : label;
 }
 
 export function normalizePastoralSupportConfig(value: unknown): PastoralSupportConfig {
