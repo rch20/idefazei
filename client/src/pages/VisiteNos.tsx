@@ -163,7 +163,7 @@ export default function VisiteNos() {
           </div>
         </section>
 
-        <section className="tenant-public-section bg-white/45">
+        <section id="tenant-public-cells" className="tenant-public-section bg-white/45">
           <div className="tenant-public-container">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
               <div>

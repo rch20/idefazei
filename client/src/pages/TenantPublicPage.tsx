@@ -90,6 +90,9 @@ export default function TenantPublicPage() {
             <Button asChild className="tenant-public-cta">
               <a href={primaryHref}>{primaryLabel}<ArrowRight size={18} aria-hidden="true" /></a>
             </Button>
+            <a className="tenant-public-cell-cta" href="/visite-nos#tenant-public-cells" aria-label="Encontrar uma Célula perto de você">
+              <MapPin size={15} aria-hidden="true" /><span>Encontrar uma Célula perto de você</span>
+            </a>
             {data.publicDevotional && <a className="tenant-public-devotional-cta" href="/devocional"><BookOpen size={18} aria-hidden="true" /><span><strong>Devocional diário</strong><small>Uma palavra para hoje</small></span><ArrowUpRight size={16} aria-hidden="true" /></a>}
           </div>
           <a className="tenant-public-scroll-cue" href="#tenant-public-content" aria-label="Continuar para conhecer mais sobre a igreja">

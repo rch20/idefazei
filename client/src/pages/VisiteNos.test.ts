@@ -14,6 +14,16 @@ describe("Visite-nos público", () => {
     expect(homeSource).not.toContain('href="/visitante" className="tenant-public-contact-card"><CalendarDays');
   });
 
+  it("oferece no Hero um CTA discreto, alinhado ao principal, para encontrar uma Célula", () => {
+    expect(homeSource).toContain('className="tenant-public-cell-cta"');
+    expect(homeSource).toContain('href="/visite-nos#tenant-public-cells"');
+    expect(homeSource).toContain("Encontrar uma Célula perto de você");
+    expect(homeSource).toContain("aria-label=\"Encontrar uma Célula perto de você\"");
+    expect(homeSource).toContain("tenant-public-cta");
+    expect(homeSource).toContain("tenant-public-cell-cta");
+    expect(pageSource).toContain('id="tenant-public-cells"');
+  });
+
   it("usa apenas células públicas retornadas pelo tenant e mantém a proximidade no navegador", () => {
     expect(pageSource).toContain("data?.publicCells");
     expect(pageSource).toContain("navigator.geolocation.getCurrentPosition");
