@@ -65,6 +65,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(dbSource).toContain("getBirthdaysByChurch(churchId: number, month: number, day?: number)");
     expect(dbSource).toContain("eq(people.churchId, churchId)");
     expect(dbSource).toContain("isNotNull(people.birthDate)");
+    expect(dbSource).toContain("DATE_FORMAT(${people.birthDate}, '%Y-%m-%d')");
   });
 
   it("exige nascimento no cadastro completo e mantém indicação simples para membros", () => {

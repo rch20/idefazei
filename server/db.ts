@@ -977,7 +977,9 @@ export async function getBirthdaysByChurch(churchId: number, month: number, day?
     .select({
       id: people.id,
       fullName: people.fullName,
-      birthDate: people.birthDate,
+      // DATE é uma data civil: formatar no banco evita que o driver/serializador
+      // transforme 22/09 em 21/09 ao atravessar fusos horários.
+      birthDate: sql<string>`DATE_FORMAT(${people.birthDate}, '%Y-%m-%d')`,
       phone: people.phone,
       whatsapp: people.whatsapp,
       email: people.email,
