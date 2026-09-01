@@ -116,7 +116,7 @@ export const mediaAssets = mysqlTable("media_assets", {
   churchId: int("churchId").notNull(),
   provider: mysqlEnum("provider", ["cloudinary", "manus_storage"]).notNull(),
   resourceType: mysqlEnum("resourceType", ["image", "video", "raw"]).notNull().default("image"),
-  purpose: mysqlEnum("purpose", ["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "tenant_public_hero", "certificate_logo", "treasury_attachment", "public_video", "announcement_image", "event_flyer", "other"]).notNull().default("other"),
+  purpose: mysqlEnum("purpose", ["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "tenant_public_hero", "certificate_logo", "treasury_attachment", "public_video", "announcement_image", "event_flyer", "cell_study_attachment", "other"]).notNull().default("other"),
   publicId: varchar("publicId", { length: 512 }),
   storageKey: varchar("storageKey", { length: 512 }),
   url: text("url").notNull(),
@@ -710,6 +710,61 @@ export const libraryItems = mysqlTable("library_items", {
   ]).default("membro"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+
+/** Estudo semanal oficial para aplicação nas Células da igreja. */
+export const cellStudies = mysqlTable("cell_studies", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  title: varchar("title", { length: 180 }).notNull(),
+  weekStart: date("weekStart", { mode: "string" }).notNull(),
+  biblicalText: varchar("biblicalText", { length: 500 }),
+  objective: text("objective"),
+  introduction: text("introduction"),
+  development: text("development"),
+  discussionQuestions: text("discussionQuestions"),
+  practicalApplication: text("practicalApplication"),
+  prayer: text("prayer"),
+  status: mysqlEnum("status", ["rascunho", "publicado", "arquivado"]).default("rascunho").notNull(),
+  publishedAt: timestamp("publishedAt"),
+  createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  updatedByChurchUserId: int("updatedByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("cell_studies_church_week_idx").on(table.churchId, table.weekStart),
+  index("cell_studies_church_status_idx").on(table.churchId, table.status),
+]);
+
+/** Arquivos enviados ou links externos complementares de um estudo. */
+export const cellStudyAttachments = mysqlTable("cell_study_attachments", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  studyId: int("studyId").notNull(),
+  title: varchar("title", { length: 180 }).notNull(),
+  kind: mysqlEnum("kind", ["arquivo", "link"]).notNull(),
+  mediaAssetId: int("mediaAssetId"),
+  url: text("url"),
+  mimeType: varchar("mimeType", { length: 160 }),
+  originalFilename: varchar("originalFilename", { length: 255 }),
+  position: int("position").notNull().default(0),
+  createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("cell_study_attachments_church_study_position_idx").on(table.churchId, table.studyId, table.position),
+  uniqueIndex("cell_study_attachments_study_title_unique").on(table.churchId, table.studyId, table.title),
+]);
+
+/** Delegação pastoral para administrar os estudos semanais de Células. */
+export const cellStudyAdministrators = mysqlTable("cell_study_administrators", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  churchUserId: int("churchUserId").notNull(),
+  assignedByChurchUserId: int("assignedByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("cell_study_admin_church_idx").on(table.churchId),
+  uniqueIndex("cell_study_admin_church_user_unique").on(table.churchId, table.churchUserId),
+]);
 
 // ─── ACONSELHAMENTO PASTORAL ──────────────────────────────────────────────────
 

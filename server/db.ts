@@ -8,6 +8,9 @@ import {
   cellAttendance,
   cellMeetings,
   cellMembers,
+  cellStudies,
+  cellStudyAttachments,
+  cellStudyAdministrators,
   cells,
   churchMembers,
   churchNotificationPreferences,
@@ -5841,3 +5844,234 @@ export async function getTreasuryServiceParticipantNames(churchId: number, ids: 
   if (uniqueIds.length === 0) return [];
   return db.select({ id: people.id, fullName: people.fullName }).from(people).where(and(eq(people.churchId, churchId), or(...uniqueIds.map((id) => eq(people.id, id)))));
 }
+
+
+// ─── ESTUDOS SEMANAIS DE CÉLULAS ─────────────────────────────────────────────
+
+export async function getCellStudyById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(cellStudies).where(and(eq(cellStudies.id, id), eq(cellStudies.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCellStudiesByChurch(churchId: number, includeDrafts = false) {
+  const db = await getDb();
+  if (!db) return [];
+  const where = includeDrafts
+    ? eq(cellStudies.churchId, churchId)
+    : and(eq(cellStudies.churchId, churchId), eq(cellStudies.status, "publicado"));
+  return db.select().from(cellStudies).where(where).orderBy(desc(cellStudies.weekStart), desc(cellStudies.id));
+}
+
+export async function createCellStudy(data: {
+  churchId: number;
+  title: string;
+  weekStart: string;
+  biblicalText?: string | null;
+  objective?: string | null;
+  introduction?: string | null;
+  development?: string | null;
+  discussionQuestions?: string | null;
+  practicalApplication?: string | null;
+  prayer?: string | null;
+  createdByChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(cellStudies).values({
+    ...data,
+    title: data.title.trim(),
+    weekStart: data.weekStart,
+    biblicalText: data.biblicalText?.trim() || null,
+    objective: data.objective?.trim() || null,
+    introduction: data.introduction?.trim() || null,
+    development: data.development?.trim() || null,
+    discussionQuestions: data.discussionQuestions?.trim() || null,
+    practicalApplication: data.practicalApplication?.trim() || null,
+    prayer: data.prayer?.trim() || null,
+    updatedByChurchUserId: data.createdByChurchUserId,
+    status: "rascunho",
+  });
+  return getCellStudyById(Number(result.insertId), data.churchId);
+}
+
+export async function updateCellStudy(data: {
+  id: number;
+  churchId: number;
+  updatedByChurchUserId: number;
+  title?: string;
+  weekStart?: string;
+  biblicalText?: string | null;
+  objective?: string | null;
+  introduction?: string | null;
+  development?: string | null;
+  discussionQuestions?: string | null;
+  practicalApplication?: string | null;
+  prayer?: string | null;
+  status?: "rascunho" | "publicado" | "arquivado";
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = { updatedByChurchUserId: data.updatedByChurchUserId };
+  if (data.title !== undefined) update.title = data.title.trim();
+  if (data.weekStart !== undefined) update.weekStart = data.weekStart;
+  if (data.biblicalText !== undefined) update.biblicalText = data.biblicalText?.trim() || null;
+  if (data.objective !== undefined) update.objective = data.objective?.trim() || null;
+  if (data.introduction !== undefined) update.introduction = data.introduction?.trim() || null;
+  if (data.development !== undefined) update.development = data.development?.trim() || null;
+  if (data.discussionQuestions !== undefined) update.discussionQuestions = data.discussionQuestions?.trim() || null;
+  if (data.practicalApplication !== undefined) update.practicalApplication = data.practicalApplication?.trim() || null;
+  if (data.prayer !== undefined) update.prayer = data.prayer?.trim() || null;
+  if (data.status !== undefined) {
+    update.status = data.status;
+    update.publishedAt = data.status === "publicado" ? new Date() : null;
+  }
+  await db.update(cellStudies).set(update).where(and(eq(cellStudies.id, data.id), eq(cellStudies.churchId, data.churchId)));
+  return getCellStudyById(data.id, data.churchId);
+}
+
+export async function getCellStudyAttachments(churchId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(cellStudyAttachments)
+    .where(and(eq(cellStudyAttachments.churchId, churchId), eq(cellStudyAttachments.studyId, studyId)))
+    .orderBy(cellStudyAttachments.position, cellStudyAttachments.id);
+}
+
+export async function createCellStudyAttachment(data: {
+  churchId: number;
+  studyId: number;
+  title: string;
+  kind: "arquivo" | "link";
+  mediaAssetId?: number | null;
+  url?: string | null;
+  mimeType?: string | null;
+  originalFilename?: string | null;
+  position: number;
+  createdByChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(cellStudyAttachments).values({
+    ...data,
+    title: data.title.trim(),
+    mediaAssetId: data.mediaAssetId ?? null,
+    url: data.url ?? null,
+    mimeType: data.mimeType ?? null,
+    originalFilename: data.originalFilename ?? null,
+  });
+  const rows = await db.select().from(cellStudyAttachments).where(and(eq(cellStudyAttachments.id, Number(result.insertId)), eq(cellStudyAttachments.churchId, data.churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateCellStudyAttachmentPosition(data: { id: number; churchId: number; studyId: number; position: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(cellStudyAttachments).set({ position: data.position }).where(and(eq(cellStudyAttachments.id, data.id), eq(cellStudyAttachments.churchId, data.churchId), eq(cellStudyAttachments.studyId, data.studyId)));
+}
+
+export async function deleteCellStudyAttachment(data: { id: number; churchId: number; studyId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(cellStudyAttachments).where(and(eq(cellStudyAttachments.id, data.id), eq(cellStudyAttachments.churchId, data.churchId), eq(cellStudyAttachments.studyId, data.studyId)));
+}
+
+export async function getCellStudyAdministrators(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: cellStudyAdministrators.id,
+    churchUserId: cellStudyAdministrators.churchUserId,
+    assignedByChurchUserId: cellStudyAdministrators.assignedByChurchUserId,
+    createdAt: cellStudyAdministrators.createdAt,
+    name: churchUsers.name,
+    email: churchUsers.email,
+    role: churchUsers.role,
+    active: churchUsers.active,
+  }).from(cellStudyAdministrators)
+    .innerJoin(churchUsers, eq(cellStudyAdministrators.churchUserId, churchUsers.id))
+    .where(and(eq(cellStudyAdministrators.churchId, churchId), eq(churchUsers.churchId, churchId), eq(churchUsers.active, true)))
+    .orderBy(churchUsers.name);
+}
+
+export async function isCellStudyAdministrator(churchId: number, churchUserId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db.select({ id: cellStudyAdministrators.id }).from(cellStudyAdministrators)
+    .innerJoin(churchUsers, eq(cellStudyAdministrators.churchUserId, churchUsers.id))
+    .where(and(eq(cellStudyAdministrators.churchId, churchId), eq(cellStudyAdministrators.churchUserId, churchUserId), eq(churchUsers.churchId, churchId), eq(churchUsers.active, true)))
+    .limit(1);
+  return Boolean(rows[0]);
+}
+
+export async function assignCellStudyAdministrator(data: { churchId: number; churchUserId: number; assignedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(cellStudyAdministrators).values(data).onDuplicateKeyUpdate({ set: { assignedByChurchUserId: data.assignedByChurchUserId } });
+}
+
+export async function removeCellStudyAdministrator(churchId: number, churchUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(cellStudyAdministrators).where(and(eq(cellStudyAdministrators.churchId, churchId), eq(cellStudyAdministrators.churchUserId, churchUserId)));
+}
+
+export async function getActiveChurchStudyAsset(churchId: number, mediaAssetId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select({ id: mediaAssets.id, url: mediaAssets.url, secureUrl: mediaAssets.secureUrl, mimeType: mediaAssets.mimeType, originalFilename: mediaAssets.originalFilename, bytes: mediaAssets.bytes, purpose: mediaAssets.purpose, resourceType: mediaAssets.resourceType })
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.id, mediaAssetId), eq(mediaAssets.churchId, churchId), eq(mediaAssets.purpose, "cell_study_attachment"), eq(mediaAssets.status, "active")))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCellStudyReaders(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ personId: cellMembers.personId, cellId: cells.id, leaderId: cells.leaderId, coLeaderId: cells.coLeaderId, supervisorId: cells.supervisorId })
+    .from(cellMembers)
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .where(and(eq(cells.churchId, churchId), eq(cells.active, true), eq(cellMembers.active, true)));
+}
+
+export async function getCellStudyReaderPersonIds(churchId: number) {
+  const db = await getDb();
+  if (!db) return new Set<number>();
+  const rows = await getCellStudyReaders(churchId);
+  const ids = new Set<number>();
+  for (const row of rows) {
+    ids.add(row.personId);
+    if (row.leaderId) ids.add(row.leaderId);
+    if (row.coLeaderId) ids.add(row.coLeaderId);
+    if (row.supervisorId) ids.add(row.supervisorId);
+  }
+  return ids;
+}
+
+export async function getCellStudyReaderLeaderIds(churchId: number) {
+  const db = await getDb();
+  if (!db) return new Set<number>();
+  const rows = await db.select({ leaderId: cells.leaderId, coLeaderId: cells.coLeaderId, supervisorId: cells.supervisorId }).from(cells).where(and(eq(cells.churchId, churchId), eq(cells.active, true)));
+  const ids = new Set<number>();
+  for (const row of rows) {
+    if (row.leaderId) ids.add(row.leaderId);
+    if (row.coLeaderId) ids.add(row.coLeaderId);
+    if (row.supervisorId) ids.add(row.supervisorId);
+  }
+  return ids;
+}
+
+export async function getCellStudyAccessByChurchUser(churchId: number, churchUserId: number) {
+  const [isAdministrator, leaderIds] = await Promise.all([isCellStudyAdministrator(churchId, churchUserId), getCellStudyReaderLeaderIds(churchId)]);
+  return { isAdministrator, leaderIds };
+}
+
+export async function getCellStudiesWithAttachments(churchId: number, includeDrafts = false) {
+  const studies = await getCellStudiesByChurch(churchId, includeDrafts);
+  const byStudy = await Promise.all(studies.map(async (study) => ({ study, attachments: await getCellStudyAttachments(churchId, study.id) })));
+  return byStudy;
+}
+
+// ─── FIM DOS ESTUDOS SEMANAIS DE CÉLULAS ──────────────────────────────────────

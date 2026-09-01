@@ -111,6 +111,7 @@ const navItems: NavItem[] = [
   { icon: Home, label: "Famílias", path: "/app/familias", group: "membros", accessKey: "isExecutive" },
   { icon: Globe, label: "Células", path: "/app/celulas", group: "celulas" },
   { icon: Map, label: "Mapa de Células", path: "/app/mapa", group: "celulas" },
+  { icon: BookOpen, label: "Estudos de Células", path: "/app/estudos-celulas", group: "celulas" },
   { icon: CalendarDays, label: "Eventos", path: "/app/eventos", group: "ministerio", accessKey: "isExecutive" },
   { icon: Music, label: "Ministérios", path: "/app/ministerios", group: "ministerio", accessKey: "canManageMinistry" },
   { icon: Star, label: "Escalas", path: "/app/escalas", group: "ministerio", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"], accessKey: "canManageCells" },

@@ -27,6 +27,7 @@ const Consolidacao = lazy(() => import("./pages/Consolidacao"));
 const FunilDiscipulado = lazy(() => import("./pages/FunilDiscipulado"));
 const Pessoas = lazy(() => import("./pages/Pessoas"));
 const Celulas = lazy(() => import("./pages/Celulas"));
+const EstudosCelulas = lazy(() => import("./pages/EstudosCelulas"));
 const Eventos = lazy(() => import("./pages/Eventos"));
 const Oracao = lazy(() => import("./pages/Oracao"));
 const Mural = lazy(() => import("./pages/Mural"));
@@ -202,6 +203,12 @@ function Router() {
       <Route path="/app/mapa">
         <AppPage title="Mapa de Células">
           <Celulas />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/estudos-celulas">
+        <AppPage title="Estudos de Células">
+          <EstudosCelulas />
         </AppPage>
       </Route>
 

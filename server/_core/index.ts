@@ -29,6 +29,7 @@ import {
   getChurchById,
   getEffectivePwaIconUrls,
   getMinistryRoleDefinitionsByChurch,
+  isCellStudyAdministrator,
   updateChurchPwaIcon,
 } from "../db";
 
@@ -376,11 +377,11 @@ async function startServer() {
     let originalFilename = "media";
     let invalidMimeType = false;
     let limitReached = false;
-    const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp", "video/mp4", "video/webm", "video/quicktime"]);
+    const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp", "video/mp4", "video/webm", "video/quicktime", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/plain", "audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg"]);
     const bb = Busboy({ headers: req.headers, limits: { fileSize: 32 * 1024 * 1024, files: 1 } });
     bb.on("field", (name, value) => {
-      if (name === "purpose" && ["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "tenant_public_hero", "certificate_logo", "public_video", "announcement_image", "event_flyer"].includes(value)) purpose = value as MediaPurpose;
-      if (name === "resourceType" && ["image", "video"].includes(value)) resourceType = value as MediaResourceType;
+      if (name === "purpose" && ["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "tenant_public_hero", "certificate_logo", "public_video", "announcement_image", "event_flyer", "cell_study_attachment"].includes(value)) purpose = value as MediaPurpose;
+      if (name === "resourceType" && ["image", "video", "raw"].includes(value)) resourceType = value as MediaResourceType;
     });
     bb.on("file", (_field, stream, info) => {
       originalFilename = info.filename || "media";
@@ -393,14 +394,15 @@ async function startServer() {
     });
     bb.on("finish", async () => {
       if (limitReached) return res.status(413).json({ error: "Arquivo muito grande (máximo 32 MB)" });
-      if (invalidMimeType) return res.status(415).json({ error: "Formato não permitido. Use PNG, JPEG, WebP, MP4, WebM ou MOV." });
+      if (invalidMimeType) return res.status(415).json({ error: "Formato não permitido. Use PDF, DOC, DOCX, PPT, PPTX, PNG, JPEG, WebP, MP3, WAV ou OGG, conforme o material." });
       if (!fileBuffer) return res.status(400).json({ error: "No file received" });
       const pastorRoles = new Set(["pastor_presidente", "pastor_local"]);
       const adminRoles = new Set(["pastor_presidente", "pastor_local", "secretario"]);
       const imagePurposes = new Set<MediaPurpose>(["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "tenant_public_hero", "certificate_logo", "announcement_image", "event_flyer"]);
-      if (!imagePurposes.has(purpose) && purpose !== "public_video") return res.status(400).json({ error: "Finalidade de mídia inválida" });
+      if (!imagePurposes.has(purpose) && purpose !== "public_video" && purpose !== "cell_study_attachment") return res.status(400).json({ error: "Finalidade de mídia inválida" });
       if (imagePurposes.has(purpose) && resourceType !== "image") return res.status(400).json({ error: "Esta finalidade aceita somente imagens" });
       if (purpose === "public_video" && resourceType !== "video") return res.status(400).json({ error: "Vídeos públicos exigem resourceType=video" });
+      if (purpose === "cell_study_attachment" && resourceType !== "raw" && resourceType !== "image") return res.status(400).json({ error: "Anexos de estudos exigem arquivo ou imagem" });
       if (purpose === "tenant_logo" || purpose === "tenant_pwa_icon" || purpose === "certificate_logo") {
         if (!adminRoles.has(churchUser.role)) return res.status(403).json({ error: "Permissão administrativa necessária" });
         if (fileBuffer.length > 2 * 1024 * 1024) return res.status(413).json({ error: "Logo deve ter no máximo 2 MB" });
@@ -408,6 +410,11 @@ async function startServer() {
       if (purpose === "event_flyer") {
         if (!adminRoles.has(churchUser.role)) return res.status(403).json({ error: "Permissão administrativa necessária para enviar o flyer" });
         if (fileBuffer.length > 4 * 1024 * 1024) return res.status(413).json({ error: "O flyer deve ter no máximo 4 MB" });
+      }
+      if (purpose === "cell_study_attachment") {
+        const canUpload = adminRoles.has(churchUser.role) || await isCellStudyAdministrator(churchUser.churchId, churchUser.id);
+        if (!canUpload) return res.status(403).json({ error: "Somente responsáveis autorizados podem enviar anexos de estudos" });
+        if (fileBuffer.length > 20 * 1024 * 1024) return res.status(413).json({ error: "O anexo deve ter no máximo 20 MB" });
       }
       if (purpose === "tenant_public_gallery" || purpose === "tenant_public_hero" || purpose === "public_video" || purpose === "announcement_image") {
         if (!pastorRoles.has(churchUser.role)) return res.status(403).json({ error: "Somente Pastores podem enviar esta mídia" });

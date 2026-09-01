@@ -256,6 +256,22 @@ import {
   isFoundationStudyAdministrator,
   assignFoundationStudyAdministrator,
   removeFoundationStudyAdministrator,
+  // Estudos semanais de Células
+  getCellStudiesByChurch,
+  getCellStudyById,
+  getCellStudiesWithAttachments,
+  createCellStudy,
+  updateCellStudy,
+  getCellStudyAttachments,
+  createCellStudyAttachment,
+  updateCellStudyAttachmentPosition,
+  deleteCellStudyAttachment,
+  getCellStudyAdministrators,
+  isCellStudyAdministrator,
+  assignCellStudyAdministrator,
+  removeCellStudyAdministrator,
+  getActiveChurchStudyAsset,
+  getCellStudyReaderLeaderIds,
   // Batismo
   getBaptismClassesByChurch,
   getBaptismEnrollments,
@@ -455,6 +471,34 @@ async function requireFoundationStudyPastor(userId: number, churchId: number) {
   const access = await getFoundationStudyAccess(userId, churchId);
   if (!access.isPastor) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem definir administradores de estudos." });
+  }
+  return access;
+}
+
+async function getCellStudyAccess(userId: number, churchId: number) {
+  const member = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, member);
+  const isPastor = roles.some((role) => PASTOR_ROLES.has(role));
+  const churchUserId = userId < 0 ? Math.abs(userId) : null;
+  const isDesignatedAdministrator = Boolean(churchUserId && await isCellStudyAdministrator(churchId, churchUserId));
+  const canManageStudies = isPastor || isDesignatedAdministrator;
+  const leaderIds = canManageStudies ? new Set<number>() : await getCellStudyReaderLeaderIds(churchId);
+  const canReadPublishedStudies = canManageStudies || Boolean(member.personId && leaderIds.has(member.personId));
+  return { member, isPastor, isDesignatedAdministrator, canManageStudies, canReadPublishedStudies };
+}
+
+async function requireCellStudyManager(userId: number, churchId: number) {
+  const access = await getCellStudyAccess(userId, churchId);
+  if (!access.canManageStudies) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "A gestão dos estudos de Células é restrita ao Pastor e aos responsáveis designados." });
+  }
+  return access;
+}
+
+async function requireCellStudyReader(userId: number, churchId: number) {
+  const access = await getCellStudyAccess(userId, churchId);
+  if (!access.canReadPublishedStudies) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Acesso restrito aos líderes e responsáveis pelas Células." });
   }
   return access;
 }
@@ -3426,6 +3470,124 @@ const schedulesRouter = router({
     }),
 });
 
+const cellStudiesRouter = router({
+  access: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await getCellStudyAccess(ctx.user.id, input.churchId);
+      return { canManageStudies: access.canManageStudies, canReadPublishedStudies: access.canReadPublishedStudies, canAssignAdministrators: access.isPastor };
+    }),
+  list: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireCellStudyReader(ctx.user.id, input.churchId);
+      return getCellStudiesWithAttachments(input.churchId, access.canManageStudies);
+    }),
+  get: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireCellStudyReader(ctx.user.id, input.churchId);
+      const study = await getCellStudyById(input.studyId, input.churchId);
+      if (!study || (study.status !== "publicado" && !access.canManageStudies)) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      return { study, attachments: await getCellStudyAttachments(input.churchId, input.studyId) };
+    }),
+  create: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      title: z.string().trim().min(3).max(180),
+      weekStart: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),
+      biblicalText: z.string().trim().max(500).optional(),
+      objective: z.string().trim().max(4000).optional(),
+      introduction: z.string().trim().max(8000).optional(),
+      development: z.string().trim().max(12000).optional(),
+      discussionQuestions: z.string().trim().max(8000).optional(),
+      practicalApplication: z.string().trim().max(8000).optional(),
+      prayer: z.string().trim().max(4000).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireCellStudyManager(ctx.user.id, input.churchId);
+      try { parseCivilDateAsUtcNoon(input.weekStart); } catch { throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma semana válida." }); }
+      return createCellStudy({ ...input, createdByChurchUserId: access.member.id });
+    }),
+  update: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(), churchId: z.number().int().positive(),
+      title: z.string().trim().min(3).max(180).optional(),
+      weekStart: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).optional(),
+      biblicalText: z.string().trim().max(500).nullable().optional(),
+      objective: z.string().trim().max(4000).nullable().optional(),
+      introduction: z.string().trim().max(8000).nullable().optional(),
+      development: z.string().trim().max(12000).nullable().optional(),
+      discussionQuestions: z.string().trim().max(8000).nullable().optional(),
+      practicalApplication: z.string().trim().max(8000).nullable().optional(),
+      prayer: z.string().trim().max(4000).nullable().optional(),
+      status: z.enum(["rascunho", "publicado", "arquivado"]).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireCellStudyManager(ctx.user.id, input.churchId);
+      if (input.weekStart) {
+        try { parseCivilDateAsUtcNoon(input.weekStart); } catch { throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma semana válida." }); }
+      }
+      if (!(await getCellStudyById(input.id, input.churchId))) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      return updateCellStudy({ ...input, updatedByChurchUserId: access.member.id });
+    }),
+  attachFile: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive(), title: z.string().trim().min(2).max(180), mediaAssetId: z.number().int().positive(), url: z.string().url(), mimeType: z.string().max(160).optional(), originalFilename: z.string().max(255).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireCellStudyManager(ctx.user.id, input.churchId);
+      if (!(await getCellStudyById(input.studyId, input.churchId))) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      const asset = await getActiveChurchStudyAsset(input.churchId, input.mediaAssetId);
+      if (!asset || ![asset.url, asset.secureUrl].filter(Boolean).includes(input.url)) throw new TRPCError({ code: "BAD_REQUEST", message: "O arquivo não pertence a esta igreja ou não corresponde ao asset enviado." });
+      const attachments = await getCellStudyAttachments(input.churchId, input.studyId);
+      return createCellStudyAttachment({ churchId: input.churchId, studyId: input.studyId, title: input.title, kind: "arquivo", mediaAssetId: input.mediaAssetId, url: input.url, mimeType: input.mimeType ?? asset.mimeType, originalFilename: input.originalFilename ?? asset.originalFilename, position: attachments.length, createdByChurchUserId: access.member.id });
+    }),
+  attachLink: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive(), title: z.string().trim().min(2).max(180), url: z.string().url().refine((value) => value.startsWith("https://"), "Use um link HTTPS.") }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireCellStudyManager(ctx.user.id, input.churchId);
+      if (!(await getCellStudyById(input.studyId, input.churchId))) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      const attachments = await getCellStudyAttachments(input.churchId, input.studyId);
+      return createCellStudyAttachment({ ...input, kind: "link", position: attachments.length, createdByChurchUserId: access.member.id });
+    }),
+  deleteAttachment: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive(), id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireCellStudyManager(ctx.user.id, input.churchId);
+      await deleteCellStudyAttachment(input);
+      return { success: true };
+    }),
+  moveAttachment: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive(), id: z.number().int().positive(), direction: z.enum(["up", "down"]) }))
+    .mutation(async ({ input, ctx }) => {
+      await requireCellStudyManager(ctx.user.id, input.churchId);
+      const attachments = await getCellStudyAttachments(input.churchId, input.studyId);
+      const index = attachments.findIndex((item) => item.id === input.id);
+      if (index < 0) throw new TRPCError({ code: "NOT_FOUND", message: "Anexo não encontrado neste estudo." });
+      const targetIndex = input.direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= attachments.length) return { success: true };
+      await Promise.all([
+        updateCellStudyAttachmentPosition({ id: attachments[index].id, churchId: input.churchId, studyId: input.studyId, position: attachments[targetIndex].position }),
+        updateCellStudyAttachmentPosition({ id: attachments[targetIndex].id, churchId: input.churchId, studyId: input.studyId, position: attachments[index].position }),
+      ]);
+      return { success: true };
+    }),
+  listAdministrators: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => { await requireCellStudyManager(ctx.user.id, input.churchId); return getCellStudyAdministrators(input.churchId); }),
+  assignAdministrator: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), churchUserId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requirePastor(ctx.user.id, input.churchId);
+      const target = await getActiveChurchUserById(input.churchUserId);
+      if (!target || target.churchId !== input.churchId) throw new TRPCError({ code: "NOT_FOUND", message: "Conta não encontrada nesta igreja." });
+      await assignCellStudyAdministrator({ churchId: input.churchId, churchUserId: input.churchUserId, assignedByChurchUserId: access.id });
+      return { success: true };
+    }),
+  removeAdministrator: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), churchUserId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => { await requirePastor(ctx.user.id, input.churchId); await removeCellStudyAdministrator(input.churchId, input.churchUserId); return { success: true }; }),
+});
+
 const libraryRouter = router({
   list: protectedProcedure
     .input(z.object({ churchId: z.number(), search: z.string().optional(), type: z.string().optional() }))
@@ -5965,8 +6127,9 @@ export const appRouter = router({
   leader: leaderRouter,
     families: familiesRouter,
   schedules: schedulesRouter,
-  library: libraryRouter,
-  invites: inviteRouter,
+    library: libraryRouter,
+    cellStudies: cellStudiesRouter,
+    invites: inviteRouter,
   churchAuth: churchAuthRouter,
   adminAuth: adminAuthRouter,
   superAdmin: superAdminRouter,
