@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTreasuryReceiptHtml, buildTreasuryReportHtml, escapeTreasuryHtml, formatDateLongPtBr, formatDatePtBr, getCivilDateParts, parseBrlToCents } from "./treasury";
+import { buildTreasuryReceiptHtml, buildTreasuryReportHtml, escapeTreasuryHtml, formatDateLongPtBr, formatDatePtBr, formatEventTime, formatEventTimeRange, getCivilDateParts, parseBrlToCents } from "./treasury";
 
 describe("utilitários da Tesouraria", () => {
   it("converte valores brasileiros em centavos sem usar ponto flutuante financeiro", () => {
@@ -22,6 +22,13 @@ describe("utilitários da Tesouraria", () => {
     expect(formatDatePtBr(value)).toBe("19/09/2026");
     expect(formatDateLongPtBr(value)).toContain("19");
     expect(formatDateLongPtBr(value)).toContain("2026");
+  });
+
+  it("formata o horário do Evento sem conversão de fuso", () => {
+    expect(formatEventTime("19:30")).toBe("19h30");
+    expect(formatEventTimeRange("19:30", null)).toBe("A partir das 19h30");
+    expect(formatEventTimeRange("19:30", "21:00")).toBe("Das 19h30 às 21h");
+    expect(formatEventTime("19:3")).toBe("");
   });
 
   it("escapa conteúdo financeiro antes de gerar recibos e relatórios", () => {

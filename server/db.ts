@@ -86,6 +86,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { getDerivedLogoIconUrls, getOptimizedMediaUrls } from "./media";
+import { currentCivilDateAsUtcNoon } from "./civilDate";
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 
@@ -2358,6 +2359,8 @@ export async function getPublicUpcomingEventsByChurchId(churchId: number) {
     description: events.description,
     startDate: events.startDate,
     endDate: events.endDate,
+    startTime: events.startTime,
+    endTime: events.endTime,
     location: events.location,
     registrationMode: events.registrationMode,
     registrationToken: events.registrationToken,
@@ -2374,7 +2377,7 @@ export async function getPublicUpcomingEventsByChurchId(churchId: number) {
     .where(and(
       eq(events.churchId, churchId),
       eq(events.active, true),
-      gte(events.startDate, new Date()),
+      gte(events.startDate, currentCivilDateAsUtcNoon()),
     ))
     .orderBy(events.startDate)
     .limit(3);
@@ -2484,6 +2487,8 @@ export async function updateEvent(data: {
   description: string | null;
   startDate: Date;
   endDate: Date | null;
+  startTime: string | null;
+  endTime: string | null;
   location: string | null;
   maxCapacity: number | null;
 }) {
@@ -2499,6 +2504,8 @@ export async function updateEvent(data: {
     description: data.description,
     startDate: data.startDate,
     endDate: data.endDate,
+    startTime: data.startTime,
+    endTime: data.endTime,
     location: data.location,
     maxCapacity: data.maxCapacity,
   }).where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));

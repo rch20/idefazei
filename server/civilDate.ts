@@ -18,3 +18,15 @@ export function parseCivilDateAsUtcNoon(value: string | null | undefined): Date 
 export function formatCivilDateInput(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
+
+export function normalizeCivilTime(value: string | null | undefined): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : null;
+}
+
+export function currentCivilDateAsUtcNoon(timeZone = "America/Sao_Paulo", now = new Date()): Date {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+  return parseCivilDateAsUtcNoon(`${values.year}-${values.month}-${values.day}`) ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12));
+}

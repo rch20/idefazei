@@ -6,7 +6,7 @@ import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaL
 import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
 import { HERO_PRESET_IDS } from "../shared/publicHero";
 import { getOptimizedMediaUrls } from "./media";
-import { parseCivilDateAsUtcNoon } from "./civilDate";
+import { normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -2510,6 +2510,8 @@ const eventsRouter = router({
       description: z.string().trim().max(4000).nullable().optional(),
       startDate: z.string(),
       endDate: z.string().trim().max(10).nullable().optional(),
+      startTime: z.string().trim().max(5).nullable().optional(),
+      endTime: z.string().trim().max(5).nullable().optional(),
       location: z.string().trim().max(500).nullable().optional(),
       maxCapacity: z.number().int().positive().nullable().optional(),
     }))
@@ -2520,6 +2522,12 @@ const eventsRouter = router({
       if (!startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de início do evento é inválida." });
       if (input.endDate?.trim() && !endDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim do evento é inválida." });
       if (endDate && endDate < startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim não pode ser anterior à data de início." });
+      const startTime = normalizeCivilTime(input.startTime);
+      const endTime = normalizeCivilTime(input.endTime);
+      if (input.startTime?.trim() && !startTime) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário de início deve estar no formato HH:mm." });
+      if (input.endTime?.trim() && !endTime) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário de término deve estar no formato HH:mm." });
+      if (endTime && !startTime) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o horário de início antes do horário de término." });
+      if (startTime && endTime && (!endDate || endDate.getTime() === startDate.getTime()) && endTime < startTime) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário de término não pode ser anterior ao horário de início no mesmo dia." });
       const result = await updateEvent({
         churchId: input.churchId,
         eventId: input.eventId,
@@ -2528,6 +2536,8 @@ const eventsRouter = router({
         description: input.description?.trim() || null,
         startDate,
         endDate,
+        startTime,
+        endTime,
         location: input.location?.trim() || null,
         maxCapacity: input.maxCapacity ?? null,
       });
@@ -2665,6 +2675,8 @@ const eventsRouter = router({
         description: z.string().trim().max(4000).optional(),
         startDate: z.string(),
         endDate: z.string().optional(),
+        startTime: z.string().trim().max(5).optional(),
+        endTime: z.string().trim().max(5).optional(),
         location: z.string().trim().max(500).optional(),
         maxCapacity: z.number().int().positive().optional(),
         registrationMode: z.enum(["none", "individual", "casal"]).default("none"),
@@ -2680,12 +2692,18 @@ const eventsRouter = router({
       if (!startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de início do evento é inválida." });
       if (input.endDate?.trim() && !endDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim do evento é inválida." });
       if (endDate && endDate < startDate) throw new TRPCError({ code: "BAD_REQUEST", message: "A data de fim não pode ser anterior à data de início." });
+      const startTime = normalizeCivilTime(input.startTime);
+      const endTime = normalizeCivilTime(input.endTime);
+      if (input.startTime?.trim() && !startTime) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário de início deve estar no formato HH:mm." });
+      if (input.endTime?.trim() && !endTime) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário de término deve estar no formato HH:mm." });
+      if (endTime && !startTime) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o horário de início antes do horário de término." });
+      if (startTime && endTime && (!endDate || endDate.getTime() === startDate.getTime()) && endTime < startTime) throw new TRPCError({ code: "BAD_REQUEST", message: "O horário de término não pode ser anterior ao horário de início no mesmo dia." });
       const paymentDueDateText = input.paymentDueDate?.trim() || null;
       if (paymentDueDateText && (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDueDateText) || Number.isNaN(new Date(`${paymentDueDateText}T12:00:00Z`).getTime()))) throw new TRPCError({ code: "BAD_REQUEST", message: "A data limite de pagamento é inválida." });
       if (input.registrationMode === "none" && input.registrationFeeCents > 0) throw new TRPCError({ code: "BAD_REQUEST", message: "Ative uma inscrição individual ou de casal antes de cobrar." });
       const paymentDueDate = paymentDueDateText ? new Date(`${paymentDueDateText}T12:00:00Z`) : null;
       const registrationToken = input.registrationMode === "none" ? null : randomBytes(32).toString("base64url");
-      return createEvent({ ...input, startDate, endDate, registrationToken, paymentDueDate, paymentInstructions: input.paymentInstructions?.trim() || null } as any);
+      return createEvent({ ...input, startDate, endDate, startTime, endTime, registrationToken, paymentDueDate, paymentInstructions: input.paymentInstructions?.trim() || null } as any);
     }),
 
   publicRegistration: router({
@@ -2704,6 +2722,8 @@ const eventsRouter = router({
             description: resolved.event.description,
             startDate: resolved.event.startDate,
             endDate: resolved.event.endDate,
+            startTime: resolved.event.startTime,
+            endTime: resolved.event.endTime,
             location: resolved.event.location,
             maxCapacity: resolved.event.maxCapacity,
             registrationMode: resolved.event.registrationMode,

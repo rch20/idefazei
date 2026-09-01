@@ -168,7 +168,7 @@ describe("Eventos públicos por tenant", () => {
 
     expect(helper).toContain("eq(events.churchId, churchId)");
     expect(helper).toContain("eq(events.active, true)");
-    expect(helper).toContain("gte(events.startDate, new Date())");
+    expect(helper).toContain("gte(events.startDate, currentCivilDateAsUtcNoon())");
     expect(helper).toContain(".limit(3)");
     expect(helper).not.toContain("qrCode:");
     expect(helper).not.toContain("maxCapacity:");

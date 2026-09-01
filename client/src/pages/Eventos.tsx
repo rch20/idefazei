@@ -7,8 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
-import { formatBrl, formatDatePtBr, formatMonthShortPtBr, getCivilDateParts, parseBrlToCents } from "@/lib/treasury";
-import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Copy, Download, ExternalLink, Image as ImageIcon, Link2, Loader2, MapPin, Pencil, Plus, Printer, QrCode, Send, Share2, Trash2, Upload, UserCheck, UserRound, UserX, Users } from "lucide-react";
+import { formatBrl, formatDatePtBr, formatEventTimeRange, formatMonthShortPtBr, getCivilDateParts, getTodayCivilDateInput, parseBrlToCents } from "@/lib/treasury";
+import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Clock, Copy, Download, ExternalLink, Image as ImageIcon, Link2, Loader2, MapPin, Pencil, Plus, Printer, QrCode, Send, Share2, Trash2, Upload, UserCheck, UserRound, UserX, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
@@ -24,6 +24,8 @@ type EventEditDraft = {
   description: string;
   startDate: string;
   endDate: string;
+  startTime: string;
+  endTime: string;
   location: string;
   maxCapacity: string;
 };
@@ -36,6 +38,8 @@ type EventRecord = {
   description: string | null;
   startDate: Date | string;
   endDate: Date | string | null;
+  startTime: string | null;
+  endTime: string | null;
   location: string | null;
   maxCapacity: number | null;
   registrationMode: RegistrationMode;
@@ -99,8 +103,10 @@ const defaultForm = {
   name: "",
   type: "culto" as const,
   description: "",
-  startDate: new Date().toISOString().split("T")[0],
+  startDate: getTodayCivilDateInput(),
   endDate: "",
+  startTime: "",
+  endTime: "",
   location: "",
   maxCapacity: "",
   registrationMode: "none" as RegistrationMode,
@@ -210,6 +216,8 @@ export default function Eventos() {
         description: form.description.trim() || undefined,
         startDate: form.startDate,
         endDate: form.endDate || undefined,
+        startTime: form.startTime || undefined,
+        endTime: form.endTime || undefined,
         location: form.location.trim() || undefined,
         maxCapacity: form.maxCapacity ? Number(form.maxCapacity) : undefined,
         registrationMode: form.registrationMode,
@@ -243,8 +251,9 @@ export default function Eventos() {
     }
   }
 
-  const upcoming = (events ?? []).filter((event) => new Date(event.startDate) >= new Date());
-  const past = (events ?? []).filter((event) => new Date(event.startDate) < new Date());
+  const todayCivilDate = getTodayCivilDateInput();
+  const upcoming = (events ?? []).filter((event) => formatDateInput(event.startDate) >= todayCivilDate);
+  const past = (events ?? []).filter((event) => formatDateInput(event.startDate) < todayCivilDate);
 
   return (
     <div className="space-y-6">
@@ -297,7 +306,9 @@ export default function Eventos() {
               <div className="sm:col-span-2"><Label>Nome do Evento *</Label><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required maxLength={255} /></div>
               <div className="sm:col-span-2"><Label>Tipo *</Label><Select value={form.type} onValueChange={(value) => setForm({ ...form, type: value as typeof form.type })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{EVENT_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
               <div><Label>Data de início *</Label><Input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} required /></div>
-              <div><Label>Data de fim</Label><Input type="date" value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} /></div>
+              <div><Label>Data de fim <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="date" value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} /></div>
+              <div><Label>Horário de início <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="time" value={form.startTime} onChange={(event) => setForm({ ...form, startTime: event.target.value })} /></div>
+              <div><Label>Horário de término <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="time" value={form.endTime} onChange={(event) => setForm({ ...form, endTime: event.target.value })} /><p className="mt-1 text-xs text-muted-foreground">Deixe em branco se não houver término definido.</p></div>
               <div className="sm:col-span-2"><Label>Local</Label><Input value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder="Endereço ou nome do local" maxLength={500} /></div>
               <div><Label>Capacidade máxima</Label><Input type="number" min={1} value={form.maxCapacity} onChange={(event) => setForm({ ...form, maxCapacity: event.target.value })} placeholder="Ex.: 100" /></div>
               <div className="sm:col-span-2"><Label>Inscrições</Label><Select value={form.registrationMode} onValueChange={(value) => setForm({ ...form, registrationMode: value as RegistrationMode })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{REGISTRATION_MODES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select><p className="mt-1 text-xs text-muted-foreground">{REGISTRATION_MODES.find((item) => item.value === form.registrationMode)?.description}</p></div>
@@ -326,7 +337,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   const [isUploadingFlyer, setIsUploadingFlyer] = useState(false);
   const [flyerShareFile, setFlyerShareFile] = useState<File | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [editDraft, setEditDraft] = useState<EventEditDraft>(() => ({ name: event.name, type: event.type, description: event.description ?? "", startDate: formatDateInput(event.startDate), endDate: formatDateInput(event.endDate), location: event.location ?? "", maxCapacity: event.maxCapacity?.toString() ?? "" }));
+  const [editDraft, setEditDraft] = useState<EventEditDraft>(() => ({ name: event.name, type: event.type, description: event.description ?? "", startDate: formatDateInput(event.startDate), endDate: formatDateInput(event.endDate), startTime: event.startTime ?? "", endTime: event.endTime ?? "", location: event.location ?? "", maxCapacity: event.maxCapacity?.toString() ?? "" }));
   const [paymentFeeDraft, setPaymentFeeDraft] = useState(() => formatCentsForInput(event.registrationFeeCents));
   const [paymentDueDateDraft, setPaymentDueDateDraft] = useState(() => formatDateInput(event.paymentDueDate));
   const [paymentInstructionsDraft, setPaymentInstructionsDraft] = useState(() => event.paymentInstructions ?? "");
@@ -373,7 +384,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     const paymentLine = event.registrationFeeCents > 0
       ? `\nInscrição: ${formatBrl(event.registrationFeeCents)} ${event.registrationMode === "casal" ? "por casal" : "por pessoa"}${event.paymentDueDate ? ` · pagamento até ${formatDatePtBr(event.paymentDueDate)}` : ""}`
       : "\nEvento gratuito";
-    return `Olá! Faça sua inscrição para o evento ${event.name}.${paymentLine}`;
+    const timeLine = formatEventTimeRange(event.startTime, event.endTime);
+    return `Olá! Faça sua inscrição para o evento ${event.name}.${paymentLine}${timeLine ? `\nHorário: ${timeLine}` : ""}`;
   }
 
   function invitationMessage() {
@@ -472,6 +484,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
       description: event.description ?? "",
       startDate: formatDateInput(event.startDate),
       endDate: formatDateInput(event.endDate),
+      startTime: event.startTime ?? "",
+      endTime: event.endTime ?? "",
       location: event.location ?? "",
       maxCapacity: event.maxCapacity?.toString() ?? "",
     });
@@ -494,6 +508,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
       description: editDraft.description.trim() || null,
       startDate: editDraft.startDate,
       endDate: editDraft.endDate || null,
+      startTime: editDraft.startTime || null,
+      endTime: editDraft.endTime || null,
       location: editDraft.location.trim() || null,
       maxCapacity,
     });
@@ -533,7 +549,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     const rows = report.registrations.map((registration: any) => `<tr><td>${escapeHtml(registration.displayName)}</td><td>${escapeHtml(registration.companionName ?? "—")}</td><td>${registration.participantPhone ? escapeHtml(registration.participantPhone) : "—"}</td><td>${event.registrationFeeCents > 0 ? `${formatBrl(registration.amountCents ?? 0)} · ${paymentStatusLabel(registration.paymentStatus as PaymentStatus)}` : "Sem cobrança"}</td><td>${registration.attendance === "presente" ? "Presente" : registration.attendance === "ausente" ? "Não compareceu" : "Pendente"}</td></tr>`).join("");
     const printWindow = window.open("", "_blank", "noopener,noreferrer");
     if (!printWindow) { toast.error("Permita pop-ups para imprimir o relatório."); return; }
-    printWindow.document.write(`<!doctype html><html><head><title>Presença e pagamentos — ${escapeHtml(report.event.name)}</title><style>body{font-family:Arial,sans-serif;color:#1e3a5f;padding:32px}h1{margin:0 0 4px}p{color:#556274}.metrics{display:flex;gap:12px;margin:24px 0;flex-wrap:wrap}.metric{border:1px solid #ded4bd;border-radius:8px;padding:12px;min-width:120px}.metric strong{font-size:24px;display:block}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:10px;border-bottom:1px solid #e4e4e7;text-align:left}th{color:#7b6323;font-size:12px;text-transform:uppercase}</style></head><body><h1>${escapeHtml(report.event.name)}</h1><p>${formatDate(report.event.startDate)}${report.event.location ? ` · ${escapeHtml(report.event.location)}` : ""}</p><div class="metrics"><div class="metric"><span>Inscritos</span><strong>${report.summary.registeredCount}</strong></div><div class="metric"><span>Pessoas</span><strong>${report.summary.attendeeCount}</strong></div><div class="metric"><span>Presentes</span><strong>${report.summary.checkedInAttendeeCount}</strong></div><div class="metric"><span>Faltas</span><strong>${report.summary.absentAttendeeCount}</strong></div>${event.registrationFeeCents > 0 ? `<div class="metric"><span>Previsto</span><strong>${formatBrl(report.summary.expectedAmountCents)}</strong></div><div class="metric"><span>Recebido</span><strong>${formatBrl(report.summary.paidAmountCents)}</strong></div><div class="metric"><span>Pendente</span><strong>${formatBrl(report.summary.pendingAmountCents)}</strong></div>` : ""}</div><table><thead><tr><th>Inscrição</th><th>Acompanhante</th><th>Telefone</th><th>Pagamento</th><th>Presença</th></tr></thead><tbody>${rows || "<tr><td colspan='5'>Sem inscrições registradas.</td></tr>"}</tbody></table></body></html>`);
+    printWindow.document.write(`<!doctype html><html><head><title>Presença e pagamentos — ${escapeHtml(report.event.name)}</title><style>body{font-family:Arial,sans-serif;color:#1e3a5f;padding:32px}h1{margin:0 0 4px}p{color:#556274}.metrics{display:flex;gap:12px;margin:24px 0;flex-wrap:wrap}.metric{border:1px solid #ded4bd;border-radius:8px;padding:12px;min-width:120px}.metric strong{font-size:24px;display:block}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:10px;border-bottom:1px solid #e4e4e7;text-align:left}th{color:#7b6323;font-size:12px;text-transform:uppercase}</style></head><body><h1>${escapeHtml(report.event.name)}</h1><p>${formatDate(report.event.startDate)}${event.startTime ? ` · ${escapeHtml(formatEventTimeRange(event.startTime, event.endTime))}` : ""}${report.event.location ? ` · ${escapeHtml(report.event.location)}` : ""}</p><div class="metrics"><div class="metric"><span>Inscritos</span><strong>${report.summary.registeredCount}</strong></div><div class="metric"><span>Pessoas</span><strong>${report.summary.attendeeCount}</strong></div><div class="metric"><span>Presentes</span><strong>${report.summary.checkedInAttendeeCount}</strong></div><div class="metric"><span>Faltas</span><strong>${report.summary.absentAttendeeCount}</strong></div>${event.registrationFeeCents > 0 ? `<div class="metric"><span>Previsto</span><strong>${formatBrl(report.summary.expectedAmountCents)}</strong></div><div class="metric"><span>Recebido</span><strong>${formatBrl(report.summary.paidAmountCents)}</strong></div><div class="metric"><span>Pendente</span><strong>${formatBrl(report.summary.pendingAmountCents)}</strong></div>` : ""}</div><table><thead><tr><th>Inscrição</th><th>Acompanhante</th><th>Telefone</th><th>Pagamento</th><th>Presença</th></tr></thead><tbody>${rows || "<tr><td colspan='5'>Sem inscrições registradas.</td></tr>"}</tbody></table></body></html>`);
     printWindow.document.close(); printWindow.focus(); printWindow.print();
   }
 
@@ -541,7 +557,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     <div className="card-sacred p-4 flex flex-col gap-4 sm:flex-row sm:items-center">
       {event.flyer && <div className={`hidden w-14 shrink-0 overflow-hidden rounded-xl border border-[#1e3a5f]/10 bg-white sm:block ${flyerAspectClass(event.flyerFormat)}`}><img src={event.flyer.optimizedUrl || event.flyer.url} alt={`Flyer de ${event.name}`} className="h-full w-full object-contain" /></div>}
       <div className="w-14 h-14 rounded-xl bg-cream-dark flex flex-col items-center justify-center flex-shrink-0 text-center"><span className="text-lg font-bold font-display text-navy leading-none">{getCivilDateParts(event.startDate)?.day ?? "—"}</span><span className="text-[10px] text-muted-foreground uppercase tracking-wide">{formatMonthShortPtBr(event.startDate)}</span></div>
-      <div className="flex-1 min-w-0"><p className="font-semibold text-navy truncate">{event.name}</p><div className="flex flex-wrap items-center gap-2 mt-1">{event.location && <span className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{event.location}</span>}{event.maxCapacity && <span className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" />{event.maxCapacity} vagas</span>}</div><div className="mt-2 flex flex-wrap items-center gap-2"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorClass}`}>{typeLabel}</span>{typeHasRegistration && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"><Link2 className="h-3 w-3" />{registrationModeLabel(event.registrationMode)}</span>}{event.registrationFeeCents > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">{formatBrl(event.registrationFeeCents)} {event.registrationMode === "casal" ? "por casal" : "por pessoa"}</span>}</div></div>
+      <div className="flex-1 min-w-0"><p className="font-semibold text-navy truncate">{event.name}</p><div className="flex flex-wrap items-center gap-2 mt-1">{event.startTime && <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />{formatEventTimeRange(event.startTime, event.endTime)}</span>}{event.location && <span className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{event.location}</span>}{event.maxCapacity && <span className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" />{event.maxCapacity} vagas</span>}</div><div className="mt-2 flex flex-wrap items-center gap-2"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorClass}`}>{typeLabel}</span>{typeHasRegistration && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"><Link2 className="h-3 w-3" />{registrationModeLabel(event.registrationMode)}</span>}{event.registrationFeeCents > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">{formatBrl(event.registrationFeeCents)} {event.registrationMode === "casal" ? "por casal" : "por pessoa"}</span>}</div></div>
       <div className="flex flex-wrap items-center gap-2 shrink-0 sm:justify-end">
         {registrationUrl && <Button size="sm" variant="outline" className="h-8 px-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => void shareInvite()} title="Compartilhar convite"><Share2 className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Convite</span></Button>}
         <Button size="sm" variant="outline" className="h-8 px-2 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5" onClick={openEdit} title="Editar evento"><Pencil className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Editar</span></Button>
@@ -586,7 +602,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
         <form onSubmit={saveEventEdit} className="max-h-[calc(92dvh-7rem)] space-y-4 overflow-y-auto px-6 py-5">
           <div><Label>Nome do evento *</Label><Input value={editDraft.name} onChange={(inputEvent) => setEditDraft({ ...editDraft, name: inputEvent.target.value })} required minLength={2} maxLength={255} /></div>
           <div><Label>Tipo *</Label><Select value={editDraft.type} onValueChange={(value) => setEditDraft({ ...editDraft, type: value as EventType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{EVENT_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
-          <div className="grid gap-4 sm:grid-cols-2"><div><Label>Data de início *</Label><Input type="date" value={editDraft.startDate} onChange={(inputEvent) => setEditDraft({ ...editDraft, startDate: inputEvent.target.value })} required /></div><div><Label>Data de fim</Label><Input type="date" value={editDraft.endDate} onChange={(inputEvent) => setEditDraft({ ...editDraft, endDate: inputEvent.target.value })} /></div></div>
+          <div className="grid gap-4 sm:grid-cols-2"><div><Label>Data de início *</Label><Input type="date" value={editDraft.startDate} onChange={(inputEvent) => setEditDraft({ ...editDraft, startDate: inputEvent.target.value })} required /></div><div><Label>Data de fim <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="date" value={editDraft.endDate} onChange={(inputEvent) => setEditDraft({ ...editDraft, endDate: inputEvent.target.value })} /></div><div><Label>Horário de início <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="time" value={editDraft.startTime} onChange={(inputEvent) => setEditDraft({ ...editDraft, startTime: inputEvent.target.value })} /></div><div><Label>Horário de término <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="time" value={editDraft.endTime} onChange={(inputEvent) => setEditDraft({ ...editDraft, endTime: inputEvent.target.value })} /></div></div>
           <div><Label>Local</Label><Input value={editDraft.location} onChange={(inputEvent) => setEditDraft({ ...editDraft, location: inputEvent.target.value })} maxLength={500} /></div>
           <div><Label>Capacidade máxima</Label><Input type="number" min={1} value={editDraft.maxCapacity} onChange={(inputEvent) => setEditDraft({ ...editDraft, maxCapacity: inputEvent.target.value })} placeholder="Em branco = sem limite" /></div>
           <div><Label>Descrição</Label><Textarea value={editDraft.description} onChange={(inputEvent) => setEditDraft({ ...editDraft, description: inputEvent.target.value })} rows={5} maxLength={4000} placeholder="Descreva o objetivo e os detalhes do evento." /><p className="mt-1 text-right text-xs text-muted-foreground">{editDraft.description.length}/4000</p></div>

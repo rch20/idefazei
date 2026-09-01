@@ -70,6 +70,19 @@ describe("Eventos — inscrições e presença", () => {
     expect(publicPage).toContain("formatDateLongPtBr(value)");
   });
 
+  it("mantém data civil e exibe o horário real do Evento", () => {
+    expect(schema).toContain('startTime: varchar("startTime", { length: 5 })');
+    expect(schema).toContain('endTime: varchar("endTime", { length: 5 })');
+    expect(page).toContain("Horário de início");
+    expect(page).toContain("Horário de término");
+    expect(page).toContain("formatEventTimeRange(event.startTime, event.endTime)");
+    expect(page).toContain("getTodayCivilDateInput");
+    expect(router).toContain("normalizeCivilTime");
+    expect(tenantPage).toContain("formatEventTimeRange(event.startTime, event.endTime)");
+    expect(publicPage).toContain("formatEventTimeRange(resolved.event.startTime, resolved.event.endTime)");
+    expect(db).toContain("currentCivilDateAsUtcNoon()");
+  });
+
   it("associa o flyer ao Evento, oferece os três formatos e tenta o compartilhamento nativo", () => {
     expect(schema).toContain('purpose: mysqlEnum("purpose"');
     expect(schema).toContain('"event_flyer"');

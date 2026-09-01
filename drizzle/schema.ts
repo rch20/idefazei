@@ -465,6 +465,8 @@ export const events = mysqlTable("events", {
   description: text("description"),
   startDate: timestamp("startDate").notNull(),
   endDate: timestamp("endDate"),
+  startTime: varchar("startTime", { length: 5 }),
+  endTime: varchar("endTime", { length: 5 }),
   location: text("location"),
   maxCapacity: int("maxCapacity"),
   registrationMode: mysqlEnum("registrationMode", ["none", "individual", "casal"]).default("none").notNull(),

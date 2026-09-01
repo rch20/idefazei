@@ -98,6 +98,26 @@ export function formatMonthShortPtBr(value: Date | string) {
   return new Date(parts.year, parts.month - 1, 1, 12).toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
 }
 
+export function getTodayCivilDateInput(timeZone = "America/Sao_Paulo") {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+export function formatEventTime(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim();
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(normalized)) return "";
+  const [hours, minutes] = normalized.split(":");
+  return minutes === "00" ? `${hours}h` : `${hours}h${minutes}`;
+}
+
+export function formatEventTimeRange(startTime: string | null | undefined, endTime: string | null | undefined) {
+  const start = formatEventTime(startTime);
+  const end = formatEventTime(endTime);
+  if (!start) return "";
+  return end ? `Das ${start} às ${end}` : `A partir das ${start}`;
+}
+
 export function escapeTreasuryHtml(value: string) {
   return value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
 }
