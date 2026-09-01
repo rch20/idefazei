@@ -2681,10 +2681,8 @@ const eventsRouter = router({
       paymentStatus: z.enum(["pendente", "pago", "isento", "reembolsado"]),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
-      const churchUser = await getChurchMemberByUserId(ctx.user.id, input.churchId);
-      if (!churchUser) throw new TRPCError({ code: "FORBIDDEN", message: "A conta não pertence a esta igreja." });
-      const result = await updateEventRegistrationPayment({ ...input, confirmedByChurchUserId: churchUser.id });
+      const churchMember = await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const result = await updateEventRegistrationPayment({ ...input, confirmedByChurchUserId: churchMember.id });
       if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Inscrição não encontrada nesta igreja." });
       return result;
     }),
