@@ -33,7 +33,10 @@ describe("Visite-nos público", () => {
 
   it("oferece mapa, WhatsApp autorizado e rota sem expor endereço aproximado", () => {
     expect(pageSource).toContain("<OpenStreetMap");
+    expect(pageSource).toContain("function cellMessageName(name: string)");
+    expect(pageSource).toContain("replace(/^célula\\s+/i, \"\")");
     expect(pageSource).toContain("getWhatsAppLinkWithMessage(cell.leaderWhatsapp");
+    expect(pageSource).toContain("sobre a ${cellMessageName(cell.name)}");
     expect(pageSource).toContain('cell.locationMode === "exact" ? "Como chegar" : "Ver região"');
     expect(pageSource).toContain("function mapsSearchLink(cell: PublicCell)");
     expect(pageSource).toContain("function mapsDestination(cell: PublicCell)");

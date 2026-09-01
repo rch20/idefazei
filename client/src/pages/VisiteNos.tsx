@@ -51,6 +51,11 @@ function locationLabel(cell: PublicCell) {
   return [cell.neighborhood, cell.city, cell.state].filter(Boolean).join(" · ") || "Região informada no mapa";
 }
 
+function cellMessageName(name: string) {
+  const cleanName = name.trim().replace(/^célula\s+/i, "").trim();
+  return cleanName ? `Célula ${cleanName}` : "Célula";
+}
+
 function mapsDestination(cell: PublicCell) {
   const address = cell.address?.trim() ?? "";
   const complement = cell.addressComplement?.trim() ?? "";
@@ -211,7 +216,7 @@ export default function VisiteNos() {
                 <div className="max-h-[480px] space-y-3 overflow-y-auto pr-1">
                   {cellsWithDistance.map((cell) => {
                     const isSelected = selectedCell?.id === cell.id;
-                    const whatsappLink = getWhatsAppLinkWithMessage(cell.leaderWhatsapp, `Olá, ${cell.leaderName}! Gostaria de saber mais sobre a Célula ${cell.name}.`);
+                    const whatsappLink = getWhatsAppLinkWithMessage(cell.leaderWhatsapp, `Olá, ${cell.leaderName}! Gostaria de saber mais sobre a ${cellMessageName(cell.name)}.`);
                     return (
                       <article key={cell.id} className={`rounded-2xl border bg-white p-4 shadow-sm transition ${isSelected ? "border-[var(--tenant-secondary)] ring-2 ring-[color-mix(in_srgb,var(--tenant-secondary)_25%,transparent)]" : "border-slate-200"}`}>
                         <button type="button" className="w-full text-left" onClick={() => setSelectedCellId(cell.id)} aria-pressed={isSelected}>
