@@ -14,7 +14,7 @@ import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { trpc } from "@/lib/trpc";
 import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, MapPin, Phone, Plus, Send, Settings2, Users, UserRound } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 const DAYS = [
@@ -33,11 +33,30 @@ const defaultForm = {
   coLeaderId: "",
   supervisorId: "",
   address: "",
+  addressNumber: "",
+  addressComplement: "",
+  zipCode: "",
   city: "",
+  state: "",
   neighborhood: "",
   meetingDay: "quarta" as const,
   meetingTime: "19:30",
 };
+
+type ViaCepResponse = {
+  cep?: string;
+  logradouro?: string;
+  complemento?: string;
+  bairro?: string;
+  localidade?: string;
+  uf?: string;
+  erro?: boolean;
+};
+
+function formatCep(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  return digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+}
 
 function getTodayInputValue() {
   const now = new Date();
@@ -63,6 +82,9 @@ export default function Celulas() {
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [activeTab, setActiveTab] = useState("lista");
   const [form, setForm] = useState(defaultForm);
+  const [cepStatus, setCepStatus] = useState<"idle" | "loading" | "found" | "not-found">("idle");
+  const [cepError, setCepError] = useState("");
+  const cepLookupSequence = useRef(0);
   const [attendanceOpen, setAttendanceOpen] = useState(false);
   const [meetingDate, setMeetingDate] = useState(getTodayInputValue);
   const [meetingTopic, setMeetingTopic] = useState("");
@@ -157,15 +179,73 @@ export default function Celulas() {
       : [];
   });
 
+  async function lookupCep(value: string) {
+    const cep = value.replace(/\D/g, "");
+    const requestId = ++cepLookupSequence.current;
+    setCepError("");
+    if (!cep) {
+      setCepStatus("idle");
+      return;
+    }
+    if (cep.length !== 8) {
+      setCepStatus("idle");
+      setCepError("Digite um CEP válido com 8 números ou preencha o endereço manualmente.");
+      return;
+    }
+    setCepStatus("loading");
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`, { headers: { Accept: "application/json" } });
+      if (!response.ok) throw new Error("CEP lookup failed");
+      const data = await response.json() as ViaCepResponse;
+      if (requestId !== cepLookupSequence.current) return;
+      if (data.erro) {
+        setCepStatus("not-found");
+        setCepError("CEP não encontrado. Confira os números ou preencha o endereço manualmente.");
+        return;
+      }
+      setForm((current) => ({
+        ...current,
+        zipCode: formatCep(data.cep ?? cep),
+        address: data.logradouro || current.address,
+        addressComplement: data.complemento || current.addressComplement,
+        neighborhood: data.bairro || current.neighborhood,
+        city: data.localidade || current.city,
+        state: data.uf?.toUpperCase() || current.state,
+      }));
+      setCepStatus("found");
+    } catch {
+      if (requestId !== cepLookupSequence.current) return;
+      setCepStatus("idle");
+      setCepError("Não foi possível consultar o CEP agora. Você pode preencher o endereço manualmente.");
+    }
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.leaderId) {
       toast.error("Selecione uma Pessoa como líder da célula.");
       return;
     }
+    const normalizedCep = form.zipCode.replace(/\D/g, "");
+    if (normalizedCep && normalizedCep.length !== 8) {
+      toast.error("Informe um CEP completo ou deixe o campo em branco para preencher o endereço manualmente.");
+      return;
+    }
+    const normalizedAddress = [
+      form.address.trim(),
+      form.addressNumber.trim() ? `Nº ${form.addressNumber.trim()}` : "",
+      form.addressComplement.trim(),
+    ].filter(Boolean).join(", ");
     createCell.mutate({
       churchId,
       ...form,
+      address: normalizedAddress || undefined,
+      addressNumber: form.addressNumber.trim() || undefined,
+      addressComplement: form.addressComplement.trim() || undefined,
+      zipCode: normalizedCep || undefined,
+      city: form.city.trim() || undefined,
+      state: form.state.trim().toUpperCase() || undefined,
+      neighborhood: form.neighborhood.trim() || undefined,
       leaderId: Number(form.leaderId),
       coLeaderId: form.coLeaderId ? Number(form.coLeaderId) : null,
       supervisorId: form.supervisorId ? Number(form.supervisorId) : null,
@@ -647,17 +727,40 @@ export default function Celulas() {
                   <SelectContent><SelectItem value="none">Sem supervisor</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
+              <div className="col-span-2 rounded-xl border border-gold/20 bg-gold/5 p-3">
+                <p className="text-sm font-semibold text-navy">Endereço da reunião</p>
+                <p className="mt-1 text-xs text-muted-foreground">Digite o CEP para preencher o endereço automaticamente. Se o local não tiver CEP, preencha os campos manualmente.</p>
+              </div>
               <div className="col-span-2">
-                <Label>Endereço</Label>
-                <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Rua, número" />
+                <Label htmlFor="cell-zip-code">CEP</Label>
+                <Input id="cell-zip-code" inputMode="numeric" autoComplete="postal-code" maxLength={9} value={form.zipCode} onChange={(e) => { const value = formatCep(e.target.value); setForm({ ...form, zipCode: value }); if (value.replace(/\D/g, "").length === 8) void lookupCep(value); }} onBlur={(e) => { void lookupCep(e.target.value); }} placeholder="00000-000" aria-busy={cepStatus === "loading"} />
+                {cepStatus === "loading" && <p className="mt-1 text-xs text-muted-foreground" role="status">Consultando endereço...</p>}
+                {cepStatus === "found" && <p className="mt-1 text-xs text-emerald-700" role="status">Endereço encontrado. Confira os dados e informe o número.</p>}
+                {cepError && <p className="mt-1 text-xs text-amber-700" role="alert">{cepError}</p>}
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="cell-address">Rua / logradouro</Label>
+                <Input id="cell-address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Rua, avenida ou estrada" />
               </div>
               <div>
-                <Label>Bairro</Label>
-                <Input value={form.neighborhood} onChange={(e) => setForm({ ...form, neighborhood: e.target.value })} />
+                <Label htmlFor="cell-address-number">Número</Label>
+                <Input id="cell-address-number" value={form.addressNumber} onChange={(e) => setForm({ ...form, addressNumber: e.target.value })} placeholder="Ex.: 123" maxLength={20} />
               </div>
               <div>
-                <Label>Cidade</Label>
-                <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+                <Label htmlFor="cell-address-complement">Complemento</Label>
+                <Input id="cell-address-complement" value={form.addressComplement} onChange={(e) => setForm({ ...form, addressComplement: e.target.value })} placeholder="Casa, salão, fundos" maxLength={120} />
+              </div>
+              <div>
+                <Label htmlFor="cell-neighborhood">Bairro</Label>
+                <Input id="cell-neighborhood" value={form.neighborhood} onChange={(e) => setForm({ ...form, neighborhood: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="cell-city">Cidade</Label>
+                <Input id="cell-city" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+              </div>
+              <div>
+                <Label htmlFor="cell-state">Estado</Label>
+                <Input id="cell-state" value={form.state} onChange={(e) => setForm({ ...form, state: e.target.value.toUpperCase().slice(0, 2) })} placeholder="SP" maxLength={2} />
               </div>
               <div>
                 <Label>Dia da Semana</Label>

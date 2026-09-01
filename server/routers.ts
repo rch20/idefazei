@@ -2473,9 +2473,13 @@ const cellsRouter = router({
         coLeaderId: z.number().optional().nullable(),
         supervisorId: z.number().optional().nullable(),
         hostId: z.number().optional(),
-        address: z.string().optional(),
-        city: z.string().optional(),
-        neighborhood: z.string().optional(),
+        address: z.string().trim().max(500).optional(),
+        addressNumber: z.string().trim().max(20).optional(),
+        addressComplement: z.string().trim().max(120).optional(),
+        zipCode: z.string().trim().regex(/^\d{5}-?\d{3}$/, "Informe um CEP válido com 8 números.").optional(),
+        city: z.string().trim().max(100).optional(),
+        state: z.string().trim().regex(/^[A-Za-z]{2}$/, "Informe a UF com 2 letras.").optional(),
+        neighborhood: z.string().trim().max(100).optional(),
         latitude: z.string().optional(),
         longitude: z.string().optional(),
         meetingDay: z
@@ -2490,7 +2494,16 @@ const cellsRouter = router({
       if (new Set(assignedIds).size !== assignedIds.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Líder, co-líder e supervisor devem ser Pessoas diferentes." });
       const assignedPeople = await Promise.all(assignedIds.map((personId) => getPersonById(personId, input.churchId)));
       if (assignedPeople.some((person) => !person)) throw new TRPCError({ code: "BAD_REQUEST", message: "Toda liderança deve pertencer a esta igreja." });
-      return createCell(input as any);
+      return createCell({
+        ...input,
+        address: input.address?.trim() || null,
+        addressNumber: input.addressNumber?.trim() || null,
+        addressComplement: input.addressComplement?.trim() || null,
+        zipCode: input.zipCode?.replace(/\D/g, "") || null,
+        city: input.city?.trim() || null,
+        state: input.state?.trim().toUpperCase() || null,
+        neighborhood: input.neighborhood?.trim() || null,
+      } as any);
     }),
   updateLeadership: protectedProcedure
     .input(z.object({
