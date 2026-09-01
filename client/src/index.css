@@ -387,13 +387,16 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-scroll-cue svg { color: var(--tenant-secondary, #c9a84c); transition: transform 180ms ease; }
 .tenant-public-scroll-cue:hover svg, .tenant-public-scroll-cue:focus-visible svg { transform: translateY(3px); }
 .tenant-public-scroll-cue:focus-visible { outline: 2px solid var(--tenant-secondary, #c9a84c); outline-offset: .3rem; }
-.tenant-public-hero-content { position: relative; z-index: 1; padding-block: clamp(5rem, 11vw, 8rem); }
+.tenant-public-hero-content { position: relative; z-index: 1; padding-block: clamp(5rem, 11vw, 8rem); text-align: center; }
+.tenant-public-hero-content .tenant-public-eyebrow { margin-inline: auto; }
+.tenant-public-hero-actions { display: grid; width: min(100%, 24rem); gap: .5rem; margin-inline: auto; }
+.tenant-public-hero-actions > * { width: 100%; }
 .tenant-public-eyebrow { display: inline-block; margin-bottom: 1.25rem; color: var(--tenant-secondary, #c9a84c); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
 .tenant-public-hero h1, .tenant-public-prose h2 { max-width: 15ch; margin: 0; font-family: "Playfair Display", serif; font-size: clamp(2.7rem, 9vw, 6.25rem); line-height: .98; text-wrap: balance; }
-.tenant-public-hero h1 { color: white; }
-.tenant-public-hero p { max-width: 43rem; margin: 1.5rem 0 2rem; color: rgb(255 255 255 / 82%); font-family: "Cormorant Garamond", serif; font-size: clamp(1.3rem, 4vw, 1.75rem); line-height: 1.45; }
+.tenant-public-hero h1 { margin-inline: auto; color: white; }
+.tenant-public-hero p { max-width: 43rem; margin: 1.5rem auto 2rem; color: rgb(255 255 255 / 82%); font-family: "Cormorant Garamond", serif; font-size: clamp(1.3rem, 4vw, 1.75rem); line-height: 1.45; }
 .tenant-public-cta { width: min(100%, 26rem); max-width: 100%; background: var(--tenant-secondary, #c9a84c); color: var(--tenant-primary, #1e3a5f); }
-.tenant-public-cta a { display: inline-flex; width: 100%; align-items: center; justify-content: space-between; gap: .65rem; white-space: normal; }
+.tenant-public-cta a { display: inline-flex; width: 100%; align-items: center; justify-content: center; gap: .65rem; white-space: normal; }
 .tenant-public-cell-cta { display: inline-flex; width: min(100%, 26rem); min-height: 2.25rem; align-items: center; justify-content: center; gap: .38rem; margin-top: .6rem; border: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 58%, white); border-radius: .72rem; background: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 18%, transparent); padding: .28rem .7rem; color: white; font-size: .78rem; font-weight: 600; line-height: 1.2; text-align: center; text-decoration: none; backdrop-filter: blur(8px); transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease; }
 .tenant-public-cell-cta:hover { background: color-mix(in srgb, var(--tenant-secondary, #c9a84c) 22%, transparent); border-color: var(--tenant-secondary, #c9a84c); }
 .tenant-public-cell-cta:active { transform: scale(.985); }
@@ -412,6 +415,11 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 
 .tenant-public-section { padding-block: clamp(4.5rem, 10vw, 8rem); }
 #tenant-public-cells { scroll-margin-top: 5rem; }
+
+@media (max-width: 44rem) {
+  .tenant-public-hero h1 { max-width: 100%; }
+  .tenant-public-cell-cta { min-height: 2.15rem; padding: .24rem .6rem; font-size: .74rem; }
+}
 .tenant-public-prose { max-width: 52rem; }
 .tenant-public-prose h2 { max-width: 18ch; font-size: clamp(2.15rem, 6vw, 4.25rem); }
 .tenant-public-prose p { max-width: 65ch; margin: 1.5rem 0 0; color: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 68%, white); font-size: clamp(1rem, 2.6vw, 1.15rem); line-height: 1.8; overflow-wrap: anywhere; }
