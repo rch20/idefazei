@@ -35,6 +35,12 @@ describe("Visite-nos público", () => {
     expect(pageSource).toContain("<OpenStreetMap");
     expect(pageSource).toContain("getWhatsAppLinkWithMessage(cell.leaderWhatsapp");
     expect(pageSource).toContain('cell.locationMode === "exact" ? "Como chegar" : "Ver região"');
+    expect(pageSource).toContain("function mapsSearchLink(cell: PublicCell)");
+    expect(pageSource).toContain("function mapsDirectionsLink(cell: PublicCell)");
+    expect(pageSource).toContain("[cell.address, cell.city, cell.state].filter(Boolean).join");
+    expect(pageSource).toContain("href={mapsSearchLink(cell)}");
+    expect(pageSource).toContain("href={mapsDirectionsLink(cell)}");
+    expect(dbSource).toContain("state: cells.state");
     expect(dbSource).toContain("address: exactLocation ? row.address : null");
     expect(dbSource).toContain("Math.round(latitude * 100) / 100");
   });

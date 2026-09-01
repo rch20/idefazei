@@ -16,6 +16,7 @@ type PublicCell = {
   id: number;
   name: string;
   city: string | null;
+  state: string | null;
   neighborhood: string | null;
   latitude: number;
   longitude: number;
@@ -43,8 +44,18 @@ function findContent(sections: Array<{ sectionType: string; content: unknown }>,
 }
 
 function locationLabel(cell: PublicCell) {
-  if (cell.address) return cell.address;
-  return [cell.neighborhood, cell.city].filter(Boolean).join(" · ") || "Região informada no mapa";
+  if (cell.address) return [cell.address, cell.city, cell.state].filter(Boolean).join(", ");
+  return [cell.neighborhood, cell.city, cell.state].filter(Boolean).join(" · ") || "Região informada no mapa";
+}
+
+function mapsSearchLink(cell: PublicCell) {
+  const destination = [cell.address, cell.city, cell.state].filter(Boolean).join(", ") || `${cell.latitude},${cell.longitude}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(destination)}`;
+}
+
+function mapsDirectionsLink(cell: PublicCell) {
+  const destination = [cell.address, cell.city, cell.state].filter(Boolean).join(", ") || `${cell.latitude},${cell.longitude}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
 }
 
 function meetingLabel(cell: PublicCell) {
@@ -186,18 +197,24 @@ export default function VisiteNos() {
                   {cellsWithDistance.map((cell) => {
                     const isSelected = selectedCell?.id === cell.id;
                     const whatsappLink = getWhatsAppLinkWithMessage(cell.leaderWhatsapp, `Olá, ${cell.leaderName}! Gostaria de saber mais sobre a Célula ${cell.name}.`);
-                    const directionsLink = `https://www.google.com/maps/dir/?api=1&destination=${cell.latitude},${cell.longitude}`;
                     return (
                       <article key={cell.id} className={`rounded-2xl border bg-white p-4 shadow-sm transition ${isSelected ? "border-[var(--tenant-secondary)] ring-2 ring-[color-mix(in_srgb,var(--tenant-secondary)_25%,transparent)]" : "border-slate-200"}`}>
                         <button type="button" className="w-full text-left" onClick={() => setSelectedCellId(cell.id)} aria-pressed={isSelected}>
                           <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-[var(--tenant-primary)]">{cell.name}</h3><p className="mt-1 text-xs text-slate-500">Líder: {cell.leaderName}</p></div>{cell.distanceKm !== null && <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{cell.distanceKm.toFixed(1)} km</span>}</div>
                           <p className="mt-3 flex items-start gap-2 text-sm text-slate-600"><CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tenant-secondary)]" />{meetingLabel(cell)}</p>
-                          <p className="mt-2 flex items-start gap-2 text-sm text-slate-600"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tenant-secondary)]" />{locationLabel(cell)}</p>
+                          {cell.locationMode === "exact" ? (
+                            <a className="mt-2 flex items-start gap-2 text-sm text-slate-600 underline decoration-[var(--tenant-secondary)] decoration-1 underline-offset-4 hover:text-[var(--tenant-primary)]" href={mapsSearchLink(cell)} target="_blank" rel="noreferrer" aria-label={`Abrir o endereço da Célula ${cell.name} no mapa`} onClick={(event) => event.stopPropagation()}>
+                              <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tenant-secondary)]" />
+                              <span>{locationLabel(cell)}</span>
+                            </a>
+                          ) : (
+                            <p className="mt-2 flex items-start gap-2 text-sm text-slate-600"><MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tenant-secondary)]" /><span>{locationLabel(cell)}</span></p>
+                          )}
                           {cell.locationMode === "approximate" && <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-800"><ShieldCheck className="h-3.5 w-3.5" />Localização aproximada para proteger o endereço.</p>}
                         </button>
                         <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
                           {whatsappLink && <Button size="sm" asChild className="bg-emerald-600 text-white hover:bg-emerald-700"><a href={whatsappLink} target="_blank" rel="noreferrer" aria-label={`Conversar no WhatsApp com o líder da Célula ${cell.name}`}><MessageCircle className="mr-1.5 h-4 w-4" />WhatsApp</a></Button>}
-                          <Button size="sm" variant="outline" asChild><a href={directionsLink} target="_blank" rel="noreferrer"><Navigation className="mr-1.5 h-4 w-4" />{cell.locationMode === "exact" ? "Como chegar" : "Ver região"}</a></Button>
+                          <Button size="sm" variant="outline" asChild><a href={mapsDirectionsLink(cell)} target="_blank" rel="noreferrer" aria-label={`${cell.locationMode === "exact" ? "Como chegar à" : "Ver a região da"} Célula ${cell.name}`}><Navigation className="mr-1.5 h-4 w-4" />{cell.locationMode === "exact" ? "Como chegar" : "Ver região"}</a></Button>
                         </div>
                       </article>
                     );
