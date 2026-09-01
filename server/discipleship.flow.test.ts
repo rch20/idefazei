@@ -391,6 +391,7 @@ describe("Fluxo completo de discipulado", () => {
       const result = await caller.souls.create({
         churchId: CHURCH_ID,
         name: "Maria Silva",
+        birthDate: "1990-04-12",
         decisionDate: "2026-06-15",
         origin: "culto",
         acceptedJesus: true,
@@ -414,6 +415,7 @@ describe("Fluxo completo de discipulado", () => {
       const result = await caller.souls.create({
         churchId: CHURCH_ID,
         name: "Visitante Espontânea",
+        birthDate: "1988-07-20",
         decisionDate: "2026-06-15",
         origin: "visita_espontanea",
         acceptedJesus: false,
@@ -434,6 +436,7 @@ describe("Fluxo completo de discipulado", () => {
         caller.souls.create({
           churchId: CHURCH_ID,
           name: "M", // mínimo 2 caracteres
+          birthDate: "1990-04-12",
           decisionDate: "2026-06-15",
           origin: "culto",
           acceptedJesus: true,
@@ -452,6 +455,7 @@ describe("Fluxo completo de discipulado", () => {
         caller.souls.create({
           churchId: CHURCH_ID,
           name: "Maria Silva",
+          birthDate: "1990-04-12",
           decisionDate: "2026-06-15",
           origin: "culto",
           acceptedJesus: true,
@@ -473,6 +477,7 @@ describe("Fluxo completo de discipulado", () => {
           churchId: CHURCH_ID,
           name: "Maria Silva",
           phone: "11999999999",
+          birthDate: "1990-04-12",
           decisionDate: "2026-06-15",
           origin: "culto",
           acceptedJesus: true,

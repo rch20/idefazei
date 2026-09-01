@@ -200,6 +200,7 @@ import {
   getMinistryRoleDefinitionsByChurch,
   createMinistryRoleDefinition,
   getPeopleByChurch,
+  getBirthdaysByChurch,
   getPersonById,
   getPrayerRequestsByChurch,
   getPrayerRequestsByPerson,
@@ -337,6 +338,10 @@ import { generateReportHTML, htmlToBase64 } from "./reports";
 import { emitInternalNotification } from "./notifications";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
+const birthDateInput = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe a data de nascimento no formato AAAA-MM-DD.").refine((value) => {
+  const date = parseCivilDateAsUtcNoon(value);
+  return Boolean(date && date.getTime() <= Date.now());
+}, "Informe uma data de nascimento válida e não futura.");
 
 async function requireChurchMember(userId: number, churchId: number) {
   if (userId < 0) {
@@ -1150,14 +1155,23 @@ const tenantPublicRouter = router({
 });
 
 const peopleRouter = router({
-  list: protectedProcedure
+    list: protectedProcedure
     .input(z.object({ churchId: z.number(), search: z.string().optional() }))
     .query(async ({ input, ctx }) => {
       const accessibleIds = await getAccessiblePersonIds(ctx.user.id, input.churchId);
       const people = await getPeopleByChurch(input.churchId, input.search);
       return accessibleIds === null ? people : people.filter((person) => accessibleIds.has(person.id));
     }),
-
+  birthdays: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      month: z.number().int().min(1).max(12),
+      day: z.number().int().min(1).max(31).optional(),
+    }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      return getBirthdaysByChurch(input.churchId, input.month, input.day);
+    }),
   findPossibleMatches: protectedProcedure
     .input(
       z.object({
@@ -1189,7 +1203,7 @@ const peopleRouter = router({
         fullName: z.string().min(2),
         cpf: z.string().optional(),
         rg: z.string().optional(),
-        birthDate: z.string().optional(),
+        birthDate: birthDateInput,
         gender: z.enum(["masculino", "feminino", "outro"]).optional(),
         maritalStatus: z
           .enum(["solteiro", "casado", "divorciado", "viuvo", "uniao_estavel"])
@@ -1326,6 +1340,7 @@ const soulsRouter = router({
         wonById: z.number().nullable().optional(),
         existingPersonId: z.number().optional(),
         notes: z.string().optional(),
+        birthDate: birthDateInput.optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -1340,6 +1355,9 @@ const soulsRouter = router({
       const isSpontaneousVisit = input.origin === "visita_espontanea";
       if (!isSelfIndication && !isSpontaneousVisit && !input.wonById) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Informe quem ganhou a Nova Alma ou selecione visita espontânea." });
+      }
+      if (!isSelfIndication && !input.birthDate) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Informe a data de nascimento para criar a ficha completa da Nova Alma." });
       }
       const winner = isSelfIndication
         ? await getPersonById(access.actorPersonId!, input.churchId)
@@ -1356,6 +1374,9 @@ const soulsRouter = router({
         : null;
       if (input.existingPersonId && !person) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja." });
+      }
+      if (person && input.birthDate && !person.birthDate) {
+        await updatePerson(person.id, input.churchId, { birthDate: parseCivilDateAsUtcNoon(input.birthDate) });
       }
 
       if (!person) {
@@ -1377,6 +1398,7 @@ const soulsRouter = router({
           fullName: input.name.trim(),
           phone: input.phone?.trim() || null,
           whatsapp: input.phone?.trim() || null,
+          birthDate: input.birthDate ? parseCivilDateAsUtcNoon(input.birthDate) : null,
           conversionDate: new Date(`${input.decisionDate}T12:00:00.000Z`),
           discipleshipStage: "nova_alma",
           wonById: winner?.id ?? null,
@@ -4258,7 +4280,7 @@ const registerRouter = router({
       name: z.string().min(2).max(255),
       email: z.string().email().max(320),
       password: z.string().min(8).max(128),
-      birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      birthDate: birthDateInput,
       phone: z.string().max(20).optional(),
       whatsapp: z.string().max(20).optional(),
       zipCode: z.string().regex(/^\d{5}-?\d{3}$/),
@@ -4287,7 +4309,7 @@ const registerRouter = router({
         churchId: church.id,
         fullName: input.name,
         email: input.email.toLowerCase(),
-        birthDate: input.birthDate ? new Date(`${input.birthDate}T00:00:00.000Z`) : null,
+        birthDate: parseCivilDateAsUtcNoon(input.birthDate),
         phone: input.phone || null,
         whatsapp: input.whatsapp || null,
         zipCode: input.zipCode.replace(/\D/g, ""),

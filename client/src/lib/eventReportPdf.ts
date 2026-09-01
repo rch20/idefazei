@@ -12,6 +12,7 @@ export type EventReportPdfRegistration = {
 };
 
 export type EventReportPdfInput = {
+  churchName: string;
   eventName: string;
   startDate: string | Date;
   startTime?: string | null;
@@ -113,11 +114,12 @@ export async function createEventReportPdf(input: EventReportPdfInput) {
   };
 
   let page = addPage();
-  page.drawText("IDE FAZEI - RELATORIO DE EVENTO", { x: MARGIN, y: 804, size: 8, font: bold, color: GOLD });
-  page.drawText(fitText(input.eventName, bold, 21, PAGE_WIDTH - MARGIN * 2), { x: MARGIN, y: 774, size: 21, font: bold, color: NAVY });
+  page.drawText(fitText(input.churchName || "Igreja", bold, 10, PAGE_WIDTH - MARGIN * 2), { x: MARGIN, y: 804, size: 10, font: bold, color: GOLD });
+  page.drawText("Relatorio de evento", { x: MARGIN, y: 776, size: 20, font: bold, color: NAVY });
+  page.drawText(fitText(input.eventName, bold, 14, PAGE_WIDTH - MARGIN * 2), { x: MARGIN, y: 750, size: 14, font: bold, color: NAVY });
   const eventMeta = [formatDatePtBr(input.startDate), input.startTime ? `${input.startTime}${input.endTime ? ` - ${input.endTime}` : ""}` : "", input.location || "Local nao informado"].filter(Boolean).join(" · ");
-  page.drawText(fitText(eventMeta, regular, 9, PAGE_WIDTH - MARGIN * 2), { x: MARGIN, y: 748, size: 9, font: regular, color: MUTED });
-  page.drawLine({ start: { x: MARGIN, y: 732 }, end: { x: PAGE_WIDTH - MARGIN, y: 732 }, thickness: 2, color: GOLD });
+  page.drawText(fitText(eventMeta, regular, 9, PAGE_WIDTH - MARGIN * 2), { x: MARGIN, y: 730, size: 9, font: regular, color: MUTED });
+  page.drawLine({ start: { x: MARGIN, y: 714 }, end: { x: PAGE_WIDTH - MARGIN, y: 714 }, thickness: 2, color: GOLD });
 
   const metricGap = 8;
   const metricWidth = (PAGE_WIDTH - MARGIN * 2 - metricGap * 3) / 4;
@@ -127,10 +129,10 @@ export async function createEventReportPdf(input: EventReportPdfInput) {
     { label: "Presentes", value: String(input.summary.checkedInAttendeeCount), color: GREEN },
     { label: "Nao vieram", value: String(input.summary.absentAttendeeCount), color: AMBER },
   ];
-  metrics.forEach((metric, index) => drawMetric(page, { x: MARGIN + index * (metricWidth + metricGap), y: 660, width: metricWidth, label: metric.label, value: metric.value, color: metric.color, bold }));
+  metrics.forEach((metric, index) => drawMetric(page, { x: MARGIN + index * (metricWidth + metricGap), y: 642, width: metricWidth, label: metric.label, value: metric.value, color: metric.color, bold }));
 
   if (input.registrationFeeCents > 0) {
-    const financialY = 584;
+    const financialY = 566;
     const financialWidth = (PAGE_WIDTH - MARGIN * 2 - metricGap * 2) / 3;
     [
       { label: "Previsto", value: formatBrl(input.summary.expectedAmountCents), color: NAVY },
@@ -139,7 +141,7 @@ export async function createEventReportPdf(input: EventReportPdfInput) {
     ].forEach((metric, index) => drawMetric(page, { x: MARGIN + index * (financialWidth + metricGap), y: financialY, width: financialWidth, label: metric.label, value: metric.value, color: metric.color, bold }));
   }
 
-  const tableTop = input.registrationFeeCents > 0 ? 510 : 590;
+  const tableTop = input.registrationFeeCents > 0 ? 492 : 572;
   page.drawText("Lista de inscritos", { x: MARGIN, y: tableTop, size: 13, font: bold, color: NAVY });
   const columns = { name: MARGIN + 4, companion: MARGIN + 175, phone: MARGIN + 288, payment: MARGIN + 370, presence: MARGIN + 444 };
   const headerY = tableTop - 20;
@@ -161,9 +163,10 @@ export async function createEventReportPdf(input: EventReportPdfInput) {
       const rowHeight = Math.max(nameLines.length, companionLines.length) > 1 ? 27 : 19;
       if (y - rowHeight < 86) {
         page = addPage();
-        page.drawText("Relatorio de Evento - continua", { x: MARGIN, y: 802, size: 11, font: bold, color: NAVY });
-        page.drawText(fitText(input.eventName, regular, 8, PAGE_WIDTH - MARGIN * 2), { x: MARGIN, y: 786, size: 8, font: regular, color: MUTED });
-        y = 754;
+        page.drawText(fitText(input.churchName || "Igreja", bold, 8, PAGE_WIDTH - MARGIN * 2), { x: MARGIN, y: 802, size: 8, font: bold, color: GOLD });
+        page.drawText("Relatorio de Evento - continua", { x: MARGIN, y: 786, size: 11, font: bold, color: NAVY });
+        page.drawText(fitText(input.eventName, regular, 8, PAGE_WIDTH - MARGIN * 2), { x: MARGIN, y: 770, size: 8, font: regular, color: MUTED });
+        y = 742;
         page.drawRectangle({ x: MARGIN, y: y - 5, width: PAGE_WIDTH - MARGIN * 2, height: 19, color: SOFT });
         page.drawText("INSCRICAO", { x: columns.name, y, size: 6.5, font: bold, color: NAVY });
         page.drawText("ACOMPANHANTE", { x: columns.companion, y, size: 6.5, font: bold, color: NAVY });
@@ -188,7 +191,7 @@ export async function createEventReportPdf(input: EventReportPdfInput) {
     y = 735;
   }
   page.drawLine({ start: { x: MARGIN, y: y - 18 }, end: { x: PAGE_WIDTH - MARGIN, y: y - 18 }, thickness: 0.5, color: BORDER });
-  page.drawText("Documento gerado pelo modulo Eventos do Ide Fazei.", { x: MARGIN, y: y - 36, size: 7, font: regular, color: MUTED });
+  page.drawText(`Relatorio gerado para ${pdfText(input.churchName || "a igreja")} pelo modulo Eventos do Ide Fazei.`, { x: MARGIN, y: y - 36, size: 7, font: regular, color: MUTED });
   pages.forEach((currentPage, index) => currentPage.drawText(`${index + 1}/${pages.length}`, { x: PAGE_WIDTH - MARGIN - 18, y: 21, size: 6.5, font: regular, color: MUTED }));
 
   const bytes = await pdf.save();

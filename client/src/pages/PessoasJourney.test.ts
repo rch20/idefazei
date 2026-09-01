@@ -52,4 +52,25 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(routerSource).toContain("await requireScopedPersonRead(ctx.user.id, input.churchId, input.personId);");
     expect(dbSource).toContain("coLeaderId: cells.coLeaderId");
   });
+
+  it("oferece a lista de aniversariantes no mesmo contexto multi-tenant de Pessoas", () => {
+    expect(pageSource).toContain("Aniversariantes");
+    expect(pageSource).toContain("Hoje");
+    expect(pageSource).toContain("Este mês");
+    expect(pageSource).toContain("Mês dos aniversariantes");
+    expect(pageSource).toContain("trpc.people.birthdays.useQuery");
+    expect(pageSource).toContain("Pessoas sem data de nascimento não aparecem nesta lista.");
+    expect(routerSource).toContain("birthdays: protectedProcedure");
+    expect(routerSource).toContain("await requireChurchAdministrator(ctx.user.id, input.churchId);");
+    expect(dbSource).toContain("getBirthdaysByChurch(churchId: number, month: number, day?: number)");
+    expect(dbSource).toContain("eq(people.churchId, churchId)");
+    expect(dbSource).toContain("isNotNull(people.birthDate)");
+  });
+
+  it("exige nascimento no cadastro completo e mantém indicação simples para membros", () => {
+    expect(pageSource).toContain('<Label>Data de Nascimento *</Label>');
+    expect(routerSource).toContain("birthDate: birthDateInput,");
+    expect(routerSource).toContain("birthDate: birthDateInput.optional(),");
+    expect(routerSource).toContain("if (!isSelfIndication && !input.birthDate)");
+  });
 });

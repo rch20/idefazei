@@ -135,7 +135,7 @@ export default function CadastroDiscipulo() {
       name: form.name.trim(),
       email: form.email.trim(),
       password: form.password,
-      birthDate: optionalValue(form.birthDate),
+      birthDate: form.birthDate,
       phone: optionalValue(form.phone),
       whatsapp: optionalValue(form.whatsapp),
       zipCode: form.zipCode.trim(),
@@ -170,7 +170,7 @@ export default function CadastroDiscipulo() {
           <div className="tenant-registration-trust"><LockKeyhole aria-hidden="true" /><span>Este é o link oficial da igreja. Após o envio, seu cadastro de membro será liberado imediatamente.</span></div>
           <form onSubmit={submit} className="tenant-registration-form">
             <label><span>Nome completo *</span><input required minLength={2} maxLength={255} type="text" autoComplete="name" value={form.name} onChange={(event) => updateField("name", event.target.value)} /></label>
-            <div className="tenant-registration-form-grid"><label><span>E-mail *</span><input required type="email" autoComplete="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label><label><span>Data de nascimento</span><span className="tenant-registration-input-icon"><CalendarDays aria-hidden="true" /><input type="date" max={today} autoComplete="bday" value={form.birthDate} onChange={(event) => updateField("birthDate", event.target.value)} /></span></label></div>
+            <div className="tenant-registration-form-grid"><label><span>E-mail *</span><input required type="email" autoComplete="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label><label><span>Data de nascimento *</span><span className="tenant-registration-input-icon"><CalendarDays aria-hidden="true" /><input required type="date" max={today} autoComplete="bday" value={form.birthDate} onChange={(event) => updateField("birthDate", event.target.value)} /></span></label></div>
             <div className="tenant-registration-form-grid"><label><span>Telefone</span><input type="tel" inputMode="tel" autoComplete="tel" maxLength={20} value={form.phone} onChange={(event) => updateField("phone", event.target.value)} /></label><label><span>WhatsApp</span><input type="tel" inputMode="tel" autoComplete="tel" maxLength={20} value={form.whatsapp} onChange={(event) => updateField("whatsapp", event.target.value)} /></label></div>
 
             <div className="tenant-registration-section-heading"><div><p><MapPin aria-hidden="true" />Seu endereço</p><small>Informe o CEP primeiro para preencher o endereço automaticamente.</small></div></div>

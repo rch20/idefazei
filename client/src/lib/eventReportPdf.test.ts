@@ -3,6 +3,7 @@ import { createEventReportPdf, eventReportPdfFileName } from "./eventReportPdf";
 
 describe("PDF do relatório de Eventos", () => {
   const baseInput = {
+    churchName: "Igreja Cristã da Esperança",
     eventName: "Rede de Casais — Quatro Estações",
     startDate: "2026-09-19",
     startTime: "19:30",

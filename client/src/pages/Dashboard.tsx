@@ -7,6 +7,7 @@ import { buildDashboardMetricValues } from "./dashboardMetrics";
 import {
   AlertTriangle,
   BookOpen,
+  Cake,
   CheckCircle2,
   ChevronRight,
   CreditCard,
@@ -20,6 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Link } from "wouter";
+import { useMemo } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 
 // ─── STAGE LABELS ─────────────────────────────────────────────────────────────
@@ -504,6 +506,31 @@ function CareAttentionPanel({ churchId }: { churchId: number }) {
   );
 }
 
+function BirthdayTodayCard({ churchId }: { churchId: number }) {
+  const today = useMemo(() => new Date(), []);
+  const birthdaysQuery = trpc.people.birthdays.useQuery({
+    churchId,
+    month: today.getMonth() + 1,
+    day: today.getDate(),
+  });
+  const birthdays = birthdaysQuery.data ?? [];
+
+  return (
+    <section className="card-sacred p-5" aria-labelledby="birthday-today-title">
+      <div className="flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold"><Cake className="h-5 w-5" aria-hidden="true" /></div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div><h2 id="birthday-today-title" className="font-display text-lg font-bold text-navy">Aniversariantes de hoje</h2><p className="mt-0.5 text-xs text-muted-foreground">Um lembrete para cuidar e celebrar.</p></div>
+            <Link href="/app/pessoas?view=birthdays" className="shrink-0"><Button type="button" variant="ghost" size="sm" className="gap-1 text-xs text-navy hover:bg-gold/10">Ver lista <ChevronRight className="h-3.5 w-3.5" /></Button></Link>
+          </div>
+          {birthdaysQuery.isLoading ? <div className="mt-4 h-10 animate-pulse rounded-lg bg-muted" aria-label="Carregando aniversariantes" /> : birthdaysQuery.isError ? <p className="mt-4 text-sm text-muted-foreground">Não foi possível carregar a lista agora.</p> : birthdays.length === 0 ? <p className="mt-4 rounded-lg bg-muted/40 px-3 py-2 text-sm text-muted-foreground">Nenhum aniversariante registrado hoje.</p> : <div className="mt-4 flex flex-wrap gap-2">{birthdays.slice(0, 4).map((person) => <span key={person.id} className="rounded-full border border-gold/25 bg-gold/5 px-3 py-1.5 text-xs font-medium text-navy">{person.fullName}</span>)}{birthdays.length > 4 && <span className="rounded-full bg-muted px-3 py-1.5 text-xs text-muted-foreground">+{birthdays.length - 4}</span>}</div>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -605,6 +632,8 @@ export default function Dashboard() {
         <FunilVisual churchId={churchId} />
         <RadarEspiritual churchId={churchId} />
       </div>
+
+      <BirthdayTodayCard churchId={churchId} />
 
       <CareAttentionPanel churchId={churchId} />
 

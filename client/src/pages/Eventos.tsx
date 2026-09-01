@@ -362,7 +362,7 @@ export default function Eventos() {
 }
 
 function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churchSlug?: string | null; onChanged: () => void }) {
-  const { churchId } = useChurch();
+  const { churchId, churchName } = useChurch();
   const typeLabel = EVENT_TYPES.find((item) => item.value === event.type)?.label ?? event.type;
   const colorClass = TYPE_COLORS[event.type] ?? TYPE_COLORS.outro;
   const [qrOpen, setQrOpen] = useState(false);
@@ -629,6 +629,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     setReportOpen(true);
     try {
       const blob = await createEventReportPdf({
+        churchName,
         eventName: report.event.name,
         startDate: report.event.startDate,
         startTime: event.startTime,

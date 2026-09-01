@@ -8,8 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, BriefcaseBusiness, Clock3, HeartHandshake, Plus, Search, Send, ShieldCheck, User, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowRight, BriefcaseBusiness, Cake, Clock3, HeartHandshake, MessageCircle, Plus, Search, Send, ShieldCheck, User, Users } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -79,6 +79,32 @@ function formatEffectiveAccess(role: string) {
   return EFFECTIVE_ACCESS_LABELS[role] ?? role.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
+function civilDateParts(value: string | Date | null | undefined) {
+  if (!value) return null;
+  const raw = typeof value === "string" ? value.slice(0, 10) : value.toISOString().slice(0, 10);
+  const [year, month, day] = raw.split("-").map(Number);
+  return year && month && day ? { year, month, day } : null;
+}
+
+function formatBirthday(value: string | Date | null | undefined) {
+  const parts = civilDateParts(value);
+  if (!parts) return "Data não informada";
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long" }).format(new Date(parts.year, parts.month - 1, parts.day));
+}
+
+function birthdayAge(value: string | Date | null | undefined, referenceYear: number) {
+  const parts = civilDateParts(value);
+  return parts ? Math.max(0, referenceYear - parts.year) : null;
+}
+
+function birthdayWhatsappHref(person: { fullName: string; phone?: string | null; whatsapp?: string | null }) {
+  const digits = (person.whatsapp || person.phone || "").replace(/\\D/g, "");
+  if (!digits) return null;
+  const international = digits.startsWith("55") ? digits : `55${digits}`;
+  const message = `Olá, ${person.fullName}! A igreja deseja felicitar você pelo seu aniversário. Que Deus abençoe sua vida.`;
+  return `https://wa.me/${international}?text=${encodeURIComponent(message)}`;
+}
+
 const defaultForm = {
   fullName: "",
   cpf: "",
@@ -112,12 +138,22 @@ export default function Pessoas() {
   const [form, setForm] = useState(defaultForm);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const [personSection, setPersonSection] = useState<"resumo" | "participacoes" | "cuidado" | "historico">("resumo");
+  const [birthdaysOpen, setBirthdaysOpen] = useState(false);
+  const [birthdayView, setBirthdayView] = useState<"today" | "month">("today");
+  const currentDate = useMemo(() => new Date(), []);
+  const birthdayMonth = currentDate.getMonth() + 1;
+  const birthdayDay = currentDate.getDate();
+  const [birthdayMonthFilter, setBirthdayMonthFilter] = useState(birthdayMonth);
   const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
   const [selectedCellId, setSelectedCellId] = useState("");
   const [referralForm, setReferralForm] = useState({ reason: "", notes: "", preferredConsolidatorId: "" });
   const utils = trpc.useUtils();
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId, search: search || undefined });
+  const birthdaysQuery = trpc.people.birthdays.useQuery(
+    { churchId, month: birthdayMonthFilter, day: birthdayView === "today" ? birthdayDay : undefined },
+    { enabled: birthdaysOpen }
+  );
   const careAttention = trpc.dashboard.careAttention.useQuery({ churchId });
   const currentCare = trpc.care.getCurrent.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
@@ -231,7 +267,17 @@ export default function Pessoas() {
   );
 
   useEffect(() => {
-    const personId = Number(new URLSearchParams(location.split("?")[1] ?? "").get("personId"));
+    const params = new URLSearchParams(location.split("?")[1] ?? "");
+    if (params.get("view") === "birthdays") {
+      setBirthdayView("today");
+      setBirthdayMonthFilter(birthdayMonth);
+      setBirthdaysOpen(true);
+    }
+  }, [location, birthdayMonth]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.split("?")[1] ?? "");
+    const personId = Number(params.get("personId"));
     const person = (people ?? []).find((candidate) => candidate.id === personId);
     if (person && selectedPerson?.id !== person.id) openPersonJourney(person);
   }, [location, people, selectedPerson?.id]);
@@ -335,10 +381,16 @@ export default function Pessoas() {
             Um cadastro único para acompanhar pessoas, participações e cuidado.
           </p>
         </div>
-        <Button onClick={() => setOpen(true)} className="bg-navy hover:bg-navy-light text-white gap-2">
-          <Plus className="w-4 h-4" />
-          Nova Pessoa
-        </Button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => { setBirthdayView("today"); setBirthdayMonthFilter(birthdayMonth); setBirthdaysOpen(true); }} className="gap-2 border-gold/40 text-navy hover:bg-gold/10">
+            <Cake className="h-4 w-4 text-gold" />
+            Aniversariantes
+          </Button>
+          <Button onClick={() => setOpen(true)} className="bg-navy hover:bg-navy-light text-white gap-2">
+            <Plus className="w-4 h-4" />
+            Nova Pessoa
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -351,6 +403,26 @@ export default function Pessoas() {
           className="pl-9"
         />
       </div>
+
+      <Dialog open={birthdaysOpen} onOpenChange={setBirthdaysOpen}>
+        <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 font-display text-navy"><Cake className="h-5 w-5 text-gold" />Aniversariantes</DialogTitle>
+            <DialogDescription>Consulte os aniversários das Pessoas ativas da sua igreja para planejar o cuidado e o contato.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_10rem]">
+              <Button type="button" variant={birthdayView === "today" ? "default" : "outline"} onClick={() => { setBirthdayView("today"); setBirthdayMonthFilter(birthdayMonth); }} className={birthdayView === "today" ? "bg-navy text-white hover:bg-navy-light" : "text-navy"}>Hoje · {String(birthdayDay).padStart(2, "0")}/{String(birthdayMonth).padStart(2, "0")}</Button>
+              <Button type="button" variant={birthdayView === "month" ? "default" : "outline"} onClick={() => setBirthdayView("month")} className={birthdayView === "month" ? "bg-navy text-white hover:bg-navy-light" : "text-navy"}>Este mês</Button>
+              <select aria-label="Mês dos aniversariantes" value={birthdayMonthFilter} onChange={(event) => { setBirthdayMonthFilter(Number(event.target.value)); setBirthdayView("month"); }} className="h-10 rounded-md border border-input bg-background px-3 text-sm text-navy">
+                {Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(2024, index, 1))}</option>)}
+              </select>
+            </div>
+            <p className="text-xs text-muted-foreground">{birthdayView === "today" ? `Aniversariantes de hoje, ${formatBirthday(new Date(currentDate.getFullYear(), birthdayMonth - 1, birthdayDay))}.` : `Aniversariantes de ${new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date(2024, birthdayMonthFilter - 1, 1))}.`}</p>
+            {birthdaysQuery.isLoading ? <div className="space-y-2">{[1, 2, 3].map((item) => <div key={item} className="h-16 animate-pulse rounded-xl bg-muted" />)}</div> : birthdaysQuery.isError ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">Não foi possível carregar os aniversariantes. Atualize a página e tente novamente.</div> : (birthdaysQuery.data ?? []).length === 0 ? <div className="rounded-xl border border-dashed border-gold/35 bg-gold/5 p-8 text-center"><Cake className="mx-auto h-8 w-8 text-gold/60" /><p className="mt-2 font-medium text-navy">Nenhum aniversariante encontrado</p><p className="mt-1 text-sm text-muted-foreground">Pessoas sem data de nascimento não aparecem nesta lista.</p></div> : <div className="divide-y divide-border rounded-xl border border-border">{(birthdaysQuery.data ?? []).map((person) => { const parts = civilDateParts(person.birthDate); const age = birthdayAge(person.birthDate, currentDate.getFullYear()); const whatsappHref = birthdayWhatsappHref(person); return <div key={person.id} className="flex min-w-0 items-center gap-3 p-3 sm:gap-4 sm:p-4"><div className="flex h-12 w-12 shrink-0 flex-col items-center justify-center rounded-xl bg-gold/10 text-center text-navy"><strong className="font-display text-lg leading-none">{parts?.day ?? "—"}</strong><span className="mt-0.5 text-[9px] uppercase text-gold">{parts ? new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(new Date(2024, parts.month - 1, 1)).replace(".", "") : ""}</span></div><div className="min-w-0 flex-1"><p className="truncate font-semibold text-navy">{person.fullName}</p><p className="mt-0.5 text-xs text-muted-foreground">{formatBirthday(person.birthDate)}{age !== null ? ` · ${age} anos` : ""}{person.phone ? ` · ${person.phone}` : ""}</p></div>{whatsappHref ? <a href={whatsappHref} target="_blank" rel="noreferrer" aria-label={`Enviar parabéns para ${person.fullName} pelo WhatsApp`} title="Enviar parabéns pelo WhatsApp" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100"><MessageCircle className="h-4 w-4" /></a> : <span className="shrink-0 text-[11px] text-muted-foreground">Sem contato</span>}</div>; })}</div>}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Stats */}
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
@@ -453,8 +525,8 @@ export default function Pessoas() {
                     <Input value={form.rg} onChange={(e) => setForm({ ...form, rg: e.target.value })} />
                   </div>
                   <div>
-                    <Label>Data de Nascimento</Label>
-                    <Input type="date" value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
+                    <Label>Data de Nascimento *</Label>
+                    <Input type="date" max={new Date().toISOString().slice(0, 10)} required value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
                   </div>
                   <div>
                     <Label>Sexo</Label>

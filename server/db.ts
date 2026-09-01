@@ -963,6 +963,30 @@ export async function getPeopleByChurch(churchId: number, search?: string) {
     .limit(100);
 }
 
+export async function getBirthdaysByChurch(churchId: number, month: number, day?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [
+    eq(people.churchId, churchId),
+    eq(people.active, true),
+    isNotNull(people.birthDate),
+    sql`MONTH(${people.birthDate}) = ${month}`,
+  ];
+  if (day !== undefined) conditions.push(sql`DAY(${people.birthDate}) = ${day}`);
+  return db
+    .select({
+      id: people.id,
+      fullName: people.fullName,
+      birthDate: people.birthDate,
+      phone: people.phone,
+      whatsapp: people.whatsapp,
+      email: people.email,
+    })
+    .from(people)
+    .where(and(...conditions))
+    .orderBy(sql`DAY(${people.birthDate})`, people.fullName);
+}
+
 export async function getPersonById(id: number, churchId: number) {
   const db = await getDb();
   if (!db) return null;

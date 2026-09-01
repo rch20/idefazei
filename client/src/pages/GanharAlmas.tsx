@@ -35,6 +35,7 @@ function createInitialForm() {
   return {
     name: "",
     phone: "",
+    birthDate: "",
     address: "",
     decisionDate: new Date().toISOString().slice(0, 10),
     origin: "culto" as Origin,
@@ -131,6 +132,10 @@ export default function GanharAlmas() {
       setFormError("Informe o nome completo da nova alma.");
       return;
     }
+    if (!isLimitedMember && !form.birthDate) {
+      setFormError("Informe a data de nascimento para criar a ficha completa da Nova Alma.");
+      return;
+    }
     if (form.decisionDate > today) {
       setFormError("A data da decisão não pode estar no futuro.");
       return;
@@ -144,6 +149,7 @@ export default function GanharAlmas() {
       churchId,
       name,
       phone: form.phone.trim() || undefined,
+      birthDate: !isLimitedMember && form.birthDate ? form.birthDate : undefined,
       address: form.address.trim() || undefined,
       decisionDate: form.decisionDate,
       origin: isLimitedMember ? "indicacao" as const : form.origin,
@@ -273,6 +279,11 @@ export default function GanharAlmas() {
                 <div>
                   <Label htmlFor="soul-phone">Telefone</Label>
                   <Input id="soul-phone" inputMode="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} placeholder="(00) 00000-0000" className="mt-1" />
+                </div>
+                <div>
+                  <Label htmlFor="soul-birth-date">Data de nascimento{!isLimitedMember ? " *" : ""}</Label>
+                  <Input id="soul-birth-date" type="date" max={new Date().toISOString().slice(0, 10)} required={!isLimitedMember} value={form.birthDate} onChange={(event) => setForm({ ...form, birthDate: event.target.value })} className="mt-1" />
+                  {!isLimitedMember && <p className="mt-1 text-xs text-muted-foreground">Usaremos esta data na lista de aniversariantes.</p>}
                 </div>
                 {!isLimitedMember && <div className="sm:col-span-2 rounded-lg border border-gold/25 bg-gold/5 p-3">
                   <Label htmlFor="soul-existing-person" className="text-navy">Ficha central da Pessoa</Label>
