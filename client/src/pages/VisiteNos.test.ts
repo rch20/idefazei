@@ -33,6 +33,11 @@ describe("Visite-nos público", () => {
 
   it("oferece mapa, WhatsApp autorizado e rota sem expor endereço aproximado", () => {
     expect(pageSource).toContain("<OpenStreetMap");
+    expect(pageSource).toContain("const showMapToggle = cellsWithDistance.length > 1;");
+    expect(pageSource).toContain("Ver mapa das Células");
+    expect(pageSource).toContain("Ocultar mapa");
+    expect(pageSource).toContain("lg:block lg:col-start-1 lg:row-start-1");
+    expect(pageSource).toContain("space-y-3 lg:col-start-2 lg:row-start-1");
     expect(pageSource).toContain("function cellMessageName(name: string)");
     expect(pageSource).toContain("replace(/^célula\\s+/i, \"\")");
     expect(pageSource).toContain("getWhatsAppLinkWithMessage(cell.leaderWhatsapp");

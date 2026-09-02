@@ -88,6 +88,7 @@ export default function VisiteNos() {
   const { data, isLoading } = trpc.tenantPublic.current.useQuery();
   useTenantPwaMeta({ tenantSlug: data?.church.slug, tenantName: data?.church.name, primaryColor: data?.theme?.primaryColor ?? data?.church.primaryColor, pwaIconAssetId: data?.church.pwaIconAssetId, pwaIconVersion: data?.church.pwaIconVersion });
   const [selectedCellId, setSelectedCellId] = useState<number | null>(null);
+  const [isMapOpen, setIsMapOpen] = useState(false);
   const [visitorLocation, setVisitorLocation] = useState<Coordinates | null>(null);
   const [locationError, setLocationError] = useState("");
   const [locating, setLocating] = useState(false);
@@ -114,6 +115,7 @@ export default function VisiteNos() {
   const services = (schedule?.services ?? []).filter((service) => service.day && service.time);
   const selectedCell = cellsWithDistance.find((cell) => cell.id === selectedCellId) ?? cellsWithDistance[0] ?? null;
   const publicHeroEyebrow = getPublicHeroEyebrow(data.sections);
+  const showMapToggle = cellsWithDistance.length > 1;
   const churchDestination = [data.church.address, data.church.city, data.church.state].filter(Boolean).join(", ");
   const churchDirections = churchDestination
     ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(churchDestination)}`
@@ -211,9 +213,12 @@ export default function VisiteNos() {
                 <UsersRound className="mx-auto h-8 w-8 text-slate-400" /><h3 className="mt-3 text-lg font-semibold text-[var(--tenant-primary)]">Nenhuma Célula pública no momento</h3><p className="mt-2 text-sm text-slate-600">O Pastor poderá publicar locais autorizados pelo painel administrativo.</p>
               </div>
             ) : (
-              <div className="mt-8 grid gap-5 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,.55fr)]">
-                <OpenStreetMap className="h-[480px]" markers={markers} selectedId={selectedCell?.id ?? null} onSelect={setSelectedCellId} ariaLabel="Mapa público das células autorizadas" />
-                <div className="max-h-[480px] space-y-3 overflow-y-auto pr-1">
+              <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,.55fr)]">
+                {showMapToggle && <div className="lg:col-span-2 lg:hidden"><Button type="button" variant="outline" className="w-full" onClick={() => setIsMapOpen((open) => !open)} aria-expanded={isMapOpen} aria-controls="tenant-public-cells-map"><MapPin className="mr-2 h-4 w-4" />{isMapOpen ? "Ocultar mapa" : "Ver mapa das Células"}</Button></div>}
+                <div id="tenant-public-cells-map" className={`${showMapToggle ? (isMapOpen ? "block" : "hidden") : "hidden"} lg:block lg:col-start-1 lg:row-start-1`}>
+                  <OpenStreetMap className="h-[min(60vh,480px)] min-h-[280px]" markers={markers} selectedId={selectedCell?.id ?? null} onSelect={setSelectedCellId} ariaLabel="Mapa público das células autorizadas" />
+                </div>
+                <div className="space-y-3 lg:col-start-2 lg:row-start-1">
                   {cellsWithDistance.map((cell) => {
                     const isSelected = selectedCell?.id === cell.id;
                     const whatsappLink = getWhatsAppLinkWithMessage(cell.leaderWhatsapp, `Olá, ${cell.leaderName}! Gostaria de saber mais sobre a ${cellMessageName(cell.name)}.`);
