@@ -163,7 +163,7 @@ export default function Pessoas() {
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const [journeyNoteStage, setJourneyNoteStage] = useState<JourneyStage | null>(null);
   const [journeyNote, setJourneyNote] = useState("");
-  const [personSection, setPersonSection] = useState<"resumo" | "jornada" | "participacoes" | "cuidado" | "historico">("resumo");
+  const [personSection, setPersonSection] = useState<"resumo" | "jornada" | "participacoes" | "cuidado" | "cobertura" | "historico">("resumo");
   const [birthdaysOpen, setBirthdaysOpen] = useState(false);
   const [birthdayView, setBirthdayView] = useState<"today" | "month">("today");
   const currentDate = useMemo(() => new Date(), []);
@@ -207,11 +207,11 @@ export default function Pessoas() {
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
   );
-  const selectedPersonIsPastor = (personAccessQuery.data?.roles ?? []).some((role) => ["pastor_presidente", "pastor_local"].includes(role));
   const pastoralCoverageCandidatesQuery = trpc.people.pastoralCoverageCandidates.useQuery(
     { churchId },
     { enabled: isPastorPresident }
   );
+  const selectedPersonIsPastor = (pastoralCoverageCandidatesQuery.data ?? []).some((candidate) => candidate.personId === selectedPerson?.id);
   const pastoralCoverageQuery = trpc.people.pastoralCoverage.useQuery(
     { churchId, pastorPersonId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && isPastorPresident && selectedPersonIsPastor) }
@@ -364,7 +364,7 @@ export default function Pessoas() {
     const requestedSection = params.get("section");
     const person = (people ?? []).find((candidate) => candidate.id === personId);
     if (person && selectedPerson?.id !== person.id) openPersonJourney(person);
-    if (requestedSection && ["resumo", "jornada", "participacoes", "cuidado", "historico"].includes(requestedSection)) {
+    if (requestedSection && ["resumo", "jornada", "participacoes", "cuidado", "cobertura", "historico"].includes(requestedSection)) {
       setPersonSection(requestedSection as typeof personSection);
     }
   }, [location, people, selectedPerson?.id]);
@@ -791,12 +791,13 @@ export default function Pessoas() {
             <DialogDescription>Uma Pessoa, várias participações e um histórico único de cuidado.</DialogDescription>
           </DialogHeader>
 
-          <div role="tablist" aria-label="Seções da ficha da Pessoa" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 sm:grid-cols-5">
+          <div role="tablist" aria-label="Seções da ficha da Pessoa" className={`grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 ${isPastorPresident && (pastoralCoverageCandidatesQuery.isLoading || selectedPersonIsPastor) ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
             {[
               ["resumo", "Resumo"],
               ["jornada", "Jornada"],
               ["participacoes", "Participações"],
               ["cuidado", "Cuidado"],
+              ...(isPastorPresident && (pastoralCoverageCandidatesQuery.isLoading || selectedPersonIsPastor) ? [["cobertura", "Cobertura espiritual"]] : []),
               ["historico", "Histórico"],
             ].map(([value, label]) => (
               <button
@@ -921,7 +922,13 @@ export default function Pessoas() {
             {canManageMinistryFunctions && <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Acesso</p><p className="mt-1 text-sm font-semibold text-navy">{accessSummaryText}</p></div>}
           </div>}
 
-          {personSection === "resumo" && isPastorPresident && selectedPerson && (personAccessQuery.isLoading || selectedPersonIsPastor) && (
+          {personSection === "resumo" && isPastorPresident && selectedPerson && selectedPersonIsPastor && (
+            <button type="button" onClick={() => setPersonSection("cobertura")} className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/35 p-4 text-left transition hover:bg-indigo-50">
+              <span className="flex min-w-0 items-center gap-3"><ShieldCheck className="h-5 w-5 shrink-0 text-indigo-700" /><span><span className="block text-sm font-semibold text-navy">Cobertura espiritual</span><span className="mt-0.5 block text-xs text-muted-foreground">Gerencie quem oferece cobertura a este Pastor.</span></span></span><ArrowRight className="h-4 w-4 shrink-0 text-indigo-700" />
+            </button>
+          )}
+
+          {personSection === "cobertura" && isPastorPresident && selectedPerson && selectedPersonIsPastor && (
             <section className="rounded-xl border border-indigo-200 bg-indigo-50/35 p-4">
               <div className="flex items-start gap-3">
                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />

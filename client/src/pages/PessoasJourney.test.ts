@@ -17,10 +17,12 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('["jornada", "Jornada"]');
     expect(pageSource).toContain('["participacoes", "Participações"]');
     expect(pageSource).toContain('["cuidado", "Cuidado"]');
+    expect(pageSource).toContain('["cobertura", "Cobertura espiritual"]');
     expect(pageSource).toContain('["historico", "Histórico"]');
     expect(pageSource).toContain('personSection === "resumo"');
     expect(pageSource).toContain('personSection === "jornada"');
     expect(pageSource).toContain('personSection === "cuidado"');
+    expect(pageSource).toContain('personSection === "cobertura"');
     expect(pageSource).toContain('personSection === "historico"');
   });
 
@@ -46,6 +48,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
   it("mostra a cobertura espiritual somente na ficha pastoral do presidente", () => {
     expect(pageSource).toContain("const isPastorPresident = effectiveRoles.includes(\"pastor_presidente\");");
     expect(pageSource).toContain("trpc.people.pastoralCoverage.useQuery");
+    expect(pageSource).toContain("const selectedPersonIsPastor = (pastoralCoverageCandidatesQuery.data ?? []).some");
     expect(pageSource).toContain("trpc.people.savePastoralCoverage.useMutation");
     expect(pageSource).toContain("trpc.people.removePastoralCoverage.useMutation");
     expect(pageSource).toContain("Cobertura espiritual");
@@ -69,6 +72,8 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
 
   it("abre diretamente a Pessoa selecionada a partir das filas de cuidado", () => {
     expect(centralCareSource).toContain("navigate(`/app/pessoas?personId=${personId}&section=cuidado`)");
+    expect(centralCareSource).toContain("aria-label={`Abrir ficha de ${item.person.fullName}`}");
+    expect(centralCareSource).toContain("<Users className=\"h-4 w-4\" /> Abrir lista geral");
     expect(dashboardSource).toContain("href={`/app/pessoas?personId=${item.person.id}&section=cuidado`}");
     expect(dashboardSource).not.toContain('href="/app/pessoas" className="w-fit rounded-lg border border-navy/20');
   });

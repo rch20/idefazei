@@ -54,7 +54,7 @@ export default function CentralCuidado() {
           </div>
         </div>
         {scope.data?.canManageAll && <Button variant="outline" className="w-full gap-2 sm:w-auto" onClick={() => navigate("/app/pessoas")}>
-          <Users className="h-4 w-4" /> Ver todas as pessoas
+          <Users className="h-4 w-4" /> Abrir lista geral
         </Button>}
       </header>
 
@@ -150,7 +150,23 @@ export default function CentralCuidado() {
             const config = priorityConfig[item.priority];
             const canRegisterContact = item.nextStep === "Registrar primeiro contato";
             return (
-              <article key={item.person.id} className={`rounded-xl border p-4 sm:p-5 ${config.card}`}>
+              <article
+                key={item.person.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`Abrir ficha de ${item.person.fullName}`}
+                className={`cursor-pointer rounded-xl border p-4 transition-shadow hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 sm:p-5 ${config.card}`}
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("button,a")) return;
+                  openPerson(item.person.id);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openPerson(item.person.id);
+                  }
+                }}
+              >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
