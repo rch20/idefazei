@@ -76,6 +76,8 @@ import {
   people,
   discipleshipStageProgress,
   discipleshipStageEvents,
+  pastoralCoverages,
+  pastoralCoverageEvents,
   prayerRequests,
   scheduleItems,
   startupDiagnostics,
@@ -1048,6 +1050,179 @@ export async function updatePerson(id: number, churchId: number, data: Partial<t
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.update(people).set(data).where(and(eq(people.id, id), eq(people.churchId, churchId)));
+}
+
+export async function getPastorCandidatesByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [memberRows, accountRows] = await Promise.all([
+    db
+      .select({
+        personId: people.id,
+        fullName: people.fullName,
+        role: churchMembers.role,
+      })
+      .from(churchMembers)
+      .innerJoin(people, and(eq(people.id, churchMembers.personId), eq(people.churchId, churchId)))
+      .where(and(
+        eq(churchMembers.churchId, churchId),
+        eq(churchMembers.active, true),
+        eq(people.active, true),
+        inArray(churchMembers.role, ["pastor_presidente", "pastor_local"]),
+      )),
+    db
+      .select({
+        personId: people.id,
+        fullName: people.fullName,
+        role: churchUsers.role,
+      })
+      .from(churchUsers)
+      .innerJoin(people, and(eq(people.id, churchUsers.personId), eq(people.churchId, churchId)))
+      .where(and(
+        eq(churchUsers.churchId, churchId),
+        eq(churchUsers.active, true),
+        eq(people.active, true),
+        inArray(churchUsers.role, ["pastor_presidente", "pastor_local"]),
+      )),
+  ]);
+  const byPerson = new Map<number, (typeof memberRows)[number]>();
+  for (const row of [...memberRows, ...accountRows]) {
+    const current = byPerson.get(row.personId);
+    if (!current || row.role === "pastor_presidente" || row.role === "pastor_local") byPerson.set(row.personId, row);
+  }
+  return Array.from(byPerson.values()).sort((a, b) => a.fullName.localeCompare(b.fullName, "pt-BR"));
+}
+
+export async function getPastoralCoverageByPerson(churchId: number, pastorPersonId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({
+      id: pastoralCoverages.id,
+      churchId: pastoralCoverages.churchId,
+      pastorPersonId: pastoralCoverages.pastorPersonId,
+      coveringPastorPersonId: pastoralCoverages.coveringPastorPersonId,
+      coveringChurchName: pastoralCoverages.coveringChurchName,
+      coveringPastorName: pastoralCoverages.coveringPastorName,
+      coveringPastorPhone: pastoralCoverages.coveringPastorPhone,
+      coveringPastorWhatsapp: pastoralCoverages.coveringPastorWhatsapp,
+      notes: pastoralCoverages.notes,
+      updatedByChurchUserId: pastoralCoverages.updatedByChurchUserId,
+      createdAt: pastoralCoverages.createdAt,
+      updatedAt: pastoralCoverages.updatedAt,
+      updatedByName: churchUsers.name,
+    })
+    .from(pastoralCoverages)
+    .leftJoin(churchUsers, and(eq(pastoralCoverages.updatedByChurchUserId, churchUsers.id), eq(churchUsers.churchId, churchId)))
+    .where(and(eq(pastoralCoverages.churchId, churchId), eq(pastoralCoverages.pastorPersonId, pastorPersonId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getPastoralCoverageEvents(churchId: number, pastorPersonId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: pastoralCoverageEvents.id,
+      churchId: pastoralCoverageEvents.churchId,
+      pastorPersonId: pastoralCoverageEvents.pastorPersonId,
+      coveringPastorPersonId: pastoralCoverageEvents.coveringPastorPersonId,
+      coveringChurchName: pastoralCoverageEvents.coveringChurchName,
+      coveringPastorName: pastoralCoverageEvents.coveringPastorName,
+      coveringPastorPhone: pastoralCoverageEvents.coveringPastorPhone,
+      coveringPastorWhatsapp: pastoralCoverageEvents.coveringPastorWhatsapp,
+      notes: pastoralCoverageEvents.notes,
+      action: pastoralCoverageEvents.action,
+      changedByChurchUserId: pastoralCoverageEvents.changedByChurchUserId,
+      createdAt: pastoralCoverageEvents.createdAt,
+      changedByName: churchUsers.name,
+    })
+    .from(pastoralCoverageEvents)
+    .leftJoin(churchUsers, and(eq(pastoralCoverageEvents.changedByChurchUserId, churchUsers.id), eq(churchUsers.churchId, churchId)))
+    .where(and(eq(pastoralCoverageEvents.churchId, churchId), eq(pastoralCoverageEvents.pastorPersonId, pastorPersonId)))
+    .orderBy(desc(pastoralCoverageEvents.createdAt), desc(pastoralCoverageEvents.id));
+}
+
+export async function upsertPastoralCoverage(input: {
+  churchId: number;
+  pastorPersonId: number;
+  coveringPastorPersonId?: number | null;
+  coveringChurchName: string;
+  coveringPastorName: string;
+  coveringPastorPhone?: string | null;
+  coveringPastorWhatsapp?: string | null;
+  notes?: string | null;
+  updatedByChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const action = await db.transaction(async (tx) => {
+    const existing = await tx
+      .select()
+      .from(pastoralCoverages)
+      .where(and(eq(pastoralCoverages.churchId, input.churchId), eq(pastoralCoverages.pastorPersonId, input.pastorPersonId)))
+      .limit(1);
+    const data = {
+      coveringPastorPersonId: input.coveringPastorPersonId ?? null,
+      coveringChurchName: input.coveringChurchName.trim(),
+      coveringPastorName: input.coveringPastorName.trim(),
+      coveringPastorPhone: input.coveringPastorPhone?.trim() || null,
+      coveringPastorWhatsapp: input.coveringPastorWhatsapp?.trim() || null,
+      notes: input.notes?.trim() || null,
+      updatedByChurchUserId: input.updatedByChurchUserId,
+    };
+    const action = existing[0] ? "atualizada" as const : "criada" as const;
+    if (existing[0]) {
+      await tx.update(pastoralCoverages).set(data).where(eq(pastoralCoverages.id, existing[0].id));
+    } else {
+      await tx.insert(pastoralCoverages).values({
+        churchId: input.churchId,
+        pastorPersonId: input.pastorPersonId,
+        ...data,
+      });
+    }
+    await tx.insert(pastoralCoverageEvents).values({
+      churchId: input.churchId,
+      pastorPersonId: input.pastorPersonId,
+      ...data,
+      action,
+      changedByChurchUserId: input.updatedByChurchUserId,
+    });
+    return action;
+  });
+  return { action, coverage: await getPastoralCoverageByPerson(input.churchId, input.pastorPersonId) };
+}
+
+export async function removePastoralCoverage(input: {
+  churchId: number;
+  pastorPersonId: number;
+  changedByChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const existing = await tx
+      .select()
+      .from(pastoralCoverages)
+      .where(and(eq(pastoralCoverages.churchId, input.churchId), eq(pastoralCoverages.pastorPersonId, input.pastorPersonId)))
+      .limit(1);
+    if (!existing[0]) return false;
+    await tx.delete(pastoralCoverages).where(eq(pastoralCoverages.id, existing[0].id));
+    await tx.insert(pastoralCoverageEvents).values({
+      churchId: input.churchId,
+      pastorPersonId: input.pastorPersonId,
+      coveringPastorPersonId: existing[0].coveringPastorPersonId,
+      coveringChurchName: existing[0].coveringChurchName,
+      coveringPastorName: existing[0].coveringPastorName,
+      coveringPastorPhone: existing[0].coveringPastorPhone,
+      coveringPastorWhatsapp: existing[0].coveringPastorWhatsapp,
+      notes: existing[0].notes,
+      action: "removida",
+      changedByChurchUserId: input.changedByChurchUserId,
+    });
+    return true;
+  });
 }
 
 export async function getDiscipleshipStageProgress(churchId: number, personId: number) {

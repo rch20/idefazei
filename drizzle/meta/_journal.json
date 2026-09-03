@@ -414,6 +414,13 @@
       "when": 1788398779018,
       "tag": "0058_eager_maginty",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "5",
+      "when": 1788445954863,
+      "tag": "0059_late_serpent_society",
+      "breakpoints": true
     }
   ]
 }

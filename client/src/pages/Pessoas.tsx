@@ -120,6 +120,15 @@ function birthdayWhatsappHref(person: { fullName: string; phone?: string | null;
   return `https://wa.me/${international}?text=${encodeURIComponent(message)}`;
 }
 
+const defaultCoverageForm = {
+  coveringPastorPersonId: "",
+  coveringChurchName: "",
+  coveringPastorName: "",
+  coveringPastorPhone: "",
+  coveringPastorWhatsapp: "",
+  notes: "",
+};
+
 const defaultForm = {
   fullName: "",
   cpf: "",
@@ -164,6 +173,7 @@ export default function Pessoas() {
   const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
   const [selectedCellId, setSelectedCellId] = useState("");
   const [referralForm, setReferralForm] = useState({ reason: "", notes: "", preferredConsolidatorId: "" });
+  const [coverageForm, setCoverageForm] = useState(defaultCoverageForm);
   const utils = trpc.useUtils();
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId, search: search || undefined });
@@ -183,6 +193,7 @@ export default function Pessoas() {
   const cellsQuery = trpc.cells.list.useQuery({ churchId });
   const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery({ churchId });
   const effectiveRoles = effectiveRolesQuery.data ?? [];
+  const isPastorPresident = effectiveRoles.includes("pastor_presidente");
   const isPastor = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
   const canManageJourney = isPastor || effectiveRoles.some((role) => ["lider", "supervisor", "consolidador"].includes(role));
   const canManageCellParticipation = isPastor || effectiveRoles.some((role) => ["lider", "supervisor"].includes(role));
@@ -195,6 +206,15 @@ export default function Pessoas() {
   const personAccessQuery = trpc.ministries.personAccess.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
+  );
+  const selectedPersonIsPastor = (personAccessQuery.data?.roles ?? []).some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+  const pastoralCoverageCandidatesQuery = trpc.people.pastoralCoverageCandidates.useQuery(
+    { churchId },
+    { enabled: isPastorPresident }
+  );
+  const pastoralCoverageQuery = trpc.people.pastoralCoverage.useQuery(
+    { churchId, pastorPersonId: selectedPerson?.id ?? 0 },
+    { enabled: Boolean(selectedPerson?.id && isPastorPresident && selectedPersonIsPastor) }
   );
   const personFunctionsQuery = trpc.ministries.personFunctions.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
@@ -262,6 +282,20 @@ export default function Pessoas() {
     },
     onError: (error) => toast.error(error.message || "Não foi possível atualizar a etapa."),
   });
+  const savePastoralCoverage = trpc.people.savePastoralCoverage.useMutation({
+    onSuccess: async () => {
+      toast.success("Cobertura espiritual salva com histórico.");
+      await pastoralCoverageQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível salvar a cobertura espiritual."),
+  });
+  const removePastoralCoverage = trpc.people.removePastoralCoverage.useMutation({
+    onSuccess: async () => {
+      toast.success("Cobertura espiritual removida.");
+      await pastoralCoverageQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível remover a cobertura espiritual."),
+  });
   const assignCell = trpc.cells.assignPerson.useMutation({
     onSuccess: async (result) => {
       toast.success(result.transferred ? "Pessoa transferida de célula com histórico preservado." : "Pessoa integrada à célula.");
@@ -310,6 +344,19 @@ export default function Pessoas() {
       setBirthdaysOpen(true);
     }
   }, [location, birthdayMonth]);
+
+  useEffect(() => {
+    const coverage = pastoralCoverageQuery.data?.coverage;
+    if (!selectedPerson?.id || !isPastorPresident || !selectedPersonIsPastor || pastoralCoverageQuery.isLoading) return;
+    setCoverageForm(coverage ? {
+      coveringPastorPersonId: coverage.coveringPastorPersonId ? String(coverage.coveringPastorPersonId) : "",
+      coveringChurchName: coverage.coveringChurchName,
+      coveringPastorName: coverage.coveringPastorName,
+      coveringPastorPhone: coverage.coveringPastorPhone ?? "",
+      coveringPastorWhatsapp: coverage.coveringPastorWhatsapp ?? "",
+      notes: coverage.notes ?? "",
+    } : defaultCoverageForm);
+  }, [pastoralCoverageQuery.data?.coverage?.id, pastoralCoverageQuery.data?.coverage?.updatedAt, pastoralCoverageQuery.isLoading, selectedPerson?.id, isPastorPresident, selectedPersonIsPastor]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.split("?")[1] ?? "");
@@ -367,12 +414,14 @@ export default function Pessoas() {
     setCareForm({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
     setSelectedCellId("");
     setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "" });
+    setCoverageForm(defaultCoverageForm);
   }
 
   function closePersonJourney() {
     setSelectedPerson(null);
     setJourneyNoteStage(null);
     setJourneyNote("");
+    setCoverageForm(defaultCoverageForm);
     const [path, queryString] = location.split("?");
     const params = new URLSearchParams(queryString ?? "");
     params.delete("personId");
@@ -429,6 +478,30 @@ export default function Pessoas() {
       notes: referralForm.notes.trim() || undefined,
       preferredConsolidatorId: referralForm.preferredConsolidatorId ? Number(referralForm.preferredConsolidatorId) : undefined,
     });
+  }
+
+  function handleSavePastoralCoverage() {
+    if (!selectedPerson) return;
+    if (coverageForm.coveringChurchName.trim().length < 2 || coverageForm.coveringPastorName.trim().length < 2) {
+      toast.error("Informe a igreja e o pastor que oferecem a cobertura espiritual.");
+      return;
+    }
+    savePastoralCoverage.mutate({
+      churchId,
+      pastorPersonId: selectedPerson.id,
+      coveringPastorPersonId: coverageForm.coveringPastorPersonId ? Number(coverageForm.coveringPastorPersonId) : null,
+      coveringChurchName: coverageForm.coveringChurchName.trim(),
+      coveringPastorName: coverageForm.coveringPastorName.trim(),
+      coveringPastorPhone: coverageForm.coveringPastorPhone.trim() || undefined,
+      coveringPastorWhatsapp: coverageForm.coveringPastorWhatsapp.trim() || undefined,
+      notes: coverageForm.notes.trim() || undefined,
+    });
+  }
+
+  function handleRemovePastoralCoverage() {
+    if (!selectedPerson || !pastoralCoverageQuery.data?.coverage) return;
+    if (!window.confirm("Remover a cobertura espiritual desta ficha? O histórico será preservado.")) return;
+    removePastoralCoverage.mutate({ churchId, pastorPersonId: selectedPerson.id });
   }
 
   return (
@@ -847,6 +920,110 @@ export default function Pessoas() {
             <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Responsabilidade</p><p className="mt-1 truncate text-sm font-semibold text-navy">{currentResponsible?.fullName ?? "Não definida"}</p></div>
             {canManageMinistryFunctions && <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Acesso</p><p className="mt-1 text-sm font-semibold text-navy">{accessSummaryText}</p></div>}
           </div>}
+
+          {personSection === "resumo" && isPastorPresident && selectedPerson && (personAccessQuery.isLoading || selectedPersonIsPastor) && (
+            <section className="rounded-xl border border-indigo-200 bg-indigo-50/35 p-4">
+              <div className="flex items-start gap-3">
+                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-navy">Cobertura espiritual</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">Registre quem oferece cobertura pastoral a este Pastor. Esta relação é administrativa e não substitui o responsável interno pelo cuidado.</p>
+                </div>
+              </div>
+
+              {personAccessQuery.isLoading ? (
+                <div className="mt-4 h-20 animate-pulse rounded-lg bg-background/70" />
+              ) : (
+                <>
+                  {pastoralCoverageQuery.data?.coverage ? (
+                    <div className="mt-4 rounded-lg border border-indigo-100 bg-background/80 p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-navy">{pastoralCoverageQuery.data.coverage.coveringPastorName}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{pastoralCoverageQuery.data.coverage.coveringChurchName}</p>
+                        </div>
+                        <Badge variant="outline" className="w-fit text-[10px]">Cobertura cadastrada</Badge>
+                      </div>
+                      {pastoralCoverageQuery.data.coverage.notes && <p className="mt-2 text-xs text-muted-foreground">{pastoralCoverageQuery.data.coverage.notes}</p>}
+                      <p className="mt-2 text-[10px] text-muted-foreground">Atualizada em {new Date(pastoralCoverageQuery.data.coverage.updatedAt).toLocaleString("pt-BR")} por {pastoralCoverageQuery.data.coverage.updatedByName ?? "Administrador Presidente"}.</p>
+                    </div>
+                  ) : (
+                    <p className="mt-4 rounded-lg border border-dashed border-indigo-200 bg-background/60 p-3 text-xs text-muted-foreground">Nenhuma cobertura espiritual cadastrada para este Pastor.</p>
+                  )}
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <Label htmlFor="coverage-pastor-person">Pastor interno de cobertura</Label>
+                      <Select
+                        value={coverageForm.coveringPastorPersonId || "externo"}
+                        onValueChange={(value) => {
+                          const candidate = (pastoralCoverageCandidatesQuery.data ?? []).find((item) => String(item.personId) === value);
+                          setCoverageForm((current) => ({
+                            ...current,
+                            coveringPastorPersonId: value === "externo" ? "" : value,
+                            coveringPastorName: candidate?.fullName ?? (value === "externo" ? "" : current.coveringPastorName),
+                          }));
+                        }}
+                      >
+                        <SelectTrigger id="coverage-pastor-person" className="mt-1 bg-background"><SelectValue placeholder="Externo ou selecione um Pastor" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="externo">Pastor externo / informar manualmente</SelectItem>
+                          {(pastoralCoverageCandidatesQuery.data ?? [])
+                            .filter((candidate) => candidate.personId !== selectedPerson.id)
+                            .map((candidate) => <SelectItem key={candidate.personId} value={String(candidate.personId)}>{candidate.fullName} · {candidate.role === "pastor_presidente" ? "Pastor Presidente" : "Pastor Local"}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="coverage-church">Igreja que oferece a cobertura *</Label>
+                      <Input id="coverage-church" className="mt-1 bg-background" value={coverageForm.coveringChurchName} onChange={(event) => setCoverageForm((current) => ({ ...current, coveringChurchName: event.target.value }))} placeholder="Ex.: Igreja Comunidade da Graça" maxLength={255} />
+                    </div>
+                    <div>
+                      <Label htmlFor="coverage-pastor-name">Pastor que oferece a cobertura *</Label>
+                      <Input id="coverage-pastor-name" className="mt-1 bg-background" value={coverageForm.coveringPastorName} onChange={(event) => setCoverageForm((current) => ({ ...current, coveringPastorName: event.target.value }))} disabled={Boolean(coverageForm.coveringPastorPersonId)} placeholder="Ex.: Apóstolo França" maxLength={255} />
+                    </div>
+                    <div>
+                      <Label htmlFor="coverage-pastor-phone">Telefone</Label>
+                      <Input id="coverage-pastor-phone" className="mt-1 bg-background" value={coverageForm.coveringPastorPhone} onChange={(event) => setCoverageForm((current) => ({ ...current, coveringPastorPhone: event.target.value }))} placeholder="(11) 99999-9999" maxLength={20} />
+                    </div>
+                    <div>
+                      <Label htmlFor="coverage-pastor-whatsapp">WhatsApp</Label>
+                      <Input id="coverage-pastor-whatsapp" className="mt-1 bg-background" value={coverageForm.coveringPastorWhatsapp} onChange={(event) => setCoverageForm((current) => ({ ...current, coveringPastorWhatsapp: event.target.value }))} placeholder="(11) 99999-9999" maxLength={20} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="coverage-notes">Observação administrativa</Label>
+                      <Textarea id="coverage-notes" className="mt-1 bg-background" rows={2} value={coverageForm.notes} onChange={(event) => setCoverageForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Ex.: cobertura ministerial acordada com a liderança da igreja." maxLength={1000} />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-[10px] text-muted-foreground">Somente o Administrador Presidente pode cadastrar, alterar ou remover esta informação.</p>
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                    {pastoralCoverageQuery.data?.coverage && <Button type="button" variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50" onClick={handleRemovePastoralCoverage} disabled={removePastoralCoverage.isPending}>{removePastoralCoverage.isPending ? "Removendo…" : "Remover cobertura"}</Button>}
+                    <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={handleSavePastoralCoverage} disabled={savePastoralCoverage.isPending}>{savePastoralCoverage.isPending ? "Salvando…" : pastoralCoverageQuery.data?.coverage ? "Atualizar cobertura" : "Salvar cobertura"}</Button>
+                  </div>
+
+                  <div className="mt-5 border-t border-indigo-100 pt-4">
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Histórico da cobertura</h4>
+                    {(pastoralCoverageQuery.data?.events ?? []).length === 0 ? (
+                      <p className="mt-2 text-xs text-muted-foreground">Nenhuma alteração registrada.</p>
+                    ) : (
+                      <div className="mt-3 space-y-2">
+                        {(pastoralCoverageQuery.data?.events ?? []).slice(0, 5).map((event) => (
+                          <div key={event.id} className="rounded-md border border-indigo-100 bg-background/70 p-2.5">
+                            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                              <p className="text-xs font-medium text-navy">{event.action === "criada" ? "Cobertura cadastrada" : event.action === "atualizada" ? "Cobertura atualizada" : "Cobertura removida"}</p>
+                              <p className="text-[10px] text-muted-foreground">{new Date(event.createdAt).toLocaleString("pt-BR")}</p>
+                            </div>
+                            <p className="mt-1 text-[11px] text-muted-foreground">{event.coveringPastorName} · {event.coveringChurchName} · por {event.changedByName ?? "Administrador Presidente"}</p>
+                            {event.notes && <p className="mt-1 text-[11px] text-muted-foreground">{event.notes}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </section>
+          )}
 
           {personSection === "resumo" && selectedAttention && (
             <div className={`rounded-xl border p-4 ${selectedAttention.priority === "alta" ? "border-rose-200 bg-rose-50/60" : selectedAttention.priority === "media" ? "border-amber-200 bg-amber-50/60" : "border-green-200 bg-green-50/60"}`}>

@@ -221,6 +221,11 @@ import {
   getDiscipleshipStageProgress,
   getDiscipleshipStageEvents,
   upsertDiscipleshipStageProgress,
+  getPastorCandidatesByChurch,
+  getPastoralCoverageByPerson,
+  getPastoralCoverageEvents,
+  upsertPastoralCoverage,
+  removePastoralCoverage,
   updateSoul,
   getAllChurches,
   getAllChurchesAdmin,
@@ -455,6 +460,36 @@ async function requirePastor(userId: number, churchId: number) {
   if (!roles.some((role) => PASTOR_ROLES.has(role))) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor pode executar esta ação de governança." });
   }
+  return member;
+}
+
+async function requirePastorPresident(userId: number, churchId: number) {
+  const member = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, member);
+  if (!roles.includes("pastor_presidente")) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Administrador Presidente pode administrar a cobertura espiritual." });
+  }
+  return member;
+}
+
+async function requirePastorPerson(churchId: number, personId: number) {
+  const candidates = await getPastorCandidatesByChurch(churchId);
+  const candidate = candidates.find((item) => item.personId === personId);
+  if (!candidate) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "A cobertura espiritual só pode ser vinculada a uma Pessoa com cargo ativo de Pastor nesta igreja." });
+  }
+  const person = await getPersonById(personId, churchId);
+  if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pastor não encontrado nesta igreja." });
+  return { person, candidate };
+}
+
+async function requirePastoralCoverageRead(userId: number, churchId: number, pastorPersonId: number) {
+  const member = await requirePastor(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, member);
+  if (!roles.includes("pastor_presidente") && member.personId !== pastorPersonId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "A cobertura espiritual de outro Pastor é restrita ao Administrador Presidente." });
+  }
+  await requirePastorPerson(churchId, pastorPersonId);
   return member;
 }
 
@@ -1219,6 +1254,76 @@ const peopleRouter = router({
         getDiscipleshipStageEvents(input.churchId, input.id),
       ]);
       return { personId: person.id, currentStage: person.discipleshipStage, progress, events };
+    }),
+
+  pastoralCoverageCandidates: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requirePastorPresident(ctx.user.id, input.churchId);
+      return getPastorCandidatesByChurch(input.churchId);
+    }),
+
+  pastoralCoverage: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), pastorPersonId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requirePastorPresident(ctx.user.id, input.churchId);
+      await requirePastorPerson(input.churchId, input.pastorPersonId);
+      const [coverage, events] = await Promise.all([
+        getPastoralCoverageByPerson(input.churchId, input.pastorPersonId),
+        getPastoralCoverageEvents(input.churchId, input.pastorPersonId),
+      ]);
+      return { pastorPersonId: input.pastorPersonId, coverage, events };
+    }),
+
+  savePastoralCoverage: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      pastorPersonId: z.number().int().positive(),
+      coveringPastorPersonId: z.number().int().positive().nullable().optional(),
+      coveringChurchName: z.string().trim().min(2).max(255),
+      coveringPastorName: z.string().trim().min(2).max(255),
+      coveringPastorPhone: z.string().trim().max(20).optional().or(z.literal("")),
+      coveringPastorWhatsapp: z.string().trim().max(20).optional().or(z.literal("")),
+      notes: z.string().trim().max(1000).optional().or(z.literal("")),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requirePastorPresident(ctx.user.id, input.churchId);
+      await requirePastorPerson(input.churchId, input.pastorPersonId);
+      let coveringPastorName = input.coveringPastorName.trim();
+      if (input.coveringPastorPersonId) {
+        if (input.coveringPastorPersonId === input.pastorPersonId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Um Pastor não pode ser definido como sua própria cobertura." });
+        }
+        const coveringPastor = (await getPastorCandidatesByChurch(input.churchId)).find((item) => item.personId === input.coveringPastorPersonId);
+        if (!coveringPastor) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "O Pastor de cobertura precisa pertencer a esta igreja e ter cargo pastoral ativo." });
+        }
+        coveringPastorName = coveringPastor.fullName;
+      }
+      return upsertPastoralCoverage({
+        churchId: input.churchId,
+        pastorPersonId: input.pastorPersonId,
+        coveringPastorPersonId: input.coveringPastorPersonId,
+        coveringChurchName: input.coveringChurchName,
+        coveringPastorName,
+        coveringPastorPhone: input.coveringPastorPhone,
+        coveringPastorWhatsapp: input.coveringPastorWhatsapp,
+        notes: input.notes,
+        updatedByChurchUserId: actor.id,
+      });
+    }),
+
+  removePastoralCoverage: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), pastorPersonId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requirePastorPresident(ctx.user.id, input.churchId);
+      await requirePastorPerson(input.churchId, input.pastorPersonId);
+      const removed = await removePastoralCoverage({
+        churchId: input.churchId,
+        pastorPersonId: input.pastorPersonId,
+        changedByChurchUserId: actor.id,
+      });
+      return { removed };
     }),
 
   updateJourneyStage: protectedProcedure

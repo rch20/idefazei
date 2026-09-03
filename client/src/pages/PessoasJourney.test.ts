@@ -41,6 +41,21 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(dbSource).toContain("changedByChurchUserId");
   });
 
+  it("mostra a cobertura espiritual somente na ficha pastoral do presidente", () => {
+    expect(pageSource).toContain("const isPastorPresident = effectiveRoles.includes(\"pastor_presidente\");");
+    expect(pageSource).toContain("trpc.people.pastoralCoverage.useQuery");
+    expect(pageSource).toContain("trpc.people.savePastoralCoverage.useMutation");
+    expect(pageSource).toContain("trpc.people.removePastoralCoverage.useMutation");
+    expect(pageSource).toContain("Cobertura espiritual");
+    expect(pageSource).toContain("Somente o Administrador Presidente pode cadastrar, alterar ou remover esta informação.");
+    expect(routerSource).toContain("async function requirePastorPresident");
+    expect(routerSource).toContain("pastoralCoverage: protectedProcedure");
+    expect(routerSource).toContain("savePastoralCoverage: protectedProcedure");
+    expect(routerSource).toContain("removePastoralCoverage: protectedProcedure");
+    expect(dbSource).toContain("pastoralCoverages");
+    expect(dbSource).toContain("pastoralCoverageEvents");
+  });
+
   it("abre a ficha na Jornada pelo App do Líder e limpa a URL ao fechar", () => {
     expect(leaderSource).toContain("section=jornada");
     expect(leaderSource).toContain(">\n                          Ficha\n");

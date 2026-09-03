@@ -336,6 +336,51 @@ export const discipleshipStageEvents = mysqlTable("discipleship_stage_events", {
 export type DiscipleshipStageEvent = typeof discipleshipStageEvents.$inferSelect;
 export type InsertDiscipleshipStageEvent = typeof discipleshipStageEvents.$inferInsert;
 
+/** Cobertura espiritual atual de um Pastor, sem criar Pessoa em outro tenant. */
+export const pastoralCoverages = mysqlTable("pastoral_coverages", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  pastorPersonId: int("pastorPersonId").notNull(),
+  coveringPastorPersonId: int("coveringPastorPersonId"),
+  coveringChurchName: varchar("coveringChurchName", { length: 255 }).notNull(),
+  coveringPastorName: varchar("coveringPastorName", { length: 255 }).notNull(),
+  coveringPastorPhone: varchar("coveringPastorPhone", { length: 20 }),
+  coveringPastorWhatsapp: varchar("coveringPastorWhatsapp", { length: 20 }),
+  notes: text("notes"),
+  updatedByChurchUserId: int("updatedByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("pastoral_coverages_pastor_unique").on(table.churchId, table.pastorPersonId),
+  index("pastoral_coverages_church_idx").on(table.churchId),
+  index("pastoral_coverages_covering_pastor_idx").on(table.churchId, table.coveringPastorPersonId),
+]);
+
+export type PastoralCoverage = typeof pastoralCoverages.$inferSelect;
+export type InsertPastoralCoverage = typeof pastoralCoverages.$inferInsert;
+
+/** Histórico auditável das trocas de cobertura espiritual. */
+export const pastoralCoverageEvents = mysqlTable("pastoral_coverage_events", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  pastorPersonId: int("pastorPersonId").notNull(),
+  coveringPastorPersonId: int("coveringPastorPersonId"),
+  coveringChurchName: varchar("coveringChurchName", { length: 255 }).notNull(),
+  coveringPastorName: varchar("coveringPastorName", { length: 255 }).notNull(),
+  coveringPastorPhone: varchar("coveringPastorPhone", { length: 20 }),
+  coveringPastorWhatsapp: varchar("coveringPastorWhatsapp", { length: 20 }),
+  notes: text("notes"),
+  action: mysqlEnum("action", ["criada", "atualizada", "removida"]).notNull(),
+  changedByChurchUserId: int("changedByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("pastoral_coverage_events_church_pastor_idx").on(table.churchId, table.pastorPersonId),
+  index("pastoral_coverage_events_pastor_created_idx").on(table.pastorPersonId, table.createdAt),
+]);
+
+export type PastoralCoverageEvent = typeof pastoralCoverageEvents.$inferSelect;
+export type InsertPastoralCoverageEvent = typeof pastoralCoverageEvents.$inferInsert;
+
 // ─── FAMÍLIAS ─────────────────────────────────────────────────────────────────
 
 export const families = mysqlTable("families", {
