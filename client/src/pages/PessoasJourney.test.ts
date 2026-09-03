@@ -7,6 +7,8 @@ const pageSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 const leaderSource = readFileSync(resolve(root, "client/src/pages/AppLider.tsx"), "utf8");
+const centralCareSource = readFileSync(resolve(root, "client/src/pages/CentralCuidado.tsx"), "utf8");
+const dashboardSource = readFileSync(resolve(root, "client/src/pages/Dashboard.tsx"), "utf8");
 
 describe("Ficha da Pessoa — jornada e escopo", () => {
   it("separa a ficha em resumo, jornada, participações, cuidado e histórico", () => {
@@ -63,6 +65,12 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("function closePersonJourney()");
     expect(pageSource).toContain('params.delete("personId")');
     expect(pageSource).toContain('params.delete("section")');
+  });
+
+  it("abre diretamente a Pessoa selecionada a partir das filas de cuidado", () => {
+    expect(centralCareSource).toContain("navigate(`/app/pessoas?personId=${personId}&section=cuidado`)");
+    expect(dashboardSource).toContain("href={`/app/pessoas?personId=${item.person.id}&section=cuidado`}");
+    expect(dashboardSource).not.toContain('href="/app/pessoas" className="w-fit rounded-lg border border-navy/20');
   });
 
   it("não expõe ações pastorais ministeriais para perfis não pastorais", () => {

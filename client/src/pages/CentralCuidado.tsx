@@ -36,7 +36,7 @@ export default function CentralCuidado() {
   const medium = items.filter((item) => item.priority === "media").length;
 
   function openPerson(personId: number) {
-    navigate(`/app/pessoas?personId=${personId}`);
+    navigate(`/app/pessoas?personId=${personId}&section=cuidado`);
   }
 
   return (

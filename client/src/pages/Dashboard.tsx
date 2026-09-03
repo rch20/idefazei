@@ -493,7 +493,7 @@ function CareAttentionPanel({ churchId }: { churchId: number }) {
                   <p className="mt-0.5 text-xs text-muted-foreground">{item.reasons.join(" · ")}</p>
                   <p className="mt-1 text-xs font-medium text-navy">Próximo passo: {item.nextStep}</p>
                 </div>
-                <Link href="/app/pessoas" className="w-fit rounded-lg border border-navy/20 px-3 py-1.5 text-xs font-semibold text-navy transition-colors hover:bg-navy/5">
+                <Link href={`/app/pessoas?personId=${item.person.id}&section=cuidado`} className="w-fit rounded-lg border border-navy/20 px-3 py-1.5 text-xs font-semibold text-navy transition-colors hover:bg-navy/5">
                   Ver pessoa
                 </Link>
               </div>
