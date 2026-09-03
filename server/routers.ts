@@ -1267,12 +1267,13 @@ const peopleRouter = router({
     .input(z.object({ churchId: z.number().int().positive(), pastorPersonId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
       await requirePastorPresident(ctx.user.id, input.churchId);
-      await requirePastorPerson(input.churchId, input.pastorPersonId);
+      const isPastor = (await getPastorCandidatesByChurch(input.churchId)).some((candidate) => candidate.personId === input.pastorPersonId);
+      if (!isPastor) return { pastorPersonId: input.pastorPersonId, isPastor: false, coverage: null, events: [] };
       const [coverage, events] = await Promise.all([
         getPastoralCoverageByPerson(input.churchId, input.pastorPersonId),
         getPastoralCoverageEvents(input.churchId, input.pastorPersonId),
       ]);
-      return { pastorPersonId: input.pastorPersonId, coverage, events };
+      return { pastorPersonId: input.pastorPersonId, isPastor: true, coverage, events };
     }),
 
   savePastoralCoverage: protectedProcedure

@@ -48,11 +48,13 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
   it("mostra a cobertura espiritual somente na ficha pastoral do presidente", () => {
     expect(pageSource).toContain("const isPastorPresident = effectiveRoles.includes(\"pastor_presidente\");");
     expect(pageSource).toContain("trpc.people.pastoralCoverage.useQuery");
-    expect(pageSource).toContain("const selectedPersonIsPastor = (pastoralCoverageCandidatesQuery.data ?? []).some");
+    expect(pageSource).toContain("const selectedPersonIsPastor = pastoralCoverageQuery.data?.isPastor === true;");
+    expect(pageSource).toContain("const canManagePastoralCoverage = Boolean(isPastorPresident && selectedPerson?.id);");
     expect(pageSource).toContain("trpc.people.savePastoralCoverage.useMutation");
     expect(pageSource).toContain("trpc.people.removePastoralCoverage.useMutation");
     expect(pageSource).toContain("Cobertura espiritual");
     expect(pageSource).toContain("Somente o Administrador Presidente pode cadastrar, alterar ou remover esta informação.");
+    expect(pageSource).toContain("Configurações → Pessoas e acessos");
     expect(routerSource).toContain("async function requirePastorPresident");
     expect(routerSource).toContain("pastoralCoverage: protectedProcedure");
     expect(routerSource).toContain("savePastoralCoverage: protectedProcedure");

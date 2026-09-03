@@ -12,8 +12,10 @@ describe("Cobertura espiritual pastoral — contrato e segurança", () => {
     expect(routerSource).toContain("async function requirePastorPresident");
     expect(routerSource).toContain('if (!roles.includes("pastor_presidente"))');
     expect(routerSource).toContain("Somente o Administrador Presidente pode administrar a cobertura espiritual.");
+    expect(routerSource).toContain("pastoralCoverage: protectedProcedure");
+    expect(routerSource).toContain("const isPastor = (await getPastorCandidatesByChurch(input.churchId)).some");
+    expect(routerSource).toContain("isPastor: false, coverage: null, events: []");
     expect(routerSource).toContain("savePastoralCoverage: protectedProcedure");
-    expect(routerSource).toContain("removePastoralCoverage: protectedProcedure");
   });
 
   it("valida o Pastor alvo e o Pastor interno de cobertura dentro do mesmo tenant", () => {

@@ -211,11 +211,12 @@ export default function Pessoas() {
     { churchId },
     { enabled: isPastorPresident }
   );
-  const selectedPersonIsPastor = (pastoralCoverageCandidatesQuery.data ?? []).some((candidate) => candidate.personId === selectedPerson?.id);
   const pastoralCoverageQuery = trpc.people.pastoralCoverage.useQuery(
     { churchId, pastorPersonId: selectedPerson?.id ?? 0 },
-    { enabled: Boolean(selectedPerson?.id && isPastorPresident && selectedPersonIsPastor) }
+    { enabled: Boolean(selectedPerson?.id && isPastorPresident) }
   );
+  const selectedPersonIsPastor = pastoralCoverageQuery.data?.isPastor === true;
+  const canManagePastoralCoverage = Boolean(isPastorPresident && selectedPerson?.id);
   const personFunctionsQuery = trpc.ministries.personFunctions.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
@@ -347,7 +348,7 @@ export default function Pessoas() {
 
   useEffect(() => {
     const coverage = pastoralCoverageQuery.data?.coverage;
-    if (!selectedPerson?.id || !isPastorPresident || !selectedPersonIsPastor || pastoralCoverageQuery.isLoading) return;
+    if (!selectedPerson?.id || !isPastorPresident || pastoralCoverageQuery.data?.isPastor !== true || pastoralCoverageQuery.isLoading) return;
     setCoverageForm(coverage ? {
       coveringPastorPersonId: coverage.coveringPastorPersonId ? String(coverage.coveringPastorPersonId) : "",
       coveringChurchName: coverage.coveringChurchName,
@@ -356,7 +357,7 @@ export default function Pessoas() {
       coveringPastorWhatsapp: coverage.coveringPastorWhatsapp ?? "",
       notes: coverage.notes ?? "",
     } : defaultCoverageForm);
-  }, [pastoralCoverageQuery.data?.coverage?.id, pastoralCoverageQuery.data?.coverage?.updatedAt, pastoralCoverageQuery.isLoading, selectedPerson?.id, isPastorPresident, selectedPersonIsPastor]);
+  }, [pastoralCoverageQuery.data?.coverage?.id, pastoralCoverageQuery.data?.coverage?.updatedAt, pastoralCoverageQuery.data?.isPastor, pastoralCoverageQuery.isLoading, selectedPerson?.id, isPastorPresident]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.split("?")[1] ?? "");
@@ -797,7 +798,7 @@ export default function Pessoas() {
               ["jornada", "Jornada"],
               ["participacoes", "Participações"],
               ["cuidado", "Cuidado"],
-              ...(isPastorPresident && (pastoralCoverageCandidatesQuery.isLoading || selectedPersonIsPastor) ? [["cobertura", "Cobertura espiritual"]] : []),
+              ...(canManagePastoralCoverage ? [["cobertura", "Cobertura espiritual"]] : []),
               ["historico", "Histórico"],
             ].map(([value, label]) => (
               <button
@@ -922,13 +923,13 @@ export default function Pessoas() {
             {canManageMinistryFunctions && <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Acesso</p><p className="mt-1 text-sm font-semibold text-navy">{accessSummaryText}</p></div>}
           </div>}
 
-          {personSection === "resumo" && isPastorPresident && selectedPerson && selectedPersonIsPastor && (
+          {personSection === "resumo" && canManagePastoralCoverage && (
             <button type="button" onClick={() => setPersonSection("cobertura")} className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/35 p-4 text-left transition hover:bg-indigo-50">
-              <span className="flex min-w-0 items-center gap-3"><ShieldCheck className="h-5 w-5 shrink-0 text-indigo-700" /><span><span className="block text-sm font-semibold text-navy">Cobertura espiritual</span><span className="mt-0.5 block text-xs text-muted-foreground">Gerencie quem oferece cobertura a este Pastor.</span></span></span><ArrowRight className="h-4 w-4 shrink-0 text-indigo-700" />
+              <span className="flex min-w-0 items-center gap-3"><ShieldCheck className="h-5 w-5 shrink-0 text-indigo-700" /><span><span className="block text-sm font-semibold text-navy">Cobertura espiritual</span><span className="mt-0.5 block text-xs text-muted-foreground">{selectedPersonIsPastor ? "Gerencie quem oferece cobertura a este Pastor." : "Confira o vínculo pastoral para liberar esta configuração."}</span></span></span><ArrowRight className="h-4 w-4 shrink-0 text-indigo-700" />
             </button>
           )}
 
-          {personSection === "cobertura" && isPastorPresident && selectedPerson && selectedPersonIsPastor && (
+          {personSection === "cobertura" && canManagePastoralCoverage && (
             <section className="rounded-xl border border-indigo-200 bg-indigo-50/35 p-4">
               <div className="flex items-start gap-3">
                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />
@@ -938,7 +939,14 @@ export default function Pessoas() {
                 </div>
               </div>
 
-              {personAccessQuery.isLoading ? (
+              {pastoralCoverageQuery.isLoading ? (
+                <div className="mt-4 h-20 animate-pulse rounded-lg bg-background/70" />
+              ) : !selectedPersonIsPastor ? (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  <p className="font-semibold">Cargo pastoral não reconhecido nesta Pessoa</p>
+                  <p className="mt-1 text-xs leading-relaxed">Para cadastrar a cobertura espiritual, o Administrador Presidente precisa vincular esta ficha a uma conta em <strong>Configurações → Pessoas e acessos</strong> e atribuir o cargo Pastor Presidente ou Pastor Local. Depois, reabra a ficha e esta tela exibirá os campos para cadastrar ou atualizar a cobertura.</p>
+                </div>
+              ) : personAccessQuery.isLoading ? (
                 <div className="mt-4 h-20 animate-pulse rounded-lg bg-background/70" />
               ) : (
                 <>
