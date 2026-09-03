@@ -9,6 +9,7 @@ const pageSource = readFileSync(resolve(root, "client/src/pages/RadarEspiritual.
 const appSource = readFileSync(resolve(root, "client/src/App.tsx"), "utf8");
 const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 const radarSource = dbSource.slice(dbSource.indexOf("export async function getSpiritualRadarByChurch"), dbSource.indexOf("/** Encerra o responsável anterior", dbSource.indexOf("export async function getSpiritualRadarByChurch")));
+const careQueueSource = dbSource.slice(dbSource.indexOf("export async function getCareAttentionByChurch"), dbSource.indexOf("export type SpiritualRadarPriority"));
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 const designSource = readFileSync(resolve(root, "references/radar-espiritual-implementation.md"), "utf8");
 
@@ -47,6 +48,24 @@ describe("Fluxo estrutural do Radar Espiritual", () => {
     expect(routerSource).toContain("await requireChurchMember(ctx.user.id, input.churchId)");
     expect(routerSource).toContain("getJourneyManagedPersonIds");
     expect(routerSource).toContain("radar: radarRouter");
+  });
+
+  it("não classifica Pastor com cobertura como sem responsável ou sem discipulador", () => {
+    expect(radarSource).toContain("getPastorCandidatesByChurch(churchId)");
+    expect(radarSource).toContain("eq(pastoralCoverages.churchId, churchId)");
+    expect(radarSource).toContain("const hasPastoralCoverage = isPastor && coveredPastoralPersonIds.has(person.id);");
+    expect(radarSource).toContain("if (!careAssignment && !hasPastoralCoverage)");
+    expect(radarSource).toContain("if (!isPastor && stage <= 6 && !person.discipledById)");
+    expect(radarSource).toContain("if (!isPastor && stage >= 2 && !cell)");
+  });
+
+  it("aplica a cobertura também à fila da Central de Cuidado", () => {
+    expect(careQueueSource).toContain("getPastorCandidatesByChurch(churchId)");
+    expect(careQueueSource).toContain("eq(pastoralCoverages.churchId, churchId)");
+    expect(careQueueSource).toContain("const hasPastoralCoverage = isPastor && coveredPastoralPersonIds.has(person.id);");
+    expect(careQueueSource).toContain("if (!careAssignment && !hasPastoralCoverage)");
+    expect(careQueueSource).toContain("if (!isPastor && soul && !consolidation)");
+    expect(careQueueSource).toContain("if (!isPastor && consolidation && !consolidation.callMade)");
   });
 
   it("documenta pontuação transparente e ações da primeira versão", () => {

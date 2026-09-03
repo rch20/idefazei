@@ -1419,7 +1419,7 @@ export async function getCareHistoryByPerson(personId: number, churchId: number)
 export async function getCareAttentionByChurch(churchId: number) {
   const db = await getDb();
   if (!db) return [];
-  const [persons, churchSouls, churchConsolidations, activeAssignments, activeMemberships] = await Promise.all([
+  const [persons, churchSouls, churchConsolidations, activeAssignments, activeMemberships, pastoralCandidates, pastoralCoverageRows] = await Promise.all([
     getPeopleByChurch(churchId),
     getSoulsByChurch(churchId),
     getConsolidationsByChurch(churchId),
@@ -1429,8 +1429,15 @@ export async function getCareAttentionByChurch(churchId: number) {
       .from(cellMembers)
       .innerJoin(cells, eq(cells.id, cellMembers.cellId))
       .where(and(eq(cells.churchId, churchId), eq(cells.active, true), eq(cellMembers.active, true))),
+    getPastorCandidatesByChurch(churchId),
+    db
+      .select({ pastorPersonId: pastoralCoverages.pastorPersonId })
+      .from(pastoralCoverages)
+      .where(eq(pastoralCoverages.churchId, churchId)),
   ]);
 
+  const pastoralPersonIds = new Set(pastoralCandidates.map((item) => item.personId));
+  const coveredPastoralPersonIds = new Set(pastoralCoverageRows.map((item) => item.pastorPersonId));
   const soulByPerson = new Map(churchSouls.filter((soul) => soul.personId).map((soul) => [soul.personId!, soul]));
   const consolidationBySoul = new Map(churchConsolidations.map((item) => [item.soulId, item]));
   const careByPerson = new Map(activeAssignments.map((item) => [item.personId, item]));
@@ -1444,21 +1451,23 @@ export async function getCareAttentionByChurch(churchId: number) {
     const reasons: string[] = [];
     let nextStep = "Acompanhamento em dia";
     let priority: "alta" | "media" | "normal" = "normal";
+    const isPastor = pastoralPersonIds.has(person.id);
+    const hasPastoralCoverage = isPastor && coveredPastoralPersonIds.has(person.id);
 
-    if (!careAssignment) {
+    if (!careAssignment && !hasPastoralCoverage) {
       reasons.push("Sem responsável pelo cuidado");
       nextStep = "Definir responsável";
       priority = "alta";
     }
-    if (soul && !consolidation) {
+    if (!isPastor && soul && !consolidation) {
       reasons.push("Consolidação não iniciada");
       nextStep = "Iniciar consolidação";
       priority = "alta";
-    } else if (consolidation && !consolidation.callMade) {
+    } else if (!isPastor && consolidation && !consolidation.callMade) {
       reasons.push("Sem primeiro contato registrado");
       nextStep = "Registrar primeiro contato";
       priority = "alta";
-    } else if (soul?.status === "consolidado" && !cell) {
+    } else if (!isPastor && soul?.status === "consolidado" && !cell) {
       reasons.push("Sem célula ativa");
       nextStep = "Enviar para célula";
       priority = priority === "alta" ? "alta" : "media";
@@ -1524,15 +1533,16 @@ export async function getSpiritualRadarByChurch(churchId: number) {
   };
   if (!db) return empty;
 
-  const [persons, churchRoles, activeCells, activeCare, churchSouls, churchConsolidations, referrals, visits, followUps, prayers, enrollments, attendance] = await Promise.all([
+  const [persons, pastoralCandidates, pastoralCoverageRows, activeCells, activeCare, churchSouls, churchConsolidations, referrals, visits, followUps, prayers, enrollments, attendance] = await Promise.all([
     db
       .select({ id: people.id, fullName: people.fullName, discipleshipStage: people.discipleshipStage, discipledById: people.discipledById })
       .from(people)
       .where(and(eq(people.churchId, churchId), eq(people.active, true))),
+    getPastorCandidatesByChurch(churchId),
     db
-      .select({ personId: churchMembers.personId, role: churchMembers.role })
-      .from(churchMembers)
-      .where(and(eq(churchMembers.churchId, churchId), eq(churchMembers.active, true), isNotNull(churchMembers.personId))),
+      .select({ pastorPersonId: pastoralCoverages.pastorPersonId })
+      .from(pastoralCoverages)
+      .where(eq(pastoralCoverages.churchId, churchId)),
     db
       .select({ personId: cellMembers.personId, cellId: cells.id, cellName: cells.name })
       .from(cellMembers)
@@ -1574,8 +1584,8 @@ export async function getSpiritualRadarByChurch(churchId: number) {
     lideranca: 7,
     multiplicador: 8,
   };
-  const pastoralRoleKeys = new Set(["pastor_presidente", "pastor_local"]);
-  const pastoralPersonIds = new Set(churchRoles.filter((item) => item.personId && pastoralRoleKeys.has(item.role)).map((item) => item.personId!));
+  const pastoralPersonIds = new Set(pastoralCandidates.map((item) => item.personId));
+  const coveredPastoralPersonIds = new Set(pastoralCoverageRows.map((item) => item.pastorPersonId));
   const cellByPerson = new Map<number, { id: number; name: string }>();
   activeCells.forEach((item) => {
     if (!cellByPerson.has(item.personId)) cellByPerson.set(item.personId, { id: item.cellId, name: item.cellName });
@@ -1640,7 +1650,6 @@ export async function getSpiritualRadarByChurch(churchId: number) {
   };
 
   const items = persons
-    .filter((person) => !pastoralPersonIds.has(person.id))
     .map((person): SpiritualRadarItem => {
       const signals: SpiritualRadarItem["signals"] = [];
       const cell = cellByPerson.get(person.id) ?? null;
@@ -1650,14 +1659,16 @@ export async function getSpiritualRadarByChurch(churchId: number) {
       const referral = activeReferralByPerson.get(person.id);
       const visit = openVisitByPerson.get(person.id);
       const stage = stageOrder[person.discipleshipStage ?? "nova_alma"] ?? 0;
+      const isPastor = pastoralPersonIds.has(person.id);
+      const hasPastoralCoverage = isPastor && coveredPastoralPersonIds.has(person.id);
       const addSignal = (key: SpiritualRadarSignalKey, evidence: string, sourceId: number | null = null) => {
         const meta = signalMeta[key];
         signals.push({ key, label: meta.label, severity: meta.severity, evidence, source: meta.source, sourceId });
       };
 
-      if (!careAssignment) addSignal("sem_responsavel", "Não há responsável ativo registrado para esta Pessoa.");
-      if (soul && !consolidation) addSignal("consolidacao_pendente", "Existe uma Nova Alma sem ficha de Consolidação.", soul.id);
-      else if (consolidation && !consolidation.callMade) addSignal("primeiro_contato_pendente", "A Consolidação existe, mas o primeiro contato ainda não foi registrado.", consolidation.id);
+      if (!careAssignment && !hasPastoralCoverage) addSignal("sem_responsavel", "Não há responsável ativo registrado para esta Pessoa.");
+      if (!isPastor && soul && !consolidation) addSignal("consolidacao_pendente", "Existe uma Nova Alma sem ficha de Consolidação.", soul.id);
+      else if (!isPastor && consolidation && !consolidation.callMade) addSignal("primeiro_contato_pendente", "A Consolidação existe, mas o primeiro contato ainda não foi registrado.", consolidation.id);
       if (visit) {
         const overdue = visit.scheduledAt && Number(new Date(visit.scheduledAt)) < Date.now();
         addSignal("visita_pendente", overdue ? "A visita está agendada para uma data já vencida." : "Há uma visita aberta aguardando atribuição ou realização.", visit.id);
@@ -1668,15 +1679,15 @@ export async function getSpiritualRadarByChurch(churchId: number) {
           addSignal("follow_up_vencido", "A próxima ação registrada para este caso está vencida.", lastFollowUp.id);
         }
       }
-      if (stage >= 2 && !cell) addSignal("sem_celula", "A Pessoa está em uma etapa que já recomenda integração em célula.");
-      if (stage <= 6 && !person.discipledById) addSignal("sem_discipulador", "A etapa atual não possui discipulador registrado.");
+      if (!isPastor && stage >= 2 && !cell) addSignal("sem_celula", "A Pessoa está em uma etapa que já recomenda integração em célula.");
+      if (!isPastor && stage <= 6 && !person.discipledById) addSignal("sem_discipulador", "A etapa atual não possui discipulador registrado.");
       const recentAttendance = (attendanceByPerson.get(person.id) ?? []).sort((a, b) => Number(new Date(b.date)) - Number(new Date(a.date)));
       if (recentAttendance.length >= 2 && recentAttendance.slice(0, 2).every((item) => item.status === "ausente")) {
         addSignal("ausencias_recentes", "As duas últimas marcações registradas foram ausências.");
       }
       const prayerCount = unansweredPrayerByPerson.get(person.id) ?? 0;
       if (prayerCount > 0) addSignal("pedido_oracao_pendente", `${prayerCount} pedido(s) de oração aguardam retorno registrado.`);
-      if (stage >= 2 && enrollments.length > 0 && !enrolledPersonIds.has(person.id)) addSignal("sem_formacao", "Não há matrícula em formação ativa ou concluída registrada.");
+      if (!isPastor && stage >= 2 && enrollments.length > 0 && !enrolledPersonIds.has(person.id)) addSignal("sem_formacao", "Não há matrícula em formação ativa ou concluída registrada.");
 
       const score = Math.min(100, signals.reduce((total, signal) => total + signalMeta[signal.key].weight, 0));
       const priority: SpiritualRadarPriority = signals.some((signal) => signal.severity === "alta") ? "alta" : signals.some((signal) => signal.severity === "media") ? "media" : "normal";
