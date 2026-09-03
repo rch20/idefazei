@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { ArrowRight, BriefcaseBusiness, Cake, Clock3, HeartHandshake, MessageCircle, Plus, Search, Send, ShieldCheck, User, Users } from "lucide-react";
+import { AlertCircle, ArrowRight, BriefcaseBusiness, Cake, CheckCircle2, Circle, Clock3, HeartHandshake, MessageCircle, Plus, Search, Send, ShieldCheck, User, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -24,6 +24,21 @@ const STAGES_LABELS: Record<string, string> = {
   lideranca: "Liderança",
   multiplicador: "Multiplicador",
 };
+
+const JOURNEY_STAGES = [
+  "nova_alma",
+  "consolidacao",
+  "fundamentos",
+  "celula",
+  "batismo",
+  "encontro_com_deus",
+  "escola_de_lideres",
+  "lideranca",
+  "multiplicador",
+] as const;
+
+type JourneyStage = typeof JOURNEY_STAGES[number];
+type JourneyStatus = "concluida" | "pendente" | "nao_registrada";
 
 const STAGE_BADGE: Record<string, string> = {
   nova_alma: "badge-nova-alma",
@@ -137,7 +152,9 @@ export default function Pessoas() {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(defaultForm);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
-  const [personSection, setPersonSection] = useState<"resumo" | "participacoes" | "cuidado" | "historico">("resumo");
+  const [journeyNoteStage, setJourneyNoteStage] = useState<JourneyStage | null>(null);
+  const [journeyNote, setJourneyNote] = useState("");
+  const [personSection, setPersonSection] = useState<"resumo" | "jornada" | "participacoes" | "cuidado" | "historico">("resumo");
   const [birthdaysOpen, setBirthdaysOpen] = useState(false);
   const [birthdayView, setBirthdayView] = useState<"today" | "month">("today");
   const currentDate = useMemo(() => new Date(), []);
@@ -187,6 +204,10 @@ export default function Pessoas() {
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id) }
   );
+  const journeyQuery = trpc.people.journey.useQuery(
+    { churchId, id: selectedPerson?.id ?? 0 },
+    { enabled: Boolean(selectedPerson?.id) }
+  );
   const cellHistory = trpc.cells.membershipHistory.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id) }
@@ -229,6 +250,18 @@ export default function Pessoas() {
     },
     onError: (error) => toast.error(error.message || "Não foi possível enviar o encaminhamento."),
   });
+  const updateJourneyStage = trpc.people.updateJourneyStage.useMutation({
+    onSuccess: async (_, variables) => {
+      toast.success(variables.status === "concluida" ? "Etapa marcada como concluída." : variables.status === "pendente" ? "Etapa marcada como pendente." : "Etapa redefinida como não registrada.");
+      await Promise.all([journeyQuery.refetch(), refetch()]);
+      setJourneyNoteStage(null);
+      setJourneyNote("");
+      if (variables.setCurrentStage) {
+        setSelectedPerson((current: any) => current ? { ...current, discipleshipStage: variables.stage } : current);
+      }
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar a etapa."),
+  });
   const assignCell = trpc.cells.assignPerson.useMutation({
     onSuccess: async (result) => {
       toast.success(result.transferred ? "Pessoa transferida de célula com histórico preservado." : "Pessoa integrada à célula.");
@@ -265,6 +298,9 @@ export default function Pessoas() {
       selectedAttention.nextStep === "Enviar para célula" ? canManageCellParticipation : canManageJourney
     )
   );
+  const journeyProgressByStage = new Map(
+    (journeyQuery.data?.progress ?? []).map((item) => [item.stage, item] as const)
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(location.split("?")[1] ?? "");
@@ -278,8 +314,12 @@ export default function Pessoas() {
   useEffect(() => {
     const params = new URLSearchParams(location.split("?")[1] ?? "");
     const personId = Number(params.get("personId"));
+    const requestedSection = params.get("section");
     const person = (people ?? []).find((candidate) => candidate.id === personId);
     if (person && selectedPerson?.id !== person.id) openPersonJourney(person);
+    if (requestedSection && ["resumo", "jornada", "participacoes", "cuidado", "historico"].includes(requestedSection)) {
+      setPersonSection(requestedSection as typeof personSection);
+    }
   }, [location, people, selectedPerson?.id]);
 
   const careTimeline = selectedPerson
@@ -304,6 +344,11 @@ export default function Pessoas() {
         ...(selectedAttention?.consolidation?.prayerDate
           ? [{ date: selectedAttention.consolidation.prayerDate, title: "Oração realizada", detail: "Ação de consolidação registrada." }]
           : []),
+        ...(journeyQuery.data?.events ?? []).map((event) => ({
+          date: event.createdAt,
+          title: `${STAGES_LABELS[event.stage] ?? event.stage}: ${event.status === "concluida" ? "Concluída" : event.status === "pendente" ? "Pendente" : "Não registrada"}`,
+          detail: `${event.actorName ?? "Usuário da igreja"}${event.notes ? ` · ${event.notes}` : ""}`,
+        })),
         ...(cellHistory.data ?? []).map((membership) => ({
           date: membership.joinedAt,
           title: membership.active ? "Integrada à Célula" : "Histórico de Célula",
@@ -316,10 +361,24 @@ export default function Pessoas() {
 
   function openPersonJourney(person: any) {
     setSelectedPerson(person);
+    setJourneyNoteStage(null);
+    setJourneyNote("");
     setPersonSection("resumo");
     setCareForm({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
     setSelectedCellId("");
     setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "" });
+  }
+
+  function closePersonJourney() {
+    setSelectedPerson(null);
+    setJourneyNoteStage(null);
+    setJourneyNote("");
+    const [path, queryString] = location.split("?");
+    const params = new URLSearchParams(queryString ?? "");
+    params.delete("personId");
+    params.delete("section");
+    const query = params.toString();
+    if (queryString?.includes("personId") || queryString?.includes("section")) navigate(`${path}${query ? `?${query}` : ""}`);
   }
 
   function saveCareAssignment() {
@@ -652,16 +711,17 @@ export default function Pessoas() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(selectedPerson)} onOpenChange={(nextOpen) => !nextOpen && setSelectedPerson(null)}>
+      <Dialog open={Boolean(selectedPerson)} onOpenChange={(nextOpen) => !nextOpen && closePersonJourney()}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display text-navy"><HeartHandshake className="h-5 w-5 text-rose-600" />{selectedPerson?.fullName}</DialogTitle>
             <DialogDescription>Uma Pessoa, várias participações e um histórico único de cuidado.</DialogDescription>
           </DialogHeader>
 
-          <div role="tablist" aria-label="Seções da ficha da Pessoa" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 sm:grid-cols-4">
+          <div role="tablist" aria-label="Seções da ficha da Pessoa" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 sm:grid-cols-5">
             {[
               ["resumo", "Resumo"],
+              ["jornada", "Jornada"],
               ["participacoes", "Participações"],
               ["cuidado", "Cuidado"],
               ["historico", "Histórico"],
@@ -678,6 +738,108 @@ export default function Pessoas() {
               </button>
             ))}
           </div>
+
+          {personSection === "jornada" && selectedPerson && (
+            <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-navy">Jornada do discípulo</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">Marque cada etapa sem precisar avançar por uma sequência rígida. Pendente indica acompanhamento, não reprovação.</p>
+                </div>
+                <Badge variant="outline" className="w-fit text-[10px]">Atual: {STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</Badge>
+              </div>
+
+              {journeyQuery.isLoading ? <div className="mt-4 space-y-2">{JOURNEY_STAGES.slice(0, 5).map((stage) => <div key={stage} className="h-12 animate-pulse rounded-lg bg-background/70" />)}</div> : (
+                <div className="mt-4 space-y-2">
+                  {JOURNEY_STAGES.map((stage: JourneyStage) => {
+                    const progress = journeyProgressByStage.get(stage);
+                    const status: JourneyStatus = progress?.status ?? "nao_registrada";
+                    const isCurrent = selectedPerson.discipleshipStage === stage;
+                    const statusLabel = status === "concluida" ? "Concluída" : status === "pendente" ? "Pendente" : "Não registrada";
+                    const statusClass = status === "concluida" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : status === "pendente" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-border bg-background/70 text-muted-foreground";
+                    const noteForUpdate = journeyNoteStage === stage ? journeyNote.trim() || undefined : progress?.notes ?? undefined;
+                    return (
+                      <div key={stage} className={`rounded-lg border p-3 ${statusClass}`}>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 items-center gap-3">
+                            {status === "concluida" ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : status === "pendente" ? <AlertCircle className="h-5 w-5 shrink-0" /> : <Circle className="h-5 w-5 shrink-0" />}
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold">{STAGES_LABELS[stage]}</p>
+                              <p className="text-[11px] opacity-75">{isCurrent ? "Etapa atual · " : ""}{statusLabel}{progress?.notes ? ` · ${progress.notes}` : ""}</p>
+                            </div>
+                          </div>
+                          {canManageJourney && (
+                            <div className="flex shrink-0 flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 text-[11px] text-navy"
+                                onClick={() => {
+                                  setJourneyNoteStage(stage);
+                                  setJourneyNote(progress?.notes ?? "");
+                                }}
+                              >
+                                {journeyNoteStage === stage ? "Fechar nota" : "Observação"}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8 bg-background/70 text-[11px]"
+                                disabled={updateJourneyStage.isPending}
+                                onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: status === "concluida" ? "pendente" : "concluida", notes: noteForUpdate })}
+                              >
+                                {status === "concluida" ? "Marcar pendente" : "Concluir etapa"}
+                              </Button>
+                              {status === "nao_registrada" && <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8 bg-background/70 text-[11px]"
+                                disabled={updateJourneyStage.isPending}
+                                onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: "pendente", notes: noteForUpdate })}
+                              >
+                                Marcar pendente
+                              </Button>}
+                              {status !== "nao_registrada" && <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 text-[11px] text-navy"
+                                disabled={updateJourneyStage.isPending}
+                                onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: "nao_registrada", notes: noteForUpdate })}
+                              >
+                                Não registrada
+                              </Button>}
+                              {!isCurrent && <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 text-[11px] text-navy"
+                                disabled={updateJourneyStage.isPending}
+                                onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status, notes: noteForUpdate, setCurrentStage: true })}
+                              >
+                                Tornar atual
+                              </Button>}
+                            </div>
+                          )}
+                        </div>
+                        {canManageJourney && journeyNoteStage === stage && (
+                          <div className="mt-3 border-t border-current/10 pt-3">
+                            <Label htmlFor={`journey-note-${stage}`} className="text-[11px]">Observação desta atualização</Label>
+                            <Textarea id={`journey-note-${stage}`} value={journeyNote} onChange={(event) => setJourneyNote(event.target.value)} maxLength={1000} rows={2} className="mt-1 bg-background text-xs" placeholder="Ex.: participou do encontro e pediu acompanhamento." />
+                            <p className="mt-1 text-[10px] opacity-70">A observação fica no evento do histórico; limite de 1.000 caracteres.</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {!canManageJourney && <p className="mt-3 text-xs text-muted-foreground">Você pode consultar esta jornada, mas a atualização é feita pela liderança responsável.</p>}
+            </section>
+          )}
 
           {personSection === "resumo" && selectedPerson && <div className="grid gap-2 sm:grid-cols-4">
             <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Jornada</p><p className="mt-1 text-sm font-semibold text-navy">{STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</p></div>

@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, createEvent, createManualEventRegistration, getEventAttendanceReport, updateEventRegistrationPayment, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, createEvent, createManualEventRegistration, getEventAttendanceReport, updateEventRegistrationPayment, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getDiscipleshipStageEvents, getDiscipleshipStageProgress, upsertDiscipleshipStageProgress, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -125,6 +125,9 @@ vi.mock("./db", () => ({
   getPeopleByChurch: vi.fn().mockResolvedValue([]),
   findPossiblePeopleByIdentity: vi.fn().mockResolvedValue([]),
   getPersonById: vi.fn().mockResolvedValue({ id: 10, churchId: 100, fullName: "Líder Teste", active: true }),
+  getDiscipleshipStageProgress: vi.fn().mockResolvedValue([]),
+  getDiscipleshipStageEvents: vi.fn().mockResolvedValue([]),
+  upsertDiscipleshipStageProgress: vi.fn().mockImplementation(async (input: any) => ({ id: 1, ...input })),
   createPerson: vi.fn().mockResolvedValue({ id: 1 }),
   updatePerson: vi.fn().mockResolvedValue({ id: 1 }),
   getCurrentCareAssignment: vi.fn().mockResolvedValue(null),
@@ -352,6 +355,9 @@ describe("Fluxo completo de discipulado", () => {
       active: true,
     });
     (getComplementaryRolesByChurchUser as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (getDiscipleshipStageProgress as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (getDiscipleshipStageEvents as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+    (upsertDiscipleshipStageProgress as ReturnType<typeof vi.fn>).mockReset().mockImplementation(async (input: any) => ({ id: 1, ...input }));
     (getMinistriesByChurch as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([{ id: 7, churchId: CHURCH_ID, name: "Ministério de Consolidação e Visitas", type: "consolidacao", leaderId: null, active: true }]);
     (getDepartmentById as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue({ id: 31, churchId: CHURCH_ID, ministryId: 7, name: "Vocal", leaderId: 10, active: true });
     (getDepartmentsByMinistry as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([{ id: 31, churchId: CHURCH_ID, ministryId: 7, name: "Vocal", leaderId: 10, active: true }]);
@@ -510,6 +516,107 @@ describe("Fluxo completo de discipulado", () => {
       await expect(
         caller.people.update({ id: 10, churchId: CHURCH_ID, discipleshipStage: "fundamentos" })
       ).rejects.toThrow("sob sua responsabilidade pastoral");
+    });
+
+    it("atualiza a etapa autorizada, registra observação e não cria outra Pessoa", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.people.updateJourneyStage({
+        churchId: CHURCH_ID,
+        id: 10,
+        stage: "fundamentos",
+        status: "concluida",
+        notes: "Participou da primeira aula.",
+        setCurrentStage: true,
+      })).resolves.toMatchObject({ stage: "fundamentos", status: "concluida" });
+
+      expect(upsertDiscipleshipStageProgress).toHaveBeenCalledWith({
+        churchId: CHURCH_ID,
+        personId: 10,
+        stage: "fundamentos",
+        status: "concluida",
+        notes: "Participou da primeira aula.",
+        updatedByChurchUserId: 1,
+        setCurrentStage: true,
+      });
+      expect(updatePerson).not.toHaveBeenCalled();
+      expect((await import("./db")).createPerson).not.toHaveBeenCalled();
+    });
+
+    it("bloqueia Jornada de outra igreja antes de consultar ou alterar a Pessoa", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.people.journey({ churchId: 999, id: 10 })).rejects.toThrow("Acesso negado a esta igreja");
+      expect(getDiscipleshipStageProgress).not.toHaveBeenCalled();
+      expect(getDiscipleshipStageEvents).not.toHaveBeenCalled();
+    });
+
+    it("bloqueia o líder de atualizar uma Pessoa fora de sua Célula", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 31,
+        userId: 10,
+        churchId: CHURCH_ID,
+        personId: 77,
+        role: "lider",
+        active: true,
+      });
+      (canChurchUserManageJourney as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.people.updateJourneyStage({
+        churchId: CHURCH_ID,
+        id: 10,
+        stage: "celula",
+        status: "pendente",
+      })).rejects.toThrow("sob sua responsabilidade pastoral");
+      expect(upsertDiscipleshipStageProgress).not.toHaveBeenCalled();
+    });
+
+    it("lê a Jornada somente quando a Pessoa está no escopo calculado", async () => {
+      (getJourneyManagedPersonIds as ReturnType<typeof vi.fn>).mockResolvedValueOnce([10]);
+      (getDiscipleshipStageProgress as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ stage: "fundamentos", status: "concluida", notes: null }]);
+      (getDiscipleshipStageEvents as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ stage: "fundamentos", status: "concluida", actorName: "Pastor Teste", createdAt: new Date(), notes: "Aula concluída" }]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.people.journey({ churchId: CHURCH_ID, id: 10 })).resolves.toMatchObject({
+        personId: 10,
+        progress: [{ stage: "fundamentos", status: "concluida" }],
+        events: [{ actorName: "Pastor Teste" }],
+      });
+      expect(getDiscipleshipStageProgress).toHaveBeenCalledWith(CHURCH_ID, 10);
+      expect(getDiscipleshipStageEvents).toHaveBeenCalledWith(CHURCH_ID, 10);
+    });
+
+    it("rejeita a leitura de uma Pessoa fora da Célula do líder", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValue({
+        id: 31,
+        userId: 10,
+        churchId: CHURCH_ID,
+        personId: 77,
+        role: "lider",
+        active: true,
+      });
+      (getJourneyManagedPersonIds as ReturnType<typeof vi.fn>).mockReset().mockResolvedValue([]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.people.journey({ churchId: CHURCH_ID, id: 10 })).rejects.toThrow("Você não tem acesso a esta Pessoa");
+      expect(getDiscipleshipStageProgress).not.toHaveBeenCalled();
+    });
+
+    it("bloqueia membro comum de consultar a Ficha do discípulo", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 41,
+        userId: 10,
+        churchId: CHURCH_ID,
+        personId: 10,
+        role: "membro",
+        active: true,
+      });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.people.journey({ churchId: CHURCH_ID, id: 10 })).rejects.toThrow("Ficha do discípulo é restrita");
+      expect(getDiscipleshipStageProgress).not.toHaveBeenCalled();
     });
 
     it("rejeita Pessoa sem função ativa de Consolidador", async () => {

@@ -218,6 +218,9 @@ import {
   linkSoulToPerson,
   setCurrentCareAssignment,
   updatePerson,
+  getDiscipleshipStageProgress,
+  getDiscipleshipStageEvents,
+  upsertDiscipleshipStageProgress,
   updateSoul,
   getAllChurches,
   getAllChurchesAdmin,
@@ -615,6 +618,15 @@ async function requireScopedPersonRead(userId: number, churchId: number, personI
   if (accessibleIds !== null && !accessibleIds.has(personId)) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta Pessoa." });
   }
+}
+
+async function requireJourneyReadPermission(userId: number, churchId: number, personId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, actor);
+  if (!roles.some((role) => PASTOR_ROLES.has(role) || ["lider", "supervisor", "consolidador"].includes(role))) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "A Ficha do discípulo é restrita à liderança e aos responsáveis pelo cuidado." });
+  }
+  await requireScopedPersonRead(userId, churchId, personId);
 }
 
 /**
@@ -1194,6 +1206,54 @@ const peopleRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta Pessoa." });
       }
       return getPersonById(input.id, input.churchId);
+    }),
+
+  journey: protectedProcedure
+    .input(z.object({ id: z.number().int().positive(), churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireJourneyReadPermission(ctx.user.id, input.churchId, input.id);
+      const person = await getPersonById(input.id, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada nesta igreja." });
+      const [progress, events] = await Promise.all([
+        getDiscipleshipStageProgress(input.churchId, input.id),
+        getDiscipleshipStageEvents(input.churchId, input.id),
+      ]);
+      return { personId: person.id, currentStage: person.discipleshipStage, progress, events };
+    }),
+
+  updateJourneyStage: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      churchId: z.number().int().positive(),
+      stage: z.enum([
+        "nova_alma",
+        "consolidacao",
+        "fundamentos",
+        "celula",
+        "batismo",
+        "encontro_com_deus",
+        "escola_de_lideres",
+        "lideranca",
+        "multiplicador",
+      ]),
+      status: z.enum(["concluida", "pendente", "nao_registrada"]),
+      notes: z.string().max(1000).optional(),
+      setCurrentStage: z.boolean().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireJourneyStagePermission(ctx.user.id, input.churchId, input.id);
+      const person = await getPersonById(input.id, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada nesta igreja." });
+      const result = await upsertDiscipleshipStageProgress({
+        churchId: input.churchId,
+        personId: input.id,
+        stage: input.stage,
+        status: input.status,
+        notes: input.notes,
+        updatedByChurchUserId: actor.id,
+        setCurrentStage: input.setCurrentStage,
+      });
+      return result;
     }),
 
   create: protectedProcedure

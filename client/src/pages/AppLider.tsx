@@ -338,8 +338,8 @@ export default function AppLider() {
                             {person.discipleshipStage}
                           </Badge>
                         )}
-                        <Link href={`/app/pessoas?personId=${person.id}`} className="rounded-md border border-[#1e3a5f]/15 px-2 py-1 text-[11px] font-medium text-[#1e3a5f] hover:bg-[#1e3a5f]/5">
-                          Cuidar
+                        <Link href={`/app/pessoas?personId=${person.id}&section=jornada`} className="rounded-md border border-[#1e3a5f]/15 px-2 py-1 text-[11px] font-medium text-[#1e3a5f] hover:bg-[#1e3a5f]/5">
+                          Ficha
                         </Link>
                       </div>
                     </div>

@@ -74,6 +74,8 @@ import {
   notificationDeliveries,
   notificationEvents,
   people,
+  discipleshipStageProgress,
+  discipleshipStageEvents,
   prayerRequests,
   scheduleItems,
   startupDiagnostics,
@@ -1046,6 +1048,102 @@ export async function updatePerson(id: number, churchId: number, data: Partial<t
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db.update(people).set(data).where(and(eq(people.id, id), eq(people.churchId, churchId)));
+}
+
+export async function getDiscipleshipStageProgress(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(discipleshipStageProgress)
+    .where(and(eq(discipleshipStageProgress.churchId, churchId), eq(discipleshipStageProgress.personId, personId)))
+    .orderBy(discipleshipStageProgress.id);
+}
+
+export async function getDiscipleshipStageEvents(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: discipleshipStageEvents.id,
+      churchId: discipleshipStageEvents.churchId,
+      personId: discipleshipStageEvents.personId,
+      stage: discipleshipStageEvents.stage,
+      status: discipleshipStageEvents.status,
+      notes: discipleshipStageEvents.notes,
+      changedByChurchUserId: discipleshipStageEvents.changedByChurchUserId,
+      createdAt: discipleshipStageEvents.createdAt,
+      actorName: churchUsers.name,
+    })
+    .from(discipleshipStageEvents)
+    .leftJoin(churchUsers, and(eq(discipleshipStageEvents.changedByChurchUserId, churchUsers.id), eq(churchUsers.churchId, churchId)))
+    .where(and(eq(discipleshipStageEvents.churchId, churchId), eq(discipleshipStageEvents.personId, personId)))
+    .orderBy(discipleshipStageEvents.id);
+}
+
+export async function upsertDiscipleshipStageProgress(input: {
+  churchId: number;
+  personId: number;
+  stage: "nova_alma" | "consolidacao" | "fundamentos" | "celula" | "batismo" | "encontro_com_deus" | "escola_de_lideres" | "lideranca" | "multiplicador";
+  status: "concluida" | "pendente" | "nao_registrada";
+  notes?: string | null;
+  updatedByChurchUserId: number;
+  setCurrentStage?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const completedAt = input.status === "concluida" ? new Date() : null;
+  return db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ id: discipleshipStageProgress.id })
+      .from(discipleshipStageProgress)
+      .where(
+        and(
+          eq(discipleshipStageProgress.churchId, input.churchId),
+          eq(discipleshipStageProgress.personId, input.personId),
+          eq(discipleshipStageProgress.stage, input.stage)
+        )
+      )
+      .limit(1);
+
+    const data = {
+      status: input.status,
+      notes: input.notes?.trim() || null,
+      completedAt,
+      updatedByChurchUserId: input.updatedByChurchUserId,
+    };
+
+    let state: { id: number; churchId: number; personId: number; stage: typeof input.stage; status: typeof input.status; notes: string | null; completedAt: Date | null; updatedByChurchUserId: number };
+    if (existing[0]) {
+      await tx.update(discipleshipStageProgress).set(data).where(eq(discipleshipStageProgress.id, existing[0].id));
+      state = { id: existing[0].id, churchId: input.churchId, personId: input.personId, stage: input.stage, ...data };
+    } else {
+      const inserted = await tx.insert(discipleshipStageProgress).values({
+        churchId: input.churchId,
+        personId: input.personId,
+        stage: input.stage,
+        ...data,
+      });
+      const id = Number((inserted[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      state = { id, churchId: input.churchId, personId: input.personId, stage: input.stage, ...data };
+    }
+
+    const eventInserted = await tx.insert(discipleshipStageEvents).values({
+      churchId: input.churchId,
+      personId: input.personId,
+      stage: input.stage,
+      status: input.status,
+      notes: data.notes,
+      changedByChurchUserId: input.updatedByChurchUserId,
+    });
+    const eventId = Number((eventInserted[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (input.setCurrentStage) {
+      await tx.update(people)
+        .set({ discipleshipStage: input.stage })
+        .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)));
+    }
+    return { ...state, eventId };
+  });
 }
 
 // ─── SOULS (GANHAR ALMAS) ─────────────────────────────────────────────────────

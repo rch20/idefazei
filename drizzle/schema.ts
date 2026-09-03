@@ -278,6 +278,64 @@ export const people = mysqlTable("people", {
 export type Person = typeof people.$inferSelect;
 export type InsertPerson = typeof people.$inferInsert;
 
+/** Status resumido de cada etapa da jornada formativa da Pessoa. */
+export const discipleshipStageProgress = mysqlTable("discipleship_stage_progress", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  personId: int("personId").notNull(),
+  stage: mysqlEnum("stage", [
+    "nova_alma",
+    "consolidacao",
+    "fundamentos",
+    "celula",
+    "batismo",
+    "encontro_com_deus",
+    "escola_de_lideres",
+    "lideranca",
+    "multiplicador",
+  ]).notNull(),
+  status: mysqlEnum("status", ["concluida", "pendente", "nao_registrada"]).notNull().default("nao_registrada"),
+  notes: text("notes"),
+  completedAt: timestamp("completedAt"),
+  updatedByChurchUserId: int("updatedByChurchUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("discipleship_stage_progress_person_stage_idx").on(table.churchId, table.personId, table.stage),
+  index("discipleship_stage_progress_church_person_idx").on(table.churchId, table.personId),
+]);
+
+export type DiscipleshipStageProgress = typeof discipleshipStageProgress.$inferSelect;
+export type InsertDiscipleshipStageProgress = typeof discipleshipStageProgress.$inferInsert;
+
+/** Eventos imutáveis de mudança da Jornada, para auditoria e linha do tempo. */
+export const discipleshipStageEvents = mysqlTable("discipleship_stage_events", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  personId: int("personId").notNull(),
+  stage: mysqlEnum("stage", [
+    "nova_alma",
+    "consolidacao",
+    "fundamentos",
+    "celula",
+    "batismo",
+    "encontro_com_deus",
+    "escola_de_lideres",
+    "lideranca",
+    "multiplicador",
+  ]).notNull(),
+  status: mysqlEnum("status", ["concluida", "pendente", "nao_registrada"]).notNull(),
+  notes: text("notes"),
+  changedByChurchUserId: int("changedByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("discipleship_stage_events_church_person_idx").on(table.churchId, table.personId),
+  index("discipleship_stage_events_person_created_idx").on(table.personId, table.createdAt),
+]);
+
+export type DiscipleshipStageEvent = typeof discipleshipStageEvents.$inferSelect;
+export type InsertDiscipleshipStageEvent = typeof discipleshipStageEvents.$inferInsert;
+
 // ─── FAMÍLIAS ─────────────────────────────────────────────────────────────────
 
 export const families = mysqlTable("families", {

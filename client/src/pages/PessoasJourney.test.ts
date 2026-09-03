@@ -6,17 +6,48 @@ const root = resolve(__dirname, "../../..");
 const pageSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
+const leaderSource = readFileSync(resolve(root, "client/src/pages/AppLider.tsx"), "utf8");
 
 describe("Ficha da Pessoa — jornada e escopo", () => {
-  it("separa a ficha em resumo, participações, cuidado e histórico", () => {
+  it("separa a ficha em resumo, jornada, participações, cuidado e histórico", () => {
     expect(pageSource).toContain('aria-label="Seções da ficha da Pessoa"');
     expect(pageSource).toContain('["resumo", "Resumo"]');
+    expect(pageSource).toContain('["jornada", "Jornada"]');
     expect(pageSource).toContain('["participacoes", "Participações"]');
     expect(pageSource).toContain('["cuidado", "Cuidado"]');
     expect(pageSource).toContain('["historico", "Histórico"]');
     expect(pageSource).toContain('personSection === "resumo"');
+    expect(pageSource).toContain('personSection === "jornada"');
     expect(pageSource).toContain('personSection === "cuidado"');
     expect(pageSource).toContain('personSection === "historico"');
+  });
+
+  it("exibe estados claros e ações não lineares para cada etapa", () => {
+    expect(pageSource).toContain("trpc.people.journey.useQuery");
+    expect(pageSource).toContain("trpc.people.updateJourneyStage.useMutation");
+    expect(pageSource).toContain('status === "concluida"');
+    expect(pageSource).toContain('status === "pendente"');
+    expect(pageSource).toContain('Não registrada');
+    expect(pageSource).toContain("Concluir etapa");
+    expect(pageSource).toContain("Tornar atual");
+    expect(pageSource).toContain("Observação desta atualização");
+  });
+
+  it("preserva eventos auditáveis e mantém a proteção server-side", () => {
+    expect(routerSource).toContain("getDiscipleshipStageEvents");
+    expect(routerSource).toContain("updateJourneyStage: protectedProcedure");
+    expect(dbSource).toContain("discipleshipStageEvents");
+    expect(dbSource).toContain("db.transaction(async (tx)");
+    expect(dbSource).toContain("changedByChurchUserId");
+  });
+
+  it("abre a ficha na Jornada pelo App do Líder e limpa a URL ao fechar", () => {
+    expect(leaderSource).toContain("section=jornada");
+    expect(leaderSource).toContain(">\n                          Ficha\n");
+    expect(pageSource).toContain('params.get("section")');
+    expect(pageSource).toContain("function closePersonJourney()");
+    expect(pageSource).toContain('params.delete("personId")');
+    expect(pageSource).toContain('params.delete("section")');
   });
 
   it("não expõe ações pastorais ministeriais para perfis não pastorais", () => {
