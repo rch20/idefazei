@@ -22,6 +22,7 @@ const Planos = lazy(() => import("./pages/Planos"));
 const Recursos = lazy(() => import("./pages/Recursos"));
 const Contato = lazy(() => import("./pages/Contato"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Inicio = lazy(() => import("./pages/Inicio"));
 const GanharAlmas = lazy(() => import("./pages/GanharAlmas"));
 const Consolidacao = lazy(() => import("./pages/Consolidacao"));
 const FunilDiscipulado = lazy(() => import("./pages/FunilDiscipulado"));
@@ -130,7 +131,14 @@ function Router() {
       <Route path="/visitante" component={PortalVisitante} />
       <Route path="/cadastro-sucesso" component={CadastroSucesso} />
 
-      {/* ── App — Dashboard ── */}
+      {/* ── App — Home interna global ── */}
+      <Route path="/app/inicio">
+        <AppPage title="Início">
+          <Inicio />
+        </AppPage>
+      </Route>
+
+      {/* ── App — Dashboard executivo ── */}
       <Route path="/app/dashboard">
         <AppPage title="Visão geral" requiredAccess="isExecutive">
           <Dashboard />

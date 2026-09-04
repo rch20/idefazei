@@ -64,26 +64,16 @@ export default function LoginIgreja() {
     resolver: zodResolver(loginSchema),
   });
 
-  const utils = trpc.useUtils();
   const loginMutation = trpc.churchAuth.login.useMutation({
-    onSuccess: async (data: { token: string; user: { id: number; name: string | null; role: string; churchId: number } }) => {
+    onSuccess: (data: { token: string; user: { id: number; name: string | null; role: string; churchId: number } }) => {
       // Armazena o token JWT no localStorage
       localStorage.removeItem("admin_token");
       clearChurchSession();
       const storage = rememberMe ? localStorage : sessionStorage;
       storage.setItem("church_token", data.token);
       storage.setItem("church_user", JSON.stringify(data.user));
-      // A saudação é exibida no topo do Dashboard para não cobrir a navegação móvel.
-      // Login e botão Início usam a mesma página inicial baseada no acesso efetivo.
-      const fallbackAccess = { actorRole: data.user.role, roles: [data.user.role] };
-      let homePath = getChurchHomePath(fallbackAccess);
-      try {
-        const accessSummary = await utils.churchAuth.accessSummary.fetch({ churchId: data.user.churchId });
-        homePath = getChurchHomePath(accessSummary);
-      } catch {
-        // O login continua disponível mesmo se a consulta complementar falhar.
-      }
-      navigate(homePath);
+      // Todos os perfis começam na Home interna global; as áreas específicas continuam protegidas.
+      navigate(getChurchHomePath({ actorRole: data.user.role, roles: [data.user.role] }));
     },
     onError: (err: { message?: string }) => {
       toast.error(err.message || "Email ou senha inválidos.");

@@ -101,6 +101,7 @@ export const useChurch = () => useContext(ChurchContext);
 type NavItem = { icon: typeof Home; label: string; path: string; group: string; roles?: string[]; accessKey?: keyof ChurchAccessSummary; requiresEncounterAccess?: boolean };
 
 const navItems: NavItem[] = [
+  { icon: Home, label: "Início", path: "/app/inicio", group: "principal" },
   { icon: LayoutDashboard, label: "Visão geral", path: "/app/dashboard", group: "principal", accessKey: "isExecutive" },
   { icon: Heart, label: "Cuidado", path: "/app/cuidado", group: "principal", accessKey: "isPastoralWorker" },
   { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "principal", accessKey: "isExecutive" },
