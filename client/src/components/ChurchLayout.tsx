@@ -226,6 +226,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, logout } = useChurchAuth();
   const { churchName, logoUrl, accessSummary } = useChurch();
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [expandedGroup, setExpandedGroup] = useState<string | null>("principal");
   const currentRole = user?.role ?? "membro";
   const effectiveRoles = Array.from(new Set([currentRole, ...(accessSummary?.roles ?? [])]));
@@ -255,14 +256,14 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Floating mobile menu; desktop keeps the persistent sidebar. */}
       <aside
         id="church-sidebar-drawer"
         className={`
-          fixed top-0 left-0 h-dvh z-50 w-64 flex flex-col
-          sidebar-sacred transition-transform duration-300 ease-out
-          lg:relative lg:translate-x-0 lg:z-auto
-          ${open ? "translate-x-0" : "-translate-x-full"}
+          fixed left-3 right-3 top-16 bottom-24 z-50 flex min-h-0 w-auto max-w-md flex-col overflow-hidden rounded-2xl
+          border border-white/10 shadow-2xl shadow-navy/30 sidebar-sacred transition-[transform,opacity] duration-200 ease-out
+          lg:relative lg:inset-auto lg:z-auto lg:h-dvh lg:max-h-none lg:w-64 lg:max-w-none lg:rounded-none lg:border-0 lg:shadow-none
+          ${open ? "translate-x-0 opacity-100" : "pointer-events-none -translate-x-3 opacity-0 lg:pointer-events-auto lg:translate-x-0 lg:opacity-100"}
         `}
       >
         {/* Header */}
@@ -371,39 +372,48 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           </div>
         )}
 
-        {/* User footer */}
-        <div className="px-3 py-4 border-t border-white/10">
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg">
-            <div className="w-8 h-8 rounded-full bg-gold/20 flex items-center justify-center flex-shrink-0">
-              <span className="text-xs font-bold text-gold">
-                {user?.name?.charAt(0)?.toUpperCase() ?? "U"}
-              </span>
+        {/* Account footer: compact avatar on mobile, with profile details on demand. */}
+        <div className="relative px-3 py-4 border-t border-white/10">
+          {profileOpen && (
+            <div role="dialog" aria-label="Conta do usuário" className="absolute bottom-full left-3 right-3 z-10 mb-2 rounded-xl border border-white/15 bg-navy/95 p-3 shadow-2xl backdrop-blur">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/20 text-sm font-bold text-gold" aria-hidden="true">
+                  {user?.name?.charAt(0)?.toUpperCase() ?? "U"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-white">{user?.name ?? "Usuário"}</p>
+                  <p className="truncate text-xs text-white/55">{user?.email ?? ""}</p>
+                </div>
+                <button type="button" onClick={() => setProfileOpen(false)} className="rounded-md p-1 text-white/45 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70" aria-label="Fechar conta">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1 border-t border-white/10 pt-3">
+                {effectiveRoles.map((role) => (
+                  <span key={role} className="rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-medium text-gold">
+                    {roleLabels[role] ?? role}
+                  </span>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileOpen(false);
+                  onClose();
+                  setLogoutOpen(true);
+                }}
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+              >
+                <LogOut className="h-4 w-4" aria-hidden="true" />
+                Sair da plataforma
+              </button>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user?.name ?? "Usuário"}</p>
-              <p className="text-xs text-white/40 truncate">{user?.email ?? ""}</p>
-            </div>
-            <button
-              onClick={() => {
-                onClose();
-                setLogoutOpen(true);
-              }}
-              className="text-white/30 hover:text-white/70 transition-colors"
-              title="Sair"
-              aria-label="Sair da plataforma"
-            >
-              <LogOut className="w-4 h-4" />
+          )}
+          <div className="flex items-center justify-between px-3 py-1">
+            <button type="button" onClick={() => setProfileOpen((open) => !open)} aria-expanded={profileOpen} aria-haspopup="dialog" aria-label={`Abrir conta de ${user?.name ?? "usuário"}`} title="Abrir conta" className="flex h-10 w-10 items-center justify-center rounded-full bg-gold/20 text-sm font-bold text-gold transition-colors hover:bg-gold/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70">
+              {user?.name?.charAt(0)?.toUpperCase() ?? "U"}
             </button>
-          </div>
-          <div className="mt-2 rounded-lg bg-white/5 px-3 py-2">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/35">Suas atuações</p>
-            <div className="mt-1.5 flex flex-wrap gap-1">
-              {effectiveRoles.map((role) => (
-                <span key={role} className="rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-medium text-gold">
-                  {roleLabels[role] ?? role}
-                </span>
-              ))}
-            </div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/35">Conta</p>
           </div>
         </div>
       </aside>
@@ -430,13 +440,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 // ─── TOPBAR ───────────────────────────────────────────────────────────────────
 
-function TopBar({
-  onMenuClick,
-  title,
-}: {
-  onMenuClick: () => void;
-  title?: string;
-}) {
+function TopBar({ title }: { title?: string }) {
   const { user } = useChurchAuth();
   const { churchId, pastoralSupport } = useChurch();
   const utils = trpc.useUtils();
@@ -453,12 +457,6 @@ function TopBar({
   return (
     <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-border bg-card px-4 lg:px-6">
       <div className="flex items-center gap-3">
-        <button
-          onClick={onMenuClick}
-          className="lg:hidden p-2 rounded-lg hover:bg-muted transition-colors"
-        >
-          <Menu className="w-5 h-5 text-navy" />
-        </button>
         {title && (
           <h1 className="text-base font-semibold text-navy font-display">{title}</h1>
         )}
@@ -551,7 +549,7 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <TopBar onMenuClick={() => setSidebarOpen(true)} title={title} />
+          <TopBar title={title} />
           <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 pb-28 lg:p-6 lg:pb-6">
             {children}
           </main>
