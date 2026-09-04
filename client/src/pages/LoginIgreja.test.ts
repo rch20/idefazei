@@ -25,6 +25,17 @@ describe("LoginIgreja", () => {
     expect(source).toContain("tenant-login-brand-mark");
   });
 
+  it("usa a página inicial efetiva em vez de redirecionamentos duplicados por perfil", () => {
+    const source = readFileSync(resolve(process.cwd(), "client/src/pages/LoginIgreja.tsx"), "utf8");
+    expect(source).toContain('import { getChurchHomePath } from "@/lib/churchHome";');
+    expect(source).toContain("const accessSummary = await utils.churchAuth.accessSummary.fetch");
+    expect(source).toContain("homePath = getChurchHomePath(accessSummary)");
+    expect(source).toContain("navigate(homePath)");
+    expect(source).toContain("const fallbackAccess = { actorRole: data.user.role, roles: [data.user.role] }");
+    expect(source).not.toContain('navigate("/app/dashboard")');
+    expect(source).not.toContain('navigate("/app/membro")');
+  });
+
   it("não renderiza a saudação de login como toast sobre a navegação móvel", () => {
     const loginSource = readFileSync(resolve(process.cwd(), "client/src/pages/LoginIgreja.tsx"), "utf8");
     const dashboardSource = readFileSync(resolve(process.cwd(), "client/src/pages/Dashboard.tsx"), "utf8");

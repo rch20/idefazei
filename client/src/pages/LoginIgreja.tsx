@@ -13,6 +13,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { clearChurchSession } from "@/hooks/useChurchAuth";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
+import { getChurchHomePath } from "@/lib/churchHome";
 
 const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -63,8 +64,9 @@ export default function LoginIgreja() {
     resolver: zodResolver(loginSchema),
   });
 
+  const utils = trpc.useUtils();
   const loginMutation = trpc.churchAuth.login.useMutation({
-    onSuccess: (data: { token: string; user: { id: number; name: string | null; role: string; churchId: number } }) => {
+    onSuccess: async (data: { token: string; user: { id: number; name: string | null; role: string; churchId: number } }) => {
       // Armazena o token JWT no localStorage
       localStorage.removeItem("admin_token");
       clearChurchSession();
@@ -72,19 +74,16 @@ export default function LoginIgreja() {
       storage.setItem("church_token", data.token);
       storage.setItem("church_user", JSON.stringify(data.user));
       // A saudação é exibida no topo do Dashboard para não cobrir a navegação móvel.
-      // Redirecionamento automático por perfil
-      const role = data.user.role;
-      if (role === "pastor_presidente" || role === "pastor_local" || role === "secretario") {
-        navigate("/app/dashboard");
-      } else if (role === "lider" || role === "supervisor") {
-        navigate("/app/celulas");
-      } else if (role === "consolidador") {
-        navigate("/app/consolidacao");
-      } else if (role === "tesoureiro") {
-        navigate("/app/tesouraria");
-      } else {
-        navigate("/app/membro");
+      // Login e botão Início usam a mesma página inicial baseada no acesso efetivo.
+      const fallbackAccess = { actorRole: data.user.role, roles: [data.user.role] };
+      let homePath = getChurchHomePath(fallbackAccess);
+      try {
+        const accessSummary = await utils.churchAuth.accessSummary.fetch({ churchId: data.user.churchId });
+        homePath = getChurchHomePath(accessSummary);
+      } catch {
+        // O login continua disponível mesmo se a consulta complementar falhar.
       }
+      navigate(homePath);
     },
     onError: (err: { message?: string }) => {
       toast.error(err.message || "Email ou senha inválidos.");

@@ -64,8 +64,9 @@ describe("confirmação de logout no painel", () => {
   it("oferece Início, atalhos aprovados e mantém Meu painel no menu completo", () => {
     const source = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
     expect(source).toContain("const quickAccessItems: QuickAccessItem[] = [");
-    expect(source).toContain('const mobileQuickAccessItems: QuickAccessItem[] = [');
-    expect(source).toContain('label: "Início", mobileLabel: "Início", path: "/app/dashboard"');
+    expect(source).toContain('function getMobileQuickAccessItems(homePath: string): QuickAccessItem[] {');
+    expect(source).toContain('label: "Início", mobileLabel: "Início", path: homePath');
+    expect(source).toContain('getChurchHomePath(accessSummary)');
     expect(source).toContain('label: "Pedido de oração", mobileLabel: "Oração", path: "/app/oracao"');
     expect(source).toContain('label: "Nova alma", mobileLabel: "Nova alma", path: "/app/almas"');
     expect(source).toContain('label: "Eventos", mobileLabel: "Eventos", path: "/app/eventos", accessKey: "isExecutive"');

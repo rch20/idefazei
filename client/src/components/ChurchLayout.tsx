@@ -45,6 +45,7 @@ import {
 import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
+import { getChurchHomePath } from "@/lib/churchHome";
 import { normalizePastoralSupportConfig, shouldShowPastoralSupport, type PastoralSupportConfig } from "../../../shared/pastoralSupport";
 
 // ─── CHURCH CONTEXT ───────────────────────────────────────────────────────────
@@ -144,10 +145,12 @@ const quickAccessItems: QuickAccessItem[] = [
 
 // O catálogo desktop permanece completo. No mobile, Início é a âncora permanente;
 // Meu painel continua disponível no menu Mais, sem ocupar um atalho da barra.
-const mobileQuickAccessItems: QuickAccessItem[] = [
-  { icon: LayoutDashboard, label: "Início", mobileLabel: "Início", path: "/app/dashboard" },
-  ...quickAccessItems.filter((item) => item.path !== "/app/membro"),
-];
+function getMobileQuickAccessItems(homePath: string): QuickAccessItem[] {
+  return [
+    { icon: LayoutDashboard, label: "Início", mobileLabel: "Início", path: homePath },
+    ...quickAccessItems.filter((item) => item.path !== "/app/membro"),
+  ];
+}
 
 function getVisibleQuickAccess(accessSummary: ChurchAccessSummary | null, items: QuickAccessItem[] = quickAccessItems) {
   return items.filter((item) => !item.accessKey || Boolean(accessSummary?.[item.accessKey]));
@@ -183,7 +186,7 @@ const roleLabels: Record<string, string> = {
 function MobileQuickNav({ onMenuClick, onNavigate, menuOpen }: { onMenuClick: () => void; onNavigate: () => void; menuOpen: boolean }) {
   const [location] = useLocation();
   const { accessSummary } = useChurch();
-  const visibleQuickAccess = getVisibleQuickAccess(accessSummary, mobileQuickAccessItems);
+  const visibleQuickAccess = getVisibleQuickAccess(accessSummary, getMobileQuickAccessItems(getChurchHomePath(accessSummary)));
 
   return (
     <nav
