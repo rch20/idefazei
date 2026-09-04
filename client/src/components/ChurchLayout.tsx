@@ -173,8 +173,8 @@ const roleLabels: Record<string, string> = {
 
 // ─── MOBILE QUICK NAV ──────────────────────────────────────────────────────────
 
-function MobileQuickNav({ onMenuClick, menuOpen }: { onMenuClick: () => void; menuOpen: boolean }) {
-  const [location, navigate] = useLocation();
+function MobileQuickNav({ onMenuClick, onNavigate, menuOpen }: { onMenuClick: () => void; onNavigate: () => void; menuOpen: boolean }) {
+  const [location] = useLocation();
   const { accessSummary } = useChurch();
   const visibleQuickAccess = getVisibleQuickAccess(accessSummary);
 
@@ -187,21 +187,21 @@ function MobileQuickNav({ onMenuClick, menuOpen }: { onMenuClick: () => void; me
       {visibleQuickAccess.map((item) => {
         const isActive = location === item.path || location.startsWith(item.path + "/");
         return (
-          <button
+          <Link
             key={item.path}
-            type="button"
+            href={item.path}
             aria-label={item.label}
             aria-current={isActive ? "page" : undefined}
             title={item.label}
-            onClick={() => navigate(item.path)}
-            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/80 ${isActive ? "bg-white/12 text-gold shadow-inner ring-1 ring-inset ring-gold/35" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+            onClick={onNavigate}
+            className={`flex min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/80 ${isActive ? "bg-white/12 text-gold shadow-inner ring-1 ring-inset ring-gold/35" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
           >
             <item.icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
             <span className="w-full truncate text-[10px] font-medium leading-tight">{item.mobileLabel}</span>
-          </button>
+          </Link>
         );
       })}
-      <button
+        <button
         type="button"
         aria-label="Mais opções"
         title="Mais opções"
@@ -557,7 +557,7 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
             {children}
           </main>
         </div>
-        <MobileQuickNav menuOpen={sidebarOpen} onMenuClick={() => setSidebarOpen(true)} />
+        <MobileQuickNav menuOpen={sidebarOpen} onMenuClick={() => setSidebarOpen(true)} onNavigate={() => setSidebarOpen(false)} />
       </div>
     </ChurchContext.Provider>
   );
