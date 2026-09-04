@@ -1,5 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { useChurch } from "@/components/ChurchLayout";
+import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { ReportButton } from "@/components/ReportButton";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -535,6 +536,7 @@ function BirthdayTodayCard({ churchId }: { churchId: number }) {
 
 export default function Dashboard() {
   const { churchId } = useChurch();
+  const { user } = useChurchAuth();
   const utils = trpc.useUtils();
   const { data: stats, isLoading, isError } = trpc.dashboard.stats.useQuery({ churchId });
   const metricValues = buildDashboardMetricValues(stats);
@@ -586,6 +588,16 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <section className="flex items-center gap-3 rounded-2xl border border-gold/20 bg-gold/5 px-4 py-3 sm:px-5" aria-label="Saudação do painel">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-sm font-bold text-gold">
+          {user?.name?.charAt(0)?.toUpperCase() ?? "U"}
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-navy">Olá, {user?.name ?? "seja bem-vindo"}</p>
+          <p className="text-xs text-muted-foreground">Acompanhe o que está acontecendo na sua igreja.</p>
+        </div>
+      </section>
+
       {/* Onboarding Progress Banner */}
       <OnboardingBanner churchId={churchId} />
       {/* Subscription Plan Banner */}

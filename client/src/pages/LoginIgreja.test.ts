@@ -24,4 +24,13 @@ describe("LoginIgreja", () => {
     expect(source).toContain("tenantPublic?.church.name ?? \"Ide Fazei\"");
     expect(source).toContain("tenant-login-brand-mark");
   });
+
+  it("não renderiza a saudação de login como toast sobre a navegação móvel", () => {
+    const loginSource = readFileSync(resolve(process.cwd(), "client/src/pages/LoginIgreja.tsx"), "utf8");
+    const dashboardSource = readFileSync(resolve(process.cwd(), "client/src/pages/Dashboard.tsx"), "utf8");
+    expect(loginSource).not.toContain("toast.success(`Bem-vindo(a)");
+    expect(loginSource).toContain("A saudação é exibida no topo do Dashboard");
+    expect(dashboardSource).toContain('aria-label="Saudação do painel"');
+    expect(dashboardSource).toContain("Acompanhe o que está acontecendo na sua igreja.");
+  });
 });

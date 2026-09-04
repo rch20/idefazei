@@ -71,7 +71,7 @@ export default function LoginIgreja() {
       const storage = rememberMe ? localStorage : sessionStorage;
       storage.setItem("church_token", data.token);
       storage.setItem("church_user", JSON.stringify(data.user));
-      toast.success(`Bem-vindo(a), ${data.user.name ?? ""}!`);
+      // A saudação é exibida no topo do Dashboard para não cobrir a navegação móvel.
       // Redirecionamento automático por perfil
       const role = data.user.role;
       if (role === "pastor_presidente" || role === "pastor_local" || role === "secretario") {
