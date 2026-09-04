@@ -181,7 +181,7 @@ function MobileQuickNav({ onMenuClick, menuOpen }: { onMenuClick: () => void; me
   return (
     <nav
       aria-label="Acesso rápido móvel"
-      className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-w-md items-stretch gap-1 rounded-2xl border border-white/15 bg-navy px-1.5 pt-1.5 shadow-2xl shadow-navy/25 lg:hidden"
+      className="fixed inset-x-3 bottom-3 z-[100] mx-auto flex max-w-md pointer-events-auto touch-manipulation items-stretch gap-1 rounded-2xl border border-white/15 bg-navy px-1.5 pt-1.5 shadow-2xl shadow-navy/25 lg:hidden"
       style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }}
     >
       {visibleQuickAccess.map((item) => {
@@ -208,8 +208,12 @@ function MobileQuickNav({ onMenuClick, menuOpen }: { onMenuClick: () => void; me
         aria-haspopup="dialog"
         aria-expanded={menuOpen}
         aria-controls="church-sidebar-drawer"
-        onClick={onMenuClick}
-        className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/80 ${menuOpen ? "bg-white/12 text-gold" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onMenuClick();
+        }}
+        className={`relative z-[101] flex min-w-0 flex-1 touch-manipulation flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/80 ${menuOpen ? "bg-white/12 text-gold" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
       >
         <Menu className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
         <span className="w-full truncate text-[9px] font-medium leading-tight">Mais</span>
@@ -250,7 +254,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
       {/* Mobile overlay */}
       {open && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 z-[110] bg-black/50 lg:hidden"
           onClick={onClose}
         />
       )}
@@ -259,7 +263,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
       <aside
         id="church-sidebar-drawer"
         className={`
-          fixed left-3 right-3 top-16 bottom-24 z-50 flex min-h-0 w-auto max-w-md flex-col overflow-hidden rounded-2xl
+          fixed left-3 right-3 top-16 bottom-24 z-[120] flex min-h-0 w-auto max-w-md flex-col overflow-hidden rounded-2xl
           border border-white/10 shadow-2xl shadow-navy/30 sidebar-sacred transition-[transform,opacity] duration-200 ease-out
           lg:relative lg:inset-auto lg:z-auto lg:h-dvh lg:max-h-none lg:w-64 lg:max-w-none lg:rounded-none lg:border-0 lg:shadow-none
           ${open ? "translate-x-0 opacity-100" : "pointer-events-none -translate-x-3 opacity-0 lg:pointer-events-auto lg:translate-x-0 lg:opacity-100"}

@@ -71,6 +71,9 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain('aria-label="Acesso rápido"');
     expect(source).toContain('aria-label="Acesso rápido móvel"');
     expect(source).toContain('aria-label="Mais opções"');
+    expect(source).toContain("event.stopPropagation()");
+    expect(source).toContain("z-[100]");
+    expect(source).toContain("z-[120]");
     expect(source).toContain("fixed inset-x-3 bottom-3");
     expect(source).toContain("env(safe-area-inset-bottom)");
     expect(source).toContain("lg:hidden");
