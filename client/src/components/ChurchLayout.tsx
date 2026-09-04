@@ -133,6 +133,15 @@ const navItems: NavItem[] = [
   { icon: Star, label: "App do Líder", path: "/app/lider", group: "membros", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"] },
 ];
 
+type QuickAccessItem = { icon: typeof Home; label: string; path: string; accessKey?: keyof ChurchAccessSummary };
+
+const quickAccessItems: QuickAccessItem[] = [
+  { icon: MessageCircle, label: "Pedido de oração", path: "/app/oracao" },
+  { icon: Flame, label: "Nova alma", path: "/app/almas" },
+  { icon: CalendarDays, label: "Eventos", path: "/app/eventos", accessKey: "isExecutive" },
+  { icon: Users, label: "Painel do discípulo", path: "/app/membro" },
+];
+
 const groups = [
   { key: "principal", label: "Início" },
   { key: "discipulado", label: "Jornada" },
@@ -283,6 +292,34 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
             );
           })}
         </nav>
+
+        {/* Quick access: shortcuts only to existing Ide Fazei modules */}
+        {(() => {
+          const visibleQuickAccess = quickAccessItems.filter((item) => !item.accessKey || Boolean(accessSummary?.[item.accessKey]));
+          return visibleQuickAccess.length > 0 ? (
+            <div className="mx-3 mb-2 rounded-xl border border-gold/15 bg-white/5 p-2 group-data-[collapsible=icon]:mx-2 group-data-[collapsible=icon]:p-1" aria-label="Acesso rápido">
+              <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/40 group-data-[collapsible=icon]:hidden">Acesso rápido</p>
+              <div className="grid grid-cols-2 gap-1 group-data-[collapsible=icon]:grid-cols-1">
+                {visibleQuickAccess.map((item) => {
+                  const isActive = location === item.path || location.startsWith(item.path + "/");
+                  return (
+                    <button
+                      key={item.path}
+                      type="button"
+                      className={`flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-2 text-left text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-1 ${isActive ? "bg-gold/20 text-gold" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+                      onClick={() => { navigate(item.path); onClose(); }}
+                      title={item.label}
+                      aria-label={item.label}
+                    >
+                      <item.icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span className="min-w-0 truncate group-data-[collapsible=icon]:hidden">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null;
+        })()}
 
         {/* User footer */}
         <div className="px-3 py-4 border-t border-white/10">

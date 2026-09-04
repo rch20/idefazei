@@ -61,6 +61,20 @@ describe("confirmação de logout no painel", () => {
     expect(ministerios).toContain('selectedMinistry?.canManage');
   });
 
+  it("oferece somente os quatro atalhos aprovados e reaproveita rotas existentes", () => {
+    const source = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
+    expect(source).toContain("const quickAccessItems: QuickAccessItem[] = [");
+    expect(source).toContain('label: "Pedido de oração", path: "/app/oracao"');
+    expect(source).toContain('label: "Nova alma", path: "/app/almas"');
+    expect(source).toContain('label: "Eventos", path: "/app/eventos", accessKey: "isExecutive"');
+    expect(source).toContain('label: "Painel do discípulo", path: "/app/membro"');
+    expect(source).toContain('aria-label="Acesso rápido"');
+    expect(source).toContain("!item.accessKey || Boolean(accessSummary?.[item.accessKey])");
+    expect(source).not.toContain('label: "Agenda"');
+    expect(source).not.toContain('label: "Aprovações"');
+    expect(source).not.toContain('label: "Indicações"');
+  });
+
   it("mantém as ações de membro separadas do acesso administrativo", () => {
     const ganharAlmas = readFileSync(resolve(process.cwd(), "client/src/pages/GanharAlmas.tsx"), "utf8");
     const oracao = readFileSync(resolve(process.cwd(), "client/src/pages/Oracao.tsx"), "utf8");
