@@ -182,7 +182,7 @@ function MobileQuickNav({ onMenuClick, menuOpen }: { onMenuClick: () => void; me
     <nav
       aria-label="Acesso rápido móvel"
       className="fixed inset-x-3 bottom-3 z-[100] mx-auto flex max-w-md pointer-events-auto touch-manipulation items-stretch gap-1 rounded-2xl border border-white/15 bg-navy px-1.5 pt-1.5 shadow-2xl shadow-navy/25 lg:hidden"
-      style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }}
+      style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))", WebkitTransform: "translateZ(0)" }}
     >
       {visibleQuickAccess.map((item) => {
         const isActive = location === item.path || location.startsWith(item.path + "/");
@@ -286,7 +286,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="lg:hidden text-white/40 hover:text-white">
+          <button type="button" aria-label="Fechar menu" onClick={onClose} className="lg:hidden rounded-md p-1 text-white/40 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -548,7 +548,7 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
 
   return (
     <ChurchContext.Provider value={churchContext}>
-      <div className="flex h-dvh min-h-screen min-w-0 overflow-hidden bg-background golden-pattern">
+      <div className="relative flex h-dvh min-h-screen min-w-0 overflow-x-hidden bg-background golden-pattern">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">

@@ -35,7 +35,7 @@ describe("confirmação de logout no painel", () => {
   it("mantém o TopBar e o shell autenticado estáveis durante a rolagem", () => {
     const source = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
     expect(source).toContain('className="sticky top-0 z-30 flex h-14 shrink-0');
-    expect(source).toContain('className="flex h-dvh min-h-screen min-w-0 overflow-hidden');
+    expect(source).toContain('className="relative flex h-dvh min-h-screen min-w-0 overflow-x-hidden');
     expect(source).toContain('main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto');
   });
 
@@ -72,6 +72,8 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain('aria-label="Acesso rápido móvel"');
     expect(source).toContain('aria-label="Mais opções"');
     expect(source).toContain("event.stopPropagation()");
+    expect(source).toContain("WebkitTransform: \"translateZ(0)\"");
+    expect(source).toContain('aria-label="Fechar menu"');
     expect(source).toContain("z-[100]");
     expect(source).toContain("z-[120]");
     expect(source).toContain("fixed inset-x-3 bottom-3");
