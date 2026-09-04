@@ -64,14 +64,14 @@ describe("confirmação de logout no painel", () => {
   it("oferece somente os quatro atalhos aprovados e reaproveita rotas existentes", () => {
     const source = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
     expect(source).toContain("const quickAccessItems: QuickAccessItem[] = [");
-    expect(source).toContain('label: "Pedido de oração", path: "/app/oracao"');
-    expect(source).toContain('label: "Nova alma", path: "/app/almas"');
-    expect(source).toContain('label: "Eventos", path: "/app/eventos", accessKey: "isExecutive"');
-    expect(source).toContain('label: "Painel do discípulo", path: "/app/membro"');
+    expect(source).toContain('label: "Pedido de oração", mobileLabel: "Oração", path: "/app/oracao"');
+    expect(source).toContain('label: "Nova alma", mobileLabel: "Nova alma", path: "/app/almas"');
+    expect(source).toContain('label: "Eventos", mobileLabel: "Eventos", path: "/app/eventos", accessKey: "isExecutive"');
+    expect(source).toContain('label: "Painel do discípulo", mobileLabel: "Meu painel", path: "/app/membro"');
     expect(source).toContain('aria-label="Acesso rápido"');
     expect(source).toContain('aria-label="Acesso rápido móvel"');
     expect(source).toContain('aria-label="Mais opções"');
-    expect(source).toContain('className="fixed inset-x-3 bottom-3');
+    expect(source).toContain("fixed inset-x-3 bottom-3");
     expect(source).toContain("env(safe-area-inset-bottom)");
     expect(source).toContain("lg:hidden");
     expect(source).toContain("lg:block");

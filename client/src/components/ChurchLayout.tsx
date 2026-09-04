@@ -133,13 +133,13 @@ const navItems: NavItem[] = [
   { icon: Star, label: "App do Líder", path: "/app/lider", group: "membros", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"] },
 ];
 
-type QuickAccessItem = { icon: typeof Home; label: string; path: string; accessKey?: keyof ChurchAccessSummary };
+type QuickAccessItem = { icon: typeof Home; label: string; mobileLabel: string; path: string; accessKey?: keyof ChurchAccessSummary };
 
 const quickAccessItems: QuickAccessItem[] = [
-  { icon: MessageCircle, label: "Pedido de oração", path: "/app/oracao" },
-  { icon: Flame, label: "Nova alma", path: "/app/almas" },
-  { icon: CalendarDays, label: "Eventos", path: "/app/eventos", accessKey: "isExecutive" },
-  { icon: Users, label: "Painel do discípulo", path: "/app/membro" },
+  { icon: MessageCircle, label: "Pedido de oração", mobileLabel: "Oração", path: "/app/oracao" },
+  { icon: Flame, label: "Nova alma", mobileLabel: "Nova alma", path: "/app/almas" },
+  { icon: CalendarDays, label: "Eventos", mobileLabel: "Eventos", path: "/app/eventos", accessKey: "isExecutive" },
+  { icon: Users, label: "Painel do discípulo", mobileLabel: "Meu painel", path: "/app/membro" },
 ];
 
 function getVisibleQuickAccess(accessSummary: ChurchAccessSummary | null) {
@@ -181,7 +181,8 @@ function MobileQuickNav({ onMenuClick, menuOpen }: { onMenuClick: () => void; me
   return (
     <nav
       aria-label="Acesso rápido móvel"
-      className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-w-md items-stretch gap-1 rounded-2xl border border-white/15 bg-navy px-1.5 pt-1.5 shadow-2xl shadow-navy/25 lg:hidden"
+      aria-hidden={menuOpen}
+      className={`fixed inset-x-3 bottom-3 z-40 mx-auto flex max-w-md items-stretch gap-1 rounded-2xl border border-white/15 bg-navy px-1.5 pt-1.5 shadow-2xl shadow-navy/25 transition-opacity duration-150 lg:hidden ${menuOpen ? "pointer-events-none opacity-0" : "opacity-100"}`}
       style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }}
     >
       {visibleQuickAccess.map((item) => {
@@ -194,10 +195,10 @@ function MobileQuickNav({ onMenuClick, menuOpen }: { onMenuClick: () => void; me
             aria-current={isActive ? "page" : undefined}
             title={item.label}
             onClick={() => navigate(item.path)}
-            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/80 ${isActive ? "bg-white/12 text-gold" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/80 ${isActive ? "bg-white/12 text-gold shadow-inner ring-1 ring-inset ring-gold/35" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
           >
             <item.icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
-            <span className="w-full truncate text-[9px] font-medium leading-tight">{item.label}</span>
+            <span className="w-full truncate text-[10px] font-medium leading-tight">{item.mobileLabel}</span>
           </button>
         );
       })}
