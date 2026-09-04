@@ -61,13 +61,17 @@ describe("confirmação de logout no painel", () => {
     expect(ministerios).toContain('selectedMinistry?.canManage');
   });
 
-  it("oferece somente os quatro atalhos aprovados e reaproveita rotas existentes", () => {
+  it("oferece Início, atalhos aprovados e mantém Meu painel no menu completo", () => {
     const source = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
     expect(source).toContain("const quickAccessItems: QuickAccessItem[] = [");
+    expect(source).toContain('const mobileQuickAccessItems: QuickAccessItem[] = [');
+    expect(source).toContain('label: "Início", mobileLabel: "Início", path: "/app/dashboard"');
     expect(source).toContain('label: "Pedido de oração", mobileLabel: "Oração", path: "/app/oracao"');
     expect(source).toContain('label: "Nova alma", mobileLabel: "Nova alma", path: "/app/almas"');
     expect(source).toContain('label: "Eventos", mobileLabel: "Eventos", path: "/app/eventos", accessKey: "isExecutive"');
     expect(source).toContain('label: "Painel do discípulo", mobileLabel: "Meu painel", path: "/app/membro"');
+    expect(source).toContain('...quickAccessItems.filter((item) => item.path !== "/app/membro")');
+    expect(source).toContain('{ icon: Users, label: "Área do Membro", path: "/app/membro", group: "membros" }');
     expect(source).toContain('aria-label="Acesso rápido"');
     expect(source).toContain('aria-label="Acesso rápido móvel"');
     expect(source).toContain('aria-label="Mais opções"');

@@ -142,8 +142,15 @@ const quickAccessItems: QuickAccessItem[] = [
   { icon: Users, label: "Painel do discípulo", mobileLabel: "Meu painel", path: "/app/membro" },
 ];
 
-function getVisibleQuickAccess(accessSummary: ChurchAccessSummary | null) {
-  return quickAccessItems.filter((item) => !item.accessKey || Boolean(accessSummary?.[item.accessKey]));
+// O catálogo desktop permanece completo. No mobile, Início é a âncora permanente;
+// Meu painel continua disponível no menu Mais, sem ocupar um atalho da barra.
+const mobileQuickAccessItems: QuickAccessItem[] = [
+  { icon: LayoutDashboard, label: "Início", mobileLabel: "Início", path: "/app/dashboard" },
+  ...quickAccessItems.filter((item) => item.path !== "/app/membro"),
+];
+
+function getVisibleQuickAccess(accessSummary: ChurchAccessSummary | null, items: QuickAccessItem[] = quickAccessItems) {
+  return items.filter((item) => !item.accessKey || Boolean(accessSummary?.[item.accessKey]));
 }
 
 const groups = [
@@ -176,7 +183,7 @@ const roleLabels: Record<string, string> = {
 function MobileQuickNav({ onMenuClick, onNavigate, menuOpen }: { onMenuClick: () => void; onNavigate: () => void; menuOpen: boolean }) {
   const [location] = useLocation();
   const { accessSummary } = useChurch();
-  const visibleQuickAccess = getVisibleQuickAccess(accessSummary);
+  const visibleQuickAccess = getVisibleQuickAccess(accessSummary, mobileQuickAccessItems);
 
   return (
     <nav
