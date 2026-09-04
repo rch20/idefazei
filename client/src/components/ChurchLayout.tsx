@@ -181,8 +181,7 @@ function MobileQuickNav({ onMenuClick, menuOpen }: { onMenuClick: () => void; me
   return (
     <nav
       aria-label="Acesso rápido móvel"
-      aria-hidden={menuOpen}
-      className={`fixed inset-x-3 bottom-3 z-40 mx-auto flex max-w-md items-stretch gap-1 rounded-2xl border border-white/15 bg-navy px-1.5 pt-1.5 shadow-2xl shadow-navy/25 transition-opacity duration-150 lg:hidden ${menuOpen ? "pointer-events-none opacity-0" : "opacity-100"}`}
+      className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-w-md items-stretch gap-1 rounded-2xl border border-white/15 bg-navy px-1.5 pt-1.5 shadow-2xl shadow-navy/25 lg:hidden"
       style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }}
     >
       {visibleQuickAccess.map((item) => {
@@ -210,7 +209,7 @@ function MobileQuickNav({ onMenuClick, menuOpen }: { onMenuClick: () => void; me
         aria-expanded={menuOpen}
         aria-controls="church-sidebar-drawer"
         onClick={onMenuClick}
-        className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/80"
+        className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/80 ${menuOpen ? "bg-white/12 text-gold" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
       >
         <Menu className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
         <span className="w-full truncate text-[9px] font-medium leading-tight">Mais</span>
