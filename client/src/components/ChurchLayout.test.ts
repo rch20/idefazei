@@ -69,6 +69,12 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain('label: "Eventos", path: "/app/eventos", accessKey: "isExecutive"');
     expect(source).toContain('label: "Painel do discípulo", path: "/app/membro"');
     expect(source).toContain('aria-label="Acesso rápido"');
+    expect(source).toContain('aria-label="Acesso rápido móvel"');
+    expect(source).toContain('aria-label="Mais opções"');
+    expect(source).toContain('className="fixed inset-x-3 bottom-3');
+    expect(source).toContain("env(safe-area-inset-bottom)");
+    expect(source).toContain("lg:hidden");
+    expect(source).toContain("lg:block");
     expect(source).toContain("!item.accessKey || Boolean(accessSummary?.[item.accessKey])");
     expect(source).not.toContain('label: "Agenda"');
     expect(source).not.toContain('label: "Aprovações"');

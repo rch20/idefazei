@@ -142,6 +142,10 @@ const quickAccessItems: QuickAccessItem[] = [
   { icon: Users, label: "Painel do discípulo", path: "/app/membro" },
 ];
 
+function getVisibleQuickAccess(accessSummary: ChurchAccessSummary | null) {
+  return quickAccessItems.filter((item) => !item.accessKey || Boolean(accessSummary?.[item.accessKey]));
+}
+
 const groups = [
   { key: "principal", label: "Início" },
   { key: "discipulado", label: "Jornada" },
@@ -166,6 +170,53 @@ const roleLabels: Record<string, string> = {
   levita: "Levita",
   membro: "Discípulo",
 };
+
+// ─── MOBILE QUICK NAV ──────────────────────────────────────────────────────────
+
+function MobileQuickNav({ onMenuClick, menuOpen }: { onMenuClick: () => void; menuOpen: boolean }) {
+  const [location, navigate] = useLocation();
+  const { accessSummary } = useChurch();
+  const visibleQuickAccess = getVisibleQuickAccess(accessSummary);
+
+  return (
+    <nav
+      aria-label="Acesso rápido móvel"
+      className="fixed inset-x-3 bottom-3 z-40 mx-auto flex max-w-md items-stretch gap-1 rounded-2xl border border-white/15 bg-navy px-1.5 pt-1.5 shadow-2xl shadow-navy/25 lg:hidden"
+      style={{ paddingBottom: "calc(0.375rem + env(safe-area-inset-bottom))" }}
+    >
+      {visibleQuickAccess.map((item) => {
+        const isActive = location === item.path || location.startsWith(item.path + "/");
+        return (
+          <button
+            key={item.path}
+            type="button"
+            aria-label={item.label}
+            aria-current={isActive ? "page" : undefined}
+            title={item.label}
+            onClick={() => navigate(item.path)}
+            className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/80 ${isActive ? "bg-white/12 text-gold" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+          >
+            <item.icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+            <span className="w-full truncate text-[9px] font-medium leading-tight">{item.label}</span>
+          </button>
+        );
+      })}
+      <button
+        type="button"
+        aria-label="Mais opções"
+        title="Mais opções"
+        aria-haspopup="dialog"
+        aria-expanded={menuOpen}
+        aria-controls="church-sidebar-drawer"
+        onClick={onMenuClick}
+        className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 py-1.5 text-center text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/80"
+      >
+        <Menu className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+        <span className="w-full truncate text-[9px] font-medium leading-tight">Mais</span>
+      </button>
+    </nav>
+  );
+}
 
 // ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 
@@ -205,6 +256,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
       {/* Sidebar */}
       <aside
+        id="church-sidebar-drawer"
         className={`
           fixed top-0 left-0 h-dvh z-50 w-64 flex flex-col
           sidebar-sacred transition-transform duration-300 ease-out
@@ -293,33 +345,30 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           })}
         </nav>
 
-        {/* Quick access: shortcuts only to existing Ide Fazei modules */}
-        {(() => {
-          const visibleQuickAccess = quickAccessItems.filter((item) => !item.accessKey || Boolean(accessSummary?.[item.accessKey]));
-          return visibleQuickAccess.length > 0 ? (
-            <div className="mx-3 mb-2 rounded-xl border border-gold/15 bg-white/5 p-2 group-data-[collapsible=icon]:mx-2 group-data-[collapsible=icon]:p-1" aria-label="Acesso rápido">
-              <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/40 group-data-[collapsible=icon]:hidden">Acesso rápido</p>
-              <div className="grid grid-cols-2 gap-1 group-data-[collapsible=icon]:grid-cols-1">
-                {visibleQuickAccess.map((item) => {
-                  const isActive = location === item.path || location.startsWith(item.path + "/");
-                  return (
-                    <button
-                      key={item.path}
-                      type="button"
-                      className={`flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-2 text-left text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-1 ${isActive ? "bg-gold/20 text-gold" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
-                      onClick={() => { navigate(item.path); onClose(); }}
-                      title={item.label}
-                      aria-label={item.label}
-                    >
-                      <item.icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                      <span className="min-w-0 truncate group-data-[collapsible=icon]:hidden">{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+        {/* Quick access remains available in the desktop sidebar; mobile uses the fixed bottom bar. */}
+        {getVisibleQuickAccess(accessSummary).length > 0 && (
+          <div className="mx-3 mb-2 hidden rounded-xl border border-gold/15 bg-white/5 p-2 lg:block group-data-[collapsible=icon]:mx-2 group-data-[collapsible=icon]:p-1" aria-label="Acesso rápido">
+            <p className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-widest text-white/40 group-data-[collapsible=icon]:hidden">Acesso rápido</p>
+            <div className="grid grid-cols-2 gap-1 group-data-[collapsible=icon]:grid-cols-1">
+              {getVisibleQuickAccess(accessSummary).map((item) => {
+                const isActive = location === item.path || location.startsWith(item.path + "/");
+                return (
+                  <button
+                    key={item.path}
+                    type="button"
+                    className={`flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-2 text-left text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-1 ${isActive ? "bg-gold/20 text-gold" : "text-white/70 hover:bg-white/10 hover:text-white"}`}
+                    onClick={() => { navigate(item.path); onClose(); }}
+                    title={item.label}
+                    aria-label={item.label}
+                  >
+                    <item.icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 truncate group-data-[collapsible=icon]:hidden">{item.label}</span>
+                  </button>
+                );
+              })}
             </div>
-          ) : null;
-        })()}
+          </div>
+        )}
 
         {/* User footer */}
         <div className="px-3 py-4 border-t border-white/10">
@@ -502,10 +551,11 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <TopBar onMenuClick={() => setSidebarOpen(true)} title={title} />
-          <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 lg:p-6">
+          <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 pb-28 lg:p-6 lg:pb-6">
             {children}
           </main>
         </div>
+        <MobileQuickNav menuOpen={sidebarOpen} onMenuClick={() => setSidebarOpen(true)} />
       </div>
     </ChurchContext.Provider>
   );
