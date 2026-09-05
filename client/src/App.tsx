@@ -77,7 +77,7 @@ function RouteLoading() {
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
 
-type RequiredAccess = keyof Pick<ChurchAccessSummary, "isExecutive" | "isPastoralWorker" | "isCommunicationManager" | "canAccessTreasury" | "isPastor" | "canManageEncounter" | "canManageCells" | "canManageMinistry" | "canAccessVisits">;
+type RequiredAccess = keyof Pick<ChurchAccessSummary, "isExecutive" | "isPastoralWorker" | "isCommunicationManager" | "canAccessTreasury" | "isPastor" | "canManageEncounter" | "canManageCells" | "canManageMinistry" | "canAccessMinistry" | "canAccessVisits">;
 
 function AccessDenied({ title }: { title?: string }) {
   return (
@@ -228,7 +228,7 @@ function Router() {
       </Route>
 
       <Route path="/app/ministerios">
-        <AppPage title="Ministérios" requiredAccess="canManageMinistry">
+        <AppPage title="Ministérios" requiredAccess="canAccessMinistry">
           <Ministerios />
         </AppPage>
       </Route>

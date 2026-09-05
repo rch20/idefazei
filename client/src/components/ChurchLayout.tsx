@@ -64,6 +64,7 @@ export type ChurchAccessSummary = {
   canAccessVisits: boolean;
   canManageCells: boolean;
   canManageMinistry: boolean;
+  canAccessMinistry: boolean;
   canManageLibrary: boolean;
   canAccessTreasury: boolean;
   canIndicateNewSoul: boolean;
@@ -115,7 +116,7 @@ const navItems: NavItem[] = [
   { icon: Map, label: "Mapa de Células", path: "/app/mapa", group: "celulas" },
   { icon: BookOpen, label: "Estudos de Células", path: "/app/estudos-celulas", group: "celulas" },
   { icon: CalendarDays, label: "Eventos", path: "/app/eventos", group: "ministerio", accessKey: "isExecutive" },
-  { icon: Music, label: "Ministérios", path: "/app/ministerios", group: "ministerio", accessKey: "canManageMinistry" },
+  { icon: Music, label: "Ministérios", path: "/app/ministerios", group: "ministerio", accessKey: "canAccessMinistry" },
   { icon: Star, label: "Escalas", path: "/app/escalas", group: "ministerio", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"], accessKey: "canManageCells" },
   { icon: BookOpen, label: "Escola de Fundamentos", path: "/app/escola-fundamentos", group: "discipulado", accessKey: "isExecutive" },
   { icon: Droplets, label: "Batismo nas Águas", path: "/app/batismo", group: "discipulado", accessKey: "isExecutive" },

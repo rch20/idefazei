@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { ChevronDown, Music, Users, Plus, Search, Star, Trash2 } from "lucide-react";
+import { ChevronDown, Edit3, Music, Users, Plus, Search, Star, Trash2 } from "lucide-react";
 
 const OPERATIONAL_FUNCTION_KEYS = new Set(["membro_ministerio", "musico", "vocalista", "visitador"]);
 
@@ -46,6 +46,8 @@ export default function Ministerios() {
   const { churchId } = useChurch();
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", description: "" });
   const [archiveTarget, setArchiveTarget] = useState<{ id: number; name: string } | null>(null);
   const [form, setForm] = useState({ name: "", description: "", type: "outro", leaderId: "", participantIds: [] as string[] });
   const [selectedMinistry, setSelectedMinistry] = useState<any>(null);
@@ -88,6 +90,15 @@ export default function Ministerios() {
     },
     onError: (err: { message: string }) => toast.error(err.message),
   });
+  const updateMutation = trpc.ministries.update.useMutation({
+    onSuccess: async (updated) => {
+      toast.success("Ministério atualizado com sucesso!");
+      setEditOpen(false);
+      const refreshed = await refetch();
+      setSelectedMinistry(refreshed.data?.find((ministry) => ministry.id === updated?.id) ?? selectedMinistry);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar o Ministério."),
+  });
   const archiveMutation = trpc.ministries.archive.useMutation({
     onSuccess: async (result) => {
       toast.success(result.alreadyArchived ? "Ministério já estava arquivado." : "Ministério removido da lista ativa.");
@@ -121,6 +132,13 @@ export default function Ministerios() {
       await Promise.all([ministryMembers.refetch(), refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível atribuir a função."),
+  });
+  const removeFunction = trpc.ministries.removeFunction.useMutation({
+    onSuccess: async () => {
+      toast.success("Função removida da equipe.");
+      await Promise.all([ministryMembers.refetch(), refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível remover a função."),
   });
   const removePerson = trpc.ministries.removePerson.useMutation({
     onSuccess: async () => {
@@ -166,7 +184,20 @@ export default function Ministerios() {
   const addCustomFunction = () => {
     if (!selectedMinistry || !customRoleName.trim()) return toast.error("Informe o nome da função.");
     const key = customRoleName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    if (key.length < 2) return toast.error("Informe um nome de função válido.");
     createCustomFunction.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, name: customRoleName.trim(), key, permissionPackage: customRolePackage as "member" | "cell_leader" | "consolidator" | "visitor" | "treasurer" | "ministry_leader" | "communication_leader" });
+  };
+
+  const openEditMinistry = () => {
+    if (!selectedMinistry) return;
+    setEditForm({ name: selectedMinistry.name, description: selectedMinistry.description ?? "" });
+    setEditOpen(true);
+  };
+
+  const saveEditMinistry = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedMinistry || !editForm.name.trim()) return toast.error("Informe o nome do Ministério.");
+    updateMutation.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, name: editForm.name.trim(), description: editForm.description.trim() || null });
   };
 
   const filtered = ministries?.filter((m: { name: string }) =>
@@ -334,7 +365,10 @@ export default function Ministerios() {
         <Dialog open={Boolean(selectedMinistry)} onOpenChange={(nextOpen) => !nextOpen && setSelectedMinistry(null)}>
           <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-3xl">
             <DialogHeader>
-              <DialogTitle className="font-display text-navy">{canCreateMinistry ? "Equipe do Ministério" : "Minha equipe"}: {selectedMinistry?.name}</DialogTitle>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <DialogTitle className="font-display text-navy">{canCreateMinistry ? "Equipe do Ministério" : "Minha equipe"}: {selectedMinistry?.name}</DialogTitle>
+                {canCreateMinistry && <Button type="button" variant="outline" size="sm" className="w-fit gap-2" onClick={openEditMinistry}><Edit3 className="h-4 w-4" />Editar Ministério</Button>}
+              </div>
             </DialogHeader>
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">{selectedMinistry && isConsolidationMinistry(selectedMinistry) ? "Adicione os envolvidos no cuidado. Cada participante ativo recebe acesso à aba de Consolidação; a aprovação da indicação e a assunção do cuidado continuam sendo etapas diferentes." : selectedMinistry && isVisitsMinistry(selectedMinistry) ? "Adicione os Visitadores deste Ministério. Eles poderão acessar Consolidação → Visitas e aceitar as visitas disponíveis; o líder continua responsável por organizar a equipe." : canCreateMinistry ? "Aqui você organiza a equipe, a liderança e a rotina deste Ministério." : "Aqui você gerencia somente as Pessoas e as funções operacionais deste Ministério."}</p>
@@ -360,7 +394,7 @@ export default function Ministerios() {
               <div className="rounded-xl border border-border">
                 <div className="border-b border-border px-4 py-3 text-sm font-semibold text-navy">Pessoas na equipe ({ministryMembers.data?.length ?? 0})</div>
                 {ministryMembers.isLoading ? <div className="p-4 text-sm text-muted-foreground">Carregando equipe…</div> : (ministryMembers.data ?? []).length === 0 ? <div className="p-4 text-sm text-muted-foreground">Nenhuma Pessoa adicionada ainda.</div> : (
-                  <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-center gap-3 px-4 py-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><span className="min-w-0 flex-1 truncate text-sm font-medium text-navy">{item.person.fullName}</span>{selectedMinistry?.canManage && selectedMinistry.leaderId !== item.person.id && <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Remover ${item.person.fullName}`} onClick={() => removePerson.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: item.person.id })}><Trash2 className="h-4 w-4" /></Button>}</div>)}</div>
+                  <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-start gap-3 px-4 py-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-navy">{item.person.fullName}</p><div className="mt-1 flex flex-wrap gap-1">{selectedMinistry?.leaderId === item.person.id && <Badge variant="secondary" className="text-[10px]">Líder responsável</Badge>}{(item.roles ?? []).map((role) => <span key={role.id} className="inline-flex items-center gap-0.5 rounded-full border border-border bg-background pl-1.5 text-[10px] text-muted-foreground"><span>{role.label}</span>{selectedMinistry?.canManage && <button type="button" className="rounded-full p-0.5 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Remover função ${role.label} de ${item.person.fullName}`} onClick={() => removeFunction.mutate({ churchId: churchId!, id: role.id })}><Trash2 className="h-2.5 w-2.5" /></button>}</span>)}{selectedMinistry?.leaderId !== item.person.id && (item.roles ?? []).length === 0 && <span className="text-[11px] text-muted-foreground">Participante</span>}</div></div>{selectedMinistry?.canManage && selectedMinistry.leaderId !== item.person.id && <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Remover ${item.person.fullName}`} onClick={() => removePerson.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: item.person.id })}><Trash2 className="h-4 w-4" /></Button>}</div>)}</div>
                 )}
               </div>
               {selectedMinistry?.canManage && (
@@ -374,7 +408,7 @@ export default function Ministerios() {
                     </Select>
                     <Select value={selectedRoleKey} onValueChange={setSelectedRoleKey}>
                       <SelectTrigger><SelectValue placeholder="Função permitida" /></SelectTrigger>
-                      <SelectContent>{(functionCatalog.data ?? []).filter((role) => canManageRoles || OPERATIONAL_FUNCTION_KEYS.has(role.key)).map((role) => <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>)}</SelectContent>
+                      <SelectContent>{(functionCatalog.data ?? []).filter((role) => canManageRoles || OPERATIONAL_FUNCTION_KEYS.has(role.key) || role.grants.length === 0).map((role) => <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>)}</SelectContent>
                     </Select>
                     <Button type="button" onClick={saveFunction} disabled={assignFunction.isPending}>{assignFunction.isPending ? "Salvando…" : "Atribuir"}</Button>
                   </div>
@@ -395,6 +429,7 @@ export default function Ministerios() {
                 </summary>
                 <div className="space-y-3 border-t border-gold/20 p-4">
                 <p className="text-sm font-semibold text-navy">Funções personalizadas</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">Depois de criar uma função, ela aparecerá no seletor de atuação da equipe. Funções que alteram acessos continuam sob responsabilidade do Pastor.</p>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Input value={customRoleName} onChange={(event) => setCustomRoleName(event.target.value)} placeholder="Ex.: Líder de Louvor" />
                   <Select value={customRolePackage} onValueChange={setCustomRolePackage}>
@@ -436,6 +471,19 @@ export default function Ministerios() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="font-display text-navy">Editar Ministério</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={saveEditMinistry} className="space-y-4">
+              <div><Label htmlFor="edit-ministry-name">Nome do Ministério *</Label><Input id="edit-ministry-name" className="mt-1" value={editForm.name} onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))} /></div>
+              <div><Label htmlFor="edit-ministry-description">Descrição</Label><Input id="edit-ministry-description" className="mt-1" value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} placeholder="Descreva a finalidade do Ministério" /></div>
+              <DialogFooter className="pt-3"><Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button><Button type="submit" className="bg-navy text-white" disabled={updateMutation.isPending}>{updateMutation.isPending ? "Salvando…" : "Salvar alterações"}</Button></DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
   );
 }

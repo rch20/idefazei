@@ -6,6 +6,7 @@ const root = resolve(process.cwd());
 const dialogSource = readFileSync(resolve(root, "client/src/components/ui/dialog.tsx"), "utf8");
 const alertDialogSource = readFileSync(resolve(root, "client/src/components/ui/alert-dialog.tsx"), "utf8");
 const ministrySource = readFileSync(resolve(root, "client/src/pages/Ministerios.tsx"), "utf8");
+const layoutSource = readFileSync(resolve(root, "client/src/components/ChurchLayout.tsx"), "utf8");
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 
@@ -22,6 +23,29 @@ describe("Fluxo responsivo e seguro de Ministérios", () => {
     expect(dialogSource).toContain("sticky bottom-0");
     expect(ministrySource).toContain("<DialogFooter className=\"pt-3\">");
     expect(ministrySource).toContain("Fechar");
+  });
+
+  it("separa acesso de participante da permissão de gestão", () => {
+    expect(layoutSource).toContain('accessKey: "canAccessMinistry"');
+    expect(routerSource).toContain("const canAccessMinistry = canManageMinistry");
+    expect(routerSource).toContain("memberMinistryIds.has(ministry.id)");
+    expect(routerSource).toContain("const canManageAll = actorRoles.some((role) => PASTOR_ROLES.has(role))");
+  });
+
+  it("permite editar o cadastro básico do Ministério sem alterar sua estrutura", () => {
+    expect(ministrySource).toContain('Editar Ministério');
+    expect(ministrySource).toContain('ministries.update.useMutation');
+    expect(routerSource).toContain('update: protectedProcedure');
+    expect(routerSource).toContain('return updateMinistry(input.ministryId, input.churchId');
+    expect(routerSource).toContain('await requirePastor(ctx.user.id, input.churchId);');
+  });
+
+  it("completa o fluxo de funções personalizadas e mostra a função ao lado da pessoa", () => {
+    expect(ministrySource).toContain('Depois de criar uma função, ela aparecerá no seletor');
+    expect(ministrySource).toContain('(item.roles ?? []).map');
+    expect(routerSource).toContain('getMinistryRoleAssignmentsByMinistry(input.ministryId, input.churchId)');
+    expect(routerSource).toContain('const customDefinition =');
+    expect(dbSource).toContain('export async function getMinistryRoleAssignmentsByMinistry');
   });
 
   it("exclui Ministério por arquivamento, com confirmação e preservação de histórico", () => {

@@ -55,8 +55,8 @@ describe("confirmação de logout no painel", () => {
     const app = readFileSync(resolve(process.cwd(), "client/src/App.tsx"), "utf8");
     const ministerios = readFileSync(resolve(process.cwd(), "client/src/pages/Ministerios.tsx"), "utf8");
     expect(layout).toContain('canManageMinistry: boolean');
-    expect(layout).toContain('accessKey: "canManageMinistry"');
-    expect(app).toContain('requiredAccess="canManageMinistry"');
+    expect(layout).toContain('accessKey: "canAccessMinistry"');
+    expect(app).toContain('requiredAccess="canAccessMinistry"');
     expect(ministerios).toContain('const canCreateMinistry = roles.some');
     expect(ministerios).toContain('selectedMinistry?.canManage');
   });

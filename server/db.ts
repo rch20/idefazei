@@ -3779,6 +3779,23 @@ export async function getActiveMinistryRoleKeysByPerson(personId: number, church
   return Array.from(new Set(assignments.map(({ assignment }) => assignment.roleKey)));
 }
 
+export async function getMinistryRoleAssignmentsByMinistry(ministryId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ assignment: ministryRoleAssignments, person: people })
+    .from(ministryRoleAssignments)
+    .innerJoin(people, eq(people.id, ministryRoleAssignments.personId))
+    .where(and(
+      eq(ministryRoleAssignments.ministryId, ministryId),
+      eq(ministryRoleAssignments.churchId, churchId),
+      eq(ministryRoleAssignments.active, true),
+      eq(people.churchId, churchId),
+      eq(people.active, true),
+    ))
+    .orderBy(people.fullName, ministryRoleAssignments.roleKey);
+}
+
 export async function assignMinistryRole(data: {
   churchId: number;
   ministryId: number;

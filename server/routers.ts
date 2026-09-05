@@ -46,6 +46,7 @@ import {
   updateEvent,
   removeEvent,
   createMinistry,
+  updateMinistry,
   createPerson,
   createPrayerRequest,
   createSoul,
@@ -195,6 +196,7 @@ import {
   deactivateMinistryRole,
   getActiveMinistryRoleKeysByPerson,
   getMinistryRoleAssignmentsByPerson,
+  getMinistryRoleAssignmentsByMinistry,
   getMinistryRoleAssignmentById,
   getMinistryMembershipsByPerson,
   getMinistryRoleDefinitionsByChurch,
@@ -793,8 +795,10 @@ async function getChurchAccessSummary(userId: number, churchId: number) {
   const isPastoralWorker = roles.some((role) => PASTORAL_ACTION_ROLES.has(role));
   const canAccessVisits = roles.some((role) => VISIT_ROLES.has(role));
   const canManageCells = roles.some((role) => ["pastor_presidente", "pastor_local", "supervisor", "lider"].includes(role));
+  const activeMinistries = await getMinistriesByChurch(churchId);
   const canManageMinistry = roles.some((role) => PASTOR_ROLES.has(role) || role === "lider_ministerio" || MINISTRY_MANAGEMENT_ROLE_KEYS.has(role))
-    || Boolean(actor.personId && (await getMinistriesByChurch(churchId)).some((ministry) => ministry.leaderId === actor.personId));
+    || Boolean(actor.personId && activeMinistries.some((ministry) => ministry.leaderId === actor.personId));
+  const canAccessMinistry = canManageMinistry || Boolean(actor.personId && (await getMinistryMembershipsByPerson(actor.personId, churchId)).length > 0);
   const canManageLibrary = isExecutive;
   return {
     actorPersonId: actor.personId ?? null,
@@ -810,6 +814,7 @@ async function getChurchAccessSummary(userId: number, churchId: number) {
     canAccessVisits,
     canManageCells,
     canManageMinistry,
+    canAccessMinistry,
     canManageLibrary,
     canAccessTreasury: roles.some((role) => TREASURY_ROLES.has(role)),
     canIndicateNewSoul: Boolean(actor.personId),
@@ -3124,12 +3129,13 @@ const ministriesRouter = router({
     .query(async ({ input, ctx }) => {
       const actor = await requireChurchMember(ctx.user.id, input.churchId);
       const actorRoles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, actor);
-      const [rows, counts, churchPeople, assignments, definitions] = await Promise.all([
+      const [rows, counts, churchPeople, assignments, definitions, memberships] = await Promise.all([
         getMinistriesByChurch(input.churchId),
         getMinistryMemberCounts(input.churchId),
         getPeopleByChurch(input.churchId),
         actor.personId ? getMinistryRoleAssignmentsByPerson(actor.personId, input.churchId) : Promise.resolve([]),
         getMinistryRoleDefinitionsByChurch(input.churchId),
+        actor.personId ? getMinistryMembershipsByPerson(actor.personId, input.churchId) : Promise.resolve([]),
       ]);
       const countByMinistry = new Map(counts.map((item) => [item.ministryId, Number(item.count)]));
       const nameByPerson = new Map(churchPeople.map((person) => [person.id, person.fullName]));
@@ -3139,9 +3145,10 @@ const ministriesRouter = router({
         MINISTRY_MANAGEMENT_ROLE_KEYS.has(assignment.roleKey)
         || definitionByKey.get(assignment.roleKey)?.permissionPackage === "ministry_leader"
       ).map(({ assignment }) => assignment.ministryId));
+      const memberMinistryIds = new Set(memberships.map(({ ministry }) => ministry.id));
       const visibleRows = canManageAll
         ? rows
-        : rows.filter((ministry) => Boolean(actor.personId && ministry.leaderId === actor.personId) || managedByAssignment.has(ministry.id));
+        : rows.filter((ministry) => Boolean(actor.personId && ministry.leaderId === actor.personId) || managedByAssignment.has(ministry.id) || memberMinistryIds.has(ministry.id));
       if (!canManageAll && visibleRows.length === 0) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Você não possui um Ministério sob sua responsabilidade." });
       }
@@ -3163,7 +3170,22 @@ const ministriesRouter = router({
       const canManage = canReadAll || Boolean(actor.personId && ministry.leaderId === actor.personId);
       const isMember = actor.personId ? await isActiveMinistryMember(input.ministryId, actor.personId, input.churchId) : false;
       if (!canManage && !isMember) throw new TRPCError({ code: "FORBIDDEN", message: "Você só pode consultar Ministérios do seu escopo." });
-      return getMinistryMembers(input.ministryId, input.churchId);
+      const [members, assignments, definitions] = await Promise.all([
+        getMinistryMembers(input.ministryId, input.churchId),
+        getMinistryRoleAssignmentsByMinistry(input.ministryId, input.churchId),
+        getMinistryRoleDefinitionsByChurch(input.churchId),
+      ]);
+      const labels = new Map([
+        ...MINISTRY_FUNCTION_CATALOG.map((item) => [item.key, item.label] as const),
+        ...definitions.map((definition) => [definition.key, definition.name] as const),
+      ]);
+      const rolesByPerson = new Map<number, Array<{ id: number; key: string; label: string }>>();
+      for (const { assignment } of assignments) {
+        const current = rolesByPerson.get(assignment.personId) ?? [];
+        current.push({ id: assignment.id, key: assignment.roleKey, label: labels.get(assignment.roleKey) ?? assignment.roleKey });
+        rolesByPerson.set(assignment.personId, current);
+      }
+      return members.map((item) => ({ ...item, roles: rolesByPerson.get(item.person.id) ?? [] }));
     }),
   candidates: protectedProcedure
     .input(z.object({ churchId: z.number(), ministryId: z.number().int().positive() }))
@@ -3201,7 +3223,12 @@ const ministriesRouter = router({
       await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
       const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
       if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado." });
-      return getMinistryFunctionCatalogFor(ministry);
+      const builtIn = getMinistryFunctionCatalogFor(ministry);
+      const builtInKeys = new Set<string>(builtIn.map((item) => item.key));
+      const custom = (await getMinistryRoleDefinitionsByChurch(input.churchId))
+        .filter((definition) => definition.active && (!definition.ministryId || definition.ministryId === ministry.id) && !builtInKeys.has(definition.key))
+        .map((definition) => ({ key: definition.key, label: definition.name, ministryTypes: [ministry.type], grants: CUSTOM_PERMISSION_PACKAGE_GRANTS[definition.permissionPackage] ?? [] }));
+      return [...builtIn, ...custom];
     }),
   customFunctions: protectedProcedure
     .input(z.object({ churchId: z.number() }))
@@ -3260,16 +3287,21 @@ const ministriesRouter = router({
       await requirePastor(ctx.user.id, input.churchId);
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
-      const assignments = await getMinistryRoleAssignmentsByPerson(input.personId, input.churchId);
+      const [assignments, customDefinitions] = await Promise.all([
+        getMinistryRoleAssignmentsByPerson(input.personId, input.churchId),
+        getMinistryRoleDefinitionsByChurch(input.churchId),
+      ]);
+      const definitionByKey = new Map(customDefinitions.map((definition) => [definition.key, definition]));
       return assignments.map(({ assignment, ministry }) => {
         const definition = MINISTRY_FUNCTION_CATALOG.find((item) => item.key === assignment.roleKey);
+        const customDefinition = definitionByKey.get(assignment.roleKey);
         return {
           id: assignment.id,
           ministryId: ministry.id,
           ministryName: ministry.name,
           roleKey: assignment.roleKey,
-          roleLabel: definition?.label ?? assignment.roleKey,
-          grants: definition?.grants ?? [],
+          roleLabel: definition?.label ?? customDefinition?.name ?? assignment.roleKey,
+          grants: definition?.grants ?? CUSTOM_PERMISSION_PACKAGE_GRANTS[customDefinition?.permissionPackage ?? "member"] ?? [],
           assignedAt: assignment.assignedAt,
         };
       });
@@ -3281,19 +3313,24 @@ const ministriesRouter = router({
       const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, member);
       const isPastor = roles.some((role) => PASTOR_ROLES.has(role));
       if (!isPastor) await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
-      if (!isPastor && !OPERATIONAL_MINISTRY_ROLE_KEYS.has(input.roleKey)) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Líderes só podem atribuir funções operacionais da própria equipe." });
-      }
-      if (MINISTRY_LEADERSHIP_ROLE_KEYS.has(input.roleKey) && !isPastor) {
-        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor pode atribuir funções de liderança." });
-      }
       const [person, ministry] = await Promise.all([
         getPersonById(input.personId, input.churchId),
         getMinistriesByChurch(input.churchId).then((items) => items.find((item) => item.id === input.ministryId && item.active)),
       ]);
       if (!person || !ministry) throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou Ministério inválido para esta igreja." });
-      const allowed = getMinistryFunctionCatalogFor(ministry).some((item) => item.key === input.roleKey);
+      const customDefinition = (await getMinistryRoleDefinitionsByChurch(input.churchId)).find((definition) => definition.key === input.roleKey && (!definition.ministryId || definition.ministryId === ministry.id) && definition.active);
+      const allowed = getMinistryFunctionCatalogFor(ministry).some((item) => item.key === input.roleKey) || Boolean(customDefinition);
       if (!allowed) throw new TRPCError({ code: "BAD_REQUEST", message: "Essa função não é compatível com o Ministério selecionado." });
+      const isCustomMemberRole = customDefinition?.permissionPackage === "member";
+      if (!isPastor && !OPERATIONAL_MINISTRY_ROLE_KEYS.has(input.roleKey) && !isCustomMemberRole) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Líderes só podem atribuir funções operacionais da própria equipe." });
+      }
+      if (MINISTRY_LEADERSHIP_ROLE_KEYS.has(input.roleKey) && !isPastor) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor pode atribuir funções de liderança." });
+      }
+      if (!isPastor && customDefinition && customDefinition.permissionPackage !== "member") {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor pode atribuir funções personalizadas que alteram acessos." });
+      }
       if (!(await isActiveMinistryMember(input.ministryId, input.personId, input.churchId))) {
         await assignPersonToMinistry({ churchId: input.churchId, ministryId: input.ministryId, personId: input.personId });
       }
@@ -3307,8 +3344,10 @@ const ministriesRouter = router({
       const member = await requireChurchMember(ctx.user.id, input.churchId);
       const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, member);
       const isPastor = roles.some((role) => PASTOR_ROLES.has(role));
+      const customDefinition = (await getMinistryRoleDefinitionsByChurch(input.churchId)).find((definition) => definition.key === assignment.roleKey && (!definition.ministryId || definition.ministryId === assignment.ministryId) && definition.active);
+      const canLeaderManageRole = OPERATIONAL_MINISTRY_ROLE_KEYS.has(assignment.roleKey) || customDefinition?.permissionPackage === "member";
       if (!isPastor) {
-        if (!OPERATIONAL_MINISTRY_ROLE_KEYS.has(assignment.roleKey)) throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor pode remover funções de liderança." });
+        if (!canLeaderManageRole) throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor pode remover funções de liderança." });
         await requireMinistryManagementPermission(ctx.user.id, input.churchId, assignment.ministryId);
       }
       await deactivateMinistryRole(input.id, input.churchId, assignment.ministryId);
@@ -3343,6 +3382,19 @@ const ministriesRouter = router({
         leaderId: input.leaderId ?? null,
       }, participantIds);
       return ministry;
+    }),
+  update: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      ministryId: z.number().int().positive(),
+      name: z.string().trim().min(2).max(255),
+      description: z.string().trim().max(3000).nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requirePastor(ctx.user.id, input.churchId);
+      const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
+      if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
+      return updateMinistry(input.ministryId, input.churchId, { name: input.name.trim(), description: input.description?.trim() || null });
     }),
   archive: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), ministryId: z.number().int().positive() }))
