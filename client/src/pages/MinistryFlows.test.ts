@@ -9,6 +9,7 @@ const ministrySource = readFileSync(resolve(root, "client/src/pages/Ministerios.
 const layoutSource = readFileSync(resolve(root, "client/src/components/ChurchLayout.tsx"), "utf8");
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
+const schedulesSource = readFileSync(resolve(root, "client/src/pages/Escalas.tsx"), "utf8");
 
 describe("Fluxo responsivo e seguro de Ministérios", () => {
   it("mantém os modais limitados à viewport e com rolagem vertical", () => {
@@ -46,6 +47,18 @@ describe("Fluxo responsivo e seguro de Ministérios", () => {
     expect(routerSource).toContain('getMinistryRoleAssignmentsByMinistry(input.ministryId, input.churchId)');
     expect(routerSource).toContain('const customDefinition =');
     expect(dbSource).toContain('export async function getMinistryRoleAssignmentsByMinistry');
+  });
+
+  it("mantém Escalas como agenda única e abre a visão oficial filtrada pelo Ministério", () => {
+    expect(ministrySource).toContain('upcomingByMinistry.useQuery');
+    expect(ministrySource).toContain('Ver em Escalas');
+    expect(ministrySource).toContain('`/app/escalas?ministerio=${selectedMinistry.id}`');
+    expect(routerSource).toContain('upcomingByMinistry: protectedProcedure');
+    expect(routerSource).toContain('requireMinistryScopedRead(ctx.user.id, input.churchId, input.ministryId)');
+    expect(dbSource).toContain('export async function getUpcomingScheduleItemsByMinistry');
+    expect(schedulesSource).toContain('get("ministerio")');
+    expect(schedulesSource).toContain('displayedScales');
+    expect(schedulesSource).toContain('Limpar filtro');
   });
 
   it("exclui Ministério por arquivamento, com confirmação e preservação de histórico", () => {

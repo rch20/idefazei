@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +23,8 @@ const EMPTY_FORM: ScheduleForm = { ministryId: "", departmentId: "", personId: "
 
 export default function Escalas() {
   const { churchId } = useChurch();
+  const [location, navigate] = useLocation();
+  const ministryFilterId = Number(new URLSearchParams(location.split("?")[1] ?? "").get("ministerio") ?? 0) || null;
   const today = new Date();
   const [currentMonth, setCurrentMonth] = useState(today.getMonth() + 1);
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
@@ -56,6 +59,7 @@ export default function Escalas() {
     { churchId: churchId!, departmentId: Number(form.departmentId) || 0 },
     { enabled: Boolean(churchId && form.departmentId) }
   );
+  const displayedScales = ministryFilterId ? scales.filter((scale) => scale.ministryId === ministryFilterId) : scales;
   const createMutation = trpc.schedules.create.useMutation({
     onSuccess: () => {
       toast.success("Escala criada com sucesso!");
@@ -102,7 +106,7 @@ export default function Escalas() {
 
   const getScalesForDay = (day: number) => {
     const dateStr = formatDate(day);
-    return scales.filter((s) => {
+    return displayedScales.filter((s) => {
       const d = new Date(s.scheduledDate);
       const sd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       return sd === dateStr;
@@ -113,14 +117,14 @@ export default function Escalas() {
   const hasConflict = (day: number) => getScalesForDay(day).some((scale) => scale.hasTimeConflict);
 
   const selectedScales = selectedDate
-    ? scales.filter((s) => {
+    ? displayedScales.filter((s) => {
         const d = new Date(s.scheduledDate);
         const sd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         return sd === selectedDate;
       })
     : [];
 
-  const activeScales = scales.filter((scale) => scale.status !== "cancelada");
+  const activeScales = displayedScales.filter((scale) => scale.status !== "cancelada");
   const uniqueDates = new Set(
     activeScales.map((s) => {
       const d = new Date(s.scheduledDate);
@@ -131,6 +135,7 @@ export default function Escalas() {
   const peopleById = new Map(people.map((person) => [person.id, person.fullName]));
   const ministriesById = new Map(ministries.map((ministry) => [ministry.id, ministry.name]));
   const departmentsById = new Map(departments.filter((department) => department !== null).map((department) => [department.id, department.name]));
+  const ministryFilterName = ministryFilterId ? ministriesById.get(ministryFilterId) : null;
   const schedulableDepartments = departments.filter((department): department is NonNullable<typeof department> => Boolean(department && department.active && department.canManage));
   const schedulableMinistries = ministries.filter((ministry) => ministry.canManage || schedulableDepartments.some((department) => department.ministryId === ministry.id));
   const selectedMinistryCanManage = ministries.find((ministry) => String(ministry.id) === form.ministryId)?.canManage ?? false;
@@ -271,6 +276,8 @@ export default function Escalas() {
           </Dialog>}
         </div>
 
+        {ministryFilterId && <div className="mb-4 flex flex-col gap-2 rounded-xl border border-gold/30 bg-gold/5 p-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-navy">Mostrando as escalas de <strong>{ministryFilterName ?? `Ministério #${ministryFilterId}`}</strong>.</p><Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => navigate("/app/escalas")}>Limpar filtro</Button></div>}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Calendar */}
           <div className="lg:col-span-2 card-sacred p-5">
@@ -334,7 +341,7 @@ export default function Escalas() {
                   {[
                     { label: "Cultos Escalados", value: uniqueDates.size, icon: Calendar },
                     { label: "Escalas no Mês", value: activeScales.length, icon: Users },
-                    { label: "Canceladas", value: scales.length - activeScales.length, icon: XCircle },
+                    { label: "Canceladas", value: displayedScales.length - activeScales.length, icon: XCircle },
                     { label: "Conflitos", value: conflictsThisMonth, icon: AlertTriangle },
                   ].map((item) => (
                     <div key={item.label} className="flex items-center justify-between">

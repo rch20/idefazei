@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useChurch } from "@/components/ChurchLayout";
 import { DepartmentsPanel } from "@/components/DepartmentsPanel";
 import { ConsolidationReferralBox } from "@/components/ConsolidationReferralBox";
@@ -11,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { ChevronDown, Edit3, Music, Users, Plus, Search, Star, Trash2 } from "lucide-react";
+import { Calendar, ChevronDown, Clock, Edit3, Music, Users, Plus, Search, Star, Trash2 } from "lucide-react";
 
 const OPERATIONAL_FUNCTION_KEYS = new Set(["membro_ministerio", "musico", "vocalista", "visitador"]);
 
@@ -40,6 +41,10 @@ function isVisitsMinistry(ministry: { type?: string | null; name: string }) {
 
 function isTeamMinistryType(type: string) {
   return type === "consolidacao" || type === "visitas";
+}
+
+function formatScheduleDate(value: Date | string) {
+  return new Date(value).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
 }
 
 export default function Ministerios() {
@@ -80,6 +85,11 @@ export default function Ministerios() {
     { enabled: Boolean(churchId && selectedMinistry?.id && selectedMinistry?.canManage) }
   );
   const customFunctions = trpc.ministries.customFunctions.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId && canCreateMinistry) });
+  const [, navigate] = useLocation();
+  const upcomingSchedules = trpc.schedules.upcomingByMinistry.useQuery(
+    { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0, limit: 3 },
+    { enabled: Boolean(churchId && selectedMinistry?.id) }
+  );
 
   const createMutation = trpc.ministries.create.useMutation({
     onSuccess: () => {
@@ -397,6 +407,18 @@ export default function Ministerios() {
                   <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-start gap-3 px-4 py-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-navy">{item.person.fullName}</p><div className="mt-1 flex flex-wrap gap-1">{selectedMinistry?.leaderId === item.person.id && <Badge variant="secondary" className="text-[10px]">Líder responsável</Badge>}{(item.roles ?? []).map((role) => <span key={role.id} className="inline-flex items-center gap-0.5 rounded-full border border-border bg-background pl-1.5 text-[10px] text-muted-foreground"><span>{role.label}</span>{selectedMinistry?.canManage && <button type="button" className="rounded-full p-0.5 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Remover função ${role.label} de ${item.person.fullName}`} onClick={() => removeFunction.mutate({ churchId: churchId!, id: role.id })}><Trash2 className="h-2.5 w-2.5" /></button>}</span>)}{selectedMinistry?.leaderId !== item.person.id && (item.roles ?? []).length === 0 && <span className="text-[11px] text-muted-foreground">Participante</span>}</div></div>{selectedMinistry?.canManage && selectedMinistry.leaderId !== item.person.id && <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Remover ${item.person.fullName}`} onClick={() => removePerson.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: item.person.id })}><Trash2 className="h-4 w-4" /></Button>}</div>)}</div>
                 )}
               </div>
+              {selectedMinistry && (
+                <section className="rounded-xl border border-border bg-background p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="flex items-center gap-2 text-sm font-semibold text-navy"><Calendar className="h-4 w-4 text-gold" />Próximas escalas</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Resumo da agenda oficial deste Ministério.</p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => navigate(`/app/escalas?ministerio=${selectedMinistry.id}`)}>Ver em Escalas</Button>
+                  </div>
+                  {upcomingSchedules.isLoading ? <div className="mt-3 space-y-2"><div className="h-10 animate-pulse rounded-lg bg-muted" /><div className="h-10 animate-pulse rounded-lg bg-muted" /></div> : (upcomingSchedules.data ?? []).length === 0 ? <p className="mt-3 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">Nenhuma escala futura cadastrada para este Ministério.</p> : <div className="mt-3 space-y-2">{upcomingSchedules.data?.map((scale) => <div key={scale.id} className="flex items-start gap-3 rounded-lg border border-border/70 bg-muted/20 p-3"><Calendar className="mt-0.5 h-4 w-4 shrink-0 text-gold" /><div className="min-w-0 flex-1"><p className="text-sm font-medium text-navy">{formatScheduleDate(scale.scheduledDate)}</p><p className="mt-0.5 text-xs text-muted-foreground">{scale.startTime && scale.endTime ? <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{scale.startTime}–{scale.endTime}</span> : "Horário não definido"}{scale.departmentName ? ` · ${scale.departmentName}` : ""}</p><p className="mt-0.5 text-xs text-muted-foreground">{scale.personName ?? "Pessoa da equipe"}{scale.role ? ` · ${scale.role}` : ""}</p></div></div>)}</div>}
+                </section>
+              )}
               {selectedMinistry?.canManage && (
                 <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
                   <p className="text-sm font-semibold text-navy">Atuação na equipe</p>

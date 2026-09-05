@@ -187,6 +187,7 @@ import {
   getMinistryMemberCounts,
   isActiveMinistryMember,
   getScheduleTimeConflicts,
+  getUpcomingScheduleItemsByMinistry,
   getScheduleItemById,
   updateScheduleItem,
   cancelScheduleItem,
@@ -3628,6 +3629,12 @@ const schedulesRouter = router({
         ...item,
         hasTimeConflict: Boolean(item.status !== "cancelada" && item.startTime && item.endTime && filtered.some((other) => other.status !== "cancelada" && other.id !== item.id && other.personId === item.personId && String(other.scheduledDate) === String(item.scheduledDate) && other.startTime && other.endTime && item.startTime! < other.endTime! && item.endTime! > other.startTime!)),
       }));
+    }),
+  upcomingByMinistry: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), ministryId: z.number().int().positive(), limit: z.number().int().min(1).max(3).optional() }))
+    .query(async ({ input, ctx }) => {
+      await requireMinistryScopedRead(ctx.user.id, input.churchId, input.ministryId);
+      return getUpcomingScheduleItemsByMinistry(input.churchId, input.ministryId, input.limit ?? 3);
     }),
   create: protectedProcedure
     .input(z.object({

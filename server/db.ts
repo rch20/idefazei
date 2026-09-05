@@ -93,7 +93,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { getDerivedLogoIconUrls, getOptimizedMediaUrls } from "./media";
-import { currentCivilDateAsUtcNoon } from "./civilDate";
+import { currentCivilDateAsUtcNoon, formatCivilDateInput } from "./civilDate";
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 
@@ -3657,6 +3657,44 @@ export async function getScheduleTimeConflicts(data: {
     && item.status !== "cancelada"
     && Boolean(item.startTime && item.endTime && item.startTime < data.endTime && item.endTime > data.startTime)
   );
+}
+
+export async function getUpcomingScheduleItemsByMinistry(churchId: number, ministryId: number, limit = 3) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(scheduleItems)
+    .where(and(
+      eq(scheduleItems.churchId, churchId),
+      eq(scheduleItems.ministryId, ministryId),
+      eq(scheduleItems.status, "agendada"),
+    ));
+  const todayKey = formatCivilDateInput(currentCivilDateAsUtcNoon());
+  const civilDateKey = (value: Date | string) => {
+    const date = value instanceof Date ? value : new Date(value);
+    return formatCivilDateInput(date);
+  };
+  const upcoming = rows
+    .filter((item) => civilDateKey(item.scheduledDate) >= todayKey)
+    .sort((left, right) => {
+      const dateComparison = civilDateKey(left.scheduledDate).localeCompare(civilDateKey(right.scheduledDate));
+      if (dateComparison !== 0) return dateComparison;
+      return String(left.startTime ?? "99:99").localeCompare(String(right.startTime ?? "99:99")) || left.id - right.id;
+    })
+    .slice(0, Math.max(1, Math.min(limit, 10)));
+  if (upcoming.length === 0) return [];
+  const [people, departments] = await Promise.all([
+    getPeopleByChurch(churchId),
+    getDepartmentsByChurch(churchId),
+  ]);
+  const peopleById = new Map(people.map((person) => [person.id, person.fullName]));
+  const departmentsById = new Map(departments.map((department) => [department.id, department.name]));
+  return upcoming.map((item) => ({
+    ...item,
+    personName: peopleById.get(item.personId) ?? null,
+    departmentName: item.departmentId ? departmentsById.get(item.departmentId) ?? null : null,
+  }));
 }
 
 export async function getScheduleItemById(id: number, churchId: number) {
