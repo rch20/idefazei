@@ -32,6 +32,16 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("Salvar identidade");
   });
 
+  it("mantém os únicos modais de Configurações compactos e não transforma páginas longas em supermodais", () => {
+    expect(settingsSource.match(/<DialogContent/g)?.length).toBe(2);
+    expect(settingsSource).toContain("Compartilhar cadastro");
+    expect(settingsSource).toContain("Rejeitar cadastro");
+    expect(settingsSource).toContain("Configurações da Igreja");
+    expect(settingsSource).toContain("Salvar identidade");
+    expect(settingsSource).toContain("Salvar integração");
+    expect(settingsSource).not.toContain("AdaptiveFormDialogContent");
+  });
+
   it("mantém a ação de salvar contextual e evita confundir publicação com configuração geral", () => {
     expect(settingsSource).toContain("const canSaveChurchSettings = activeTab === \"geral\" || activeTab === \"identidade\" || activeTab === \"integracao\"");
     expect(settingsSource).toContain("Salve e publique dentro do editor público");
