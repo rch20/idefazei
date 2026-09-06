@@ -1,6 +1,7 @@
 import { OpenStreetMap } from "@/components/OpenStreetMap";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -55,6 +56,7 @@ function coordinateValue(value: string | number | null | undefined) {
 
 export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, onSaved }: CellPublicSettingsDialogProps) {
   const utils = trpc.useUtils();
+  const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState({
     address: "",
     addressNumber: "",
@@ -107,22 +109,32 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
       await utils.cells.list.invalidate({ churchId });
       toast.success("Configuração pública da Célula salva.");
       onSaved?.(saved as PublicCell);
+      setFormError(null);
       onOpenChange(false);
     },
-    onError: (error) => toast.error(error.message || "Não foi possível salvar a configuração pública."),
+    onError: (error) => {
+      const message = error.message || "Não foi possível salvar a configuração pública.";
+      setFormError(message);
+      toast.error(message);
+    },
   });
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
+    setFormError(null);
     if (!cell) return;
     const latitude = form.latitude.trim() === "" ? null : Number(form.latitude);
     const longitude = form.longitude.trim() === "" ? null : Number(form.longitude);
     if ((latitude !== null && !Number.isFinite(latitude)) || (longitude !== null && !Number.isFinite(longitude))) {
-      toast.error("Informe coordenadas válidas ou escolha o ponto no mapa.");
+      const message = "Informe coordenadas válidas ou escolha o ponto no mapa.";
+      setFormError(message);
+      toast.error(message);
       return;
     }
     if (form.publicVisible && (latitude === null || longitude === null)) {
-      toast.error("Defina o ponto no mapa antes de publicar a Célula.");
+      const message = "Defina o ponto no mapa antes de publicar a Célula.";
+      setFormError(message);
+      toast.error(message);
       return;
     }
     updateSettings.mutate({
@@ -146,19 +158,20 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
+    <Dialog open={open} onOpenChange={(nextOpen) => { onOpenChange(nextOpen); if (nextOpen) setFormError(null); }}>
+      <AdaptiveFormDialogContent className="sm:max-w-3xl">
+        <div className={adaptiveFormDialogHeaderClassName}>
           <DialogTitle className="flex items-center gap-2 font-display text-navy">
             <ShieldCheck className="h-5 w-5 text-gold" />
             Publicação da Célula {cell?.name}
           </DialogTitle>
-          <DialogDescription>
+          <p className="mt-1 text-sm text-muted-foreground">
             Somente Pastores podem tornar estes dados públicos. As opções começam privadas.
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+        </div>
 
-        <form onSubmit={submit} className="space-y-5">
+        <form onSubmit={submit} className="contents">
+          <AdaptiveFormDialogBody className="space-y-5">
           <section className={`rounded-xl border p-4 ${form.publicVisible ? "border-indigo-200 bg-indigo-50/50" : "border-border bg-muted/20"}`}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -223,12 +236,14 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
             </div>
           </section>
 
-          <DialogFooter>
+          {formError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{formError}</div>}
+          </AdaptiveFormDialogBody>
+          <AdaptiveFormDialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={updateSettings.isPending}>Cancelar</Button>
             <Button type="submit" className="bg-navy text-white hover:bg-navy-light" disabled={!cell || updateSettings.isPending}>{updateSettings.isPending ? "Salvando…" : "Salvar configuração"}</Button>
-          </DialogFooter>
+          </AdaptiveFormDialogFooter>
         </form>
-      </DialogContent>
+      </AdaptiveFormDialogContent>
     </Dialog>
   );
 }

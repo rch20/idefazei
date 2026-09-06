@@ -1,7 +1,8 @@
 import { useChurch } from "@/components/ChurchLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -258,18 +259,19 @@ export default function GanharAlmas() {
       )}
 
       <Dialog open={open} onOpenChange={(nextOpen) => (nextOpen ? setOpen(true) : closeDialog())}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto rounded-xl p-5 sm:max-w-xl sm:p-6">
-          <DialogHeader>
+        <AdaptiveFormDialogContent>
+          <div className={adaptiveFormDialogHeaderClassName}>
             <DialogTitle className="flex items-center gap-2 font-display text-navy"><Flame className="h-5 w-5 text-amber-500" aria-hidden="true" />{isLimitedMember ? "Indicar nova alma" : "Registrar nova alma"}</DialogTitle>
-            <DialogDescription>{isLimitedMember ? "Informe os dados básicos; a liderança fará a revisão e definirá o próximo passo." : "Registre as informações essenciais para iniciar o cuidado e a consolidação."}</DialogDescription>
-          </DialogHeader>
+            <p className="mt-1 text-sm text-muted-foreground">{isLimitedMember ? "Informe os dados básicos; a liderança fará a revisão e definirá o próximo passo." : "Registre as informações essenciais para iniciar o cuidado e a consolidação."}</p>
+          </div>
 
-              {peopleQuery.isLoading && !isLimitedMember ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">Carregando pessoas da igreja…</div>
+          {peopleQuery.isLoading && !isLimitedMember ? (
+            <AdaptiveFormDialogBody className="py-8 text-center text-sm text-muted-foreground">Carregando pessoas da igreja…</AdaptiveFormDialogBody>
           ) : peopleQuery.isError && !isLimitedMember ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Não foi possível carregar as pessoas da igreja. Feche e tente novamente.</div>
+            <AdaptiveFormDialogBody className="rounded-lg border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">Não foi possível carregar as pessoas da igreja. Feche e tente novamente.</AdaptiveFormDialogBody>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+            <form onSubmit={handleSubmit} className="contents" noValidate>
+              <AdaptiveFormDialogBody className="space-y-5">
               {formError && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</div>}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="sm:col-span-2">
@@ -384,13 +386,14 @@ export default function GanharAlmas() {
                 <Textarea id="soul-notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Informações que ajudem no primeiro contato" rows={3} className="mt-1" />
               </div>
 
-              <div className="sticky bottom-0 -mx-5 flex flex-col-reverse gap-2 border-t border-border bg-background px-5 pt-4 sm:-mx-6 sm:flex-row sm:justify-end sm:px-6">
+              </AdaptiveFormDialogBody>
+              <AdaptiveFormDialogFooter>
                 <Button type="button" variant="outline" onClick={closeDialog} disabled={createSoul.isPending}>Cancelar</Button>
                 <Button type="submit" className="bg-navy text-white hover:bg-navy-light" disabled={createSoul.isPending}>{createSoul.isPending ? "Enviando…" : isLimitedMember ? "Enviar indicação" : "Registrar nova alma"}</Button>
-              </div>
+              </AdaptiveFormDialogFooter>
             </form>
           )}
-        </DialogContent>
+        </AdaptiveFormDialogContent>
       </Dialog>
     </section>
   );

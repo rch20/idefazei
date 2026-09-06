@@ -2,6 +2,7 @@ import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -202,6 +203,7 @@ export default function Pessoas() {
   const { churchId } = useChurch();
   const [location, navigate] = useLocation();
   const [open, setOpen] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(defaultForm);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
@@ -287,9 +289,14 @@ export default function Pessoas() {
       toast.success("Pessoa cadastrada com sucesso!");
       setOpen(false);
       setForm(defaultForm);
+      setFormError(null);
       refetch();
     },
-    onError: () => toast.error("Erro ao cadastrar pessoa"),
+    onError: (error) => {
+      const message = error.message || "Erro ao cadastrar pessoa";
+      setFormError(message);
+      toast.error(message);
+    },
   });
   const assignCare = trpc.care.assign.useMutation({
     onSuccess: async (result) => {
@@ -356,6 +363,7 @@ export default function Pessoas() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setFormError(null);
     const data: any = { churchId, ...form };
     Object.keys(data).forEach((k) => {
       if (data[k] === "") data[k] = undefined;
@@ -602,7 +610,7 @@ export default function Pessoas() {
             <Cake className="h-4 w-4 text-gold" />
             Aniversariantes
           </Button>
-          <Button onClick={() => setOpen(true)} className="bg-navy hover:bg-navy-light text-white gap-2">
+          <Button onClick={() => { setFormError(null); setOpen(true); }} className="bg-navy hover:bg-navy-light text-white gap-2">
             <Plus className="w-4 h-4" />
             Nova Pessoa
           </Button>
@@ -672,7 +680,7 @@ export default function Pessoas() {
           {search ? (
             <Button type="button" variant="outline" onClick={() => setSearch("")}>Limpar busca</Button>
           ) : (
-            <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Cadastrar primeira Pessoa</Button>
+            <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={() => { setFormError(null); setOpen(true); }}><Plus className="mr-2 h-4 w-4" />Cadastrar primeira Pessoa</Button>
           )}
         </div>
       ) : (
@@ -709,15 +717,17 @@ export default function Pessoas() {
       )}
 
       {/* Dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+      <Dialog open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (nextOpen) setFormError(null); }}>
+        <AdaptiveFormDialogContent className="sm:max-w-2xl">
+          <div className={adaptiveFormDialogHeaderClassName}>
             <DialogTitle className="font-display text-navy flex items-center gap-2">
               <User className="w-5 h-5" />
               Cadastrar Pessoa
             </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
+          </div>
+          <form onSubmit={handleSubmit} className="contents">
+            <AdaptiveFormDialogBody>
+              {formError && <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{formError}</div>}
             <Tabs defaultValue="pessoal" className="w-full">
               <TabsList className="grid grid-cols-4 w-full mb-4">
                 <TabsTrigger value="pessoal">Pessoal</TabsTrigger>
@@ -858,23 +868,25 @@ export default function Pessoas() {
               </TabsContent>
             </Tabs>
 
-            <div className="flex gap-3 mt-6">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">Cancelar</Button>
-              <Button type="submit" className="flex-1 bg-navy hover:bg-navy-light text-white" disabled={createPerson.isPending}>
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button type="submit" className="bg-navy hover:bg-navy-light text-white" disabled={createPerson.isPending}>
                 {createPerson.isPending ? "Salvando..." : "Cadastrar"}
               </Button>
-            </div>
+            </AdaptiveFormDialogFooter>
           </form>
-        </DialogContent>
+        </AdaptiveFormDialogContent>
       </Dialog>
 
       <Dialog open={Boolean(selectedPerson)} onOpenChange={(nextOpen) => !nextOpen && closePersonJourney()}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
+        <AdaptiveFormDialogContent className="sm:max-w-2xl">
+          <div className={adaptiveFormDialogHeaderClassName}>
             <DialogTitle className="flex items-center gap-2 font-display text-navy"><HeartHandshake className="h-5 w-5 text-rose-600" />{selectedPerson?.fullName}</DialogTitle>
-            <DialogDescription>Uma Pessoa, várias participações e um histórico único de cuidado.</DialogDescription>
-          </DialogHeader>
+            <p className="mt-1 text-sm text-muted-foreground">Uma Pessoa, várias participações e um histórico único de cuidado.</p>
+          </div>
 
+          <AdaptiveFormDialogBody className="space-y-5">
           <div role="tablist" aria-label="Seções da ficha da Pessoa" className={`grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 ${isPastorPresident && (pastoralCoverageCandidatesQuery.isLoading || selectedPersonIsPastor) ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
             {[
               ["resumo", "Resumo"],
@@ -1366,7 +1378,8 @@ export default function Pessoas() {
               {cellHistory.data && cellHistory.data.length > 1 && <p className="mt-3 text-xs text-muted-foreground">{cellHistory.data.length - 1} vínculo(s) anterior(es) preservado(s) no histórico.</p>}
             </section>
           )}
-        </DialogContent>
+          </AdaptiveFormDialogBody>
+        </AdaptiveFormDialogContent>
       </Dialog>
     </div>
   );
