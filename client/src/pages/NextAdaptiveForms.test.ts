@@ -26,6 +26,14 @@ describe("próximos formulários extensos no padrão adaptativo", () => {
     expect(page).toContain("personSection");
   });
 
+  it("mantém Aniversariantes como consulta compacta, sem transformar uma lista em formulário", () => {
+    const page = readSource("Pessoas.tsx");
+    expect(page).toContain("Aniversariantes");
+    expect(page).toContain("Enviar parabéns");
+    expect(page).toContain("<DialogContent className=\"max-h-[90dvh] max-w-2xl overflow-y-auto\">");
+    expect(page.match(/<AdaptiveFormDialogContent/g)).toHaveLength(2);
+  });
+
   it("mantém Publicação da Célula com mapa, validação e ações adaptativas", () => {
     const component = readComponent("CellPublicSettingsDialog.tsx");
     expect(component).toContain("AdaptiveFormDialogContent");
