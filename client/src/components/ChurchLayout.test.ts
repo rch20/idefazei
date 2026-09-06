@@ -50,6 +50,15 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain('label: "Biblioteca"');
   });
 
+  it("usa capacidade contextual para exibir Pessoas por escopo sem abrir o diretório completo", () => {
+    const layout = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
+    const app = readFileSync(resolve(process.cwd(), "client/src/App.tsx"), "utf8");
+    expect(layout).toContain('canReadPeople: boolean');
+    expect(layout).toContain('accessKey: "canReadPeople"');
+    expect(app).toContain('requiredAccess="canReadPeople"');
+    expect(app).toContain('requiredAccess="isExecutive"');
+  });
+
   it("usa capacidade contextual para exibir Ministérios ao líder designado", () => {
     const layout = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
     const app = readFileSync(resolve(process.cwd(), "client/src/App.tsx"), "utf8");
@@ -86,7 +95,8 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain("env(safe-area-inset-bottom)");
     expect(source).toContain("lg:hidden");
     expect(source).toContain("lg:block");
-    expect(source).toContain("!item.accessKey || Boolean(accessSummary?.[item.accessKey])");
+    expect(source).toContain('!item.accessKey || Boolean(accessSummary?.[item.accessKey])');
+    expect(source).toContain('label: "Pessoas", path: "/app/pessoas", group: "membros", accessKey: "canReadPeople"');
     expect(source).not.toContain('label: "Agenda"');
     expect(source).not.toContain('label: "Aprovações"');
     expect(source).not.toContain('label: "Indicações"');

@@ -2170,6 +2170,28 @@ export async function getConsolidationFollowUpsByChurch(churchId: number) {
     .orderBy(desc(consolidationFollowUps.createdAt));
 }
 
+/** Retorna somente os registros modernos de Consolidação vinculados a uma Pessoa. */
+export async function getConsolidationHistoryByPerson(personId: number, churchId: number) {
+  const [referrals, visits] = await Promise.all([
+    getConsolidationReferralsByChurch(churchId),
+    getCareVisitsByChurch(churchId),
+  ]);
+  const personReferrals = referrals.filter((referral) => referral.personId === personId);
+
+  return Promise.all(personReferrals.map(async (referral) => {
+    const [assignments, followUps] = await Promise.all([
+      getConsolidationCaseAssignments(referral.id, churchId),
+      getConsolidationFollowUpsByReferral(referral.id, churchId),
+    ]);
+    return {
+      referral,
+      assignments,
+      followUps,
+      visits: visits.filter((visit) => visit.referralId === referral.id),
+    };
+  }));
+}
+
 export async function createConsolidationFollowUp(data: typeof consolidationFollowUps.$inferInsert) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");

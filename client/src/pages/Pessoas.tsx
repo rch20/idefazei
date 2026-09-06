@@ -60,6 +60,50 @@ const CARE_ROLE_LABELS: Record<string, string> = {
   pastor: "Pastor",
 };
 
+const CONSOLIDATION_STATUS_LABELS: Record<string, string> = {
+  pendente: "Pendente",
+  aprovado: "Aprovado",
+  aceito: "Aceito",
+  em_acompanhamento: "Em acompanhamento",
+  encerrado: "Encerrado",
+  cancelado: "Cancelado",
+};
+
+const CONSOLIDATION_ACTION_LABELS: Record<string, string> = {
+  atribuido: "Responsável atribuído",
+  reatribuido: "Responsável alterado",
+  aprovado: "Caso aprovado",
+  aceito: "Caso assumido",
+  devolvido_fila: "Caso devolvido à fila",
+};
+
+const CONTACT_CHANNEL_LABELS: Record<string, string> = {
+  whatsapp: "WhatsApp",
+  ligacao: "Ligação",
+  mensagem: "Mensagem",
+  visita: "Visita",
+  presencial: "Presencial",
+  outro: "Outro contato",
+};
+
+const FOLLOW_UP_OUTCOME_LABELS: Record<string, string> = {
+  conversou: "Conversou",
+  sem_resposta: "Sem resposta",
+  retornar: "Retornar",
+  agendou_visita: "Visita agendada",
+  visitou: "Visita realizada",
+  recusou_contato: "Contato recusado",
+  outro: "Outro resultado",
+};
+
+const VISIT_STATUS_LABELS: Record<string, string> = {
+  solicitada: "Solicitada",
+  agendada: "Agendada",
+  em_andamento: "Em andamento",
+  realizada: "Realizada",
+  cancelada: "Cancelada",
+};
+
 const MINISTRY_TYPE_LABELS: Record<string, string> = {
   consolidacao: "Consolidação",
   visitas: "Visitas",
@@ -229,6 +273,10 @@ export default function Pessoas() {
     { churchId, id: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id) }
   );
+  const consolidationHistoryQuery = trpc.people.consolidationHistory.useQuery(
+    { churchId, id: selectedPerson?.id ?? 0 },
+    { enabled: Boolean(selectedPerson?.id && canManageJourney) }
+  );
   const cellHistory = trpc.cells.membershipHistory.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id) }
@@ -370,6 +418,37 @@ export default function Pessoas() {
     }
   }, [location, people, selectedPerson?.id]);
 
+  const modernConsolidationTimeline = (consolidationHistoryQuery.data ?? []).flatMap(({ referral, assignments, followUps, visits }) => [
+    {
+      date: referral.referredAt,
+      title: "Encaminhamento para Consolidação",
+      detail: `${CONSOLIDATION_STATUS_LABELS[referral.status] ?? referral.status} · ${referral.reason}`,
+    },
+    ...assignments.map((assignment) => ({
+      date: assignment.createdAt,
+      title: CONSOLIDATION_ACTION_LABELS[assignment.action] ?? "Atualização do caso",
+      detail: assignment.notes ?? "Responsabilidade registrada no histórico da Consolidação.",
+    })),
+    ...followUps.map((followUp) => ({
+      date: followUp.createdAt,
+      title: `Acompanhamento por ${CONTACT_CHANNEL_LABELS[followUp.contactChannel] ?? followUp.contactChannel}`,
+      detail: `${FOLLOW_UP_OUTCOME_LABELS[followUp.outcome] ?? followUp.outcome}${followUp.notes ? ` · ${followUp.notes}` : ""}${followUp.nextAction ? ` · Próxima ação: ${followUp.nextAction}` : ""}`,
+    })),
+    ...visits.map((visit) => ({
+      date: visit.completedAt ?? visit.cancelledAt ?? visit.scheduledAt ?? visit.createdAt,
+      title: `Visita: ${VISIT_STATUS_LABELS[visit.status] ?? visit.status}`,
+      detail: `${visit.reason}${visit.completionNotes ? ` · ${visit.completionNotes}` : ""}${visit.cancellationReason ? ` · ${visit.cancellationReason}` : ""}`,
+    })),
+    ...(referral.closedAt
+      ? [{
+          date: referral.closedAt,
+          title: `Caso de Consolidação ${CONSOLIDATION_STATUS_LABELS[referral.status] ?? referral.status}`,
+          detail: referral.closeNotes ?? "Desfecho registrado no caso.",
+        }]
+      : []),
+  ]);
+  const hasModernConsolidationHistory = (consolidationHistoryQuery.data ?? []).length > 0;
+
   const careTimeline = selectedPerson
     ? [
         ...(selectedAttention?.soul
@@ -380,18 +459,22 @@ export default function Pessoas() {
           title: "Responsável pelo cuidado definido",
           detail: `${CARE_ROLE_LABELS[item.role] ?? item.role}${item.notes ? ` · ${item.notes}` : ""}`,
         })),
-        ...(selectedAttention?.consolidation?.callDate
-          ? [{ date: selectedAttention.consolidation.callDate, title: "Primeiro contato realizado", detail: "Contato de consolidação registrado." }]
-          : []),
-        ...(selectedAttention?.consolidation?.messageDate
-          ? [{ date: selectedAttention.consolidation.messageDate, title: "Mensagem enviada", detail: "Ação de consolidação registrada." }]
-          : []),
-        ...(selectedAttention?.consolidation?.visitDate
-          ? [{ date: selectedAttention.consolidation.visitDate, title: "Visita realizada", detail: "Ação de consolidação registrada." }]
-          : []),
-        ...(selectedAttention?.consolidation?.prayerDate
-          ? [{ date: selectedAttention.consolidation.prayerDate, title: "Oração realizada", detail: "Ação de consolidação registrada." }]
-          : []),
+        ...(hasModernConsolidationHistory
+          ? modernConsolidationTimeline
+          : [
+              ...(selectedAttention?.consolidation?.callDate
+                ? [{ date: selectedAttention.consolidation.callDate, title: "Primeiro contato realizado", detail: "Contato de consolidação registrado no histórico anterior." }]
+                : []),
+              ...(selectedAttention?.consolidation?.messageDate
+                ? [{ date: selectedAttention.consolidation.messageDate, title: "Mensagem enviada", detail: "Ação de consolidação registrada no histórico anterior." }]
+                : []),
+              ...(selectedAttention?.consolidation?.visitDate
+                ? [{ date: selectedAttention.consolidation.visitDate, title: "Visita realizada", detail: "Ação de consolidação registrada no histórico anterior." }]
+                : []),
+              ...(selectedAttention?.consolidation?.prayerDate
+                ? [{ date: selectedAttention.consolidation.prayerDate, title: "Oração realizada", detail: "Ação de consolidação registrada no histórico anterior." }]
+                : []),
+            ]),
         ...(journeyQuery.data?.events ?? []).map((event) => ({
           date: event.createdAt,
           title: `${STAGES_LABELS[event.stage] ?? event.stage}: ${event.status === "concluida" ? "Concluída" : event.status === "pendente" ? "Pendente" : "Não registrada"}`,

@@ -93,6 +93,7 @@ import {
   getConsolidationReferralById,
   getConsolidationReferralsByChurch,
   getConsolidationFollowUpsByReferral,
+  getConsolidationHistoryByPerson,
   getConsolidationFollowUpsByChurch,
   getCareAttentionByChurch,
   getDashboardStats,
@@ -802,6 +803,7 @@ async function getChurchAccessSummary(userId: number, churchId: number) {
   const canManageMinistry = roles.some((role) => PASTOR_ROLES.has(role) || role === "lider_ministerio" || MINISTRY_MANAGEMENT_ROLE_KEYS.has(role))
     || Boolean(actor.personId && activeMinistries.some((ministry) => ministry.leaderId === actor.personId));
   const canAccessMinistry = canManageMinistry || Boolean(actor.personId && (await getMinistryMembershipsByPerson(actor.personId, churchId)).length > 0);
+  const canReadPeople = isExecutive || roles.some((role) => ["lider", "supervisor", "consolidador"].includes(role));
   const canManageLibrary = isExecutive;
   return {
     actorPersonId: actor.personId ?? null,
@@ -818,6 +820,7 @@ async function getChurchAccessSummary(userId: number, churchId: number) {
     canManageCells,
     canManageMinistry,
     canAccessMinistry,
+    canReadPeople,
     canManageLibrary,
     canAccessTreasury: roles.some((role) => TREASURY_ROLES.has(role)),
     canIndicateNewSoul: Boolean(actor.personId),
@@ -1262,6 +1265,15 @@ const peopleRouter = router({
         getDiscipleshipStageEvents(input.churchId, input.id),
       ]);
       return { personId: person.id, currentStage: person.discipleshipStage, progress, events };
+    }),
+
+  consolidationHistory: protectedProcedure
+    .input(z.object({ id: z.number().int().positive(), churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireJourneyReadPermission(ctx.user.id, input.churchId, input.id);
+      const person = await getPersonById(input.id, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada nesta igreja." });
+      return getConsolidationHistoryByPerson(input.id, input.churchId);
     }),
 
   pastoralCoverageCandidates: protectedProcedure
