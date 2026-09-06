@@ -5,7 +5,8 @@ import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -52,6 +53,7 @@ export default function EncontroComDeus() {
   const { churchId } = useChurch();
   const [, navigate] = useLocation();
   const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [form, setForm] = useState(defaultForm);
   const utils = trpc.useUtils();
 
@@ -85,7 +87,10 @@ export default function EncontroComDeus() {
       await utils.encontro.listEvents.invalidate();
       navigate(`/app/encontro-com-deus/${eventId}`);
     },
-    onError: (error) => toast.error(error.message || "Não foi possível criar o encontro."),
+    onError: (error) => {
+      setCreateError(error.message || "Não foi possível criar o encontro.");
+      toast.error(error.message || "Não foi possível criar o encontro.");
+    },
   });
 
   if (access.isLoading) {
@@ -116,23 +121,32 @@ export default function EncontroComDeus() {
         </div>
 
         {access.data.canManageAll && (
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <Dialog open={createOpen} onOpenChange={(nextOpen) => { setCreateOpen(nextOpen); if (nextOpen) setCreateError(null); }}>
             <DialogTrigger asChild>
               <Button className="gap-2 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90"><Plus className="h-4 w-4" /> Novo encontro</Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
-              <DialogHeader><DialogTitle className="font-display text-[#1e3a5f]">Novo Encontro com Deus</DialogTitle></DialogHeader>
-              <div className="grid gap-4 pt-2 sm:grid-cols-2">
-                <div className="sm:col-span-2"><Label>Nome do encontro *</Label><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ex.: Encontro com Deus — Setembro 2026" /></div>
-                <div><Label>Data de início *</Label><Input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></div>
-                <div><Label>Data de término</Label><Input type="date" min={form.date || undefined} value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} /></div>
-                <div className="sm:col-span-2"><Label>Local</Label><Input value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder="Sítio, hotel ou endereço" /></div>
-                <div><Label>Limite de discípulos</Label><Input type="number" min="1" value={form.maxParticipants} onChange={(event) => setForm({ ...form, maxParticipants: event.target.value })} placeholder="Sem limite" /></div>
-                <div><Label>Responsável geral</Label><Select value={form.responsiblePersonId} onValueChange={(value) => setForm({ ...form, responsiblePersonId: value })}><SelectTrigger><SelectValue placeholder="Definir depois" /></SelectTrigger><SelectContent>{(people.data ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent></Select></div>
-                <div className="sm:col-span-2"><Label>Descrição</Label><Textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Objetivo e orientações gerais" /></div>
-                <div className="sm:col-span-2 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button disabled={!form.name.trim() || !form.date || createMutation.isPending} onClick={() => createMutation.mutate({ churchId, name: form.name, date: form.date, endDate: form.endDate || undefined, location: form.location || undefined, maxParticipants: form.maxParticipants ? Number(form.maxParticipants) : undefined, description: form.description || undefined, responsiblePersonId: form.responsiblePersonId ? Number(form.responsiblePersonId) : undefined })}>{createMutation.isPending ? "Criando..." : "Criar encontro"}</Button></div>
+            <AdaptiveFormDialogContent className="sm:max-w-xl">
+              <div className={adaptiveFormDialogHeaderClassName}>
+                <DialogTitle className="font-display text-[#1e3a5f]">Novo Encontro com Deus</DialogTitle>
+                <p className="mt-1 text-sm text-muted-foreground">Cadastre a edição e defina a estrutura inicial da coordenação.</p>
               </div>
-            </DialogContent>
+              <form className="contents" onSubmit={(event) => { event.preventDefault(); createMutation.mutate({ churchId, name: form.name, date: form.date, endDate: form.endDate || undefined, location: form.location || undefined, maxParticipants: form.maxParticipants ? Number(form.maxParticipants) : undefined, description: form.description || undefined, responsiblePersonId: form.responsiblePersonId ? Number(form.responsiblePersonId) : undefined }); }}>
+                <AdaptiveFormDialogBody className="grid gap-4 sm:grid-cols-2">
+                  {createError && <div role="alert" className="sm:col-span-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{createError}</div>}
+                  <div className="sm:col-span-2"><Label>Nome do encontro *</Label><Input value={form.name} onChange={(event) => { setCreateError(null); setForm({ ...form, name: event.target.value }); }} placeholder="Ex.: Encontro com Deus — Setembro 2026" /></div>
+                  <div><Label>Data de início *</Label><Input type="date" value={form.date} onChange={(event) => { setCreateError(null); setForm({ ...form, date: event.target.value }); }} /></div>
+                  <div><Label>Data de término</Label><Input type="date" min={form.date || undefined} value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} /></div>
+                  <div className="sm:col-span-2"><Label>Local</Label><Input value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder="Sítio, hotel ou endereço" /></div>
+                  <div><Label>Limite de discípulos</Label><Input type="number" min="1" value={form.maxParticipants} onChange={(event) => setForm({ ...form, maxParticipants: event.target.value })} placeholder="Sem limite" /></div>
+                  <div><Label>Responsável geral</Label><Select value={form.responsiblePersonId} onValueChange={(value) => setForm({ ...form, responsiblePersonId: value })}><SelectTrigger><SelectValue placeholder="Definir depois" /></SelectTrigger><SelectContent>{(people.data ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="sm:col-span-2"><Label>Descrição</Label><Textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Objetivo e orientações gerais" /></div>
+                </AdaptiveFormDialogBody>
+                <AdaptiveFormDialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={createMutation.isPending}>Cancelar</Button>
+                  <Button type="submit" disabled={!form.name.trim() || !form.date || createMutation.isPending}>{createMutation.isPending ? "Criando..." : "Criar encontro"}</Button>
+                </AdaptiveFormDialogFooter>
+              </form>
+            </AdaptiveFormDialogContent>
           </Dialog>
         )}
       </header>
