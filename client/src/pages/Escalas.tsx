@@ -35,6 +35,7 @@ export default function Escalas() {
   const [cancelTarget, setCancelTarget] = useState<ScheduleItem | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [form, setForm] = useState<ScheduleForm>(EMPTY_FORM);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const { data: scales = [], isLoading, refetch } = trpc.schedules.list.useQuery(
     { churchId: churchId!, month: currentMonth, year: currentYear },
@@ -64,21 +65,29 @@ export default function Escalas() {
   const createMutation = trpc.schedules.create.useMutation({
     onSuccess: () => {
       toast.success("Escala criada com sucesso!");
+      setFormError(null);
       setScheduleOpen(false);
       setForm(EMPTY_FORM);
       refetch();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => {
+      setFormError(error.message);
+      toast.error(error.message);
+    },
   });
   const updateMutation = trpc.schedules.update.useMutation({
     onSuccess: () => {
       toast.success("Escala atualizada com sucesso!");
+      setFormError(null);
       setScheduleOpen(false);
       setEditingSchedule(null);
       setForm(EMPTY_FORM);
       refetch();
     },
-    onError: (error) => toast.error(error.message),
+    onError: (error) => {
+      setFormError(error.message);
+      toast.error(error.message);
+    },
   });
   const cancelMutation = trpc.schedules.cancel.useMutation({
     onSuccess: () => {
@@ -146,20 +155,27 @@ export default function Escalas() {
 
   const toDateInput = (value: Date | string) => formatCivilDateKeyForInput(value);
 
+  function updateForm(patch: Partial<ScheduleForm>) {
+    setForm((previous) => ({ ...previous, ...patch }));
+    setFormError(null);
+  }
+
   function openCreateDialog() {
     setEditingSchedule(null);
     setForm(EMPTY_FORM);
+    setFormError(null);
     setScheduleOpen(true);
   }
 
   function handleMinistryChange(ministryId: string) {
     const ministryCanManage = ministries.find((ministry) => String(ministry.id) === ministryId)?.canManage ?? false;
     const firstManagedDepartment = schedulableDepartments.find((department) => String(department.ministryId) === ministryId);
-    setForm({ ...form, ministryId, departmentId: ministryCanManage ? "" : firstManagedDepartment ? String(firstManagedDepartment.id) : "", personId: "" });
+    updateForm({ ministryId, departmentId: ministryCanManage ? "" : firstManagedDepartment ? String(firstManagedDepartment.id) : "", personId: "" });
   }
 
   function openEditDialog(scale: ScheduleItem) {
     setEditingSchedule(scale);
+    setFormError(null);
     setForm({
       ministryId: String(scale.ministryId),
       departmentId: scale.departmentId ? String(scale.departmentId) : "",
@@ -174,8 +190,11 @@ export default function Escalas() {
 
   function handleSave(event: React.FormEvent) {
     event.preventDefault();
+    setFormError(null);
     if (!churchId || !form.ministryId || !form.personId || !form.scheduledDate || !form.startTime || !form.endTime) {
-      toast.error("Selecione ministério, pessoa, data e horário para salvar a Escala.");
+      const message = "Selecione ministério, pessoa, data e horário para salvar a Escala.";
+      setFormError(message);
+      toast.error(message);
       return;
     }
     const payload = {
@@ -208,26 +227,27 @@ export default function Escalas() {
             if (!open) {
               setEditingSchedule(null);
               setForm(EMPTY_FORM);
+              setFormError(null);
             }
           }}>
             <DialogTrigger asChild>
               <Button onClick={openCreateDialog} className="bg-navy text-white hover:bg-navy-light gap-2">+ Nova Escala</Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="font-display text-navy">{editingSchedule ? "Editar Escala" : "Criar Escala"}</DialogTitle>
+            <DialogContent className="w-[calc(100%-1rem)] max-h-[calc(100dvh-0.75rem)] max-w-lg overflow-y-auto overscroll-contain p-3 pb-0 [-webkit-overflow-scrolling:touch] sm:p-6 sm:pb-0">
+              <DialogHeader className="sticky top-0 z-10 -mx-3 bg-background/95 pb-2 backdrop-blur sm:-mx-6 sm:px-6">
+                <DialogTitle className="font-display text-navy pr-8">{editingSchedule ? "Editar Escala" : "Criar Escala"}</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSave} className="space-y-4 pt-2">
                 <div>
                   <Label htmlFor="schedule-ministry">Ministério *</Label>
-                  <select id="schedule-ministry" value={form.ministryId} onChange={(event) => handleMinistryChange(event.target.value)} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <select id="schedule-ministry" value={form.ministryId} onChange={(event) => handleMinistryChange(event.target.value)} className="mt-1 flex min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm">
                     <option value="">Selecione o ministério</option>
                     {schedulableMinistries.map((ministry) => <option key={ministry.id} value={ministry.id}>{ministry.name}</option>)}
                   </select>
                 </div>
                 <div>
                   <Label htmlFor="schedule-department">Departamento</Label>
-                  <select id="schedule-department" value={form.departmentId} disabled={!form.ministryId} onChange={(event) => setForm({ ...form, departmentId: event.target.value, personId: "" })} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60">
+                  <select id="schedule-department" value={form.departmentId} disabled={!form.ministryId} onChange={(event) => updateForm({ departmentId: event.target.value, personId: "" })} className="mt-1 flex min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60">
                     <option value="" disabled={!selectedMinistryCanManage}>Escala geral do Ministério</option>
                     {departmentsForMinistry.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
                   </select>
@@ -235,7 +255,7 @@ export default function Escalas() {
                 </div>
                 <div>
                   <Label htmlFor="schedule-person">Pessoa escalada *</Label>
-                  <select id="schedule-person" value={form.personId} disabled={!form.ministryId || ministryMembers.isLoading || departmentMembers.isLoading} onChange={(event) => setForm({ ...form, personId: event.target.value })} className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60">
+                  <select id="schedule-person" value={form.personId} disabled={!form.ministryId || ministryMembers.isLoading || departmentMembers.isLoading} onChange={(event) => updateForm({ personId: event.target.value })} className="mt-1 flex min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-60">
                     <option value="">Selecione a pessoa</option>
                     {eligiblePeople.map((person) => <option key={person.id} value={person.id}>{person.fullName}</option>)}
                   </select>
@@ -243,11 +263,11 @@ export default function Escalas() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="schedule-date">Data *</Label>
-                    <Input id="schedule-date" type="date" value={form.scheduledDate} onChange={(event) => setForm({ ...form, scheduledDate: event.target.value })} className="mt-1" />
+                    <Input id="schedule-date" type="date" value={form.scheduledDate} onChange={(event) => updateForm({ scheduledDate: event.target.value })} className="mt-1" />
                   </div>
                   <div>
                     <Label htmlFor="schedule-start-time">Início *</Label>
-                    <Input id="schedule-start-time" type="time" value={form.startTime} onChange={(event) => setForm({ ...form, startTime: event.target.value })} className="mt-1" />
+                    <Input id="schedule-start-time" type="time" value={form.startTime} onChange={(event) => updateForm({ startTime: event.target.value })} className="mt-1" />
                   </div>
                   <div>
                     <Label htmlFor="schedule-end-time">Término *</Label>
@@ -255,13 +275,14 @@ export default function Escalas() {
                   </div>
                   <div>
                     <Label htmlFor="schedule-role">Função</Label>
-                    <Input id="schedule-role" placeholder="Ex.: Vocal" value={form.role} onChange={(event) => setForm({ ...form, role: event.target.value })} className="mt-1" />
+                    <Input id="schedule-role" placeholder="Ex.: Vocal" value={form.role} onChange={(event) => updateForm({ role: event.target.value })} className="mt-1" />
                   </div>
                 </div>
-                {formConflict && <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Esta pessoa já aparece em uma escala com horário sobreposto nesta data. O sistema também bloqueará o salvamento.</div>}
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button type="button" variant="outline" onClick={() => setScheduleOpen(false)}>Cancelar</Button>
-                  <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending || updateMutation.isPending}>{createMutation.isPending || updateMutation.isPending ? "Salvando..." : editingSchedule ? "Salvar Alterações" : "Criar Escala"}</Button>
+                {formConflict && <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Esta pessoa já aparece em uma escala com horário sobreposto nesta data. Ajuste a data ou o horário antes de salvar.</div>}
+                {formError && <div role="alert" aria-live="assertive" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><div><p className="font-semibold">Não foi possível salvar a Escala.</p><p className="mt-1 break-words">{formError}</p></div></div>}
+                <div className="sticky bottom-0 z-10 -mx-3 flex flex-col-reverse gap-2 border-t border-border/60 bg-background/95 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:flex-row sm:justify-end sm:px-6">
+                  <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={() => setScheduleOpen(false)}>Cancelar</Button>
+                  <Button type="submit" className="min-h-11 w-full bg-navy text-white sm:w-auto" disabled={createMutation.isPending || updateMutation.isPending || formConflict}>{createMutation.isPending || updateMutation.isPending ? "Salvando..." : editingSchedule ? "Salvar Alterações" : "Criar Escala"}</Button>
                 </div>
               </form>
             </DialogContent>
