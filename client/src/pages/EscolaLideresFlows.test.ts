@@ -25,6 +25,14 @@ describe("Modais da Escola de Líderes", () => {
     expect(source).toContain("<DialogContent className=\"sm:max-w-md\">");
   });
 
+  it("mantém status e certificado como ações inline e compactas", () => {
+    expect(source).toContain("updateEnrollment");
+    expect(source).toContain("updateError");
+    expect(source).toContain("Status atualizado!");
+    expect(source).toContain("certificates.generate");
+    expect(source).toContain("className=\"h-9 min-w-36 text-xs\"");
+  });
+
   it("preserva a camada superior, viewport e safe area do padrão global", () => {
     expect(adaptiveSource).toContain("z-[200]");
     expect(adaptiveSource).toContain("h-[100dvh]");

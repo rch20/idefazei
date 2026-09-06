@@ -38,6 +38,7 @@ function LeadershipClassCard({ cls, churchId, people }: {
   const [selectedPersonId, setSelectedPersonId] = useState<string>("");
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [enrollError, setEnrollError] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const utils = trpc.useUtils();
 
   const { data: enrollments } = trpc.escolaLideres.getEnrollments.useQuery({ classId: cls.id, churchId });
@@ -57,8 +58,13 @@ function LeadershipClassCard({ cls, churchId, people }: {
 
   const updateMutation = trpc.escolaLideres.updateEnrollment.useMutation({
     onSuccess: () => {
+      setUpdateError(null);
       toast.success("Status atualizado!");
       utils.escolaLideres.getEnrollments.invalidate();
+    },
+    onError: (error) => {
+      setUpdateError(error.message || "Erro ao atualizar status");
+      toast.error(error.message || "Erro ao atualizar status");
     },
   });
 
@@ -104,6 +110,7 @@ function LeadershipClassCard({ cls, churchId, people }: {
           <span className="flex items-center gap-1 text-green-600"><Award className="h-4 w-4" /> {concluidos} formados</span>
         </div>
 
+        {updateError && <div role="alert" className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{updateError}</div>}
         {enrollments && enrollments.length > 0 && (
           <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
             {enrollments.map(({ enrollment, person }) => (
@@ -117,23 +124,24 @@ function LeadershipClassCard({ cls, churchId, people }: {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[enrollment.status ?? "matriculado"]}`}>
                     {STATUS_LABELS[enrollment.status ?? "matriculado"]}
                   </span>
                   {enrollment.status !== "concluido" && enrollment.status !== "cancelado" && (
                     <Select
                       value={enrollment.status ?? "matriculado"}
-                      onValueChange={(val) =>
+                      onValueChange={(val) => {
+                        setUpdateError(null);
                         updateMutation.mutate({
                           id: enrollment.id,
                           churchId,
                           status: val as "matriculado" | "lider_em_formacao" | "concluido" | "cancelado",
                           completedAt: val === "concluido" ? new Date() : null,
-                        })
-                      }
+                        });
+                      }}
                     >
-                      <SelectTrigger className="h-6 text-xs w-36">
+                      <SelectTrigger className="h-9 min-w-36 text-xs">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -148,7 +156,7 @@ function LeadershipClassCard({ cls, churchId, people }: {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-6 text-xs border-[#6366f1] text-[#6366f1]"
+                      className="h-9 text-xs border-[#6366f1] text-[#6366f1]"
                       disabled={generatingCertFor === enrollment.id}
                       onClick={() => {
                         setGeneratingCertFor(enrollment.id);
