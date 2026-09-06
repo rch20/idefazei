@@ -66,4 +66,24 @@ describe("Tesouraria — regressões de interface e lógica", () => {
     expect(dbSource).toContain("affectedRows?: number");
     expect(dbSource).toContain("tx.insert(financialAuditLogs)");
   });
+
+  it("mantém o botão de confirmar entrada acessível acima da barra inferior", () => {
+    expect(pageSource).toContain("pb-[calc(6rem+env(safe-area-inset-bottom))]");
+    expect(pageSource).toContain("sticky bottom-0");
+    expect(pageSource).toContain("paddingBottom: \"max(0.25rem, env(safe-area-inset-bottom))\"");
+    expect(pageSource).toContain("min-h-11 w-full touch-manipulation");
+    expect(pageSource).toContain("Confirmar lançamento");
+  });
+
+  it("limpa o feedback antigo quando o usuário corrige o formulário", () => {
+    expect(pageSource).toContain("const updateTransactionForm = (patch: Partial<typeof form>) =>");
+    expect(pageSource).toContain("setFormError(null);");
+    expect(pageSource).toContain("createTransaction.reset();");
+  });
+
+  it("mantém erro de validação visível dentro do formulário de entrada", () => {
+    expect(pageSource).toContain("(formError || createTransaction.error)");
+    expect(pageSource).toContain("Não foi possível registrar o lançamento.");
+    expect(pageSource).toContain("role=\"alert\"");
+  });
 });
