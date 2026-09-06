@@ -87,4 +87,23 @@ describe("Fluxo estrutural de prestação por culto", () => {
     expect(sectionSource).toContain("Abrir ações");
     expect(sectionSource).toContain("hidden sm:flex");
   });
+
+  it("usa o Formulário Adaptativo nos cadastros operacionais extensos", () => {
+    expect(sectionSource.match(/<AdaptiveFormDialogContent/g)).toHaveLength(4);
+    expect(sectionSource).toContain("Nova programação fixa");
+    expect(sectionSource).toContain("Editar programação fixa");
+    expect(sectionSource).toContain("Cadastrar culto ou evento manual");
+    expect(sectionSource).toContain("Folha de contagem");
+    expect(sectionSource).toContain("Registrar depósito");
+    expect(sectionSource).toContain("AdaptiveFormDialogFooter");
+    expect(pageSource).toContain("Conciliação bancária");
+    expect(pageSource).toContain("AdaptiveFormDialogFooter");
+  });
+
+  it("mantém confirmações, recibos e escolha de relatório fora do padrão de tela cheia", () => {
+    expect(pageSource).toContain("Escolha o formato do PDF");
+    expect(pageSource).toContain("Estornar lançamento");
+    expect(pageSource).toContain("Recibo de contribuição");
+    expect(pageSource).toContain("<DialogContent className={TREASURY_DIALOG_CLASS}");
+  });
 });
