@@ -1758,7 +1758,7 @@ const consolidationRouter = router({
           canAssign: canViewAll,
           canApprove: Boolean(context.capabilities.canManageConsolidation && referral.status === "pendente"),
           canAssumeAsPastor: Boolean(isPastor && ["pendente", "aprovado"].includes(referral.status) && !referral.acceptedByPersonId && !referral.acceptedByChurchUserId),
-          canAccept: Boolean(context.roles.includes("consolidador") && actor.personId && referral.status === "aprovado" && (!referral.assignedToPersonId || referral.assignedToPersonId === actor.personId)),
+          canAccept: Boolean(context.roles.includes("consolidador") && actor.personId && ["pendente", "aprovado"].includes(referral.status) && (!referral.assignedToPersonId || referral.assignedToPersonId === actor.personId)),
           canCancel: Boolean((context.capabilities.canManageConsolidation || referral.acceptedByPersonId === actor.personId || referral.acceptedByChurchUserId === (ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id)) && !["encerrado", "cancelado"].includes(referral.status)),
           canIntegrate: Boolean(isPastor && referral.status === "em_acompanhamento"),
         };

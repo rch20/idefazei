@@ -58,10 +58,12 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(dbSource).toContain("Esta Pessoa já possui um caso ativo na Consolidação.");
   });
 
-  it("permite aprovação pastoral pela conta da igreja mesmo sem personId", () => {
+  it("permite aprovação pastoral opcional e aceite direto por Consolidadora oficial", () => {
     expect(routerSource).toContain("if (!context.capabilities.canManageConsolidation)");
     expect(routerSource).toContain("approvedByPersonId: context.actor.personId ?? null");
     expect(routerSource).not.toContain("if (!context.capabilities.canManageConsolidation || !context.actor.personId)");
+    expect(routerSource).toContain('["pendente", "aprovado"].includes(referral.status)');
+    expect(consolidationSource).toContain("Um Consolidador oficialmente atribuído pode assumir diretamente");
     expect(dbSource).toContain("approvedByPersonId: number | null");
   });
 
