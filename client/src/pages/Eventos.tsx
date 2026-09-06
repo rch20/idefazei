@@ -209,6 +209,7 @@ export default function Eventos() {
   const [flyerPreviewUrl, setFlyerPreviewUrl] = useState<string | null>(null);
   const [flyerFormat, setFlyerFormat] = useState<FlyerFormat>("mobile");
   const [isUploadingFlyer, setIsUploadingFlyer] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const { data: events, isLoading, refetch } = trpc.events.list.useQuery({ churchId });
   const createEvent = trpc.events.create.useMutation();
@@ -237,13 +238,18 @@ export default function Eventos() {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    setCreateError(null);
     const parsedRegistrationFeeCents = form.isPaid ? parseBrlToCents(form.registrationFee) : 0;
     if (form.isPaid && form.registrationMode === "none") {
-      toast.error("Ative uma inscrição individual ou de casal antes de cobrar.");
+      const message = "Ative uma inscrição individual ou de casal antes de cobrar.";
+      setCreateError(message);
+      toast.error(message);
       return;
     }
     if (form.isPaid && (parsedRegistrationFeeCents === null || parsedRegistrationFeeCents <= 0)) {
-      toast.error("Informe um valor de inscrição válido.");
+      const message = "Informe um valor de inscrição válido.";
+      setCreateError(message);
+      toast.error(message);
       return;
     }
     const registrationFeeCents = parsedRegistrationFeeCents ?? 0;
@@ -278,13 +284,16 @@ export default function Eventos() {
         }
       }
       toast.success(flyerSaved ? (flyerFile ? "Evento criado com flyer!" : "Evento criado com sucesso!") : "Evento criado. Você pode adicionar o flyer em Gerenciar.");
+      setCreateError(null);
       setOpen(false);
       setForm(defaultForm);
       clearFlyerSelection();
       setFlyerFormat("mobile");
       await refetch();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao criar evento");
+      const message = error instanceof Error ? error.message : "Erro ao criar evento";
+      setCreateError(message);
+      toast.error(message);
     } finally {
       setIsUploadingFlyer(false);
     }
@@ -337,10 +346,11 @@ export default function Eventos() {
         </div>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[92dvh] max-w-lg overflow-hidden p-0">
-          <DialogHeader className="border-b border-border px-6 py-5"><DialogTitle className="font-display text-navy flex items-center gap-2"><CalendarDays className="w-5 h-5 text-amber-500" />Novo Evento</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit} className="max-h-[calc(92dvh-5rem)] space-y-4 overflow-y-auto px-6 py-5">
+      <Dialog open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (nextOpen) setCreateError(null); }}>
+        <AdaptiveFormDialogContent className="sm:max-w-lg">
+          <div className={adaptiveFormDialogHeaderClassName}><DialogTitle className="font-display text-navy flex items-center gap-2"><CalendarDays className="w-5 h-5 text-amber-500" />Novo Evento</DialogTitle><p className="mt-1 text-sm text-muted-foreground">Cadastre os dados, inscrições, pagamento e flyer do evento.</p></div>
+          <form onSubmit={handleSubmit} className="contents">
+            <AdaptiveFormDialogBody className="space-y-4">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2"><Label>Nome do Evento *</Label><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required maxLength={255} /></div>
               <div className="sm:col-span-2"><Label>Tipo *</Label><Select value={form.type} onValueChange={(value) => setForm({ ...form, type: value as typeof form.type })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{EVENT_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
@@ -354,9 +364,15 @@ export default function Eventos() {
               <div className="sm:col-span-2 rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/55 p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1e3a5f]"><BarChart3 className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Inscrição e pagamento</p><p className="mt-1 text-xs leading-5 text-muted-foreground">O pagamento é conferido manualmente e não cria lançamento automático na Tesouraria.</p></div></div><div className="mt-3"><Label>Cobrança</Label><Select value={form.isPaid ? "paid" : "free"} onValueChange={(value) => setForm({ ...form, isPaid: value === "paid" })}><SelectTrigger className="mt-1 bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="free">Evento gratuito</SelectItem><SelectItem value="paid">Inscrição paga</SelectItem></SelectContent></Select></div>{form.isPaid && <div className="mt-3 grid gap-3 sm:grid-cols-2"><div><Label>Valor {form.registrationMode === "casal" ? "por casal" : "por pessoa"} *</Label><Input value={form.registrationFee} onChange={(event) => setForm({ ...form, registrationFee: event.target.value })} inputMode="decimal" placeholder="Ex.: 120,00" required={form.isPaid} className="mt-1 bg-white" /></div><div><Label>Pagamento até <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="date" value={form.paymentDueDate} onChange={(event) => setForm({ ...form, paymentDueDate: event.target.value })} className="mt-1 bg-white" /></div><div className="sm:col-span-2"><Label>Instruções de pagamento <span className="font-normal text-muted-foreground">(opcional)</span></Label><Textarea value={form.paymentInstructions} onChange={(event) => setForm({ ...form, paymentInstructions: event.target.value })} rows={3} maxLength={1200} placeholder="Ex.: Faça o Pix e envie o comprovante para a secretaria." className="mt-1 bg-white" /></div></div>}</div>
               <div className="sm:col-span-2"><Label>Descrição</Label><Textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} maxLength={4000} /></div>
             </div>
-            <section className="space-y-3 rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/55 p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1e3a5f]"><ImageIcon className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Flyer do convite <span className="font-normal text-muted-foreground">(opcional)</span></p><p className="mt-1 text-xs leading-5 text-muted-foreground">PNG, JPEG ou WebP até 4 MB. O flyer fica ligado a este evento, não ao Mural.</p></div></div><Input type="file" accept="image/png,image/jpeg,image/webp" className="bg-white" onChange={(event) => handleFlyerChange(event.target.files?.[0])} />{flyerPreviewUrl && <div className="grid gap-3 sm:grid-cols-[9rem_1fr] sm:items-start"><div className={`overflow-hidden rounded-xl border border-[#1e3a5f]/10 bg-white ${flyerAspectClass(flyerFormat)}`}><img src={flyerPreviewUrl} alt="Pré-visualização do flyer" className="h-full w-full object-contain" /></div><div className="space-y-3"><div><Label>Formato de uso</Label><Select value={flyerFormat} onValueChange={(value) => setFlyerFormat(value as FlyerFormat)}><SelectTrigger className="mt-1 bg-white"><SelectValue /></SelectTrigger><SelectContent>{FLYER_FORMATS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select><p className="mt-1 text-xs leading-5 text-muted-foreground">{FLYER_FORMATS.find((item) => item.value === flyerFormat)?.description}</p></div><Button type="button" variant="ghost" size="sm" className="px-0 text-rose-700 hover:bg-transparent hover:text-rose-800" onClick={clearFlyerSelection}><Trash2 className="mr-1 h-3.5 w-3.5" /> Remover flyer</Button></div></div>}</section><div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row"><Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">Cancelar</Button><Button type="submit" className="flex-1 bg-navy hover:bg-navy-light text-white" disabled={createEvent.isPending || isUploadingFlyer || setEventFlyer.isPending}>{createEvent.isPending || isUploadingFlyer ? "Salvando..." : "Criar Evento"}</Button></div>
+            <section className="space-y-3 rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/55 p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1e3a5f]"><ImageIcon className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Flyer do convite <span className="font-normal text-muted-foreground">(opcional)</span></p><p className="mt-1 text-xs leading-5 text-muted-foreground">PNG, JPEG ou WebP até 4 MB. O flyer fica ligado a este evento, não ao Mural.</p></div></div><Input type="file" accept="image/png,image/jpeg,image/webp" className="bg-white" onChange={(event) => handleFlyerChange(event.target.files?.[0])} />{flyerPreviewUrl && <div className="grid gap-3 sm:grid-cols-[9rem_1fr] sm:items-start"><div className={`overflow-hidden rounded-xl border border-[#1e3a5f]/10 bg-white ${flyerAspectClass(flyerFormat)}`}><img src={flyerPreviewUrl} alt="Pré-visualização do flyer" className="h-full w-full object-contain" /></div><div className="space-y-3"><div><Label>Formato de uso</Label><Select value={flyerFormat} onValueChange={(value) => setFlyerFormat(value as FlyerFormat)}><SelectTrigger className="mt-1 bg-white"><SelectValue /></SelectTrigger><SelectContent>{FLYER_FORMATS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select><p className="mt-1 text-xs leading-5 text-muted-foreground">{FLYER_FORMATS.find((item) => item.value === flyerFormat)?.description}</p></div><Button type="button" variant="ghost" size="sm" className="px-0 text-rose-700 hover:bg-transparent hover:text-rose-800" onClick={clearFlyerSelection}><Trash2 className="mr-1 h-3.5 w-3.5" /> Remover flyer</Button></div></div>}</section>
+            {createError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{createError}</div>}
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={createEvent.isPending || isUploadingFlyer || setEventFlyer.isPending}>Cancelar</Button>
+              <Button type="submit" className="bg-navy hover:bg-navy-light text-white" disabled={createEvent.isPending || isUploadingFlyer || setEventFlyer.isPending}>{createEvent.isPending || isUploadingFlyer ? "Salvando..." : "Criar Evento"}</Button>
+            </AdaptiveFormDialogFooter>
           </form>
-        </DialogContent>
+        </AdaptiveFormDialogContent>
       </Dialog>
     </div>
   );
@@ -376,6 +392,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   const [isUploadingFlyer, setIsUploadingFlyer] = useState(false);
   const [flyerShareFile, setFlyerShareFile] = useState<File | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EventEditDraft>(() => ({ name: event.name, type: event.type, description: event.description ?? "", startDate: formatDateInput(event.startDate), endDate: formatDateInput(event.endDate), startTime: event.startTime ?? "", endTime: event.endTime ?? "", location: event.location ?? "", maxCapacity: event.maxCapacity?.toString() ?? "" }));
   const [paymentFeeDraft, setPaymentFeeDraft] = useState(() => formatCentsForInput(event.registrationFeeCents));
   const [paymentDueDateDraft, setPaymentDueDateDraft] = useState(() => formatDateInput(event.paymentDueDate));
@@ -424,8 +441,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     onError: (error) => toast.error(error.message || "Não foi possível atualizar o flyer"),
   });
   const updateEvent = trpc.events.update.useMutation({
-    onSuccess: () => { toast.success("Evento atualizado."); setEditOpen(false); onChanged(); },
-    onError: (error) => toast.error(error.message || "Não foi possível atualizar o evento"),
+    onSuccess: () => { toast.success("Evento atualizado."); setEditError(null); setEditOpen(false); onChanged(); },
+    onError: (error) => { setEditError(error.message || "Não foi possível atualizar o evento"); toast.error(error.message || "Não foi possível atualizar o evento"); },
   });
   const removeEvent = trpc.events.remove.useMutation({
     onSuccess: (result) => { toast.success(result.mode === "archived" ? "Evento arquivado para preservar as inscrições." : "Evento excluído."); setManagementOpen(false); setEditOpen(false); onChanged(); },
@@ -533,6 +550,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   }
 
   function openEdit() {
+    setEditError(null);
     setEditDraft({
       name: event.name,
       type: event.type,
@@ -550,9 +568,12 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
 
   function saveEventEdit(formEvent: React.FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
+    setEditError(null);
     const maxCapacity = editDraft.maxCapacity.trim() ? Number(editDraft.maxCapacity) : null;
     if (maxCapacity !== null && (!Number.isInteger(maxCapacity) || maxCapacity <= 0)) {
-      toast.error("Informe uma capacidade máxima válida ou deixe o campo em branco.");
+      const message = "Informe uma capacidade máxima válida ou deixe o campo em branco.";
+      setEditError(message);
+      toast.error(message);
       return;
     }
     updateEvent.mutate({
@@ -666,9 +687,9 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     </div>
 
     <Dialog open={managementOpen} onOpenChange={setManagementOpen}>
-      <DialogContent className="max-h-[92dvh] max-w-3xl overflow-hidden p-0">
-        <DialogHeader className="border-b border-border px-6 py-5"><DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-[#c9a84c]" />Gestão — {event.name}</DialogTitle><DialogDescription>Inscrições, presença e relatório deste evento. O Mural apenas divulga o link.</DialogDescription></DialogHeader>
-        <div className="max-h-[calc(92dvh-7rem)] space-y-5 overflow-y-auto px-6 py-5">
+      <AdaptiveFormDialogContent className="sm:max-w-3xl">
+        <div className={adaptiveFormDialogHeaderClassName}><DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-[#c9a84c]" />Gestão — {event.name}</DialogTitle><p className="mt-1 text-sm text-muted-foreground">Inscrições, presença e relatório deste evento. O Mural apenas divulga o link.</p></div>
+        <AdaptiveFormDialogBody className="space-y-5">
           <section className="rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/45 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-[#1e3a5f]">Inscrição pública</p><p className="mt-1 text-xs text-muted-foreground">{typeHasRegistration ? `${registrationModeLabel(event.registrationMode)} ativa para este evento.` : "Ative um formulário simples para receber inscrições sem login."}</p></div>{registrationUrl && <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Recebendo inscrições</span>}</div>
             {registrationUrl ? <><div className="mt-3 flex items-start gap-2 rounded-xl border bg-white p-3"><Link2 className="mt-0.5 h-4 w-4 shrink-0 text-[#c9a84c]" /><p className="break-all font-mono text-xs text-[#1e3a5f]">{registrationUrl}</p></div><div className="mt-3 flex flex-col gap-2 sm:flex-row"><Button variant="outline" className="flex-1 gap-2" onClick={() => void copyRegistrationLink()}><Copy className="h-4 w-4" /> Copiar link</Button><Button variant="outline" className="flex-1 gap-2" onClick={shareWhatsApp}><Send className="h-4 w-4" /> WhatsApp</Button><a href={registrationUrl} target="_blank" rel="noreferrer" className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"><ExternalLink className="h-4 w-4" /> Abrir página</a></div></> : <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end"><div className="flex-1"><Label>Modelo de inscrição</Label><Select value={modeDraft} onValueChange={(value) => setModeDraft(value as RegistrationMode)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{REGISTRATION_MODES.filter((item) => item.value !== "none").map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div><Button className="gap-2 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={() => saveRegistrationMode()} disabled={setRegistrationMode.isPending}><Link2 className="h-4 w-4" />{setRegistrationMode.isPending ? "Criando..." : "Criar link"}</Button></div>}
@@ -710,8 +731,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
             <div className="overflow-hidden rounded-xl border border-[#1e3a5f]/10"><div className="hidden grid-cols-[1.2fr_1fr_8rem_9rem_9rem] gap-3 bg-[#f5f0e8] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#1e3a5f]/70 sm:grid"><span>Inscrição</span><span>Acompanhante</span><span>Telefone</span><span>Pagamento</span><span>Presença</span></div><div className="max-h-80 overflow-y-auto divide-y divide-[#1e3a5f]/10">{attendanceReport.data.registrations.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">Ainda não há inscrições para este evento.</p> : attendanceReport.data.registrations.map((registration: any) => <div key={registration.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1.2fr_1fr_8rem_9rem_9rem] sm:items-center"><div className="min-w-0"><p className="truncate font-medium text-[#1e3a5f]">{registration.displayName}</p><p className="mt-0.5 text-[11px] font-medium text-[#8a6a16]">{registration.source === "manual" ? "Adicionada pelo painel" : "Inscrição pelo link"}</p><p className="mt-0.5 text-xs text-muted-foreground sm:hidden">{registration.participantPhone || "Sem telefone"}{registration.companionName ? ` · ${registration.companionName}` : ""} · {event.registrationFeeCents > 0 ? `${formatBrl(registration.amountCents ?? 0)} · ${paymentStatusLabel(registration.paymentStatus as PaymentStatus)}` : "Sem cobrança"}</p></div><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.companionName || "—"}</p><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.participantPhone || "—"}</p>{event.registrationFeeCents > 0 ? <Select value={(registration.paymentStatus ?? "pendente") as PaymentStatus} onValueChange={(value) => setPaymentStatus.mutate({ churchId, eventId: event.id, registrationId: registration.id, paymentStatus: value as PaymentStatus })} disabled={setPaymentStatus.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="pago">Pago</SelectItem><SelectItem value="isento">Isento</SelectItem><SelectItem value="reembolsado">Reembolsado</SelectItem></SelectContent></Select> : <span className="text-xs text-muted-foreground">Sem cobrança</span>}<Select value={(registration.presenceStatus ?? "pendente") as PresenceStatus} onValueChange={(value) => setPresence.mutate({ churchId, eventId: event.id, registrationId: registration.id, presenceStatus: value as PresenceStatus })} disabled={setPresence.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="presente">Presente</SelectItem><SelectItem value="ausente">Não compareceu</SelectItem><SelectItem value="cancelado">Cancelado</SelectItem></SelectContent></Select></div>)}</div></div>
             <div className="flex flex-col gap-2 sm:flex-row"><Button variant="outline" className="flex-1 gap-2 border-[#1e3a5f]/20 text-[#1e3a5f]" onClick={() => void openEventReportPreview()} disabled={reportLoading}><Printer className="w-4 h-4" /> {reportLoading ? "Preparando relatório..." : "Abrir relatório / PDF"}</Button><Button variant="ghost" className="flex-1" onClick={() => void attendanceReport.refetch()}>Atualizar lista</Button></div>
           </> : null}
-        </div>
-      </DialogContent>
+        </AdaptiveFormDialogBody>
+      </AdaptiveFormDialogContent>
     </Dialog>
 
     <Dialog open={editOpen} onOpenChange={setEditOpen}>
@@ -728,6 +749,7 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
           <div><Label>Local</Label><Input value={editDraft.location} onChange={(inputEvent) => setEditDraft({ ...editDraft, location: inputEvent.target.value })} maxLength={500} /></div>
           <div><Label>Capacidade máxima</Label><Input type="number" min={1} value={editDraft.maxCapacity} onChange={(inputEvent) => setEditDraft({ ...editDraft, maxCapacity: inputEvent.target.value })} placeholder="Em branco = sem limite" /></div>
           <div><Label>Descrição</Label><Textarea value={editDraft.description} onChange={(inputEvent) => setEditDraft({ ...editDraft, description: inputEvent.target.value })} rows={5} maxLength={4000} placeholder="Descreva o objetivo e os detalhes do evento." /><p className="mt-1 text-right text-xs text-muted-foreground">{editDraft.description.length}/4000</p></div>
+          {editError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{editError}</div>}
         </AdaptiveFormDialogBody>
         <AdaptiveFormDialogFooter>
           <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>

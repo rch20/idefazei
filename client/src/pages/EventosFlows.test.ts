@@ -154,13 +154,24 @@ describe("Eventos — inscrições e presença", () => {
     expect(db).toContain("eq(events.churchId, data.churchId)");
   });
 
-  it("usa o Formulário Adaptativo somente na edição longa do Evento", () => {
-    expect(page).toContain("AdaptiveFormDialogContent");
+  it("usa o Formulário Adaptativo nos fluxos longos e mantém o QR Code compacto", () => {
+    expect(page.match(/<AdaptiveFormDialogContent/g)?.length).toBeGreaterThanOrEqual(3);
     expect(page).toContain("AdaptiveFormDialogBody");
     expect(page).toContain("AdaptiveFormDialogFooter");
+    expect(page).toContain("Novo Evento");
+    expect(page).toContain("Gestão —");
     expect(page).toContain("Editar evento");
     expect(page).toContain("Salvar alterações");
     expect(page).toContain("DialogContent className=\"max-w-sm\"");
+  });
+
+  it("mantém a gestão operacional extensa com inscrição assistida, flyer e relatório", () => {
+    expect(page).toContain("Gestão —");
+    expect(page).toContain("Inscrição pública");
+    expect(page).toContain("Inscrição assistida");
+    expect(page).toContain("Flyer do convite");
+    expect(page).toContain("Abrir relatório / PDF");
+    expect(page).toContain("Atualizar lista");
   });
 
   it("permite editar os dados principais do Evento e atualizar a descrição", () => {
