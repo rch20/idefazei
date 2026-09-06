@@ -61,6 +61,17 @@ describe("Fluxo responsivo e seguro de Ministérios", () => {
     expect(schedulesSource).toContain('Limpar filtro');
   });
 
+  it("oferece filtro de acompanhamento e resumo operacional sem duplicar registros", () => {
+    expect(ministrySource).toContain('statusFilter');
+    expect(ministrySource).toContain('Sem líder responsável');
+    expect(ministrySource).toContain('Acompanhamento do Ministério');
+    expect(ministrySource).toContain('operationalAttention');
+    expect(ministrySource).toContain('os registros continuam nas áreas oficiais do sistema');
+    expect(ministrySource).toContain('Próxima escala');
+    expect(ministrySource).toContain('upcomingSchedules.data');
+    expect(schedulesSource).toContain('displayedScales');
+  });
+
   it("exclui Ministério por arquivamento, com confirmação e preservação de histórico", () => {
     expect(ministrySource).toContain("Excluir Ministério?");
     expect(ministrySource).toContain("archiveMutation.mutate");

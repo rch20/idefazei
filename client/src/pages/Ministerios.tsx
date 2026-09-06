@@ -50,6 +50,7 @@ function formatScheduleDate(value: Date | string) {
 export default function Ministerios() {
   const { churchId } = useChurch();
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"todos" | "sem_lider">("todos");
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", description: "" });
@@ -210,9 +211,19 @@ export default function Ministerios() {
     updateMutation.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, name: editForm.name.trim(), description: editForm.description.trim() || null });
   };
 
-  const filtered = ministries?.filter((m: { name: string }) =>
+  const filtered = ministries?.filter((m: { name: string; leaderId?: number | null }) =>
     m.name.toLowerCase().includes(search.toLowerCase())
+    && (statusFilter === "todos" || !m.leaderId)
   ) ?? [];
+  const ministryMemberRows = ministryMembers.data ?? [];
+  const membersWithoutRole = ministryMemberRows.filter((item) => item.person.id !== selectedMinistry?.leaderId && (item.roles ?? []).length === 0).length;
+  const operationalAttention = selectedMinistry?.canManage
+    ? [
+        !selectedMinistry.leaderId ? "Defina um líder responsável" : null,
+        !upcomingSchedules.isLoading && (upcomingSchedules.data ?? []).length === 0 ? "Cadastre a próxima escala na agenda oficial" : null,
+        !ministryMembers.isLoading && membersWithoutRole > 0 ? `${membersWithoutRole} pessoa${membersWithoutRole === 1 ? "" : "s"} sem atuação definida` : null,
+      ].filter((item): item is string => Boolean(item))
+    : [];
 
   return (
       <div className="p-6 max-w-5xl mx-auto animate-fade-in-up">
@@ -320,6 +331,17 @@ export default function Ministerios() {
           />
         </div>
 
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground">Acompanhe a liderança sem abrir cada ficha.</p>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "todos" | "sem_lider")}>
+            <SelectTrigger className="w-full sm:w-56" aria-label="Filtrar Ministérios por acompanhamento"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os Ministérios</SelectItem>
+              <SelectItem value="sem_lider">Sem líder responsável</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         {/* Grid */}
         {isLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -330,9 +352,9 @@ export default function Ministerios() {
         ) : filtered.length === 0 ? (
           <div className="card-sacred flex flex-col items-center gap-3 p-10 text-center sm:p-12">
             <Music className="h-12 w-12 text-muted-foreground/40" />
-            <p className="font-medium text-navy">{search ? "Nenhum Ministério encontrado" : canCreateMinistry ? "Nenhum Ministério cadastrado" : "Nenhum Ministério no seu escopo"}</p>
-            <p className="max-w-sm text-sm text-muted-foreground">{search ? "Tente outro nome ou limpe a busca." : canCreateMinistry ? "Crie o primeiro Ministério para organizar uma equipe de serviço." : "Quando o Pastor direcionar você para uma equipe, ela aparecerá aqui."}</p>
-            {search ? <Button type="button" variant="outline" onClick={() => setSearch("")}>Limpar busca</Button> : canCreateMinistry ? <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Criar primeiro Ministério</Button> : null}
+            <p className="font-medium text-navy">{search ? "Nenhum Ministério encontrado" : statusFilter === "sem_lider" ? "Nenhum Ministério sem líder" : canCreateMinistry ? "Nenhum Ministério cadastrado" : "Nenhum Ministério no seu escopo"}</p>
+            <p className="max-w-sm text-sm text-muted-foreground">{search ? "Tente outro nome ou limpe a busca." : statusFilter === "sem_lider" ? "Todos os Ministérios visíveis já têm um responsável definido." : canCreateMinistry ? "Crie o primeiro Ministério para organizar uma equipe de serviço." : "Quando o Pastor direcionar você para uma equipe, ela aparecerá aqui."}</p>
+            {search ? <Button type="button" variant="outline" onClick={() => setSearch("")}>Limpar busca</Button> : statusFilter === "sem_lider" ? <Button type="button" variant="outline" onClick={() => setStatusFilter("todos")}>Ver todos</Button> : canCreateMinistry ? <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Criar primeiro Ministério</Button> : null}
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -382,6 +404,21 @@ export default function Ministerios() {
             </DialogHeader>
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">{selectedMinistry && isConsolidationMinistry(selectedMinistry) ? "Adicione os envolvidos no cuidado. Cada participante ativo recebe acesso à aba de Consolidação; a aprovação da indicação e a assunção do cuidado continuam sendo etapas diferentes." : selectedMinistry && isVisitsMinistry(selectedMinistry) ? "Adicione os Visitadores deste Ministério. Eles poderão acessar Consolidação → Visitas e aceitar as visitas disponíveis; o líder continua responsável por organizar a equipe." : canCreateMinistry ? "Aqui você organiza a equipe, a liderança e a rotina deste Ministério." : "Aqui você gerencia somente as Pessoas e as funções operacionais deste Ministério."}</p>
+              <section className="rounded-xl border border-border bg-muted/20 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-navy">Acompanhamento do Ministério</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Uma leitura rápida da organização atual, sem criar uma nova agenda.</p>
+                  </div>
+                  <Badge variant="outline" className={operationalAttention.length > 0 ? "border-gold/50 bg-gold/10 text-navy" : "border-emerald-200 bg-emerald-50 text-emerald-800"}>{operationalAttention.length > 0 ? `${operationalAttention.length} ${operationalAttention.length === 1 ? "atenção" : "atenções"}` : "Organizado"}</Badge>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className="rounded-lg border border-border/70 bg-background p-3"><p className="text-[11px] text-muted-foreground">Pessoas</p><p className="mt-1 text-sm font-semibold text-navy">{ministryMembers.isLoading ? "…" : ministryMemberRows.length}</p></div>
+                  <div className="rounded-lg border border-border/70 bg-background p-3"><p className="text-[11px] text-muted-foreground">Liderança</p><p className="mt-1 text-sm font-semibold text-navy">{selectedMinistry?.leaderId ? "Definida" : "Pendente"}</p></div>
+                  <div className="rounded-lg border border-border/70 bg-background p-3"><p className="text-[11px] text-muted-foreground">Próxima escala</p><p className="mt-1 text-sm font-semibold text-navy">{upcomingSchedules.isLoading ? "…" : (upcomingSchedules.data ?? []).length > 0 ? "Agendada" : "Pendente"}</p></div>
+                </div>
+                {operationalAttention.length > 0 && <div className="mt-3 rounded-lg border border-gold/30 bg-gold/5 p-3"><p className="text-xs font-semibold text-navy">Próximas ações</p><ul className="mt-1 space-y-1 text-xs text-muted-foreground">{operationalAttention.map((item) => <li key={item}>• {item}</li>)}</ul><p className="mt-2 text-[11px] text-muted-foreground">Use as seções abaixo para resolver cada ponto; os registros continuam nas áreas oficiais do sistema.</p></div>}
+              </section>
               {canManageRoles && <div className="rounded-xl border border-gold/30 bg-gold/5 p-3">
                 <Label htmlFor="selected-ministry-leader">Líder responsável</Label>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row">
