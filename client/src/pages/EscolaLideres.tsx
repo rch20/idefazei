@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -209,6 +210,7 @@ function LeadershipClassCard({ cls, churchId, people }: {
 export default function EscolaLideres() {
   const { churchId } = useChurch();
   const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", period: "", startDate: "", endDate: "", pastor: "", description: "" });
   const utils = trpc.useUtils();
 
@@ -228,7 +230,10 @@ export default function EscolaLideres() {
       setForm({ name: "", period: "", startDate: "", endDate: "", pastor: "", description: "" });
       utils.escolaLideres.listClasses.invalidate();
     },
-    onError: () => toast.error("Erro ao criar turma"),
+    onError: (error) => {
+      setCreateError(error.message || "Erro ao criar turma");
+      toast.error(error.message || "Erro ao criar turma");
+    },
   });
 
   if (!churchId) return null;
@@ -244,60 +249,53 @@ export default function EscolaLideres() {
           </h1>
           <p className="text-muted-foreground mt-1">Formação e capacitação de líderes para multiplicação</p>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <Dialog open={createOpen} onOpenChange={(nextOpen) => { setCreateOpen(nextOpen); if (nextOpen) setCreateError(null); }}>
           <DialogTrigger asChild>
             <Button className="bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90">
               <Plus className="h-4 w-4 mr-2" /> Nova Turma
             </Button>
           </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
+          <AdaptiveFormDialogContent>
+            <div className={adaptiveFormDialogHeaderClassName}>
               <DialogTitle>Nova Turma — Escola de Líderes</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
-              <div>
-                <Label>Nome da Turma *</Label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Ex: Turma de Líderes 2025.1" />
-              </div>
-              <div>
-                <Label>Período</Label>
-                <Input value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value })} placeholder="Ex: 1º Semestre 2025" />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label>Início</Label>
-                  <Input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
-                </div>
-                <div>
-                  <Label>Término</Label>
-                  <Input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
-                </div>
-              </div>
-              <div>
-                <Label>Pastor(a) Responsável</Label>
-                <Input value={form.pastor} onChange={(e) => setForm({ ...form, pastor: e.target.value })} />
-              </div>
-              <div>
-                <Label>Descrição</Label>
-                <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} />
-              </div>
-              <Button
-                className="w-full bg-[#1e3a5f] text-white"
-                disabled={!form.name || createMutation.isPending}
-                onClick={() => createMutation.mutate({
-                  churchId: churchId!,
-                  name: form.name,
-                  period: form.period || undefined,
-                  startDate: form.startDate || undefined,
-                  endDate: form.endDate || undefined,
-                  pastor: form.pastor || undefined,
-                  description: form.description || undefined,
-                })}
-              >
-                {createMutation.isPending ? "Criando..." : "Criar Turma"}
-              </Button>
+              <p className="mt-1 text-sm text-muted-foreground">Organize o período, responsável e objetivo da formação.</p>
             </div>
-          </DialogContent>
+            <form className="contents" onSubmit={(event) => { event.preventDefault(); createMutation.mutate({ churchId: churchId!, name: form.name, period: form.period || undefined, startDate: form.startDate || undefined, endDate: form.endDate || undefined, pastor: form.pastor || undefined, description: form.description || undefined }); }}>
+              <AdaptiveFormDialogBody className="space-y-4">
+                {createError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{createError}</div>}
+                <div>
+                  <Label>Nome da Turma *</Label>
+                  <Input value={form.name} onChange={(e) => { setCreateError(null); setForm({ ...form, name: e.target.value }); }} placeholder="Ex: Turma de Líderes 2025.1" />
+                </div>
+                <div>
+                  <Label>Período</Label>
+                  <Input value={form.period} onChange={(e) => { setCreateError(null); setForm({ ...form, period: e.target.value }); }} placeholder="Ex: 1º Semestre 2025" />
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label>Início</Label>
+                    <Input type="date" value={form.startDate} onChange={(e) => { setCreateError(null); setForm({ ...form, startDate: e.target.value }); }} />
+                  </div>
+                  <div>
+                    <Label>Término</Label>
+                    <Input type="date" value={form.endDate} onChange={(e) => { setCreateError(null); setForm({ ...form, endDate: e.target.value }); }} />
+                  </div>
+                </div>
+                <div>
+                  <Label>Pastor(a) Responsável</Label>
+                  <Input value={form.pastor} onChange={(e) => { setCreateError(null); setForm({ ...form, pastor: e.target.value }); }} />
+                </div>
+                <div>
+                  <Label>Descrição</Label>
+                  <Textarea value={form.description} onChange={(e) => { setCreateError(null); setForm({ ...form, description: e.target.value }); }} rows={3} />
+                </div>
+              </AdaptiveFormDialogBody>
+              <AdaptiveFormDialogFooter>
+                <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={createMutation.isPending}>Cancelar</Button>
+                <Button type="submit" className="bg-[#1e3a5f] text-white" disabled={!form.name || createMutation.isPending}>{createMutation.isPending ? "Criando..." : "Criar Turma"}</Button>
+              </AdaptiveFormDialogFooter>
+            </form>
+          </AdaptiveFormDialogContent>
         </Dialog>
       </div>
 
