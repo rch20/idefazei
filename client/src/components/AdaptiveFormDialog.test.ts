@@ -12,11 +12,17 @@ const baseDialogSource = readFileSync(new URL("./ui/dialog.tsx", import.meta.url
   });
 
   it("ocupa a viewport inteira no mobile e volta ao modal centralizado no desktop", () => {
-    expect(componentSource).toContain("inset-0 h-[100dvh] max-h-[100dvh]");
+    expect(componentSource).toContain("inset-0 z-[200] h-[100dvh] max-h-[100dvh]");
     expect(componentSource).toContain("rounded-none border-0");
     expect(componentSource).toContain("sm:top-[50%]");
     expect(componentSource).toContain("sm:translate-x-[-50%] sm:translate-y-[-50%]");
     expect(componentSource).toContain("sm:rounded-lg sm:border");
+  });
+
+  it("fica acima da barra inferior de acesso rápido", () => {
+    const layoutSource = readFileSync(new URL("./ChurchLayout.tsx", import.meta.url), "utf8");
+    expect(layoutSource).toContain("fixed inset-x-3 bottom-3 z-[100]");
+    expect(componentSource).toContain("z-[200]");
   });
 
   it("isola a rolagem e mantém o rodapé acima da safe area", () => {
