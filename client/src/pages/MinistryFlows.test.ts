@@ -23,7 +23,17 @@ describe("Fluxo responsivo e seguro de Ministérios", () => {
     expect(dialogSource).toContain('data-slot="dialog-footer"');
     expect(dialogSource).toContain("sticky bottom-0");
     expect(ministrySource).toContain("<DialogFooter className=\"pt-3\">");
+    expect(ministrySource).toContain("AdaptiveFormDialogFooter");
     expect(ministrySource).toContain("Fechar");
+  });
+
+  it("usa Full-Screen Modal no cadastro e na equipe, sem ampliar a edição curta", () => {
+    expect(ministrySource.match(/<AdaptiveFormDialogContent/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(ministrySource).toContain("Criar Ministério");
+    expect(ministrySource).toContain("Equipe do Ministério");
+    expect(ministrySource).toContain("Funções avançadas");
+    expect(ministrySource).toContain("<DialogContent className=\"max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg\">");
+    expect(ministrySource).toContain("Excluir Ministério?");
   });
 
   it("separa acesso de participante da permissão de gestão", () => {

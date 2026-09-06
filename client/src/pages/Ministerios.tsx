@@ -5,6 +5,7 @@ import { DepartmentsPanel } from "@/components/DepartmentsPanel";
 import { ConsolidationReferralBox } from "@/components/ConsolidationReferralBox";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -241,11 +242,13 @@ export default function Ministerios() {
                 Novo Ministério
               </Button>
             </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
+            <AdaptiveFormDialogContent>
+              <div className={adaptiveFormDialogHeaderClassName}>
                 <DialogTitle className="font-display text-navy">Criar Ministério</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+                <p className="mt-1 text-sm text-muted-foreground">Configure o Ministério, a liderança e, quando necessário, os envolvidos da equipe.</p>
+              </div>
+              <form onSubmit={handleSubmit} className="contents">
+                <AdaptiveFormDialogBody className="mt-2 space-y-4">
                 <div>
                   <Label htmlFor="name">Nome do Ministério *</Label>
                   <Input
@@ -291,14 +294,15 @@ export default function Ministerios() {
                     <SelectContent><SelectItem value="none">Definir depois</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>}
-                <DialogFooter className="pt-3">
-                  <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+                </AdaptiveFormDialogBody>
+                <AdaptiveFormDialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={createMutation.isPending}>Cancelar</Button>
                   <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>
                     {createMutation.isPending ? "Criando..." : "Criar"}
                   </Button>
-                </DialogFooter>
+                </AdaptiveFormDialogFooter>
               </form>
-            </DialogContent>
+            </AdaptiveFormDialogContent>
           </Dialog>}
         </div>
 
@@ -396,14 +400,14 @@ export default function Ministerios() {
         )}
 
         <Dialog open={Boolean(selectedMinistry)} onOpenChange={(nextOpen) => !nextOpen && setSelectedMinistry(null)}>
-          <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-3xl">
-            <DialogHeader>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <AdaptiveFormDialogContent className="sm:max-w-3xl">
+            <div className={adaptiveFormDialogHeaderClassName}>
+              <div className="flex flex-col gap-2 pr-8 sm:flex-row sm:items-center sm:justify-between">
                 <DialogTitle className="font-display text-navy">{canCreateMinistry ? "Equipe do Ministério" : "Minha equipe"}: {selectedMinistry?.name}</DialogTitle>
                 {canCreateMinistry && <Button type="button" variant="outline" size="sm" className="w-fit gap-2" onClick={openEditMinistry}><Edit3 className="h-4 w-4" />Editar Ministério</Button>}
               </div>
-            </DialogHeader>
-            <div className="space-y-4">
+            </div>
+            <AdaptiveFormDialogBody className="space-y-4">
               <p className="text-sm text-muted-foreground">{selectedMinistry && isConsolidationMinistry(selectedMinistry) ? "Adicione os envolvidos no cuidado. Cada participante ativo recebe acesso à aba de Consolidação; a aprovação da indicação e a assunção do cuidado continuam sendo etapas diferentes." : selectedMinistry && isVisitsMinistry(selectedMinistry) ? "Adicione os Visitadores deste Ministério. Eles poderão acessar Consolidação → Visitas e aceitar as visitas disponíveis; o líder continua responsável por organizar a equipe." : canCreateMinistry ? "Aqui você organiza a equipe, a liderança e a rotina deste Ministério." : "Aqui você gerencia somente as Pessoas e as funções operacionais deste Ministério."}</p>
               <section className="rounded-xl border border-border bg-muted/20 p-4">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -501,11 +505,11 @@ export default function Ministerios() {
                 <div className="flex flex-wrap gap-2">{(customFunctions.data ?? []).filter((role) => !role.ministryId || role.ministryId === selectedMinistry?.id).map((role) => <Badge key={role.id} variant="outline">{role.name}</Badge>)}</div>
                 </div>
               </details>}
-              <DialogFooter className="pt-3">
-                <Button type="button" variant="outline" onClick={() => setSelectedMinistry(null)}>Fechar</Button>
-              </DialogFooter>
-            </div>
-          </DialogContent>
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button type="button" variant="outline" onClick={() => setSelectedMinistry(null)}>Fechar</Button>
+            </AdaptiveFormDialogFooter>
+          </AdaptiveFormDialogContent>
         </Dialog>
 
         <AlertDialog open={Boolean(archiveTarget)} onOpenChange={(nextOpen) => !nextOpen && !archiveMutation.isPending && setArchiveTarget(null)}>
