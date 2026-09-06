@@ -21,7 +21,8 @@ describe("Modais da Escola de Líderes", () => {
     expect(source).toContain("Matricular em {cls.name}");
     expect(source).toContain("Confirmar Matrícula");
     expect(source).toContain("certMutation");
-    expect(source).toContain("<DialogContent>");
+    expect(source).toContain("enrollError");
+    expect(source).toContain("<DialogContent className=\"sm:max-w-md\">");
   });
 
   it("preserva a camada superior, viewport e safe area do padrão global", () => {
