@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const pageSource = readFileSync(new URL("./Tesouraria.tsx", import.meta.url), "utf8");
+const adaptiveDialogSource = readFileSync(new URL("../components/AdaptiveFormDialog.tsx", import.meta.url), "utf8");
 const dbSource = readFileSync(new URL("../../../server/db.ts", import.meta.url), "utf8");
 
 describe("Tesouraria — regressões de interface e lógica", () => {
@@ -68,10 +69,11 @@ describe("Tesouraria — regressões de interface e lógica", () => {
   });
 
   it("mantém o botão de confirmar entrada acessível acima da barra inferior", () => {
-    expect(pageSource).toContain("pb-[calc(6rem+env(safe-area-inset-bottom))]");
-    expect(pageSource).toContain("sticky bottom-0");
-    expect(pageSource).toContain("paddingBottom: \"max(0.25rem, env(safe-area-inset-bottom))\"");
-    expect(pageSource).toContain("min-h-11 w-full touch-manipulation");
+    expect(pageSource).toContain("AdaptiveFormDialogContent");
+    expect(pageSource).toContain("AdaptiveFormDialogFooter");
+    expect(adaptiveDialogSource).toContain("env(safe-area-inset-bottom)");
+    expect(adaptiveDialogSource).toContain("sticky bottom-0");
+    expect(adaptiveDialogSource).toContain("[&>button]:min-h-11");
     expect(pageSource).toContain("Confirmar lançamento");
   });
 

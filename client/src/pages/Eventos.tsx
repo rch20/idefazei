@@ -1,6 +1,7 @@
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -714,18 +715,26 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     </Dialog>
 
     <Dialog open={editOpen} onOpenChange={setEditOpen}>
-      <DialogContent className="max-h-[92dvh] max-w-lg overflow-hidden p-0">
-        <DialogHeader className="border-b border-border px-6 py-5"><DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2"><Pencil className="h-5 w-5 text-[#c9a84c]" />Editar evento</DialogTitle><DialogDescription>Atualize os dados do evento. As inscrições, pagamentos e flyer continuam preservados.</DialogDescription></DialogHeader>
-        <form onSubmit={saveEventEdit} className="max-h-[calc(92dvh-7rem)] space-y-4 overflow-y-auto px-6 py-5">
+      <AdaptiveFormDialogContent>
+        <div className={adaptiveFormDialogHeaderClassName}>
+          <DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2"><Pencil className="h-5 w-5 text-[#c9a84c]" />Editar evento</DialogTitle>
+          <DialogDescription>Atualize os dados do evento. As inscrições, pagamentos e flyer continuam preservados.</DialogDescription>
+        </div>
+        <form onSubmit={saveEventEdit} className="contents">
+          <AdaptiveFormDialogBody className="space-y-4">
           <div><Label>Nome do evento *</Label><Input value={editDraft.name} onChange={(inputEvent) => setEditDraft({ ...editDraft, name: inputEvent.target.value })} required minLength={2} maxLength={255} /></div>
           <div><Label>Tipo *</Label><Select value={editDraft.type} onValueChange={(value) => setEditDraft({ ...editDraft, type: value as EventType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{EVENT_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
           <div className="grid gap-4 sm:grid-cols-2"><div><Label>Data de início *</Label><Input type="date" value={editDraft.startDate} onChange={(inputEvent) => setEditDraft({ ...editDraft, startDate: inputEvent.target.value })} required /></div><div><Label>Data de fim <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="date" value={editDraft.endDate} onChange={(inputEvent) => setEditDraft({ ...editDraft, endDate: inputEvent.target.value })} /></div><div><Label>Horário de início <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="time" value={editDraft.startTime} onChange={(inputEvent) => setEditDraft({ ...editDraft, startTime: inputEvent.target.value })} /></div><div><Label>Horário de término <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="time" value={editDraft.endTime} onChange={(inputEvent) => setEditDraft({ ...editDraft, endTime: inputEvent.target.value })} /></div></div>
           <div><Label>Local</Label><Input value={editDraft.location} onChange={(inputEvent) => setEditDraft({ ...editDraft, location: inputEvent.target.value })} maxLength={500} /></div>
           <div><Label>Capacidade máxima</Label><Input type="number" min={1} value={editDraft.maxCapacity} onChange={(inputEvent) => setEditDraft({ ...editDraft, maxCapacity: inputEvent.target.value })} placeholder="Em branco = sem limite" /></div>
           <div><Label>Descrição</Label><Textarea value={editDraft.description} onChange={(inputEvent) => setEditDraft({ ...editDraft, description: inputEvent.target.value })} rows={5} maxLength={4000} placeholder="Descreva o objetivo e os detalhes do evento." /><p className="mt-1 text-right text-xs text-muted-foreground">{editDraft.description.length}/4000</p></div>
-          <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={() => setEditOpen(false)} className="sm:min-w-28">Cancelar</Button><Button type="submit" className="bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90 sm:min-w-36" disabled={updateEvent.isPending}>{updateEvent.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Salvar alterações</Button></div>
+        </AdaptiveFormDialogBody>
+        <AdaptiveFormDialogFooter>
+          <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
+          <Button type="submit" className="bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" disabled={updateEvent.isPending}>{updateEvent.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Salvar alterações</Button>
+        </AdaptiveFormDialogFooter>
         </form>
-      </DialogContent>
+      </AdaptiveFormDialogContent>
     </Dialog>
 
     <Dialog open={qrOpen} onOpenChange={setQrOpen}><DialogContent className="max-w-sm"><DialogHeader><DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2"><QrCode className="w-5 h-5 text-[#c9a84c]" />Check-in — {event.name}</DialogTitle></DialogHeader><div className="flex flex-col items-center gap-4 py-4">{checkinUrl && <><div className="p-4 bg-white rounded-2xl border border-[#1e3a5f]/10 shadow-sm"><QRCodeSVG value={checkinUrl} size={200} fgColor="#1e3a5f" bgColor="#ffffff" level="M" /></div><p className="text-xs text-center text-[#1e3a5f]/50 leading-relaxed">Mostre este QR Code na entrada do evento.<br />Os participantes escaneiam para confirmar presença.</p><div className="w-full p-3 bg-[#f5f0e8] rounded-xl"><p className="text-[10px] text-[#1e3a5f]/40 uppercase tracking-wider mb-1">Link de check-in</p><p className="text-xs text-[#1e3a5f] font-mono break-all">{checkinUrl}</p></div></>}</div></DialogContent></Dialog>

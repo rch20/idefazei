@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -708,15 +709,16 @@ export default function Celulas() {
 
       {/* Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
+        <AdaptiveFormDialogContent>
+          <div className={adaptiveFormDialogHeaderClassName}>
             <DialogTitle className="font-display text-navy flex items-center gap-2">
               <Globe className="w-5 h-5 text-indigo-600" />
               Nova Célula
             </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          </div>
+          <form onSubmit={handleSubmit} className="contents">
+            <AdaptiveFormDialogBody>
+              <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
                 <Label>Nome da Célula *</Label>
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -792,15 +794,16 @@ export default function Celulas() {
                 <Label>Horário</Label>
                 <Input type="time" value={form.meetingTime} onChange={(e) => setForm({ ...form, meetingTime: e.target.value })} />
               </div>
-            </div>
-            <div className="flex gap-3">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">Cancelar</Button>
-              <Button type="submit" className="flex-1 bg-navy hover:bg-navy-light text-white" disabled={createCell.isPending}>
+              </div>
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button type="submit" className="bg-navy hover:bg-navy-light text-white" disabled={createCell.isPending}>
                 {createCell.isPending ? "Salvando..." : "Criar Célula"}
               </Button>
-            </div>
+            </AdaptiveFormDialogFooter>
           </form>
-        </DialogContent>
+        </AdaptiveFormDialogContent>
       </Dialog>
     </div>
   );

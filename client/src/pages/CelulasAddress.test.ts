@@ -11,6 +11,14 @@ const schemaSource = readFileSync(resolve(root, "drizzle/schema.ts"), "utf8");
 const migrationSource = readFileSync(resolve(root, "drizzle/0056_cell_address_cep.sql"), "utf8");
 
 describe("Cadastro de Células com endereço por CEP", () => {
+  it("usa o Formulário Adaptativo somente no cadastro longo de Nova Célula", () => {
+    expect(pageSource).toContain("AdaptiveFormDialogContent");
+    expect(pageSource).toContain("AdaptiveFormDialogBody");
+    expect(pageSource).toContain("AdaptiveFormDialogFooter");
+    expect(pageSource).toContain("Nova Célula");
+    expect(pageSource).toContain("Criar Célula");
+  });
+
   it("oferece busca por CEP e mantém preenchimento manual como fallback", () => {
     expect(pageSource).toContain("https://viacep.com.br/ws/");
     expect(pageSource).toContain('id="cell-zip-code"');

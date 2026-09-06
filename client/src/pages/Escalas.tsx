@@ -3,7 +3,8 @@ import { useLocation } from "wouter";
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -233,11 +234,12 @@ export default function Escalas() {
             <DialogTrigger asChild>
               <Button onClick={openCreateDialog} className="bg-navy text-white hover:bg-navy-light gap-2">+ Nova Escala</Button>
             </DialogTrigger>
-            <DialogContent className="w-[calc(100%-1rem)] max-h-[calc(100dvh-0.75rem)] max-w-lg overflow-y-auto overscroll-contain p-3 pb-0 [-webkit-overflow-scrolling:touch] sm:p-6 sm:pb-0">
-              <DialogHeader className="sticky top-0 z-10 -mx-3 bg-background/95 pb-2 backdrop-blur sm:-mx-6 sm:px-6">
-                <DialogTitle className="font-display text-navy pr-8">{editingSchedule ? "Editar Escala" : "Criar Escala"}</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSave} className="space-y-4 pt-2">
+            <AdaptiveFormDialogContent>
+              <div className={adaptiveFormDialogHeaderClassName}>
+                <DialogTitle className="font-display text-navy">{editingSchedule ? "Editar Escala" : "Criar Escala"}</DialogTitle>
+              </div>
+              <form onSubmit={handleSave} className="contents">
+                <AdaptiveFormDialogBody className="space-y-4">
                 <div>
                   <Label htmlFor="schedule-ministry">Ministério *</Label>
                   <select id="schedule-ministry" value={form.ministryId} onChange={(event) => handleMinistryChange(event.target.value)} className="mt-1 flex min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm">
@@ -280,12 +282,13 @@ export default function Escalas() {
                 </div>
                 {formConflict && <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Esta pessoa já aparece em uma escala com horário sobreposto nesta data. Ajuste a data ou o horário antes de salvar.</div>}
                 {formError && <div role="alert" aria-live="assertive" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><div><p className="font-semibold">Não foi possível salvar a Escala.</p><p className="mt-1 break-words">{formError}</p></div></div>}
-                <div className="sticky bottom-0 z-10 -mx-3 flex flex-col-reverse gap-2 border-t border-border/60 bg-background/95 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.25rem)] backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:-mx-6 sm:flex-row sm:justify-end sm:px-6">
-                  <Button type="button" variant="outline" className="min-h-11 w-full sm:w-auto" onClick={() => setScheduleOpen(false)}>Cancelar</Button>
-                  <Button type="submit" className="min-h-11 w-full bg-navy text-white sm:w-auto" disabled={createMutation.isPending || updateMutation.isPending || formConflict}>{createMutation.isPending || updateMutation.isPending ? "Salvando..." : editingSchedule ? "Salvar Alterações" : "Criar Escala"}</Button>
-                </div>
+                </AdaptiveFormDialogBody>
+                <AdaptiveFormDialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setScheduleOpen(false)}>Cancelar</Button>
+                  <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending || updateMutation.isPending || formConflict}>{createMutation.isPending || updateMutation.isPending ? "Salvando..." : editingSchedule ? "Salvar Alterações" : "Criar Escala"}</Button>
+                </AdaptiveFormDialogFooter>
               </form>
-            </DialogContent>
+            </AdaptiveFormDialogContent>
           </Dialog>}
         </div>
 

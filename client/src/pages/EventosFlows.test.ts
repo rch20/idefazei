@@ -154,6 +154,15 @@ describe("Eventos — inscrições e presença", () => {
     expect(db).toContain("eq(events.churchId, data.churchId)");
   });
 
+  it("usa o Formulário Adaptativo somente na edição longa do Evento", () => {
+    expect(page).toContain("AdaptiveFormDialogContent");
+    expect(page).toContain("AdaptiveFormDialogBody");
+    expect(page).toContain("AdaptiveFormDialogFooter");
+    expect(page).toContain("Editar evento");
+    expect(page).toContain("Salvar alterações");
+    expect(page).toContain("DialogContent className=\"max-w-sm\"");
+  });
+
   it("permite editar os dados principais do Evento e atualizar a descrição", () => {
     expect(page).toContain("trpc.events.update.useMutation");
     expect(page).toContain('title="Editar evento"');

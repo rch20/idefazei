@@ -5,21 +5,24 @@ import { describe, expect, it } from "vitest";
 const root = resolve(process.cwd());
 const schedulesSource = readFileSync(resolve(root, "client/src/pages/Escalas.tsx"), "utf8");
 const dialogSource = readFileSync(resolve(root, "client/src/components/ui/dialog.tsx"), "utf8");
+const adaptiveDialogSource = readFileSync(resolve(root, "client/src/components/AdaptiveFormDialog.tsx"), "utf8");
 
 describe("Modal de Escalas em telas pequenas", () => {
-  it("mantém o formulário rolável e respeita a altura da viewport", () => {
-    expect(schedulesSource).toContain("max-h-[calc(100dvh-0.75rem)]");
-    expect(schedulesSource).toContain("overflow-y-auto");
-    expect(schedulesSource).toContain("overscroll-contain");
-    expect(schedulesSource).toContain("[-webkit-overflow-scrolling:touch]");
+  it("usa o formulário adaptativo com rolagem isolada e altura civil da viewport", () => {
+    expect(schedulesSource).toContain("AdaptiveFormDialogContent");
+    expect(schedulesSource).toContain("AdaptiveFormDialogBody");
+    expect(adaptiveDialogSource).toContain("h-[100dvh]");
+    expect(adaptiveDialogSource).toContain("max-h-[100dvh]");
+    expect(adaptiveDialogSource).toContain("overflow-y-auto");
+    expect(adaptiveDialogSource).toContain("overscroll-contain");
     expect(dialogSource).toContain("max-h-[calc(100dvh-1rem)]");
-    expect(dialogSource).toContain("overflow-y-auto");
   });
 
   it("mantém as ações acessíveis acima da barra inferior e da safe area", () => {
-    expect(schedulesSource).toContain("sticky bottom-0");
-    expect(schedulesSource).toContain("env(safe-area-inset-bottom)");
-    expect(schedulesSource).toContain("min-h-11 w-full sm:w-auto");
+    expect(schedulesSource).toContain("AdaptiveFormDialogFooter");
+    expect(adaptiveDialogSource).toContain("sticky bottom-0");
+    expect(adaptiveDialogSource).toContain("env(safe-area-inset-bottom)");
+    expect(adaptiveDialogSource).toContain("[&>button]:min-h-11");
     expect(schedulesSource).toContain("Criar Escala");
   });
 
