@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -169,6 +170,7 @@ function SessionCard({ session, churchId }: {
 export default function Aconselhamento() {
   const { churchId } = useChurch();
   const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [form, setForm] = useState({ personId: "", counselorId: "", scheduledAt: "", notes: "" });
   const utils = trpc.useUtils();
 
@@ -188,7 +190,10 @@ export default function Aconselhamento() {
       setForm({ personId: "", counselorId: "", scheduledAt: "", notes: "" });
       utils.aconselhamento.list.invalidate();
     },
-    onError: () => toast.error("Erro ao agendar sessão"),
+    onError: (error) => {
+      setCreateError(error.message || "Erro ao agendar sessão");
+      toast.error(error.message || "Erro ao agendar sessão");
+    },
   });
 
   if (!churchId) return null;
@@ -206,75 +211,61 @@ export default function Aconselhamento() {
           </h1>
           <p className="text-muted-foreground mt-1">Agenda e histórico de sessões — acesso restrito</p>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <Dialog open={createOpen} onOpenChange={(nextOpen) => { setCreateOpen(nextOpen); if (nextOpen) setCreateError(null); }}>
           <DialogTrigger asChild>
             <Button className="bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90">
               <Plus className="h-4 w-4 mr-2" /> Agendar Sessão
             </Button>
           </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
+          <AdaptiveFormDialogContent>
+            <div className={adaptiveFormDialogHeaderClassName}>
               <DialogTitle>Agendar Sessão de Aconselhamento</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
-              <div>
-                <Label>Pessoa a ser aconselhada *</Label>
-                <Select value={form.personId} onValueChange={(v) => setForm({ ...form, personId: v })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a pessoa..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(people ?? []).map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>{p.fullName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Aconselhador (Pastor/Líder) *</Label>
-                <Select value={form.counselorId} onValueChange={(v) => setForm({ ...form, counselorId: v })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o aconselhador..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(people ?? []).map((p) => (
-                      <SelectItem key={p.id} value={String(p.id)}>{p.fullName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Data e Hora *</Label>
-                <Input
-                  type="datetime-local"
-                  value={form.scheduledAt}
-                  onChange={(e) => setForm({ ...form, scheduledAt: e.target.value })}
-                />
-              </div>
-              <div>
-                <Label>Observações iniciais</Label>
-                <Textarea
-                  value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  placeholder="Motivo, contexto (confidencial)..."
-                  rows={3}
-                />
-              </div>
-              <Button
-                className="w-full bg-[#1e3a5f] text-white"
-                disabled={!form.personId || !form.counselorId || !form.scheduledAt || createMutation.isPending}
-                onClick={() => createMutation.mutate({
-                  churchId: churchId!,
-                  personId: Number(form.personId),
-                  counselorId: Number(form.counselorId),
-                  scheduledAt: new Date(form.scheduledAt),
-                  notes: form.notes || undefined,
-                })}
-              >
-                {createMutation.isPending ? "Agendando..." : "Agendar Sessão"}
-              </Button>
+              <p className="mt-1 text-sm text-muted-foreground">Defina quem será atendido, o responsável e o horário reservado.</p>
             </div>
-          </DialogContent>
+            <form className="contents" onSubmit={(event) => { event.preventDefault(); createMutation.mutate({ churchId: churchId!, personId: Number(form.personId), counselorId: Number(form.counselorId), scheduledAt: new Date(form.scheduledAt), notes: form.notes || undefined }); }}>
+              <AdaptiveFormDialogBody className="space-y-4">
+                {createError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{createError}</div>}
+                <div>
+                  <Label>Pessoa a ser aconselhada *</Label>
+                  <Select value={form.personId} onValueChange={(v) => { setCreateError(null); setForm({ ...form, personId: v }); }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a pessoa..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(people ?? []).map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>{p.fullName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Aconselhador (Pastor/Líder) *</Label>
+                  <Select value={form.counselorId} onValueChange={(v) => { setCreateError(null); setForm({ ...form, counselorId: v }); }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o aconselhador..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(people ?? []).map((p) => (
+                        <SelectItem key={p.id} value={String(p.id)}>{p.fullName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Data e Hora *</Label>
+                  <Input type="datetime-local" value={form.scheduledAt} onChange={(e) => { setCreateError(null); setForm({ ...form, scheduledAt: e.target.value }); }} />
+                </div>
+                <div>
+                  <Label>Observações iniciais</Label>
+                  <Textarea value={form.notes} onChange={(e) => { setCreateError(null); setForm({ ...form, notes: e.target.value }); }} placeholder="Motivo, contexto (confidencial)..." rows={3} />
+                </div>
+              </AdaptiveFormDialogBody>
+              <AdaptiveFormDialogFooter>
+                <Button type="button" variant="outline" onClick={() => setCreateOpen(false)} disabled={createMutation.isPending}>Cancelar</Button>
+                <Button type="submit" className="bg-[#1e3a5f] text-white" disabled={!form.personId || !form.counselorId || !form.scheduledAt || createMutation.isPending}>{createMutation.isPending ? "Agendando..." : "Agendar Sessão"}</Button>
+              </AdaptiveFormDialogFooter>
+            </form>
+          </AdaptiveFormDialogContent>
         </Dialog>
       </div>
 
