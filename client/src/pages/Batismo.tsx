@@ -35,6 +35,7 @@ function BaptismClassCard({ cls, churchId, people }: {
 }) {
   const [selectedPersonId, setSelectedPersonId] = useState<string>("");
   const [enrollOpen, setEnrollOpen] = useState(false);
+  const [enrollError, setEnrollError] = useState<string | null>(null);
   const utils = trpc.useUtils();
 
   const { data: enrollments } = trpc.batismo.getEnrollments.useQuery({ classId: cls.id, churchId });
@@ -46,7 +47,10 @@ function BaptismClassCard({ cls, churchId, people }: {
       setSelectedPersonId("");
       utils.batismo.getEnrollments.invalidate();
     },
-    onError: () => toast.error("Erro ao inscrever"),
+    onError: (error) => {
+      setEnrollError(error.message || "Erro ao inscrever");
+      toast.error(error.message || "Erro ao inscrever");
+    },
   });
 
   const updateMutation = trpc.batismo.updateEnrollment.useMutation({
@@ -160,18 +164,19 @@ function BaptismClassCard({ cls, churchId, people }: {
           </div>
         )}
 
-        <Dialog open={enrollOpen} onOpenChange={setEnrollOpen}>
+        <Dialog open={enrollOpen} onOpenChange={(nextOpen) => { setEnrollOpen(nextOpen); if (nextOpen) setEnrollError(null); }}>
           <DialogTrigger asChild>
             <Button size="sm" className="w-full bg-[#1e3a5f] hover:bg-[#1e3a5f]/90 text-white">
               <Plus className="h-4 w-4 mr-1" /> Inscrever Pessoa
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>Inscrever em {cls.name}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-2">
-              <Select value={selectedPersonId} onValueChange={setSelectedPersonId}>
+              {enrollError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{enrollError}</div>}
+              <Select value={selectedPersonId} onValueChange={(value) => { setEnrollError(null); setSelectedPersonId(value); }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a pessoa..." />
                 </SelectTrigger>
