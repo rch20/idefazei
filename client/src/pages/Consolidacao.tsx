@@ -296,15 +296,13 @@ export default function Consolidacao() {
         <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-navy sm:justify-between">
           <span className="rounded-full bg-amber-50 px-3 py-1.5 text-amber-800">1. Indicação</span>
           <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
-          <span className="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-800">2. Aprovação pastoral</span>
+          <span className="rounded-full bg-indigo-50 px-3 py-1.5 text-indigo-800">2. Assunção ou triagem</span>
           <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
-          <span className="rounded-full bg-blue-50 px-3 py-1.5 text-blue-800">3. Consolidador assume</span>
+          <span className="rounded-full bg-green-50 px-3 py-1.5 text-green-800">3. Acompanhamento</span>
           <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
-          <span className="rounded-full bg-green-50 px-3 py-1.5 text-green-800">4. Acompanhamento</span>
+          <span className="rounded-full bg-rose-50 px-3 py-1.5 text-rose-800">4. Visita, se necessária</span>
           <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
-          <span className="rounded-full bg-rose-50 px-3 py-1.5 text-rose-800">5. Visita, se necessária</span>
-          <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
-          <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">6. Encerramento ou integração</span>
+          <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">5. Encerramento ou integração</span>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">A Pessoa continua com a mesma ficha; somente o estado do cuidado e o responsável mudam ao longo da jornada.</p>
       </section>
@@ -336,7 +334,7 @@ export default function Consolidacao() {
               const isInFollowUp = referral.status === "em_acompanhamento";
               const isClosed = referral.status === "encerrado";
               const isCancelled = referral.status === "cancelado";
-              const statusLabel = isPending ? "Aguardando aprovação pastoral" : isApproved ? "Aprovado, aguardando responsável" : referral.status === "aceito" ? (referral.acceptedByChurchUserId ? "Assumido pelo Pastor" : "Assumido pelo Consolidador") : isInFollowUp ? "Em acompanhamento" : isClosed ? "Encerrado" : isCancelled ? "Cancelado" : referral.status;
+              const statusLabel = isPending ? (referral.preferredConsolidatorName ? `Disponível para ${referral.preferredConsolidatorName}` : "Aguardando assunção") : isApproved ? "Aprovado, aguardando responsável" : referral.status === "aceito" ? (referral.acceptedByChurchUserId ? "Assumido pelo Pastor" : "Assumido pelo Consolidador") : isInFollowUp ? "Em acompanhamento" : isClosed ? "Encerrado" : isCancelled ? "Cancelado" : referral.status;
               return (
                 <article key={referral.id} className="rounded-xl border border-rose-100 bg-background p-4 shadow-sm">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

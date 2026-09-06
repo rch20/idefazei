@@ -1770,7 +1770,7 @@ const consolidationRouter = router({
           canAssign: canViewAll,
           canApprove: Boolean(context.capabilities.canManageConsolidation && referral.status === "pendente"),
           canAssumeAsPastor: Boolean(isPastor && ["pendente", "aprovado"].includes(referral.status) && !referral.acceptedByPersonId && !referral.acceptedByChurchUserId),
-          canAccept: Boolean(context.roles.includes("consolidador") && actor.personId && ["pendente", "aprovado"].includes(referral.status) && (!referral.assignedToPersonId || referral.assignedToPersonId === actor.personId)),
+          canAccept: Boolean(context.roles.includes("consolidador") && actor.personId && ["pendente", "aprovado"].includes(referral.status) && (!referral.assignedToPersonId || referral.assignedToPersonId === actor.personId) && (!referral.preferredConsolidatorId || referral.preferredConsolidatorId === actor.personId)),
           canCancel: Boolean((context.capabilities.canManageConsolidation || referral.acceptedByPersonId === actor.personId || referral.acceptedByChurchUserId === (ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id)) && !["encerrado", "cancelado"].includes(referral.status)),
           canIntegrate: Boolean(isPastor && referral.status === "em_acompanhamento"),
         };
@@ -2022,7 +2022,7 @@ const consolidationRouter = router({
       if (!referral || (!referral.acceptedByPersonId && !referral.acceptedByChurchUserId)) throw new TRPCError({ code: "BAD_REQUEST", message: "O caso precisa ser assumido antes do acompanhamento." });
       const isResponsiblePerson = Boolean(actor.personId && referral.acceptedByPersonId === actor.personId);
       const isResponsiblePastor = Boolean(isPastoralExecutor && referral.acceptedByChurchUserId === (ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id));
-      if (!context.capabilities.canManageConsolidation && !isResponsiblePerson && !isResponsiblePastor) throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Consolidador responsável, Líder, Supervisor ou Pastor responsável pode registrar este acompanhamento." });
+      if (!context.capabilities.canManageConsolidation && !isResponsiblePerson && !isResponsiblePastor) throw new TRPCError({ code: "FORBIDDEN", message: "Somente a Consolidadora responsável, o Pastor responsável ou a liderança gestora da Consolidação pode registrar este acompanhamento." });
       if (["encerrado", "cancelado"].includes(referral.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "Este caso já foi encerrado e não aceita novos acompanhamentos." });
       if (referral.status !== "aceito" && referral.status !== "em_acompanhamento") throw new TRPCError({ code: "BAD_REQUEST", message: "O caso precisa estar pronto para acompanhamento." });
       if (input.visitAssigneePersonId) await requireVisitorPerson(input.visitAssigneePersonId, input.churchId);

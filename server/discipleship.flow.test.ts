@@ -1749,7 +1749,7 @@ describe("Fluxo completo de discipulado", () => {
         outcome: "sem_resposta",
         notes: "Tentativa de ligação sem retorno.",
         visitStatus: "nao_necessaria",
-      })).rejects.toThrow("Somente o Consolidador responsável");
+      })).rejects.toThrow("Somente a Consolidadora responsável");
     });
   });
 

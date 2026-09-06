@@ -2667,6 +2667,20 @@ export async function integrateConsolidationReferralIntoCell(data: { churchId: n
     if (!referral) throw new Error("Caso de Consolidação não encontrado.");
     if (referral.status !== "em_acompanhamento") throw new Error("Registre um acompanhamento antes de integrar a Pessoa em uma Célula.");
     if (!referral.acceptedByPersonId) throw new Error("O caso precisa ter um Consolidador responsável antes da integração.");
+    const openVisits = await tx
+      .select({ id: careVisits.id })
+      .from(careVisits)
+      .where(and(
+        eq(careVisits.referralId, data.referralId),
+        eq(careVisits.churchId, data.churchId),
+        or(
+          eq(careVisits.status, "solicitada"),
+          eq(careVisits.status, "agendada"),
+          eq(careVisits.status, "em_andamento"),
+        ),
+      ))
+      .limit(1);
+    if (openVisits.length > 0) throw new Error("Conclua ou cancele as visitas abertas antes de integrar esta Pessoa em uma Célula.");
 
     const targetCells = await tx
       .select({ id: cells.id, name: cells.name, leaderId: cells.leaderId })

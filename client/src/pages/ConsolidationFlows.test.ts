@@ -63,7 +63,11 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(routerSource).toContain("approvedByPersonId: context.actor.personId ?? null");
     expect(routerSource).not.toContain("if (!context.capabilities.canManageConsolidation || !context.actor.personId)");
     expect(routerSource).toContain('["pendente", "aprovado"].includes(referral.status)');
+    expect(routerSource).toContain("!referral.preferredConsolidatorId || referral.preferredConsolidatorId === actor.personId");
     expect(consolidationSource).toContain("Um Consolidador oficialmente atribuído pode assumir diretamente");
+    expect(consolidationSource).not.toContain("Aprovação pastoral</span>");
+    expect(consolidationSource).toContain("2. Assunção ou triagem");
+    expect(consolidationSource).not.toContain("Aguardando aprovação pastoral");
     expect(dbSource).toContain("approvedByPersonId: number | null");
   });
 
@@ -111,6 +115,8 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(routerSource).toContain("getOpenCareVisitsByReferral");
     expect(routerSource).toContain("cancelReferral");
     expect(routerSource).toContain("Conclua ou cancele as visitas abertas antes de encerrar este acompanhamento.");
+    expect(dbSource).toContain("Conclua ou cancele as visitas abertas antes de integrar esta Pessoa em uma Célula.");
+    expect(routerSource).toContain("Somente a Consolidadora responsável, o Pastor responsável ou a liderança gestora da Consolidação pode registrar este acompanhamento.");
     expect(consolidationSource).toContain('value="cancelados"');
     expect(consolidationSource).toContain("Cancelar caso");
     expect(consolidationSource).toContain("Checklist histórico");
