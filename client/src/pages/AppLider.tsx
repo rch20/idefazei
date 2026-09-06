@@ -224,7 +224,16 @@ export default function AppLider() {
                           { key: "callMade", label: "Ligação", done: c.callMade },
                           { key: "visitMade", label: "Visita", done: c.visitMade },
                           { key: "bibleDelivered", label: "Bíblia", done: c.bibleDelivered },
-                        ].map(({ key, label, done }) => (
+                        ].map(({ key, label, done }) => key === "callMade" ? (
+                          <Link
+                            key={key}
+                            href="/app/consolidacao"
+                            className="p-2 rounded-lg text-center text-xs font-medium transition-all bg-white border border-[#1e3a5f]/10 text-[#1e3a5f]/70 hover:bg-[#1e3a5f]/5"
+                          >
+                            <Phone className="w-4 h-4 mx-auto mb-0.5" />
+                            {done ? "Ver Consolidação" : "Abrir Consolidação"}
+                          </Link>
+                        ) : (
                           <button
                             key={key}
                             onClick={() => updateConsolidation.mutate({ id: c.id, churchId: churchId!, [key]: !done })}

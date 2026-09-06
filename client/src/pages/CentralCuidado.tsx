@@ -21,10 +21,11 @@ export default function CentralCuidado() {
   const scope = trpc.people.journeyScope.useQuery({ churchId });
   const registerFirstContact = trpc.care.registerFirstContact.useMutation({
     onSuccess: async () => {
-      toast.success("Primeiro contato registrado.");
+      toast.success("Primeiro acompanhamento registrado no histórico da Consolidação.");
       await Promise.all([
         utils.care.myQueue.invalidate({ churchId }),
         utils.dashboard.careAttention.invalidate({ churchId }),
+        utils.consolidation.referrals.invalidate({ churchId }),
       ]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível registrar o contato."),
@@ -192,7 +193,7 @@ export default function CentralCuidado() {
                         disabled={registerFirstContact.isPending}
                       >
                         <PhoneCall className="h-4 w-4" />
-                        {registerFirstContact.isPending ? "Registrando…" : "Registrar contato"}
+                        {registerFirstContact.isPending ? "Registrando…" : "Registrar primeiro acompanhamento"}
                       </Button>
                     )}
                     <Button variant="outline" className="gap-2" onClick={() => openPerson(item.person.id)}>

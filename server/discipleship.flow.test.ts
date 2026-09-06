@@ -56,6 +56,7 @@ vi.mock("./db", () => ({
   createConsolidation: vi.fn().mockResolvedValue({ id: 1, soulId: 1, churchId: 100 }),
   startConsolidationWorkflow: vi.fn().mockResolvedValue({ id: 1, soulId: 1, churchId: 100, consolidatorId: 10 }),
   updateConsolidation: vi.fn().mockResolvedValue({ id: 1, callMade: true, status: "consolidado" }),
+  recordModernFirstContact: vi.fn().mockResolvedValue({ referralId: 51, followUpId: 701 }),
   ensureConsolidationMinistryStructure: vi.fn().mockResolvedValue({
     ministry: { id: 7, churchId: 100, name: "Ministério de Consolidação e Visitas", type: "consolidacao", active: true },
     consolidationDepartment: { id: 31, churchId: 100, ministryId: 7, name: "Consolidação", systemKey: "consolidacao", active: true },
@@ -82,6 +83,7 @@ vi.mock("./db", () => ({
   getConsolidationFollowUpsByChurch: vi.fn().mockResolvedValue([]),
   createConsolidationFollowUp: vi.fn().mockResolvedValue({ id: 91, churchId: 100, referralId: 51 }),
   getCareVisitsByChurch: vi.fn().mockResolvedValue([]),
+  getOpenCareVisitsByReferral: vi.fn().mockResolvedValue([]),
   getCareVisitById: vi.fn().mockResolvedValue({ id: 401, churchId: 100, referralId: 51, personId: 1, status: "solicitada", assignedToPersonId: null }),
   getCareVisitEvents: vi.fn().mockResolvedValue([]),
   createCareVisit: vi.fn().mockResolvedValue({ visit: { id: 401, churchId: 100, referralId: 51, personId: 1, status: "solicitada" }, event: { id: 1, action: "criada" } }),
@@ -1781,7 +1783,8 @@ describe("Fluxo completo de discipulado", () => {
       expect(queue[0].person.fullName).toBe("Ana sob cuidado");
     });
 
-    it("permite registrar primeiro contato apenas para pessoa no escopo pastoral", async () => {
+    it("registra o primeiro acompanhamento no histórico moderno para pessoa no escopo pastoral", async () => {
+      const { recordModernFirstContact } = await import("./db");
       (getCareAttentionByChurch as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
         {
           person: { id: 10, fullName: "Ana" },
@@ -1793,11 +1796,13 @@ describe("Fluxo completo de discipulado", () => {
           reasons: ["Sem primeiro contato registrado"],
         },
       ]);
+      vi.mocked(recordModernFirstContact).mockResolvedValueOnce({ referralId: 51, followUpId: 701 });
 
       const caller = appRouter.createCaller(createMemberContext(-2));
       await caller.care.registerFirstContact({ churchId: CHURCH_ID, personId: 10 });
 
-      expect(updateConsolidation).toHaveBeenCalledWith(31, CHURCH_ID, expect.objectContaining({ callMade: true }));
+      expect(recordModernFirstContact).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, personId: 10, notes: expect.stringContaining("Central de Cuidado") }));
+      expect(updateConsolidation).not.toHaveBeenCalledWith(31, CHURCH_ID, expect.anything());
     });
 
     it("bloqueia a troca de responsável fora do escopo pastoral", async () => {

@@ -25,8 +25,6 @@ const CHECKLIST_ITEMS = [
   { key: "addedToCell", label: "Inserido em célula", icon: Church },
 ] as const;
 
-type ChecklistKey = (typeof CHECKLIST_ITEMS)[number]["key"];
-
 function getWhatsAppLink(contact: string, personName: string) {
   const number = contact.replace(/\D/g, "");
   const internationalNumber = number.length >= 10 && !number.startsWith("55") ? `55${number}` : number;
@@ -73,7 +71,7 @@ export default function Consolidacao() {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
   const utils = trpc.useUtils();
-  const [caseFilter, setCaseFilter] = useState<"ativos" | "fila" | "atrasados" | "encerrados" | "todos">("ativos");
+  const [caseFilter, setCaseFilter] = useState<"ativos" | "fila" | "atrasados" | "encerrados" | "cancelados" | "todos">("ativos");
   const [visitFilter, setVisitFilter] = useState<"pendentes" | "agendadas" | "realizadas" | "todas">("pendentes");
   const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery(
     { churchId },
@@ -92,10 +90,11 @@ export default function Consolidacao() {
   const visitorsQuery = trpc.consolidation.visitors.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
   const visitsQuery = trpc.consolidation.visits.useQuery({ churchId }, { enabled: rolesReady && canAccessVisits });
   const { data: cells = [] } = trpc.cells.list.useQuery({ churchId }, { enabled: rolesReady && !isVisitOnly });
-  const [selectedCellByConsolidation, setSelectedCellByConsolidation] = useState<Record<number, string>>({});
   const [selectedCellByReferral, setSelectedCellByReferral] = useState<Record<number, string>>({});
   const [closingReferralId, setClosingReferralId] = useState<number | null>(null);
   const [closeReferralNotes, setCloseReferralNotes] = useState("");
+  const [cancellingReferralId, setCancellingReferralId] = useState<number | null>(null);
+  const [cancelReferralReason, setCancelReferralReason] = useState("");
   const [trackingReferralId, setTrackingReferralId] = useState<number | null>(null);
   const [followUpForm, setFollowUpForm] = useState(initialFollowUpForm);
   const [activeSection, setActiveSection] = useState<"consolidacao" | "visitas">("consolidacao");
@@ -112,17 +111,6 @@ export default function Consolidacao() {
   );
   const hasFullOverview = Boolean(capabilities?.canManageConsolidation);
 
-  const updateChecklist = trpc.consolidation.updateChecklist.useMutation({
-    onSuccess: () => refetch(),
-    onError: () => toast.error("Erro ao atualizar checklist"),
-  });
-  const integrateIntoCell = trpc.consolidation.integrateIntoCell.useMutation({
-    onSuccess: () => {
-      refetch();
-      toast.success("Pessoa integrada à Célula e cuidado transferido ao líder.");
-    },
-    onError: (error: { message: string }) => toast.error(error.message),
-  });
   const approveReferral = trpc.consolidation.approveReferral.useMutation({
     onSuccess: () => {
       toast.success("Consolidação aceita pela liderança. O caso agora está pronto para ser assumido.");
@@ -154,9 +142,18 @@ export default function Consolidacao() {
   });
   const closeReferral = trpc.consolidation.closeReferral.useMutation({
     onSuccess: () => {
-      toast.success("Cuidado encerrado com histórico preservado.");
+      toast.success("Acompanhamento encerrado com histórico preservado.");
       setClosingReferralId(null);
       setCloseReferralNotes("");
+      referralsQuery.refetch();
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
+  });
+  const cancelReferral = trpc.consolidation.cancelReferral.useMutation({
+    onSuccess: () => {
+      toast.success("Caso cancelado com motivo registrado no histórico.");
+      setCancellingReferralId(null);
+      setCancelReferralReason("");
       referralsQuery.refetch();
     },
     onError: (error: { message: string }) => toast.error(error.message),
@@ -198,27 +195,13 @@ export default function Consolidacao() {
 
   const soulsMap = new Map((souls ?? []).map((s) => [s.id, s]));
   const allReferrals = referralsQuery.data ?? [];
-  const referralAlerts = allReferrals.filter((referral) => ["atrasado", "proximo"].includes(referral.careDueStatus));
+  const referralAlerts = allReferrals.filter((referral) => !["encerrado", "cancelado"].includes(referral.status) && ["atrasado", "proximo"].includes(referral.careDueStatus));
   const overdueReferrals = referralAlerts.filter((referral) => referral.careDueStatus === "atrasado");
-  const activeReferrals = allReferrals.filter((referral) => referral.status !== "encerrado");
+  const activeReferrals = allReferrals.filter((referral) => !["encerrado", "cancelado"].includes(referral.status));
   const unassignedReferrals = activeReferrals.filter((referral) => !referral.assignedToPersonId && !referral.acceptedByPersonId && !referral.acceptedByChurchUserId);
-  const filteredReferrals = allReferrals.filter((referral) => caseFilter === "todos" || (caseFilter === "ativos" && referral.status !== "encerrado") || (caseFilter === "fila" && referral.status !== "encerrado" && !referral.assignedToPersonId && !referral.acceptedByPersonId && !referral.acceptedByChurchUserId) || (caseFilter === "atrasados" && referral.careDueStatus === "atrasado") || (caseFilter === "encerrados" && referral.status === "encerrado"));
+  const filteredReferrals = allReferrals.filter((referral) => caseFilter === "todos" || (caseFilter === "ativos" && !["encerrado", "cancelado"].includes(referral.status)) || (caseFilter === "fila" && !["encerrado", "cancelado"].includes(referral.status) && !referral.assignedToPersonId && !referral.acceptedByPersonId && !referral.acceptedByChurchUserId) || (caseFilter === "atrasados" && referral.careDueStatus === "atrasado") || (caseFilter === "encerrados" && referral.status === "encerrado") || (caseFilter === "cancelados" && referral.status === "cancelado"));
   const allVisits = visitsQuery.data ?? [];
   const filteredVisits = allVisits.filter((visit) => visitFilter === "todas" || (visitFilter === "pendentes" && !["realizada", "cancelada"].includes(visit.status)) || (visitFilter === "agendadas" && visit.status === "agendada") || (visitFilter === "realizadas" && visit.status === "realizada"));
-
-  function toggleItem(consolidationId: number, key: ChecklistKey, current: boolean) {
-    updateChecklist.mutate({
-      id: consolidationId,
-      churchId,
-      [key]: !current,
-    });
-  }
-
-  function getProgress(c: NonNullable<typeof consolidations>[0]) {
-    const items = CHECKLIST_ITEMS.map((i) => (c as any)[i.key] as boolean);
-    const done = items.filter(Boolean).length;
-    return { done, total: items.length, pct: Math.round((done / items.length) * 100) };
-  }
 
   function openTracking(referralId: number) {
     setTrackingReferralId((current) => current === referralId ? null : referralId);
@@ -320,6 +303,8 @@ export default function Consolidacao() {
           <span className="rounded-full bg-green-50 px-3 py-1.5 text-green-800">4. Acompanhamento</span>
           <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
           <span className="rounded-full bg-rose-50 px-3 py-1.5 text-rose-800">5. Visita, se necessária</span>
+          <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
+          <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">6. Encerramento ou integração</span>
         </div>
         <p className="mt-3 text-xs text-muted-foreground">A Pessoa continua com a mesma ficha; somente o estado do cuidado e o responsável mudam ao longo da jornada.</p>
       </section>
@@ -340,7 +325,7 @@ export default function Consolidacao() {
           <div>
             <h2 className="font-display text-lg font-semibold text-navy">Fila de cuidado</h2>
             <p className="mt-1 text-xs text-muted-foreground">Pessoas encaminhadas porque precisam de acompanhamento. Primeiro o Pastor aprova; depois um Consolidador assume o caso.</p>
-          </div></div><Select value={caseFilter} onValueChange={(value) => setCaseFilter(value as typeof caseFilter)}><SelectTrigger className="w-full bg-background sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ativos">Casos ativos</SelectItem><SelectItem value="fila">Sem responsável</SelectItem><SelectItem value="atrasados">Atrasados</SelectItem><SelectItem value="encerrados">Encerrados</SelectItem><SelectItem value="todos">Todos os casos</SelectItem></SelectContent></Select></div>
+          </div></div><Select value={caseFilter} onValueChange={(value) => setCaseFilter(value as typeof caseFilter)}><SelectTrigger className="w-full bg-background sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ativos">Casos ativos</SelectItem><SelectItem value="fila">Sem responsável</SelectItem><SelectItem value="atrasados">Atrasados</SelectItem><SelectItem value="encerrados">Encerrados</SelectItem><SelectItem value="cancelados">Cancelados</SelectItem><SelectItem value="todos">Todos os casos</SelectItem></SelectContent></Select></div>
         {filteredReferrals.length === 0 ? (
           <p className="mt-4 rounded-lg border border-dashed border-rose-200 bg-background/70 p-3 text-sm text-muted-foreground">Não há encaminhamentos de resgate na sua fila neste momento.</p>
         ) : (
@@ -349,14 +334,17 @@ export default function Consolidacao() {
               const isPending = referral.status === "pendente";
               const isApproved = referral.status === "aprovado";
               const isInFollowUp = referral.status === "em_acompanhamento";
+              const isClosed = referral.status === "encerrado";
+              const isCancelled = referral.status === "cancelado";
+              const statusLabel = isPending ? "Aguardando aprovação pastoral" : isApproved ? "Aprovado, aguardando responsável" : referral.status === "aceito" ? (referral.acceptedByChurchUserId ? "Assumido pelo Pastor" : "Assumido pelo Consolidador") : isInFollowUp ? "Em acompanhamento" : isClosed ? "Encerrado" : isCancelled ? "Cancelado" : referral.status;
               return (
                 <article key={referral.id} className="rounded-xl border border-rose-100 bg-background p-4 shadow-sm">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-navy">{referral.personName}</p>
-                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${referral.status === "encerrado" ? "border-green-200 bg-green-50 text-green-700" : referral.status === "em_acompanhamento" ? "border-blue-200 bg-blue-50 text-blue-700" : referral.status === "aprovado" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{referral.status === "pendente" ? "Aguardando aprovação pastoral" : referral.status === "aprovado" ? "Aprovado, aguardando responsável" : referral.status === "aceito" ? (referral.acceptedByChurchUserId ? "Assumido pelo Pastor" : "Assumido pelo Consolidador") : referral.status === "em_acompanhamento" ? "Em acompanhamento" : "Encerrado"}</span>
-                        {referral.careDueStatus !== "encerrado" && <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${referral.careDueStatus === "atrasado" ? "border-rose-200 bg-rose-50 text-rose-700" : referral.careDueStatus === "proximo" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}><Clock3 className="h-3 w-3" />{getCareDueLabel(referral)}</span>}
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${isClosed ? "border-green-200 bg-green-50 text-green-700" : isCancelled ? "border-slate-200 bg-slate-100 text-slate-600" : isInFollowUp ? "border-blue-200 bg-blue-50 text-blue-700" : isApproved ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{statusLabel}</span>
+                        {!isClosed && !isCancelled && <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${referral.careDueStatus === "atrasado" ? "border-rose-200 bg-rose-50 text-rose-700" : referral.careDueStatus === "proximo" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}><Clock3 className="h-3 w-3" />{getCareDueLabel(referral)}</span>}
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">Indicado por {referral.referredByName} · origem: {referral.sourceName} · {new Date(referral.referredAt).toLocaleDateString("pt-BR")}{referral.preferredConsolidatorName ? ` · Preferência: ${referral.preferredConsolidatorName}` : ""}</p>
                       <p className="mt-3 text-sm font-medium text-navy">Motivo: <span className="font-normal text-foreground">{referral.reason}</span></p>
@@ -367,8 +355,9 @@ export default function Consolidacao() {
                       {isPending && referral.canApprove && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={approveReferral.isPending} onClick={() => approveReferral.mutate({ churchId, id: referral.id })}><CheckCircle2 className="mr-2 h-4 w-4" />Aprovar encaminhamento</Button>}
                       {isApproved && referral.canAssumeAsPastor && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={assumeAsPastor.isPending} onClick={() => assumeAsPastor.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir como Pastor</Button>}
                       {isApproved && referral.canAccept && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
-                      {!isPending && referral.status !== "encerrado" && <Button size="sm" variant="outline" onClick={() => openTracking(referral.id)}><ClipboardCheck className="mr-2 h-4 w-4" />{trackingReferralId === referral.id ? "Fechar painel" : "Acompanhar caso"}</Button>}
-                      {isInFollowUp && <Button size="sm" variant="outline" onClick={() => setClosingReferralId(referral.id)}>Encerrar cuidado</Button>}
+                      {!isPending && !isClosed && !isCancelled && <Button size="sm" variant="outline" onClick={() => openTracking(referral.id)}><ClipboardCheck className="mr-2 h-4 w-4" />{trackingReferralId === referral.id ? "Fechar painel" : "Acompanhar caso"}</Button>}
+                      {isInFollowUp && <Button size="sm" variant="outline" onClick={() => setClosingReferralId(referral.id)}>Encerrar acompanhamento</Button>}
+                      {referral.canCancel && <Button size="sm" variant="ghost" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => setCancellingReferralId(referral.id)}>{isCancelled ? "Caso cancelado" : "Cancelar caso"}</Button>}
                       {referral.acceptedByName && <p className="text-center text-[11px] text-muted-foreground">Responsável: {referral.acceptedByName}</p>}
                     </div>
                   </div>
@@ -489,11 +478,21 @@ export default function Consolidacao() {
                   )}
                   {closingReferralId === referral.id && (
                     <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
-                      <label htmlFor={`close-referral-${referral.id}`} className="text-xs font-medium text-navy">Resultado do acompanhamento *</label>
-                      <Textarea id={`close-referral-${referral.id}`} className="mt-2 bg-background" rows={2} value={closeReferralNotes} onChange={(event) => setCloseReferralNotes(event.target.value)} placeholder="Ex.: contato retomado e Pessoa voltará à próxima Célula." />
+                      <label htmlFor={`close-referral-${referral.id}`} className="text-xs font-medium text-navy">Como o acompanhamento terminou? *</label>
+                      <Textarea id={`close-referral-${referral.id}`} className="mt-2 bg-background" rows={2} value={closeReferralNotes} onChange={(event) => setCloseReferralNotes(event.target.value)} placeholder="Ex.: contato concluído, sem necessidade de nova ação neste momento." />
                       <div className="mt-2 flex justify-end gap-2">
-                        <Button size="sm" type="button" variant="ghost" onClick={() => { setClosingReferralId(null); setCloseReferralNotes(""); }}>Cancelar</Button>
+                        <Button size="sm" type="button" variant="ghost" onClick={() => { setClosingReferralId(null); setCloseReferralNotes(""); }}>Voltar</Button>
                         <Button size="sm" type="button" className="bg-green-600 text-white hover:bg-green-700" disabled={closeReferral.isPending || closeReferralNotes.trim().length < 3} onClick={() => closeReferral.mutate({ churchId, id: referral.id, closeNotes: closeReferralNotes.trim() })}>Confirmar encerramento</Button>
+                      </div>
+                    </div>
+                  )}
+                  {cancellingReferralId === referral.id && (
+                    <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50/60 p-3">
+                      <label htmlFor={`cancel-referral-${referral.id}`} className="text-xs font-medium text-rose-900">Por que este caso será cancelado? *</label>
+                      <Textarea id={`cancel-referral-${referral.id}`} className="mt-2 bg-background" rows={2} value={cancelReferralReason} onChange={(event) => setCancelReferralReason(event.target.value)} placeholder="Ex.: indicação duplicada, pessoa não deseja continuar ou caso encaminhado por engano." />
+                      <div className="mt-2 flex justify-end gap-2">
+                        <Button size="sm" type="button" variant="ghost" onClick={() => { setCancellingReferralId(null); setCancelReferralReason(""); }}>Voltar</Button>
+                        <Button size="sm" type="button" className="bg-rose-600 text-white hover:bg-rose-700" disabled={cancelReferral.isPending || cancelReferralReason.trim().length < 3} onClick={() => cancelReferral.mutate({ churchId, id: referral.id, cancelReason: cancelReferralReason.trim() })}>{cancelReferral.isPending ? "Cancelando…" : "Confirmar cancelamento"}</Button>
                       </div>
                     </div>
                   )}
@@ -527,7 +526,6 @@ export default function Consolidacao() {
         <div className="space-y-4 animate-stagger">
           {(consolidations ?? []).map((c) => {
             const soul = soulsMap.get(c.soulId);
-            const { done, total, pct } = getProgress(c);
             const isComplete = c.status === "consolidado";
 
             return (
@@ -563,102 +561,22 @@ export default function Consolidacao() {
                   </div>
                 </div>
 
-                {/* Progress bar */}
-                <div className="mb-4">
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-muted-foreground">Progresso</span>
-                    <span className="font-semibold text-navy">
-                      {done}/{total} etapas
-                    </span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${pct}%`,
-                        background: pct === 100 ? "#22c55e" : "#c9a84c",
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Checklist */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {CHECKLIST_ITEMS.map((item) => {
-                    const checked = (c as any)[item.key] as boolean;
-                    if (item.key === "addedToCell" && !checked && !isComplete) {
-                      const selectedCellId = selectedCellByConsolidation[c.id] ?? "";
+                <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Checklist histórico</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Estes registros antigos são somente leitura. Novos contatos, visitas e integração devem ser registrados na fila moderna acima.</p>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {CHECKLIST_ITEMS.map((item) => {
+                      const checked = (c as any)[item.key] as boolean;
                       return (
-                        <div key={item.key} className="rounded-lg border border-gold/40 bg-gold/5 p-2.5 sm:col-span-2">
-                          <div className="mb-2 flex items-center gap-2 text-xs font-medium text-navy">
-                            <Church className="h-4 w-4 text-gold" />
-                            Integrar em Célula
-                          </div>
-                          <div className="flex flex-col gap-2 sm:flex-row">
-                            <label className="sr-only" htmlFor={`cell-${c.id}`}>Selecione a Célula para {soul?.name ?? "esta pessoa"}</label>
-                            <select
-                              id={`cell-${c.id}`}
-                              value={selectedCellId}
-                              onChange={(event) => setSelectedCellByConsolidation((current) => ({ ...current, [c.id]: event.target.value }))}
-                              className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
-                            >
-                              <option value="">Selecione uma Célula ativa</option>
-                              {cells.map((cell) => <option key={cell.id} value={cell.id}>{cell.name}</option>)}
-                            </select>
-                            <Button
-                              type="button"
-                              size="sm"
-                              className="bg-navy text-white hover:bg-navy-light"
-                              disabled={!selectedCellId || integrateIntoCell.isPending}
-                              onClick={() => integrateIntoCell.mutate({ churchId, consolidationId: c.id, cellId: Number(selectedCellId) })}
-                            >
-                              {integrateIntoCell.isPending ? "Integrando…" : "Integrar"}
-                            </Button>
-                          </div>
+                        <div key={item.key} className={`flex items-center gap-2.5 rounded-lg border p-2.5 text-left ${checked ? "border-green-200 bg-green-50 text-green-700" : "border-border bg-background text-muted-foreground"}`}>
+                          {checked ? <CheckCircle2 className="h-4 w-4 flex-shrink-0 text-green-600" /> : <Circle className="h-4 w-4 flex-shrink-0" />}
+                          <item.icon className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="text-xs font-medium">{item.label}</span>
                         </div>
                       );
-                    }
-                    return (
-                      <button
-                        key={item.key}
-                        onClick={() => !isComplete && toggleItem(c.id, item.key, checked)}
-                        disabled={isComplete}
-                        className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-all ${
-                          checked
-                            ? "bg-green-50 border-green-200 text-green-700"
-                            : "bg-cream-dark border-border text-muted-foreground hover:border-gold/40"
-                        } ${isComplete ? "cursor-default" : "cursor-pointer"}`}
-                      >
-                        {checked ? (
-                          <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                        ) : (
-                          <Circle className="w-4 h-4 flex-shrink-0" />
-                        )}
-                        <item.icon className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className="text-xs font-medium">{item.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Mark complete */}
-                {!isComplete && done === total && (
-                  <div className="mt-4 pt-4 border-t border-border">
-                    <Button
-                      onClick={() =>
-                        updateChecklist.mutate({
-                          id: c.id,
-                          churchId,
-                          status: "consolidado",
-                        })
-                      }
-                      className="w-full bg-green-600 hover:bg-green-700 text-white"
-                      size="sm"
-                    >
-                      Marcar como Consolidado ✓
-                    </Button>
+                    })}
                   </div>
-                )}
+                </div>
 
                 {/* Notes */}
                 {c.notes && (

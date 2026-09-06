@@ -1882,6 +1882,89 @@ export async function updateConsolidation(id: number, churchId: number, data: Pa
     .where(and(eq(consolidations.id, id), eq(consolidations.churchId, churchId)));
 }
 
+/** Registra o primeiro contato no histórico moderno e atualiza o marcador legado apenas para compatibilidade da fila antiga. */
+export async function recordModernFirstContact(data: {
+  churchId: number;
+  personId: number;
+  recordedByPersonId: number | null;
+  recordedByChurchUserId: number | null;
+  notes: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const referralRows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(
+        eq(consolidationReferrals.churchId, data.churchId),
+        eq(consolidationReferrals.personId, data.personId),
+        or(
+          eq(consolidationReferrals.status, "pendente"),
+          eq(consolidationReferrals.status, "aprovado"),
+          eq(consolidationReferrals.status, "aceito"),
+          eq(consolidationReferrals.status, "em_acompanhamento"),
+        ),
+      ))
+      .orderBy(desc(consolidationReferrals.referredAt))
+      .limit(1)
+      .for("update");
+    const referral = referralRows[0];
+    if (!referral) throw new Error("Esta Pessoa não possui um caso moderno de Consolidação ativo.");
+    if (!referral.acceptedByPersonId && !referral.acceptedByChurchUserId) {
+      throw new Error("O caso precisa ser assumido antes do primeiro acompanhamento.");
+    }
+    const now = new Date();
+    const followUpResult = await tx.insert(consolidationFollowUps).values({
+      churchId: data.churchId,
+      referralId: referral.id,
+      recordedByPersonId: data.recordedByPersonId,
+      recordedByChurchUserId: data.recordedByChurchUserId,
+      contactChannel: "ligacao",
+      outcome: "conversou",
+      notes: data.notes,
+      nextAction: null,
+      nextActionAt: null,
+      visitStatus: "nao_necessaria",
+      visitAssigneePersonId: null,
+      visitScheduledAt: null,
+    });
+    await tx.update(consolidationReferrals)
+      .set({ status: "em_acompanhamento", firstContactAt: referral.firstContactAt ?? now })
+      .where(and(eq(consolidationReferrals.id, referral.id), eq(consolidationReferrals.churchId, data.churchId)));
+
+    const soulRows = await tx
+      .select({ id: souls.id })
+      .from(souls)
+      .where(and(eq(souls.personId, data.personId), eq(souls.churchId, data.churchId)))
+      .limit(1);
+    if (soulRows[0]) {
+      await tx.update(consolidations)
+        .set({ callMade: true, callDate: referral.firstContactAt ?? now })
+        .where(and(eq(consolidations.soulId, soulRows[0].id), eq(consolidations.churchId, data.churchId)));
+    }
+    return { referralId: referral.id, followUpId: Number((followUpResult[0] as { insertId?: number } | undefined)?.insertId ?? 0) };
+  });
+}
+
+export async function getOpenCareVisitsByReferral(referralId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(careVisits)
+    .where(and(
+      eq(careVisits.referralId, referralId),
+      eq(careVisits.churchId, churchId),
+      or(
+        eq(careVisits.status, "solicitada"),
+        eq(careVisits.status, "agendada"),
+        eq(careVisits.status, "em_andamento"),
+      ),
+    ))
+    .orderBy(desc(careVisits.createdAt));
+}
+
 // ─── ENCAMINHAMENTOS PARA CONSOLIDAÇÃO ─────────────────────────────────────────
 
 export async function getConsolidationReferralsByChurch(churchId: number) {

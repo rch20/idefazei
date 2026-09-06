@@ -217,6 +217,8 @@ import {
   updateChurch,
   useChurchLogoAsPwaIcon,
   updateConsolidation,
+  recordModernFirstContact,
+  getOpenCareVisitsByReferral,
   updateConsolidationReferral,
   linkSoulToPerson,
   setCurrentCareAssignment,
@@ -1757,6 +1759,7 @@ const consolidationRouter = router({
           canApprove: Boolean(context.capabilities.canManageConsolidation && referral.status === "pendente"),
           canAssumeAsPastor: Boolean(isPastor && ["pendente", "aprovado"].includes(referral.status) && !referral.acceptedByPersonId && !referral.acceptedByChurchUserId),
           canAccept: Boolean(context.roles.includes("consolidador") && actor.personId && referral.status === "aprovado" && (!referral.assignedToPersonId || referral.assignedToPersonId === actor.personId)),
+          canCancel: Boolean((context.capabilities.canManageConsolidation || referral.acceptedByPersonId === actor.personId || referral.acceptedByChurchUserId === (ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id)) && !["encerrado", "cancelado"].includes(referral.status)),
           canIntegrate: Boolean(isPastor && referral.status === "em_acompanhamento"),
         };
       });
@@ -2127,10 +2130,36 @@ const consolidationRouter = router({
       if (followUps.length === 0) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Registre pelo menos um acompanhamento antes de encerrar o cuidado." });
       }
+      const openVisits = await getOpenCareVisitsByReferral(input.id, input.churchId);
+      if (openVisits.length > 0) {
+        throw new TRPCError({ code: "CONFLICT", message: "Conclua ou cancele as visitas abertas antes de encerrar este acompanhamento." });
+      }
       return updateConsolidationReferral(input.id, input.churchId, {
         status: "encerrado",
         closedAt: new Date(),
         closeNotes: input.closeNotes,
+      });
+    }),
+
+  cancelReferral: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number(), cancelReason: z.string().trim().min(3).max(2000) }))
+    .mutation(async ({ input, ctx }) => {
+      const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
+      const referral = await getConsolidationReferralById(input.id, input.churchId);
+      if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Caso de Consolidação não encontrado." });
+      const executorChurchUserId = ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id;
+      const isResponsiblePastor = referral.acceptedByChurchUserId === executorChurchUserId && context.roles.some((role) => PASTOR_ROLES.has(role));
+      const canCancel = context.capabilities.canManageConsolidation || referral.acceptedByPersonId === context.actor.personId || isResponsiblePastor;
+      if (!canCancel) throw new TRPCError({ code: "FORBIDDEN", message: "Somente a liderança autorizada ou o responsável atual pode cancelar este caso." });
+      if (["encerrado", "cancelado"].includes(referral.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "Este caso já foi finalizado." });
+      const openVisits = await getOpenCareVisitsByReferral(input.id, input.churchId);
+      if (openVisits.length > 0) {
+        throw new TRPCError({ code: "CONFLICT", message: "Conclua ou cancele as visitas abertas antes de cancelar este caso." });
+      }
+      return updateConsolidationReferral(input.id, input.churchId, {
+        status: "cancelado",
+        closedAt: new Date(),
+        closeNotes: input.cancelReason,
       });
     }),
 
@@ -2421,15 +2450,24 @@ const careRouter = router({
     .input(z.object({ churchId: z.number(), personId: z.number() }))
     .mutation(async ({ input, ctx }) => {
       await requireJourneyStagePermission(ctx.user.id, input.churchId, input.personId);
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
       const queue = await getCareAttentionByChurch(input.churchId);
       const item = queue.find((candidate) => candidate.person.id === input.personId);
       if (!item?.consolidation) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Esta pessoa não possui uma consolidação pendente de contato." });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Esta pessoa não possui uma consolidação pendente de primeiro acompanhamento." });
       }
-      return updateConsolidation(item.consolidation.id, input.churchId, {
-        callMade: true,
-        callDate: new Date(),
-      });
+      try {
+        return await recordModernFirstContact({
+          churchId: input.churchId,
+          personId: input.personId,
+          recordedByPersonId: actor.personId ?? null,
+          recordedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id,
+          notes: "Primeiro contato registrado pela Central de Cuidado.",
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        throw new TRPCError({ code: "BAD_REQUEST", message: message || "Não foi possível registrar o primeiro acompanhamento." });
+      }
     }),
 
   getCurrent: protectedProcedure

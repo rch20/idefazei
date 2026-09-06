@@ -96,4 +96,22 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(consolidationSource).toContain("Concluir e integrar");
     expect(consolidationSource).toContain("Registros antigos de checklist");
   });
+
+  it("usa o histórico moderno para o primeiro acompanhamento e preserva o legado apenas como compatibilidade", () => {
+    expect(routerSource).toContain("recordModernFirstContact");
+    expect(dbSource).toContain("export async function recordModernFirstContact");
+    expect(careSource).toContain("Primeiro acompanhamento registrado no histórico da Consolidação.");
+    expect(careSource).toContain("Registrar primeiro acompanhamento");
+    expect(leaderSource).toContain('href="/app/consolidacao"');
+  });
+
+  it("fecha os estados finais com cancelamento e bloqueia finalização com visita aberta", () => {
+    expect(routerSource).toContain("getOpenCareVisitsByReferral");
+    expect(routerSource).toContain("cancelReferral");
+    expect(routerSource).toContain("Conclua ou cancele as visitas abertas antes de encerrar este acompanhamento.");
+    expect(consolidationSource).toContain('value="cancelados"');
+    expect(consolidationSource).toContain("Cancelar caso");
+    expect(consolidationSource).toContain("Checklist histórico");
+    expect(consolidationSource).not.toContain("toggleItem(c.id, item.key, checked)");
+  });
 });
