@@ -1,6 +1,7 @@
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +14,7 @@ import { toast } from "sonner";
 export default function Oracao() {
   const { churchId, accessSummary } = useChurch();
   const [open, setOpen] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const isPrayerManager = Boolean(accessSummary?.isPrayerManager);
   const [form, setForm] = useState({
     visitorName: "",
@@ -33,7 +35,11 @@ export default function Oracao() {
       setForm({ visitorName: "", visitorPhone: "", type: "pedido", content: "", isPrivate: false });
       void managerRequestsQuery.refetch();
     },
-    onError: (error) => toast.error(error.message || "Erro ao registrar pedido"),
+    onError: (error) => {
+      const message = error.message || "Erro ao registrar pedido";
+      setFormError(message);
+      toast.error(message);
+    },
   });
   const createOwnRequest = trpc.prayer.createMine.useMutation({
     onSuccess: () => {
@@ -42,7 +48,11 @@ export default function Oracao() {
       setForm({ visitorName: "", visitorPhone: "", type: "pedido", content: "", isPrivate: false });
       void ownRequestsQuery.refetch();
     },
-    onError: (error) => toast.error(error.message || "Erro ao registrar pedido"),
+    onError: (error) => {
+      const message = error.message || "Erro ao registrar pedido";
+      setFormError(message);
+      toast.error(message);
+    },
   });
   const isSubmitting = createPublicRequest.isPending || createOwnRequest.isPending;
 
@@ -154,15 +164,16 @@ export default function Oracao() {
         </div>
       </div>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+      <Dialog open={open} onOpenChange={(nextOpen) => { setOpen(nextOpen); if (nextOpen) setFormError(null); }}>
+        <AdaptiveFormDialogContent>
+          <div className={adaptiveFormDialogHeaderClassName}>
             <DialogTitle className="font-display text-navy flex items-center gap-2">
               <HandHeart className="w-5 h-5 text-rose-500" />
               {isPrayerManager ? "Registrar Pedido de Oração" : "Meu Pedido de Oração"}
             </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          </div>
+          <form onSubmit={handleSubmit} className="contents">
+            <AdaptiveFormDialogBody className="space-y-4">
             {isPrayerManager ? <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Nome (opcional)</Label>
@@ -192,14 +203,16 @@ export default function Oracao() {
               <input type="checkbox" checked={form.isPrivate} onChange={(e) => setForm({ ...form, isPrivate: e.target.checked })} className="w-4 h-4 accent-navy" />
               <span className="text-sm text-foreground">Manter privado (somente liderança autorizada)</span>
             </label>
-            <div className="flex gap-3">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="flex-1">Cancelar</Button>
-              <Button type="submit" className="flex-1 bg-navy hover:bg-navy-light text-white" disabled={isSubmitting}>
+            {formError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{formError}</div>}
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+              <Button type="submit" className="bg-navy hover:bg-navy-light text-white" disabled={isSubmitting}>
                 {isSubmitting ? "Enviando..." : "Registrar"}
               </Button>
-            </div>
+            </AdaptiveFormDialogFooter>
           </form>
-        </DialogContent>
+        </AdaptiveFormDialogContent>
       </Dialog>
     </div>
   );

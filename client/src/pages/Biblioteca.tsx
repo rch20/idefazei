@@ -3,7 +3,8 @@ import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -30,6 +31,7 @@ export default function Biblioteca() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>("Todos");
   const [createOpen, setCreateOpen] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState<{ title: string; type: "pdf" | "video" | "apostila" | "devocional"; fileUrl: string; description: string }>({ title: "", type: "pdf", fileUrl: "", description: "" });
   const utils = trpc.useUtils();
   const { data: access } = trpc.escolaFundamentos.access.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId) });
@@ -43,9 +45,14 @@ export default function Biblioteca() {
       toast.success("Material adicionado ao acervo da igreja.");
       setCreateOpen(false);
       setForm({ title: "", type: "pdf", fileUrl: "", description: "" });
+      setFormError(null);
       utils.library.list.invalidate();
     },
-    onError: (error) => toast.error(error.message || "Não foi possível adicionar o material."),
+    onError: (error) => {
+      const message = error.message || "Não foi possível adicionar o material.";
+      setFormError(message);
+      toast.error(message);
+    },
   });
 
   const handleCreate = (event: React.FormEvent) => {
@@ -61,19 +68,27 @@ export default function Biblioteca() {
           <h1 className="flex items-center gap-2 text-2xl font-bold text-navy"><LibraryBig className="h-6 w-6 text-gold" />Biblioteca Digital</h1>
           <p className="mt-1 text-sm text-muted-foreground">O acervo único de documentos, apresentações, vídeos e links da sua igreja.</p>
         </div>
-        {canManageMaterials ? <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        {canManageMaterials ? <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (open) setFormError(null); }}>
           <DialogTrigger asChild><Button className="w-full bg-navy text-white hover:bg-navy-light sm:w-auto">Adicionar material</Button></DialogTrigger>
-          <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
-            <DialogHeader><DialogTitle className="font-display text-navy">Adicionar ao acervo</DialogTitle></DialogHeader>
-            <form onSubmit={handleCreate} className="space-y-4 pt-2">
+          <AdaptiveFormDialogContent>
+            <div className={adaptiveFormDialogHeaderClassName}>
+              <DialogTitle className="font-display text-navy">Adicionar ao acervo</DialogTitle>
+            </div>
+            <form onSubmit={handleCreate} className="contents">
+              <AdaptiveFormDialogBody className="space-y-4 pt-2">
               <p className="rounded-lg bg-gold/10 p-3 text-sm text-navy">Este material poderá ser usado em quantos estudos e turmas forem necessários, sem criar cópias.</p>
               <div className="space-y-2"><Label htmlFor="library-title">Título</Label><Input id="library-title" required maxLength={255} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Ex.: Apostila — Fundamentos da Fé" /></div>
               <div className="space-y-2"><Label htmlFor="library-type">Formato</Label><select id="library-type" value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value as typeof form.type })} className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="pdf">Documento ou PDF</option><option value="apostila">Apresentação ou apostila</option><option value="video">Vídeo por link</option><option value="devocional">Link ou devocional</option></select></div>
               <div className="space-y-2"><Label htmlFor="library-url">Link do material</Label><Input id="library-url" type="url" value={form.fileUrl} onChange={(event) => setForm({ ...form, fileUrl: event.target.value })} placeholder="https://..." /><p className="text-xs text-muted-foreground">Para PPTX ou DOCX, use o link do arquivo no armazenamento da igreja. Para vídeos, use YouTube ou Vimeo.</p></div>
               <div className="space-y-2"><Label htmlFor="library-description">Descrição</Label><Input id="library-description" maxLength={500} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Explique onde ou como este material será usado." /></div>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>{createMutation.isPending ? "Salvando..." : "Adicionar ao acervo"}</Button></div>
+              {formError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{formError}</div>}
+              </AdaptiveFormDialogBody>
+              <AdaptiveFormDialogFooter>
+                <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
+                <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>{createMutation.isPending ? "Salvando..." : "Adicionar ao acervo"}</Button>
+              </AdaptiveFormDialogFooter>
             </form>
-          </DialogContent>
+          </AdaptiveFormDialogContent>
         </Dialog> : null}
       </div>
 

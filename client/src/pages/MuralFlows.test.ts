@@ -37,8 +37,9 @@ describe("Mural — Avisos Públicos", () => {
     expect(page).toContain("Novo aviso");
     expect(page).toContain("Salvar e publicar");
     expect(page).toContain("Retirar");
-    expect(page).toContain("max-h-[92dvh]");
-    expect(page).toContain("overflow-y-auto");
+    expect(page).toContain("AdaptiveFormDialogContent");
+    expect(page).toContain("AdaptiveFormDialogBody");
+    expect(page).toContain("AdaptiveFormDialogFooter");
   });
 
   it("compacta avisos longos do painel sem retirar acesso ao conteúdo integral", () => {

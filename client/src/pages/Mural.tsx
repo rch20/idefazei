@@ -1,6 +1,7 @@
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -94,6 +95,7 @@ export default function Mural() {
   const [editing, setEditing] = useState<Announcement | null>(null);
   const [form, setForm] = useState<AnnouncementForm>(EMPTY_FORM);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
 
   const { data: announcements, isLoading, refetch } = trpc.announcements.list.useQuery({ churchId });
@@ -103,7 +105,11 @@ export default function Mural() {
       closeForm();
       refetch();
     },
-    onError: (error) => toast.error(error.message || "Erro ao salvar aviso"),
+    onError: (error) => {
+      const message = error.message || "Erro ao salvar aviso";
+      setFormError(message);
+      toast.error(message);
+    },
   });
   const update = trpc.announcements.update.useMutation({
     onSuccess: () => {
@@ -111,7 +117,11 @@ export default function Mural() {
       closeForm();
       refetch();
     },
-    onError: (error) => toast.error(error.message || "Erro ao atualizar aviso"),
+    onError: (error) => {
+      const message = error.message || "Erro ao atualizar aviso";
+      setFormError(message);
+      toast.error(message);
+    },
   });
   const archive = trpc.announcements.archivePublic.useMutation({
     onSuccess: () => { toast.success("Aviso retirado da página pública."); refetch(); },
@@ -128,16 +138,19 @@ export default function Mural() {
     setOpen(false);
     setEditing(null);
     setForm(EMPTY_FORM);
+    setFormError(null);
   }
 
   function openCreate() {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setFormError(null);
     setOpen(true);
   }
 
   function openEdit(announcement: Announcement) {
     setEditing(announcement);
+    setFormError(null);
     setForm({
       title: announcement.title,
       content: announcement.content,
@@ -162,7 +175,9 @@ export default function Mural() {
       setForm((current) => ({ ...current, imageUrl: uploaded.url, mediaAssetId: uploaded.mediaAssetId }));
       toast.success("Imagem enviada com segurança.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Não foi possível enviar a imagem.");
+      const message = error instanceof Error ? error.message : "Não foi possível enviar a imagem.";
+      setFormError(message);
+      toast.error(message);
     } finally {
       setUploadingImage(false);
     }
@@ -224,9 +239,12 @@ export default function Mural() {
       )}
 
       <Dialog open={open} onOpenChange={(value) => value ? setOpen(true) : closeForm()}>
-        <DialogContent className="max-h-[92dvh] max-w-2xl overflow-hidden p-0">
-          <DialogHeader className="border-b border-border px-6 py-5"><DialogTitle className="font-display text-navy">{editing ? "Editar aviso" : "Novo aviso"}</DialogTitle></DialogHeader>
-          <form onSubmit={saveAnnouncement} className="max-h-[calc(92dvh-5rem)] space-y-5 overflow-y-auto px-6 py-5">
+        <AdaptiveFormDialogContent>
+          <div className={adaptiveFormDialogHeaderClassName}>
+            <DialogTitle className="font-display text-navy">{editing ? "Editar aviso" : "Novo aviso"}</DialogTitle>
+          </div>
+          <form onSubmit={saveAnnouncement} className="contents">
+            <AdaptiveFormDialogBody className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-[1fr_12rem]">
               <div><Label htmlFor="announcement-title">Título *</Label><Input id="announcement-title" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required maxLength={255} /></div>
               <div><Label>Categoria</Label><Select value={form.type} onValueChange={(value) => setForm({ ...form, type: value as AnnouncementType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(TYPE_CONFIG).map(([value, config]) => <SelectItem key={value} value={value}>{config.label}</SelectItem>)}</SelectContent></Select></div>
@@ -251,9 +269,14 @@ export default function Mural() {
               {form.imageUrl && <div className="mt-3 flex items-center gap-3"><img src={form.imageUrl} alt="Prévia do aviso" className="h-12 w-24 rounded-lg object-cover" /><span className="min-w-0 truncate text-xs text-muted-foreground">Imagem vinculada ao aviso</span></div>}
             </div>
 
-            <div className="flex flex-col-reverse gap-3 border-t border-border pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={closeForm} className="sm:min-w-28">Cancelar</Button><Button type="submit" className="bg-navy text-white hover:bg-navy-light sm:min-w-40" disabled={saving || uploadingImage}>{saving ? "Salvando..." : editing ? "Salvar alterações" : form.publicVisible ? "Salvar e publicar" : "Salvar aviso"}</Button></div>
+            {formError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{formError}</div>}
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button type="button" variant="outline" onClick={closeForm}>Cancelar</Button>
+              <Button type="submit" className="bg-navy text-white hover:bg-navy-light" disabled={saving || uploadingImage}>{saving ? "Salvando..." : editing ? "Salvar alterações" : form.publicVisible ? "Salvar e publicar" : "Salvar aviso"}</Button>
+            </AdaptiveFormDialogFooter>
           </form>
-        </DialogContent>
+        </AdaptiveFormDialogContent>
       </Dialog>
 
       <Dialog open={Boolean(selectedAnnouncement)} onOpenChange={(value) => { if (!value) setSelectedAnnouncement(null); }}>

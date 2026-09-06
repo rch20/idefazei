@@ -4,7 +4,8 @@ import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -85,6 +86,7 @@ const AUTOMATIONS = [
 export default function Comunicacao() {
   const { churchId } = useChurch();
   const [sendOpen, setSendOpen] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [form, setForm] = useState({
     type: "push" as "push" | "email" | "whatsapp" | "sms",
     category: "aviso" as "boas_vindas" | "aniversario" | "lembrete_evento" | "lembrete_celula" | "convite" | "aviso" | "outro",
@@ -111,7 +113,11 @@ export default function Comunicacao() {
       setForm({ type: "push", category: "aviso", recipientPersonId: "", recipientName: "", title: "", message: "" });
       utils.comunicacao.list.invalidate();
     },
-    onError: () => toast.error("Erro ao enviar mensagem"),
+    onError: (error) => {
+      const message = error.message || "Erro ao enviar mensagem";
+      setSendError(message);
+      toast.error(message);
+    },
   });
 
   if (!churchId) return null;
@@ -130,17 +136,17 @@ export default function Comunicacao() {
           </h1>
           <p className="text-muted-foreground mt-1">Organize mensagens, automações e o histórico da comunicação da igreja.</p>
         </div>
-        <Dialog open={sendOpen} onOpenChange={setSendOpen}>
+        <Dialog open={sendOpen} onOpenChange={(open) => { setSendOpen(open); if (open) setSendError(null); }}>
           <DialogTrigger asChild>
             <Button className="bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90">
               <Send className="h-4 w-4 mr-2" /> Registrar comunicação
             </Button>
           </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
+          <AdaptiveFormDialogContent>
+            <div className={adaptiveFormDialogHeaderClassName}>
               <DialogTitle>Registrar comunicação</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-2">
+            </div>
+            <AdaptiveFormDialogBody className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Canal planejado *</Label>
@@ -199,10 +205,15 @@ export default function Comunicacao() {
                 <Label>Mensagem</Label>
                 <Textarea value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })} rows={4} placeholder="Conteúdo da mensagem..." />
               </div>
+              {sendError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{sendError}</div>}
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button type="button" variant="outline" onClick={() => setSendOpen(false)}>Cancelar</Button>
               <Button
-                className="w-full bg-[#1e3a5f] text-white"
+                type="button"
+                className="bg-[#1e3a5f] text-white"
                 disabled={sendMutation.isPending}
-                onClick={() => sendMutation.mutate({
+                onClick={() => { setSendError(null); sendMutation.mutate({
                   churchId: churchId!,
                   type: form.type,
                   category: form.category,
@@ -210,12 +221,12 @@ export default function Comunicacao() {
                   recipientName: form.recipientName || undefined,
                   title: form.title || undefined,
                   message: form.message || undefined,
-                })}
+                }); }}
               >
                 {sendMutation.isPending ? "Enviando..." : "Enviar Mensagem"}
               </Button>
-            </div>
-          </DialogContent>
+            </AdaptiveFormDialogFooter>
+          </AdaptiveFormDialogContent>
         </Dialog>
       </div>
 
