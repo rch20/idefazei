@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { AlertTriangle, Calendar, Users, Clock, ChevronLeft, ChevronRight, Pencil, XCircle } from "lucide-react";
+import { civilDateKey, formatCivilDate, formatCivilDateKeyForInput } from "@/lib/civilDate";
 
 const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MONTHS = [
@@ -107,9 +108,7 @@ export default function Escalas() {
   const getScalesForDay = (day: number) => {
     const dateStr = formatDate(day);
     return displayedScales.filter((s) => {
-      const d = new Date(s.scheduledDate);
-      const sd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      return sd === dateStr;
+      return civilDateKey(s.scheduledDate) === dateStr;
     });
   };
 
@@ -118,17 +117,14 @@ export default function Escalas() {
 
   const selectedScales = selectedDate
     ? displayedScales.filter((s) => {
-        const d = new Date(s.scheduledDate);
-        const sd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        return sd === selectedDate;
+      return civilDateKey(s.scheduledDate) === selectedDate;
       })
     : [];
 
   const activeScales = displayedScales.filter((scale) => scale.status !== "cancelada");
   const uniqueDates = new Set(
     activeScales.map((s) => {
-      const d = new Date(s.scheduledDate);
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      return civilDateKey(s.scheduledDate) ?? "";
     })
   );
   const conflictsThisMonth = activeScales.filter((scale) => scale.hasTimeConflict).length;
@@ -144,15 +140,11 @@ export default function Escalas() {
     ? (departmentMembers.data ?? []).map((item) => item.person)
     : (ministryMembers.data ?? []).map((item) => item.person);
   const formConflict = Boolean(form.personId && form.scheduledDate && form.startTime && form.endTime && activeScales.some((scale) => {
-    const date = new Date(scale.scheduledDate);
-    const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const dateKey = civilDateKey(scale.scheduledDate);
     return scale.id !== editingSchedule?.id && String(scale.personId) === form.personId && dateKey === form.scheduledDate && scale.startTime && scale.endTime && form.startTime < scale.endTime && form.endTime > scale.startTime;
   }));
 
-  const toDateInput = (value: Date | string) => {
-    const date = new Date(value);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  };
+  const toDateInput = (value: Date | string) => formatCivilDateKeyForInput(value);
 
   function openCreateDialog() {
     setEditingSchedule(null);
@@ -304,7 +296,7 @@ export default function Escalas() {
               {Array.from({ length: daysInMonth }).map((_, i) => {
                 const day = i + 1;
                 const dateStr = formatDate(day);
-                const todayStr = today.toISOString().split("T")[0];
+                const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
                 const isToday = dateStr === todayStr;
                 const isSelected = selectedDate === dateStr;
                 const hasEvent = hasScale(day);
@@ -373,7 +365,7 @@ export default function Escalas() {
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex flex-wrap gap-1"><Badge variant="outline" className="text-xs">{ministriesById.get(scale.ministryId) ?? `Min. ${scale.ministryId}`}</Badge>{scale.departmentId && <Badge variant="secondary" className="text-xs">{departmentsById.get(scale.departmentId) ?? `Departamento ${scale.departmentId}`}</Badge>}</div>
                         <span className="text-xs text-muted-foreground">
-                          {new Date(scale.scheduledDate).toLocaleDateString("pt-BR")}
+                          {formatCivilDate(scale.scheduledDate)}
                         </span>
                       </div>
                       <p className="text-xs font-medium text-navy">{peopleById.get(scale.personId) ?? `Pessoa #${scale.personId}`}</p>

@@ -6,7 +6,7 @@ import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaL
 import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
 import { HERO_PRESET_IDS } from "../shared/publicHero";
 import { getOptimizedMediaUrls } from "./media";
-import { normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
+import { currentCivilDateAsUtcNoon, formatCivilDateValue, normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
@@ -3668,12 +3668,12 @@ const schedulesRouter = router({
         .from(scheduleItems)
         .where(eq(scheduleItems.churchId, input.churchId));
       // Filter by month/year in JS
-      const now = new Date();
-      const m = input.month ?? now.getMonth() + 1;
-      const y = input.year ?? now.getFullYear();
+      const now = currentCivilDateAsUtcNoon();
+      const m = input.month ?? now.getUTCMonth() + 1;
+      const y = input.year ?? now.getUTCFullYear();
       const filtered = rows.filter((r) => {
-        const d = new Date(r.scheduledDate);
-        return d.getMonth() + 1 === m && d.getFullYear() === y;
+        const dateKey = formatCivilDateValue(r.scheduledDate);
+        return Number(dateKey.slice(5, 7)) === m && Number(dateKey.slice(0, 4)) === y;
       });
       return filtered.map((item) => ({
         ...item,
@@ -3710,12 +3710,14 @@ const schedulesRouter = router({
       const db = await import("./db").then((m) => m.getDb());
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const { scheduleItems } = await import("../drizzle/schema");
+      const scheduledDate = parseCivilDateAsUtcNoon(input.scheduledDate);
+      if (!scheduledDate) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma data de calendário válida." });
       await db.insert(scheduleItems).values({
         churchId: input.churchId,
         ministryId: input.ministryId,
         departmentId: input.departmentId ?? null,
         personId: input.personId,
-        scheduledDate: new Date(input.scheduledDate + "T12:00:00"),
+        scheduledDate,
         startTime: input.startTime,
         endTime: input.endTime,
         role: input.role ?? null,
@@ -3749,9 +3751,11 @@ const schedulesRouter = router({
       if (conflicts.length > 0) {
         throw new TRPCError({ code: "CONFLICT", message: "Esta pessoa já possui outra escala em horário sobreposto nesta data." });
       }
+      const scheduledDate = parseCivilDateAsUtcNoon(input.scheduledDate);
+      if (!scheduledDate) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma data de calendário válida." });
       const updated = await updateScheduleItem({
         ...input,
-        scheduledDate: new Date(`${input.scheduledDate}T12:00:00`),
+        scheduledDate,
         role: input.role || null,
       });
       if (!updated) throw new TRPCError({ code: "CONFLICT", message: "A Escala não pôde ser atualizada." });
@@ -3800,7 +3804,7 @@ const schedulesRouter = router({
         type: "escala_cancelada",
         recipientChurchUserIds: recipients,
         title: "Sua Escala foi cancelada",
-        body: `A Escala de ${ministryName} para ${new Date(existing.scheduledDate).toLocaleDateString("pt-BR")} foi cancelada. Motivo: ${input.reason}`,
+        body: `A Escala de ${ministryName} para ${formatCivilDateValue(existing.scheduledDate).split("-").reverse().join("/")} foi cancelada. Motivo: ${input.reason}`,
         entityType: "schedule_item",
         entityId: cancelled.id,
         metadata: { ministryId: existing.ministryId, departmentId: existing.departmentId, personId: existing.personId, scheduledDate: existing.scheduledDate, cancelReason: input.reason },

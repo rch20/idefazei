@@ -93,7 +93,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { getDerivedLogoIconUrls, getOptimizedMediaUrls } from "./media";
-import { currentCivilDateAsUtcNoon, formatCivilDateInput } from "./civilDate";
+import { currentCivilDateAsUtcNoon, formatCivilDateInput, parseCivilDateAsUtcNoon } from "./civilDate";
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 
@@ -3747,6 +3747,8 @@ export async function getScheduleTimeConflicts(data: {
 }) {
   const db = await getDb();
   if (!db) return [];
+  const scheduledDate = parseCivilDateAsUtcNoon(data.scheduledDate);
+  if (!scheduledDate) return [];
   const rows = await db
     .select()
     .from(scheduleItems)
@@ -3754,7 +3756,7 @@ export async function getScheduleTimeConflicts(data: {
       and(
         eq(scheduleItems.churchId, data.churchId),
         eq(scheduleItems.personId, data.personId),
-        eq(scheduleItems.scheduledDate, new Date(`${data.scheduledDate}T12:00:00`))
+        eq(scheduleItems.scheduledDate, scheduledDate)
       )
     );
   return rows.filter((item) =>

@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { Calendar, ChevronDown, Clock, Edit3, Music, Users, Plus, Search, Star, Trash2 } from "lucide-react";
+import { formatCivilDate } from "@/lib/civilDate";
 
 const OPERATIONAL_FUNCTION_KEYS = new Set(["membro_ministerio", "musico", "vocalista", "visitador"]);
 
@@ -44,7 +45,7 @@ function isTeamMinistryType(type: string) {
 }
 
 function formatScheduleDate(value: Date | string) {
-  return new Date(value).toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "short" });
+  return formatCivilDate(value, { weekday: "short", day: "2-digit", month: "short" });
 }
 
 export default function Ministerios() {

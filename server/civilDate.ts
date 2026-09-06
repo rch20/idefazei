@@ -19,6 +19,12 @@ export function formatCivilDateInput(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
+/** Mantém a chave YYYY-MM-DD de uma data civil sem convertê-la para o fuso local. */
+export function formatCivilDateValue(value: Date | string): string {
+  const raw = typeof value === "string" ? value.trim() : value.toISOString();
+  return raw.slice(0, 10);
+}
+
 export function normalizeCivilTime(value: string | null | undefined): string | null {
   const text = String(value ?? "").trim();
   if (!text) return null;
