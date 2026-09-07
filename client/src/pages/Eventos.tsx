@@ -1,5 +1,6 @@
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
@@ -392,6 +393,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   const [isUploadingFlyer, setIsUploadingFlyer] = useState(false);
   const [flyerShareFile, setFlyerShareFile] = useState<File | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<EventEditDraft>(() => ({ name: event.name, type: event.type, description: event.description ?? "", startDate: formatDateInput(event.startDate), endDate: formatDateInput(event.endDate), startTime: event.startTime ?? "", endTime: event.endTime ?? "", location: event.location ?? "", maxCapacity: event.maxCapacity?.toString() ?? "" }));
   const [paymentFeeDraft, setPaymentFeeDraft] = useState(() => formatCentsForInput(event.registrationFeeCents));
@@ -445,8 +448,19 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
     onError: (error) => { setEditError(error.message || "Não foi possível atualizar o evento"); toast.error(error.message || "Não foi possível atualizar o evento"); },
   });
   const removeEvent = trpc.events.remove.useMutation({
-    onSuccess: (result) => { toast.success(result.mode === "archived" ? "Evento arquivado para preservar as inscrições." : "Evento excluído."); setManagementOpen(false); setEditOpen(false); onChanged(); },
-    onError: (error) => toast.error(error.message || "Não foi possível remover o evento"),
+    onSuccess: (result) => {
+      setRemoveError(null);
+      setRemoveConfirmOpen(false);
+      toast.success(result.mode === "archived" ? "Evento arquivado para preservar as inscrições." : "Evento excluído.");
+      setManagementOpen(false);
+      setEditOpen(false);
+      onChanged();
+    },
+    onError: (error) => {
+      const message = error.message || "Não foi possível remover o evento.";
+      setRemoveError(message);
+      toast.error(message);
+    },
   });
 
   const checkinUrl = qrValue ? `${window.location.origin}/checkin?event=${event.id}&token=${qrValue.split(":")[2]}` : null;
@@ -592,8 +606,8 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
   }
 
   function requestRemove() {
-    const confirmed = window.confirm(`Remover o evento "${event.name}"? Se ele já tiver inscrições, será arquivado para preservar o histórico.`);
-    if (confirmed) removeEvent.mutate({ churchId, eventId: event.id });
+    setRemoveError(null);
+    setRemoveConfirmOpen(true);
   }
 
   function saveRegistrationMode(mode: RegistrationMode = modeDraft) {
@@ -758,6 +772,20 @@ function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churc
         </form>
       </AdaptiveFormDialogContent>
     </Dialog>
+
+    <AlertDialog open={removeConfirmOpen} onOpenChange={(nextOpen) => { if (removeEvent.isPending) return; setRemoveConfirmOpen(nextOpen); if (!nextOpen) setRemoveError(null); }}>
+      <AlertDialogContent className="z-[220] max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remover ou arquivar evento?</AlertDialogTitle>
+          <AlertDialogDescription>O evento “{event.name}” será excluído se não houver inscrições. Se já houver inscrições, ele será arquivado para preservar participantes, pagamentos e histórico.</AlertDialogDescription>
+        </AlertDialogHeader>
+        {removeError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{removeError}</div>}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={removeEvent.isPending}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction className="bg-rose-700 text-white hover:bg-rose-800" disabled={removeEvent.isPending} onClick={(clickEvent) => { clickEvent.preventDefault(); removeEvent.mutate({ churchId, eventId: event.id }); }}>{removeEvent.isPending ? "Processando..." : "Continuar"}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <Dialog open={qrOpen} onOpenChange={setQrOpen}><DialogContent className="max-w-sm"><DialogHeader><DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2"><QrCode className="w-5 h-5 text-[#c9a84c]" />Check-in — {event.name}</DialogTitle></DialogHeader><div className="flex flex-col items-center gap-4 py-4">{checkinUrl && <><div className="p-4 bg-white rounded-2xl border border-[#1e3a5f]/10 shadow-sm"><QRCodeSVG value={checkinUrl} size={200} fgColor="#1e3a5f" bgColor="#ffffff" level="M" /></div><p className="text-xs text-center text-[#1e3a5f]/50 leading-relaxed">Mostre este QR Code na entrada do evento.<br />Os participantes escaneiam para confirmar presença.</p><div className="w-full p-3 bg-[#f5f0e8] rounded-xl"><p className="text-[10px] text-[#1e3a5f]/40 uppercase tracking-wider mb-1">Link de check-in</p><p className="text-xs text-[#1e3a5f] font-mono break-all">{checkinUrl}</p></div></>}</div></DialogContent></Dialog>
 

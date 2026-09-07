@@ -186,10 +186,15 @@ describe("Eventos — inscrições e presença", () => {
     expect(db).toContain("eq(events.id, data.eventId), eq(events.churchId, data.churchId)");
   });
 
-  it("remove sem destruir histórico: exclui sem inscrições e arquiva com inscrições", () => {
+  it("remove sem destruir histórico e não trava em confirmação nativa", () => {
     expect(page).toContain("trpc.events.remove.useMutation");
     expect(page).toContain('title="Excluir ou arquivar evento"');
-    expect(page).toContain("Se ele já tiver inscrições, será arquivado para preservar o histórico.");
+    expect(page).toContain("AlertDialog");
+    expect(page).toContain("removeConfirmOpen");
+    expect(page).toContain("removeError");
+    expect(page).toContain("clickEvent.preventDefault()");
+    expect(page).not.toContain("window.confirm(");
+    expect(page).toContain("Se já houver inscrições, ele será arquivado para preservar participantes, pagamentos e histórico.");
     expect(eventRouter()).toContain("remove: protectedProcedure");
     expect(db).toContain("export async function removeEvent");
     expect(db).toContain('mode: "archived"');
