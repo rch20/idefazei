@@ -114,6 +114,7 @@ export default function Configuracoes() {
   const [pwaIconPreviewUrl, setPwaIconPreviewUrl] = useState<string | null>(church?.pwaIcon192Url ?? church?.logoUrl ?? null);
   const [activeTab, setActiveTab] = useState("geral");
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const settingsSectionsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!church) return;
@@ -223,6 +224,13 @@ export default function Configuracoes() {
   const registrationLink = churchForm.slug ? publicRegistrationUrl(churchForm.slug) : "";
   const registrationShareText = registrationLink ? publicRegistrationShareMessage(churchForm.name || "A igreja", churchForm.publicRegistrationTitle, churchForm.publicRegistrationMessage, registrationLink) : "";
   const canUseNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+  const handleQuickSectionChange = (tab: string) => {
+    setActiveTab(tab);
+    window.requestAnimationFrame(() => {
+      settingsSectionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
 
   const handleNativeShare = async () => {
     if (!registrationLink || !canUseNativeShare) {
@@ -364,13 +372,14 @@ export default function Configuracoes() {
       </header>
 
       <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
-        <ConfigQuickCard icon={Building2} title="Dados institucionais" description="Contato, endereço, visão e missão" active={activeTab === "geral"} onClick={() => setActiveTab("geral")} />
-        <ConfigQuickCard icon={Palette} title="Marca da igreja" description="Logo, cores e pré-visualização" active={activeTab === "identidade"} onClick={() => setActiveTab("identidade")} />
-        {canManageRoles && <ConfigQuickCard icon={Globe} title="Presença pública" description="Site, blocos, SEO e publicação" active={activeTab === "pagina-publica"} onClick={() => setActiveTab("pagina-publica")} />}
-        <ConfigQuickCard icon={Users} title="Pessoas e acessos" description="Vínculos, perfis e funções" active={activeTab === "membros"} onClick={() => setActiveTab("membros")} />
-        <ConfigQuickCard icon={Plug} title="Integrações" description="Conexões e automações futuras" active={activeTab === "integracao"} onClick={() => setActiveTab("integracao")} />
+        <ConfigQuickCard icon={Building2} title="Dados institucionais" description="Contato, endereço, visão e missão" active={activeTab === "geral"} onClick={() => handleQuickSectionChange("geral")} />
+        <ConfigQuickCard icon={Palette} title="Marca da igreja" description="Logo, cores e pré-visualização" active={activeTab === "identidade"} onClick={() => handleQuickSectionChange("identidade")} />
+        {canManageRoles && <ConfigQuickCard icon={Globe} title="Presença pública" description="Site, blocos, SEO e publicação" active={activeTab === "pagina-publica"} onClick={() => handleQuickSectionChange("pagina-publica")} />}
+        <ConfigQuickCard icon={Users} title="Pessoas e acessos" description="Vínculos, perfis e funções" active={activeTab === "membros"} onClick={() => handleQuickSectionChange("membros")} />
+        <ConfigQuickCard icon={Plug} title="Integrações" description="Conexões e automações futuras" active={activeTab === "integracao"} onClick={() => handleQuickSectionChange("integracao")} />
       </div>
 
+      <div ref={settingsSectionsRef} className="scroll-mt-4">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="min-w-0 overflow-x-auto rounded-2xl" role="region" aria-label="Seções da configuração">
           <TabsList className="h-auto min-w-max gap-1 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
@@ -677,6 +686,7 @@ export default function Configuracoes() {
             </div>
           </TabsContent>
         </Tabs>
+      </div>
 
         <Dialog open={Boolean(rejectionTarget)} onOpenChange={(open) => { if (!open) { setRejectionTarget(null); setRejectionReason(""); } }}>
           <DialogContent>

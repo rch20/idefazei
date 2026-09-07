@@ -32,6 +32,18 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("Salvar identidade");
   });
 
+  it("faz os cards de configuração refletirem a aba e levarem o conteúdo ao primeiro toque", () => {
+    expect(settingsSource).toContain("const handleQuickSectionChange = (tab: string)");
+    expect(settingsSource).toContain("setActiveTab(tab)");
+    expect(settingsSource).toContain("settingsSectionsRef.current?.scrollIntoView");
+    expect(settingsSource).toContain('behavior: "smooth"');
+    expect(settingsSource).toContain('onClick={() => handleQuickSectionChange("geral")}');
+    expect(settingsSource).toContain('onClick={() => handleQuickSectionChange("identidade")}');
+    expect(settingsSource).toContain('onClick={() => handleQuickSectionChange("pagina-publica")}');
+    expect(settingsSource).toContain('onClick={() => handleQuickSectionChange("membros")}');
+    expect(settingsSource).toContain('onClick={() => handleQuickSectionChange("integracao")}');
+  });
+
   it("mantém os únicos modais de Configurações compactos e não transforma páginas longas em supermodais", () => {
     expect(settingsSource.match(/<DialogContent/g)?.length).toBe(2);
     expect(settingsSource).toContain("Compartilhar cadastro");
