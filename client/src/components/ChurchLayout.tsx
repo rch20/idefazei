@@ -111,7 +111,7 @@ const navItems: NavItem[] = [
   { icon: Flame, label: "Novas Almas", path: "/app/almas", group: "discipulado" },
   { icon: Heart, label: "Consolidação", path: "/app/consolidacao", group: "discipulado", accessKey: "canAccessVisits" },
   { icon: ChevronRight, label: "Acompanhamento", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
-  { icon: Users, label: "Pessoas", path: "/app/pessoas", group: "membros", accessKey: "canReadPeople" },
+  { icon: Users, label: "Discípulos", path: "/app/pessoas", group: "membros", accessKey: "canReadPeople" },
   { icon: Home, label: "Famílias", path: "/app/familias", group: "membros", accessKey: "isExecutive" },
   { icon: Globe, label: "Células", path: "/app/celulas", group: "celulas" },
   { icon: Map, label: "Mapa de Células", path: "/app/mapa", group: "celulas" },
@@ -162,7 +162,7 @@ function getVisibleQuickAccess(accessSummary: ChurchAccessSummary | null, items:
 const groups = [
   { key: "principal", label: "Início" },
   { key: "discipulado", label: "Jornada" },
-  { key: "membros", label: "Pessoas" },
+  { key: "membros", label: "Discípulos" },
   { key: "celulas", label: "Células" },
   { key: "ministerio", label: "Atuação" },
   { key: "lideranca", label: "Formação e liderança" },

@@ -105,7 +105,9 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain("lg:hidden");
     expect(source).toContain("lg:block");
     expect(source).toContain('!item.accessKey || Boolean(accessSummary?.[item.accessKey])');
-    expect(source).toContain('label: "Pessoas", path: "/app/pessoas", group: "membros", accessKey: "canReadPeople"');
+    expect(source).toContain('label: "Discípulos", path: "/app/pessoas", group: "membros", accessKey: "canReadPeople"');
+    expect(source).toContain('{ key: "membros", label: "Discípulos" }');
+    expect(source).not.toContain('label: "Pessoas", path: "/app/pessoas"');
     expect(source).not.toContain('label: "Agenda"');
     expect(source).not.toContain('label: "Aprovações"');
     expect(source).not.toContain('label: "Indicações"');
