@@ -165,6 +165,17 @@ describe("Eventos — inscrições e presença", () => {
     expect(page).toContain("DialogContent className=\"max-w-sm\"");
   });
 
+  it("oferece WhatsApp contextual por inscrição sem misturar pagamento e presença", () => {
+    expect(page).toContain("getWhatsAppLinkWithMessage");
+    expect(page).toContain("getEventRegistrationWhatsAppLink");
+    expect(page).toContain("Conversar com ${registration.displayName} pelo WhatsApp");
+    expect(page).toContain("title=\"Conversar no WhatsApp\"");
+    expect(page).toContain("registration.participantPhone");
+    expect(page).toContain("registration.companionName");
+    expect(page).toContain("setPaymentStatus.mutate");
+    expect(page).toContain("setPresence.mutate");
+  });
+
   it("mantém a gestão operacional extensa com inscrição assistida, flyer e relatório", () => {
     expect(page).toContain("Gestão —");
     expect(page).toContain("Inscrição pública");
