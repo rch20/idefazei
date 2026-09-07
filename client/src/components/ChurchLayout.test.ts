@@ -70,6 +70,15 @@ describe("confirmação de logout no painel", () => {
     expect(ministerios).toContain('selectedMinistry?.canManage');
   });
 
+  it("nomeia a categoria de Células sem confundir equipes ministeriais", () => {
+    const source = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
+    const ministerios = readFileSync(resolve(process.cwd(), "client/src/pages/Ministerios.tsx"), "utf8");
+    expect(source).toContain('{ key: "celulas", label: "Células" }');
+    expect(source).toContain('label: "Ministérios"');
+    expect(ministerios).toContain('Equipe do Ministério');
+    expect(source).not.toContain('{ key: "celulas", label: "Equipes" }');
+  });
+
   it("oferece Início, atalhos aprovados e mantém Meu painel no menu completo", () => {
     const source = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
     expect(source).toContain('{ icon: Home, label: "Início", path: "/app/inicio", group: "principal" }');

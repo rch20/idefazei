@@ -163,7 +163,7 @@ const groups = [
   { key: "principal", label: "Início" },
   { key: "discipulado", label: "Jornada" },
   { key: "membros", label: "Pessoas" },
-  { key: "celulas", label: "Equipes" },
+  { key: "celulas", label: "Células" },
   { key: "ministerio", label: "Atuação" },
   { key: "lideranca", label: "Formação e liderança" },
   { key: "comunicacao", label: "Comunicação" },
