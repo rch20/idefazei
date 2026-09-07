@@ -121,12 +121,15 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("Mês dos aniversariantes");
     expect(pageSource).toContain("trpc.people.birthdays.useQuery");
     expect(pageSource).toContain("Pessoas sem data de nascimento não aparecem nesta lista.");
+    expect(pageSource).toContain("currentCivilDateParts");
+    expect(pageSource).toContain("civilDateParts(person.birthDate)");
     expect(routerSource).toContain("birthdays: protectedProcedure");
     expect(routerSource).toContain("await requireChurchAdministrator(ctx.user.id, input.churchId);");
     expect(dbSource).toContain("getBirthdaysByChurch(churchId: number, month: number, day?: number)");
     expect(dbSource).toContain("eq(people.churchId, churchId)");
     expect(dbSource).toContain("isNotNull(people.birthDate)");
     expect(dbSource).toContain("DATE_FORMAT(${people.birthDate}, '%Y-%m-%d')");
+    expect(dbSource).toContain("const peopleColumns = getTableColumns(people)");
   });
 
   it("exige nascimento no cadastro completo e mantém indicação simples para membros", () => {

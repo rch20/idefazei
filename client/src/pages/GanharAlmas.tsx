@@ -13,6 +13,7 @@ import { trpc } from "@/lib/trpc";
 import { CalendarDays, Check, ChevronsUpDown, Flame, Plus, Search, Users, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { currentCivilDateKey } from "@/lib/civilDate";
 
 const ORIGINS = [
   { value: "culto", label: "Culto" },
@@ -38,7 +39,7 @@ function createInitialForm() {
     phone: "",
     birthDate: "",
     address: "",
-    decisionDate: new Date().toISOString().slice(0, 10),
+    decisionDate: currentCivilDateKey(),
     origin: "culto" as Origin,
     acceptedJesus: true,
     reconciliation: false,
@@ -123,7 +124,7 @@ export default function GanharAlmas() {
     event.preventDefault();
     setFormError("");
     const name = form.name.trim();
-    const today = new Date().toISOString().slice(0, 10);
+    const today = currentCivilDateKey();
 
     if (!churchId) {
       setFormError("Não foi possível identificar a igreja ativa. Entre novamente e tente outra vez.");
@@ -284,7 +285,7 @@ export default function GanharAlmas() {
                 </div>
                 <div>
                   <Label htmlFor="soul-birth-date">Data de nascimento{!isLimitedMember ? " *" : ""}</Label>
-                  <Input id="soul-birth-date" type="date" max={new Date().toISOString().slice(0, 10)} required={!isLimitedMember} value={form.birthDate} onChange={(event) => setForm({ ...form, birthDate: event.target.value })} className="mt-1" />
+                  <Input id="soul-birth-date" type="date" max={currentCivilDateKey()} required={!isLimitedMember} value={form.birthDate} onChange={(event) => setForm({ ...form, birthDate: event.target.value })} className="mt-1" />
                   {!isLimitedMember && <p className="mt-1 text-xs text-muted-foreground">Usaremos esta data na lista de aniversariantes.</p>}
                 </div>
                 {!isLimitedMember && <div className="sm:col-span-2 rounded-lg border border-gold/25 bg-gold/5 p-3">
@@ -306,7 +307,7 @@ export default function GanharAlmas() {
                 </div>}
                 <div>
                   <Label htmlFor="soul-decision-date">Data da decisão *</Label>
-                  <Input id="soul-decision-date" type="date" max={new Date().toISOString().slice(0, 10)} value={form.decisionDate} onChange={(event) => setForm({ ...form, decisionDate: event.target.value })} className="mt-1" />
+                  <Input id="soul-decision-date" type="date" max={currentCivilDateKey()} value={form.decisionDate} onChange={(event) => setForm({ ...form, decisionDate: event.target.value })} className="mt-1" />
                 </div>
                 {!isLimitedMember && (<div>
                   <Label htmlFor="soul-origin">Origem *</Label>

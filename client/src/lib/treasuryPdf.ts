@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import { formatBrl, formatDatePtBr, type TreasuryReportData } from "./treasury";
+import { currentCivilDateKey } from "./civilDate";
 
 export type TreasuryPdfMode = "summary" | "detailed";
 
@@ -33,7 +34,7 @@ const paymentLabels: Record<string, string> = {
 };
 
 export function treasuryPdfFileName(month: string, mode: TreasuryPdfMode = "detailed") {
-  const safeMonth = /^\d{4}-\d{2}$/.test(month) ? month : new Date().toISOString().slice(0, 7);
+  const safeMonth = /^\d{4}-\d{2}$/.test(month) ? month : currentCivilDateKey().slice(0, 7);
   return mode === "summary" ? `resumo-tesouraria-${safeMonth}.pdf` : `relatorio-tesouraria-detalhado-${safeMonth}.pdf`;
 }
 

@@ -81,9 +81,9 @@ describe("Fluxo estrutural de prestação por culto", () => {
   });
 
   it("preserva a data de calendário e compacta ações no mobile", () => {
-    expect(treasurySource).toContain("value.getUTCFullYear()");
-    expect(treasurySource).toContain("value.getUTCMonth()");
-    expect(treasurySource).toContain("value.getUTCDate()");
+    expect(treasurySource).toContain("civilDateParts");
+    expect(treasurySource).toContain("currentCivilDateKey");
+    expect(sectionSource).toContain("todayCivilDate");
     expect(sectionSource).toContain("Abrir ações");
     expect(sectionSource).toContain("hidden sm:flex");
   });

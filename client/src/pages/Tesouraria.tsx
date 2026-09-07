@@ -14,6 +14,7 @@ import { buildTreasuryReceiptHtml, formatBrl, formatDatePtBr, openTreasuryPrintD
 import { TreasuryPdfPreview } from "@/components/TreasuryPdfPreview";
 import { TreasuryServiceSection } from "@/components/TreasuryServiceSection";
 import { toast } from "sonner";
+import { currentCivilDateKey } from "@/lib/civilDate";
 import {
   ArrowDownCircle,
   ArrowRightLeft,
@@ -78,7 +79,7 @@ function PaymentMethodIcon({ method }: { method: PaymentMethod }) {
   }
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => currentCivilDateKey();
 
 function monthBounds(month: string) {
   const [year, monthNumber] = month.split("-").map(Number);

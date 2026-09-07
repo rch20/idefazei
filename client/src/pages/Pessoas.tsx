@@ -13,6 +13,7 @@ import { AlertCircle, ArrowRight, BriefcaseBusiness, Cake, CheckCircle2, Circle,
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import { civilDateParts, currentCivilDateKey, currentCivilDateParts } from "@/lib/civilDate";
 
 const STAGES_LABELS: Record<string, string> = {
   nova_alma: "Nova Alma",
@@ -139,13 +140,6 @@ function formatEffectiveAccess(role: string) {
   return EFFECTIVE_ACCESS_LABELS[role] ?? role.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
-function civilDateParts(value: string | Date | null | undefined) {
-  if (!value) return null;
-  const raw = typeof value === "string" ? value.slice(0, 10) : value.toISOString().slice(0, 10);
-  const [year, month, day] = raw.split("-").map(Number);
-  return year && month && day ? { year, month, day } : null;
-}
-
 function formatBirthday(value: string | Date | null | undefined) {
   const parts = civilDateParts(value);
   if (!parts) return "Data não informada";
@@ -212,9 +206,10 @@ export default function Pessoas() {
   const [personSection, setPersonSection] = useState<"resumo" | "jornada" | "participacoes" | "cuidado" | "cobertura" | "historico">("resumo");
   const [birthdaysOpen, setBirthdaysOpen] = useState(false);
   const [birthdayView, setBirthdayView] = useState<"today" | "month">("today");
-  const currentDate = useMemo(() => new Date(), []);
-  const birthdayMonth = currentDate.getMonth() + 1;
-  const birthdayDay = currentDate.getDate();
+  const currentCivilParts = useMemo(() => currentCivilDateParts(), []);
+  const currentDate = useMemo(() => currentCivilParts ? new Date(currentCivilParts.year, currentCivilParts.month - 1, currentCivilParts.day) : new Date(), [currentCivilParts]);
+  const birthdayMonth = currentCivilParts?.month ?? currentDate.getMonth() + 1;
+  const birthdayDay = currentCivilParts?.day ?? currentDate.getDate();
   const [birthdayMonthFilter, setBirthdayMonthFilter] = useState(birthdayMonth);
   const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
   const [selectedCellId, setSelectedCellId] = useState("");
@@ -752,7 +747,7 @@ export default function Pessoas() {
                   </div>
                   <div>
                     <Label>Data de Nascimento *</Label>
-                    <Input type="date" max={new Date().toISOString().slice(0, 10)} required value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
+                    <Input type="date" max={currentCivilDateKey()} required value={form.birthDate} onChange={(e) => setForm({ ...form, birthDate: e.target.value })} />
                   </div>
                   <div>
                     <Label>Sexo</Label>

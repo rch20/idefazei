@@ -17,6 +17,7 @@ import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, MapPin, Phone
 import { ReportButton } from "@/components/ReportButton";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { currentCivilDateKey } from "@/lib/civilDate";
 
 const DAYS = [
   { value: "segunda", label: "Segunda-feira" },
@@ -60,11 +61,7 @@ function formatCep(value: string) {
 }
 
 function getTodayInputValue() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  return currentCivilDateKey();
 }
 
 function formatMeetingDate(value: Date | string) {

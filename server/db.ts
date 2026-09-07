@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   announcements,
@@ -959,8 +959,12 @@ export async function getPeopleByChurch(churchId: number, search?: string) {
       ) as any
     );
   }
+  const peopleColumns = getTableColumns(people);
   return db
-    .select()
+    .select({
+      ...peopleColumns,
+      birthDate: sql<string | null>`DATE_FORMAT(${people.birthDate}, '%Y-%m-%d')`,
+    })
     .from(people)
     .where(and(...conditions))
     .orderBy(people.fullName)
@@ -996,8 +1000,12 @@ export async function getBirthdaysByChurch(churchId: number, month: number, day?
 export async function getPersonById(id: number, churchId: number) {
   const db = await getDb();
   if (!db) return null;
+  const peopleColumns = getTableColumns(people);
   const result = await db
-    .select()
+    .select({
+      ...peopleColumns,
+      birthDate: sql<string | null>`DATE_FORMAT(${people.birthDate}, '%Y-%m-%d')`,
+    })
     .from(people)
     .where(and(eq(people.id, id), eq(people.churchId, churchId)))
     .limit(1);
@@ -4528,7 +4536,7 @@ export async function importPeopleFromCSV(
       fullName: row.fullName.trim(),
       email: row.email?.trim() || null,
       phone: row.phone?.trim() || null,
-      birthDate: row.birthDate ? new Date(row.birthDate) : null,
+      birthDate: row.birthDate ? parseCivilDateAsUtcNoon(row.birthDate) : null,
       status: "membro",
     } as typeof people.$inferInsert);
     imported++;

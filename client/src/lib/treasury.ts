@@ -1,3 +1,5 @@
+import { civilDateParts, currentCivilDateKey, type CivilDateParts } from "./civilDate";
+
 export type TreasuryTransactionRow = {
   transaction: {
     id: number;
@@ -60,22 +62,10 @@ export function parseBrlToCents(value: string): number | null {
   return negative ? -cents : cents;
 }
 
-export type CivilDateParts = { year: number; month: number; day: number };
+export type { CivilDateParts };
 
 export function getCivilDateParts(value: Date | string): CivilDateParts | null {
-  if (value instanceof Date) {
-    if (Number.isNaN(value.getTime())) return null;
-    return { year: value.getUTCFullYear(), month: value.getUTCMonth() + 1, day: value.getUTCDate() };
-  }
-  const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return null;
-  const [, yearText, monthText, dayText] = match;
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  const validationDate = new Date(Date.UTC(year, month - 1, day, 12));
-  if (validationDate.getUTCFullYear() !== year || validationDate.getUTCMonth() + 1 !== month || validationDate.getUTCDate() !== day) return null;
-  return { year, month, day };
+  return civilDateParts(value);
 }
 
 export function formatDatePtBr(value: Date | string) {
@@ -99,9 +89,7 @@ export function formatMonthShortPtBr(value: Date | string) {
 }
 
 export function getTodayCivilDateInput(timeZone = "America/Sao_Paulo") {
-  const parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
+  return currentCivilDateKey(timeZone);
 }
 
 export function formatEventTime(value: string | null | undefined) {

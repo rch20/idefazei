@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CalendarDays, CheckCircle2, Edit3, FileText, Loader2, PauseCircle, PlayCircle, Plus, Printer, ShieldCheck, WalletCards, X } from "lucide-react";
 import { formatBrl, formatDatePtBr, openTreasuryPrintDocument, parseBrlToCents } from "@/lib/treasury";
 import { toast } from "sonner";
+import { currentCivilDateKey, formatCivilDateKeyForInput } from "@/lib/civilDate";
 
 type PersonOption = { id: number; fullName: string };
 type AccountOption = { id: number; name: string; type: "caixa" | "banco" | "outro" };
@@ -35,6 +36,7 @@ const AMOUNT_FIELDS: Array<{ key: AmountField; label: string }> = [
   { key: "otherCents", label: "Outros" },
 ];
 const DIALOG_CLASS = "!flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] min-w-0 flex-col overflow-hidden p-4 sm:max-h-[94vh] sm:max-w-2xl sm:p-6";
+const todayCivilDate = () => currentCivilDateKey();
 
 function moneyInput(cents: number) {
   return cents ? (cents / 100).toFixed(2).replace(".", ",") : "";
@@ -70,9 +72,9 @@ export function TreasuryServiceSection({ churchId, people, accounts }: { churchI
   const [selectedSheetId, setSelectedSheetId] = useState<number | null>(null);
   const [expandedServiceId, setExpandedServiceId] = useState<number | null>(null);
   const [scheduleForm, setScheduleForm] = useState({ name: "", weekday: "0", startTime: "", location: "", notes: "" });
-  const [serviceForm, setServiceForm] = useState({ name: "", serviceDate: new Date().toISOString().slice(0, 10), startTime: "", location: "", notes: "" });
+  const [serviceForm, setServiceForm] = useState({ name: "", serviceDate: todayCivilDate(), startTime: "", location: "", notes: "" });
   const [countForm, setCountForm] = useState<Record<AmountField | "serviceId" | "counterOnePersonId" | "counterTwoPersonId" | "notes", string>>({ serviceId: "", counterOnePersonId: "", counterTwoPersonId: "", cashCents: "", pixCents: "", transferCents: "", cardCents: "", checkCents: "", otherCents: "", notes: "" });
-  const [depositForm, setDepositForm] = useState({ accountId: "", amount: "", depositDate: new Date().toISOString().slice(0, 10), reference: "", notes: "" });
+  const [depositForm, setDepositForm] = useState({ accountId: "", amount: "", depositDate: todayCivilDate(), reference: "", notes: "" });
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [serviceError, setServiceError] = useState<string | null>(null);
   const [countError, setCountError] = useState<string | null>(null);
@@ -85,7 +87,7 @@ export function TreasuryServiceSection({ churchId, people, accounts }: { churchI
   const createRecurringSchedule = trpc.treasury.createRecurringSchedule.useMutation({ onSuccess: async () => { await Promise.all([schedulesQuery.refetch(), servicesQuery.refetch()]); setScheduleOpen(false); setScheduleForm({ name: "", weekday: "0", startTime: "", location: "", notes: "" }); setScheduleError(null); toast.success("Programação fixa salva. As ocorrências previstas foram atualizadas."); }, onError: (error) => { setScheduleError(error.message); toast.error(error.message); } });
   const setRecurringScheduleActive = trpc.treasury.setRecurringScheduleActive.useMutation({ onSuccess: async () => { await Promise.all([schedulesQuery.refetch(), servicesQuery.refetch()]); toast.success("Programação fixa atualizada."); }, onError: (error) => toast.error(error.message) });
   const updateRecurringSchedule = trpc.treasury.updateRecurringSchedule.useMutation({ onSuccess: async () => { await Promise.all([schedulesQuery.refetch(), servicesQuery.refetch()]); setScheduleOpen(false); setEditingScheduleId(null); setScheduleError(null); toast.success("Programação fixa atualizada. As novas ocorrências seguirão esta configuração; as já criadas permanecem iguais."); }, onError: (error) => { setScheduleError(error.message); toast.error(error.message); } });
-  const createService = trpc.treasury.createService.useMutation({ onSuccess: async () => { await servicesQuery.refetch(); setServiceOpen(false); setEditingServiceId(null); setServiceForm({ name: "", serviceDate: new Date().toISOString().slice(0, 10), startTime: "", location: "", notes: "" }); setServiceError(null); toast.success("Culto ou evento cadastrado."); }, onError: (error) => { setServiceError(error.message); toast.error(error.message); } });
+  const createService = trpc.treasury.createService.useMutation({ onSuccess: async () => { await servicesQuery.refetch(); setServiceOpen(false); setEditingServiceId(null); setServiceForm({ name: "", serviceDate: todayCivilDate(), startTime: "", location: "", notes: "" }); setServiceError(null); toast.success("Culto ou evento cadastrado."); }, onError: (error) => { setServiceError(error.message); toast.error(error.message); } });
   const updateService = trpc.treasury.updateService.useMutation({ onSuccess: async () => { await servicesQuery.refetch(); setServiceOpen(false); setEditingServiceId(null); setServiceError(null); toast.success("Ocorrência atualizada. A programação fixa não foi alterada."); }, onError: (error) => { setServiceError(error.message); toast.error(error.message); } });
   const cancelService = trpc.treasury.cancelService.useMutation({ onSuccess: async () => { await servicesQuery.refetch(); toast.success("Culto cancelado."); }, onError: (error) => toast.error(error.message) });
   const saveCountSheet = trpc.treasury.saveCountSheet.useMutation({ onSuccess: async (sheet) => { await Promise.all([sheetsQuery.refetch(), servicesQuery.refetch()]); setCountOpen(false); setCountError(null); toast.success(sheet?.status === "fechada" ? "Contagem fechada." : "Folha salva como rascunho."); }, onError: (error) => { setCountError(error.message); toast.error(error.message); } });
@@ -115,11 +117,11 @@ export function TreasuryServiceSection({ churchId, people, accounts }: { churchI
     setDepositError(null);
     const existing = depositBySheetId.get(sheetId);
     setSelectedSheetId(sheetId);
-    setDepositForm({ accountId: existing ? String(existing.accountId) : String(bankAccounts[0]?.id ?? ""), amount: existing ? moneyInput(existing.amountCents) : "", depositDate: existing?.depositDate ? String(existing.depositDate).slice(0, 10) : new Date().toISOString().slice(0, 10), reference: existing?.reference ?? "", notes: existing?.notes ?? "" });
+    setDepositForm({ accountId: existing ? String(existing.accountId) : String(bankAccounts[0]?.id ?? ""), amount: existing ? moneyInput(existing.amountCents) : "", depositDate: existing?.depositDate ? formatCivilDateKeyForInput(existing.depositDate) : todayCivilDate(), reference: existing?.reference ?? "", notes: existing?.notes ?? "" });
     setDepositOpen(true);
   };
   const openSchedule = (schedule?: (typeof recurringSchedules)[number]) => { setEditingScheduleId(schedule?.id ?? null); setScheduleError(null); setScheduleForm({ name: schedule?.name ?? "", weekday: String(schedule?.weekday ?? 0), startTime: schedule?.startTime ?? "", location: schedule?.location ?? "", notes: schedule?.notes ?? "" }); setScheduleOpen(true); };
-  const openService = (service?: (typeof services)[number]) => { setEditingServiceId(service?.id ?? null); setServiceError(null); setServiceForm({ name: service?.name ?? "", serviceDate: service?.serviceDate ? String(service.serviceDate).slice(0, 10) : new Date().toISOString().slice(0, 10), startTime: service?.startTime ?? "", location: service?.location ?? "", notes: service?.notes ?? "" }); setServiceOpen(true); };
+  const openService = (service?: (typeof services)[number]) => { setEditingServiceId(service?.id ?? null); setServiceError(null); setServiceForm({ name: service?.name ?? "", serviceDate: service?.serviceDate ? formatCivilDateKeyForInput(service.serviceDate) : todayCivilDate(), startTime: service?.startTime ?? "", location: service?.location ?? "", notes: service?.notes ?? "" }); setServiceOpen(true); };
   const submitSchedule = (event: React.FormEvent) => { event.preventDefault(); setScheduleError(null); const input = { churchId, name: scheduleForm.name.trim(), weekday: Number(scheduleForm.weekday), startTime: scheduleForm.startTime, location: scheduleForm.location.trim() || undefined, notes: scheduleForm.notes.trim() || undefined }; if (editingScheduleId) updateRecurringSchedule.mutate({ ...input, id: editingScheduleId }); else createRecurringSchedule.mutate(input); };
   const submitService = (event: React.FormEvent) => { event.preventDefault(); setServiceError(null); const input = { churchId, name: serviceForm.name.trim(), serviceDate: serviceForm.serviceDate, startTime: serviceForm.startTime || undefined, location: serviceForm.location.trim() || undefined, notes: serviceForm.notes.trim() || undefined }; if (editingServiceId) updateService.mutate({ ...input, id: editingServiceId }); else createService.mutate(input); };
   const submitCount = (event: React.FormEvent, closeAfterSave = false) => { event.preventDefault(); setCountError(null); const amountValues = Object.fromEntries(AMOUNT_FIELDS.map(({ key }) => [key, parseBrlToCents(countForm[key]) ?? 0])) as Record<AmountField, number>; saveCountSheet.mutate({ id: selectedSheetId ?? undefined, churchId, serviceId: Number(countForm.serviceId), counterOnePersonId: Number(countForm.counterOnePersonId), counterTwoPersonId: Number(countForm.counterTwoPersonId), ...amountValues, notes: countForm.notes.trim() || undefined }); if (closeAfterSave && selectedSheetId) closeCountSheet.mutate({ churchId, id: selectedSheetId }); };
