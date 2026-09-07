@@ -3152,6 +3152,13 @@ const eventsRouter = router({
     }),
 });
 const familiesRouter = router({
+  canManage: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ ctx, input }) => {
+      const member = await requireChurchMember(ctx.user.id, input.churchId);
+      const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, member);
+      return { canManage: roles.some((role) => CHURCH_ADMIN_ROLES.has(role)) };
+    }),
   list: protectedProcedure
     .input(z.object({ churchId: z.number(), search: z.string().optional() }))
     .query(async ({ ctx, input }) => {
@@ -3165,12 +3172,40 @@ const familiesRouter = router({
         : rows;
       return filtered;
     }),
-  create: protectedProcedure
-    .input(z.object({ churchId: z.number(), name: z.string().min(1) }))
-    .mutation(async ({ ctx, input }) => {
+  members: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), familyId: z.number().int().positive() }))
+    .query(async ({ ctx, input }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
+      const { getFamilyMembersByFamily, getFamilyById } = await import("./db");
+      const family = await getFamilyById(input.churchId, input.familyId);
+      if (!family) throw new TRPCError({ code: "NOT_FOUND", message: "Núcleo familiar não encontrado nesta igreja." });
+      return getFamilyMembersByFamily(input);
+    }),
+  create: protectedProcedure
+    .input(z.object({ churchId: z.number(), name: z.string().trim().min(1).max(255) }))
+    .mutation(async ({ ctx, input }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
       const { createFamily } = await import("./db");
       return createFamily({ churchId: input.churchId, name: input.name });
+    }),
+  addMember: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      familyId: z.number().int().positive(),
+      personId: z.number().int().positive(),
+      relation: z.enum(["pai", "mae", "filho", "filha", "outro"]),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const { addFamilyMember } = await import("./db");
+      return addFamilyMember(input);
+    }),
+  removeMember: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), familyId: z.number().int().positive(), memberId: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const { removeFamilyMember } = await import("./db");
+      return removeFamilyMember(input);
     }),
 });
 

@@ -4316,27 +4316,44 @@ export async function getFamiliesByChurch(churchId: number) {
     .from(families)
     .where(eq(families.churchId, churchId))
     .limit(200);
-  return rows.map((f) => ({
-    id: f.id,
-    name: f.familyName,
-    fatherName: null as string | null,
-    motherName: null as string | null,
-    childrenCount: 0,
-    memberCount: 0,
-    phone: null as string | null,
-    address: null as string | null,
-    notes: f.notes,
-  }));
+  if (!rows.length) return [];
+  const memberRows = await db
+    .select({ familyId: familyMembers.familyId, personId: familyMembers.personId, relation: familyMembers.relation, fullName: people.fullName })
+    .from(familyMembers)
+    .innerJoin(people, eq(people.id, familyMembers.personId))
+    .where(and(inArray(familyMembers.familyId, rows.map((family) => family.id)), eq(people.churchId, churchId)));
+  const membersByFamily = new Map<number, typeof memberRows>();
+  for (const member of memberRows) {
+    const current = membersByFamily.get(member.familyId) ?? [];
+    current.push(member);
+    membersByFamily.set(member.familyId, current);
+  }
+  return rows.map((f) => {
+    const members = membersByFamily.get(f.id) ?? [];
+    const father = members.find((member) => member.relation === "pai");
+    const mother = members.find((member) => member.relation === "mae");
+    return {
+      id: f.id,
+      name: f.familyName,
+      fatherName: father?.fullName ?? null,
+      motherName: mother?.fullName ?? null,
+      childrenCount: members.filter((member) => member.relation === "filho" || member.relation === "filha").length,
+      memberCount: members.length,
+      phone: null as string | null,
+      address: null as string | null,
+      notes: f.notes,
+    };
+  });
 }
 
 export async function createFamily(input: { churchId: number; name: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(families).values({
+  const result = await db.insert(families).values({
     churchId: input.churchId,
     familyName: input.name,
   });
-  return { success: true };
+  return { success: true, id: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0) };
 }
 
 // ─── SUPER ADMIN ──────────────────────────────────────────────────────────────
@@ -6724,3 +6741,59 @@ export async function getCellStudiesWithAttachments(churchId: number, includeDra
 }
 
 // ─── FIM DOS ESTUDOS SEMANAIS DE CÉLULAS ──────────────────────────────────────
+
+export async function getFamilyMembersByFamily(input: { churchId: number; familyId: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: familyMembers.id,
+      familyId: familyMembers.familyId,
+      personId: familyMembers.personId,
+      relation: familyMembers.relation,
+      fullName: people.fullName,
+    })
+    .from(familyMembers)
+    .innerJoin(families, eq(families.id, familyMembers.familyId))
+    .innerJoin(people, eq(people.id, familyMembers.personId))
+    .where(and(eq(families.id, input.familyId), eq(families.churchId, input.churchId), eq(people.churchId, input.churchId)))
+    .orderBy(people.fullName);
+}
+
+export async function addFamilyMember(input: { churchId: number; familyId: number; personId: number; relation: "pai" | "mae" | "filho" | "filha" | "outro" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [family] = await db.select({ id: families.id }).from(families).where(and(eq(families.id, input.familyId), eq(families.churchId, input.churchId))).limit(1);
+  if (!family) throw new Error("Núcleo familiar não encontrado nesta igreja.");
+  const [person] = await db.select({ id: people.id }).from(people).where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId))).limit(1);
+  if (!person) throw new Error("A Pessoa selecionada não pertence a esta igreja.");
+  const [existing] = await db.select({ id: familyMembers.id }).from(familyMembers).where(and(eq(familyMembers.familyId, input.familyId), eq(familyMembers.personId, input.personId))).limit(1);
+  if (existing) throw new Error("Esta Pessoa já pertence a este núcleo familiar.");
+  const result = await db.insert(familyMembers).values({
+    familyId: input.familyId,
+    personId: input.personId,
+    relation: input.relation,
+  });
+  return { success: true, id: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0) };
+}
+
+export async function removeFamilyMember(input: { churchId: number; familyId: number; memberId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [member] = await db
+    .select({ id: familyMembers.id })
+    .from(familyMembers)
+    .innerJoin(families, eq(families.id, familyMembers.familyId))
+    .where(and(eq(familyMembers.id, input.memberId), eq(familyMembers.familyId, input.familyId), eq(families.churchId, input.churchId)))
+    .limit(1);
+  if (!member) throw new Error("Membro da família não encontrado.");
+  await db.delete(familyMembers).where(and(eq(familyMembers.id, input.memberId), eq(familyMembers.familyId, input.familyId)));
+  return { success: true };
+}
+
+export async function getFamilyById(churchId: number, familyId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [family] = await db.select().from(families).where(and(eq(families.id, familyId), eq(families.churchId, churchId))).limit(1);
+  return family ?? null;
+}
