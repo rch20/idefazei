@@ -16,20 +16,24 @@ import { TreasuryServiceSection } from "@/components/TreasuryServiceSection";
 import { toast } from "sonner";
 import {
   ArrowDownCircle,
+  ArrowRightLeft,
   ArrowUpCircle,
   BookOpenCheck,
   CheckCircle2,
   CircleDollarSign,
+  CreditCard,
   ExternalLink,
   FileDown,
   FileText,
   Landmark,
   Loader2,
+  MoreHorizontal,
   Pencil,
   Power,
   Paperclip,
   Plus,
   Printer,
+  QrCode,
   ReceiptText,
   RefreshCw,
   RotateCcw,
@@ -55,6 +59,24 @@ const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string }> = [
   { value: "cheque", label: "Cheque" },
   { value: "outro", label: "Outro" },
 ];
+
+function PaymentMethodIcon({ method }: { method: PaymentMethod }) {
+  const iconClassName = "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy/65";
+  switch (method) {
+    case "dinheiro":
+      return <WalletCards aria-hidden="true" className={iconClassName} />;
+    case "pix":
+      return <QrCode aria-hidden="true" className={iconClassName} />;
+    case "transferencia":
+      return <ArrowRightLeft aria-hidden="true" className={iconClassName} />;
+    case "cartao":
+      return <CreditCard aria-hidden="true" className={iconClassName} />;
+    case "cheque":
+      return <FileText aria-hidden="true" className={iconClassName} />;
+    case "outro":
+      return <MoreHorizontal aria-hidden="true" className={iconClassName} />;
+  }
+}
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -529,7 +551,7 @@ export default function Tesouraria() {
             <AdaptiveFormDialogBody className="grid gap-4">
             <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5"><Label>Conta</Label><select required value={form.accountId} onChange={(event) => updateTransactionForm({ accountId: event.target.value })} className="h-11 min-w-0 touch-manipulation rounded-md border border-input bg-background px-3 text-sm"><option value="" disabled>Selecione</option>{(accountsQuery.data ?? []).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><label className="grid gap-1.5"><Label>Categoria</Label><select required value={form.categoryId} onChange={(event) => updateTransactionForm({ categoryId: event.target.value })} className="h-11 min-w-0 touch-manipulation rounded-md border border-input bg-background px-3 text-sm"><option value="" disabled>Selecione</option>{selectedCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label></div>
             <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5"><Label>Valor (R$)</Label><Input required inputMode="decimal" placeholder="0,00" value={form.amount} onChange={(event) => updateTransactionForm({ amount: event.target.value })} className="h-11" /></label><label className="grid gap-1.5"><Label>Data</Label><Input required type="date" value={form.transactionDate} onChange={(event) => updateTransactionForm({ transactionDate: event.target.value })} className="h-11" /></label></div>
-            <label className="grid gap-1.5"><Label>Forma de {form.type === "entrada" ? "recebimento" : "pagamento"}</Label><select value={form.paymentMethod} onChange={(event) => updateTransactionForm({ paymentMethod: event.target.value as PaymentMethod })} className="h-11 touch-manipulation rounded-md border border-input bg-background px-3 text-sm">{PAYMENT_METHODS.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select></label>
+            <label className="grid gap-1.5"><Label>Forma de {form.type === "entrada" ? "recebimento" : "pagamento"}</Label><div className="relative"><PaymentMethodIcon method={form.paymentMethod} /><select aria-label={`Forma de ${form.type === "entrada" ? "recebimento" : "pagamento"}`} value={form.paymentMethod} onChange={(event) => updateTransactionForm({ paymentMethod: event.target.value as PaymentMethod })} className="h-11 w-full touch-manipulation rounded-md border border-input bg-background pl-10 pr-3 text-sm">{PAYMENT_METHODS.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select></div></label>
             {form.type === "entrada" && <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1.5"><Label>Contribuinte cadastrado</Label><select value={form.contributorPersonId} onChange={(event) => updateTransactionForm({ contributorPersonId: event.target.value, contributorName: event.target.value ? "" : form.contributorName })} className="h-11 touch-manipulation rounded-md border border-input bg-background px-3 text-sm"><option value="">Não vincular a uma Pessoa</option>{(peopleQuery.data ?? []).map((person) => <option key={person.id} value={person.id}>{person.fullName}</option>)}</select></label><label className="grid gap-1.5"><Label>Nome para recibo</Label><Input disabled={Boolean(form.contributorPersonId)} value={form.contributorName} onChange={(event) => updateTransactionForm({ contributorName: event.target.value })} placeholder="Ex.: Visitante ou família" className="h-11" /></label></div>}
             <label className="grid gap-1.5"><Label>Descrição</Label><Textarea value={form.description} onChange={(event) => updateTransactionForm({ description: event.target.value })} placeholder={form.type === "entrada" ? "Ex.: Culto de domingo à noite" : "Ex.: Referência ou fornecedor"} className="min-h-20" /></label>
             <label className="grid gap-1.5"><Label>Referência opcional</Label><Input value={form.reference} onChange={(event) => updateTransactionForm({ reference: event.target.value })} placeholder="Comprovante, recibo ou nota" className="h-11" /></label>

@@ -77,6 +77,18 @@ describe("Tesouraria — regressões de interface e lógica", () => {
     expect(pageSource).toContain("Confirmar lançamento");
   });
 
+  it("apresenta ícones discretos nas formas de recebimento sem remover o seletor nativo", () => {
+    expect(pageSource).toContain("function PaymentMethodIcon");
+    expect(pageSource).toContain("WalletCards");
+    expect(pageSource).toContain("QrCode");
+    expect(pageSource).toContain("ArrowRightLeft");
+    expect(pageSource).toContain("CreditCard");
+    expect(pageSource).toContain("aria-hidden=\"true\"");
+    expect(pageSource).toContain("aria-label={`Forma de ${form.type === \"entrada\" ? \"recebimento\" : \"pagamento\"}`}");
+    expect(pageSource).toContain("PAYMENT_METHODS.map");
+    expect(pageSource).toContain("pl-10 pr-3");
+  });
+
   it("limpa o feedback antigo quando o usuário corrige o formulário", () => {
     expect(pageSource).toContain("const updateTransactionForm = (patch: Partial<typeof form>) =>");
     expect(pageSource).toContain("setFormError(null);");
