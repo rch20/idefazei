@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const pageSource = readFileSync(resolve(process.cwd(), "client/src/pages/Familias.tsx"), "utf8");
 const routerSource = readFileSync(resolve(process.cwd(), "server/routers.ts"), "utf8");
 const dbSource = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
+const selectSource = readFileSync(resolve(process.cwd(), "client/src/components/ui/select.tsx"), "utf8");
 
 describe("Gestão de Famílias", () => {
   it("permite abrir o núcleo e gerenciar membros sem criar uma nova Pessoa", () => {
@@ -32,6 +33,11 @@ describe("Gestão de Famílias", () => {
     expect(dbSource).toContain("eq(people.churchId, input.churchId)");
     expect(dbSource).toContain("eq(families.churchId, input.churchId)");
     expect(dbSource).toContain("eq(people.churchId, input.churchId)");
+  });
+
+  it("mantém o dropdown de Pessoa acima do modal adaptativo", () => {
+    expect(selectSource).toContain("relative z-[300]");
+    expect(pageSource).toContain("<SelectContent>");
   });
 
   it("mantém o cadastro curto compacto e a gestão de membros adaptativa", () => {
