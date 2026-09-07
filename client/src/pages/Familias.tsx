@@ -148,7 +148,16 @@ export default function Familias() {
                 Nova Família
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-md">
+            <DialogContent
+              className="max-w-[calc(100%-1rem)] sm:max-w-md"
+              onOpenAutoFocus={(event) => event.preventDefault()}
+              onPointerDown={(event) => {
+                const target = event.target as HTMLElement;
+                if (!target.closest("input, textarea, [contenteditable='true']")) {
+                  (document.activeElement as HTMLElement | null)?.blur();
+                }
+              }}
+            >
               <DialogHeader>
                 <DialogTitle className="font-display text-navy">Cadastrar Família</DialogTitle>
               </DialogHeader>

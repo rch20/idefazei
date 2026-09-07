@@ -40,8 +40,14 @@ describe("Gestão de Famílias", () => {
     expect(pageSource).toContain("<SelectContent>");
   });
 
+  it("permite dispensar o teclado tocando fora do campo de Nova Família", () => {
+    expect(pageSource).toContain("onOpenAutoFocus={(event) => event.preventDefault()}");
+    expect(pageSource).toContain("target.closest(\"input, textarea, [contenteditable='true']\")");
+    expect(pageSource).toContain("document.activeElement as HTMLElement | null)?.blur()");
+  });
+
   it("mantém o cadastro curto compacto e a gestão de membros adaptativa", () => {
-    expect(pageSource).toContain("<DialogContent className=\"max-w-[calc(100%-1rem)] sm:max-w-md\">");
+    expect(pageSource).toContain("className=\"max-w-[calc(100%-1rem)] sm:max-w-md\"");
     expect(pageSource).toContain("<AdaptiveFormDialogContent>");
     expect(pageSource).toContain("AdaptiveFormDialogFooter");
     expect(pageSource).toContain("safe-area-inset-bottom");
