@@ -13,4 +13,12 @@ export const ENV = {
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? "",
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY ?? "",
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET ?? "",
+  publicAppUrl: process.env.PUBLIC_APP_URL ?? "https://idefazei.com.br",
+  passwordResetEmailEnabled: process.env.PASSWORD_RESET_EMAIL_ENABLED === "true",
+  mailFrom: process.env.MAIL_FROM ?? "noreply.idefazei@gmail.com",
+  smtpHost: process.env.SMTP_HOST ?? "smtp.gmail.com",
+  smtpPort: process.env.SMTP_PORT ?? "465",
+  smtpSecure: process.env.SMTP_SECURE !== "false",
+  smtpUser: process.env.SMTP_USER ?? process.env.MAIL_FROM ?? "noreply.idefazei@gmail.com",
+  smtpPassword: process.env.SMTP_PASSWORD ?? "",
 };

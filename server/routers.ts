@@ -18,6 +18,7 @@ import {
   createInitialSuperAdmin,
   isInitialSuperAdminSetupAvailable,
 } from "./auth";
+import { requestChurchPasswordReset, resetChurchPassword } from "./passwordRecovery";
 import {
   createAnnouncement,
   createCell,
@@ -4322,6 +4323,28 @@ const churchAuthRouter = router({
         throw new TRPCError({ code: "UNAUTHORIZED", message: "Email ou senha inválidos" });
       }
       return result;
+    }),
+
+  requestPasswordReset: publicProcedure
+    .input(z.object({ email: z.string().trim().email("Email inválido") }))
+    .mutation(async ({ input, ctx }) => {
+      await requestChurchPasswordReset({
+        email: input.email,
+        tenantChurchId: ctx.tenantChurchId,
+        requestIp: ctx.req.ip || null,
+      });
+      return { accepted: true, message: "Se o e-mail estiver cadastrado, enviaremos as instruções de recuperação." };
+    }),
+
+  resetPassword: publicProcedure
+    .input(z.object({
+      token: z.string().min(32).max(128),
+      password: z.string().min(8, "A senha deve ter ao menos 8 caracteres").max(128),
+    }))
+    .mutation(async ({ input }) => {
+      const reset = await resetChurchPassword(input);
+      if (!reset) throw new TRPCError({ code: "BAD_REQUEST", message: "Este link é inválido, expirou ou já foi utilizado." });
+      return { success: true };
     }),
 
   register: protectedProcedure

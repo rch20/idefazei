@@ -59,9 +59,16 @@ export default function LoginIgreja() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSubmitted, setForgotSubmitted] = useState(false);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginData>({
+  const { register, handleSubmit, getValues, formState: { errors } } = useForm<LoginData>({
     resolver: zodResolver(loginSchema),
+  });
+
+  const passwordResetMutation = trpc.churchAuth.requestPasswordReset.useMutation({
+    onSuccess: () => setForgotSubmitted(true),
+    onError: () => setForgotSubmitted(true),
   });
 
   const loginMutation = trpc.churchAuth.login.useMutation({
@@ -179,7 +186,7 @@ export default function LoginIgreja() {
                     <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} className="rounded border-[#c9a84c]/30" />
                     Lembrar-me
                   </label>
-                  <Dialog open={forgotPasswordOpen} onOpenChange={setForgotPasswordOpen}>
+                  <Dialog open={forgotPasswordOpen} onOpenChange={(open) => { setForgotPasswordOpen(open); if (open) { setForgotSubmitted(false); setForgotEmail(getValues("email") ?? ""); } }}>
                     <DialogTrigger asChild>
                       <button type="button" className="text-[var(--tenant-login-accent)] hover:opacity-80 transition-opacity">
                         Esqueci a senha
@@ -189,12 +196,23 @@ export default function LoginIgreja() {
                       <DialogHeader>
                         <DialogTitle className="font-display text-navy">Recuperação de senha</DialogTitle>
                         <DialogDescription>
-                          Para proteger os dados da igreja, a redefinição de senha é feita pelo Pastor Presidente ou administrador responsável. Entre em contato com a liderança da sua igreja para receber uma nova senha de acesso.
+                          Informe o e-mail cadastrado. Se encontrarmos uma conta, enviaremos um link seguro para criar uma nova senha.
                         </DialogDescription>
                       </DialogHeader>
-                      <div className="flex justify-end pt-2">
-                        <Button type="button" className="bg-navy text-white" onClick={() => setForgotPasswordOpen(false)}>Entendi</Button>
-                      </div>
+                      {forgotSubmitted ? (
+                        <div className="space-y-4 pt-2">
+                          <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">Se o e-mail estiver cadastrado, enviaremos as instruções de recuperação. Verifique também a pasta de spam.</p>
+                          <div className="flex justify-end"><Button type="button" className="bg-navy text-white" onClick={() => setForgotPasswordOpen(false)}>Fechar</Button></div>
+                        </div>
+                      ) : (
+                        <form className="space-y-4 pt-2" onSubmit={(event) => { event.preventDefault(); if (!forgotEmail.trim()) return; passwordResetMutation.mutate({ email: forgotEmail.trim() }); }}>
+                          <div>
+                            <Label htmlFor="forgot-email">E-mail</Label>
+                            <Input id="forgot-email" type="email" autoComplete="email" value={forgotEmail} onChange={(event) => setForgotEmail(event.target.value)} placeholder="seu@email.com" required className="mt-1" />
+                          </div>
+                          <div className="flex justify-end"><Button type="submit" className="bg-navy text-white" disabled={passwordResetMutation.isPending}>{passwordResetMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando...</> : "Enviar link de recuperação"}</Button></div>
+                        </form>
+                      )}
                     </DialogContent>
                   </Dialog>
                 </div>

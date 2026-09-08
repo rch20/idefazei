@@ -421,6 +421,13 @@
       "when": 1788445954863,
       "tag": "0059_late_serpent_society",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "5",
+      "when": 1788831322428,
+      "tag": "0060_ancient_greymalkin",
+      "breakpoints": true
     }
   ]
 }

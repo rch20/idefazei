@@ -16,6 +16,7 @@ import {
   churchNotificationPreferences,
   churchRegistrations,
   churchUserComplementaryRoles,
+  churchPasswordResetTokens,
   churchUsers,
   churches,
   communicationLogs,
@@ -1038,7 +1039,7 @@ export async function findPossiblePeopleByIdentity(
 export async function getChurchUserByEmail(email: string) {
   const db = await getDb();
   if (!db) return null;
-  const rows = await db.select({ id: churchUsers.id, churchId: churchUsers.churchId, email: churchUsers.email, active: churchUsers.active, registrationStatus: churchUsers.registrationStatus })
+  const rows = await db.select({ id: churchUsers.id, churchId: churchUsers.churchId, name: churchUsers.name, email: churchUsers.email, active: churchUsers.active, registrationStatus: churchUsers.registrationStatus })
     .from(churchUsers)
     .where(sql`LOWER(${churchUsers.email}) = ${email.trim().toLowerCase()}`)
     .limit(1);

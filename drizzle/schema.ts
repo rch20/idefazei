@@ -1046,6 +1046,23 @@ export const superAdminBootstrap = mysqlTable("super_admin_bootstrap", {
   configuredAt: timestamp("configuredAt").defaultNow().notNull(),
 });
 
+/** Tokens efêmeros e de uso único para redefinição de senha de usuários de igrejas. */
+export const churchPasswordResetTokens = mysqlTable("church_password_reset_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  churchUserId: int("churchUserId").notNull(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  requestIp: varchar("requestIp", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  churchUserCreatedAtIdx: index("church_password_reset_tokens_user_created_idx").on(table.churchUserId, table.createdAt),
+  expiresAtIdx: index("church_password_reset_tokens_expires_idx").on(table.expiresAt),
+}));
+
+export type ChurchPasswordResetToken = typeof churchPasswordResetTokens.$inferSelect;
+
 // ─── PLANOS E ASSINATURAS ─────────────────────────────────────────────────────
 
 export const plans = mysqlTable("plans", {

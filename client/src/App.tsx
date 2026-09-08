@@ -13,6 +13,7 @@ const LandingPage = lazy(() => import("./pages/LandingPage"));
 const TenantPublicPage = lazy(() => import("./pages/TenantPublicPage"));
 const DevocionalDiario = lazy(() => import("./pages/DevocionalDiario"));
 const LoginIgreja = lazy(() => import("./pages/LoginIgreja"));
+const RedefinirSenha = lazy(() => import("./pages/RedefinirSenha"));
 const CadastroIgreja = lazy(() => import("./pages/CadastroIgreja"));
 const CadastroDiscipulo = lazy(() => import("./pages/CadastroDiscipulo"));
 const PortalVisitante = lazy(() => import("./pages/PortalVisitante"));
@@ -123,6 +124,7 @@ function Router() {
 
       {/* ── Login e Portal da Igreja ── */}
       <Route path="/login" component={LoginIgreja} />
+      <Route path="/redefinir-senha" component={RedefinirSenha} />
       <Route path="/cadastro" component={CadastroDiscipulo} />
       <Route path="/devocional" component={DevocionalDiario} />
       <Route path="/encontro/ficha/:token" component={EncontroFichaPublica} />
