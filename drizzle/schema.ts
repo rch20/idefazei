@@ -976,6 +976,32 @@ export const foundationStudyAdministrators = mysqlTable("foundation_study_admini
   uniqueIndex("foundation_study_administrators_church_user_unique").on(table.churchId, table.churchUserId),
 ]);
 
+/** Progresso individual da matrícula em cada estudo, preservando retomada e liberação pastoral. */
+export const foundationLessonProgress = mysqlTable("foundation_lesson_progress", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  enrollmentId: int("enrollmentId").notNull(),
+  studyId: int("studyId").notNull(),
+  status: mysqlEnum("status", ["nao_iniciada", "em_andamento", "concluida"]).notNull().default("nao_iniciada"),
+  lastBlockPosition: int("lastBlockPosition").notNull().default(0),
+  startedAt: timestamp("startedAt"),
+  lastAccessedAt: timestamp("lastAccessedAt"),
+  completedAt: timestamp("completedAt"),
+  reflection: text("reflection"),
+  reviewStatus: mysqlEnum("reviewStatus", ["pendente", "compreendeu", "precisa_reforco", "nao_participou"]).notNull().default("pendente"),
+  reviewNotes: text("reviewNotes"),
+  reviewedAt: timestamp("reviewedAt"),
+  reviewedByChurchUserId: int("reviewedByChurchUserId"),
+  releasedAt: timestamp("releasedAt"),
+  releasedByChurchUserId: int("releasedByChurchUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("foundation_lesson_progress_church_enrollment_idx").on(table.churchId, table.enrollmentId),
+  index("foundation_lesson_progress_church_study_idx").on(table.churchId, table.studyId),
+  uniqueIndex("foundation_lesson_progress_enrollment_study_unique").on(table.churchId, table.enrollmentId, table.studyId),
+]);
+
 // ─── AUTENTICAÇÃO PRÓPRIA DA PLATAFORMA ──────────────────────────────────────
 
 /** Usuários das igrejas (login próprio, sem Manus OAuth) */

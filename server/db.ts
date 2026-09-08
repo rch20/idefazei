@@ -37,6 +37,7 @@ import {
   foundationModules,
   foundationStudyMaterials,
   foundationStudyAdministrators,
+  foundationLessonProgress,
   encounterChecklistItems,
   encounterDiscipleForms,
   encounterEnrollments,
@@ -4722,6 +4723,176 @@ export async function updateFoundationStudy(data: {
   if (data.active !== undefined) update.active = data.active;
   if (Object.keys(update).length === 0) return;
   await db.update(foundationStudies).set(update).where(and(eq(foundationStudies.id, data.id), eq(foundationStudies.churchId, data.churchId)));
+}
+
+export async function getFoundationEnrollmentForPerson(courseId: number, personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select({ enrollment: courseEnrollments })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .where(and(
+      eq(courseEnrollments.courseId, courseId),
+      eq(courseEnrollments.personId, personId),
+      eq(courses.churchId, churchId),
+      eq(people.churchId, churchId),
+    ))
+    .limit(1);
+  return rows[0]?.enrollment ?? null;
+}
+
+export async function getFoundationLearningProgress(churchId: number, enrollmentId: number, courseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    study: foundationStudies,
+    progress: foundationLessonProgress,
+  })
+    .from(foundationStudies)
+    .leftJoin(foundationLessonProgress, and(
+      eq(foundationLessonProgress.studyId, foundationStudies.id),
+      eq(foundationLessonProgress.churchId, churchId),
+      eq(foundationLessonProgress.enrollmentId, enrollmentId),
+    ))
+    .where(and(
+      eq(foundationStudies.churchId, churchId),
+      eq(foundationStudies.courseId, courseId),
+      eq(foundationStudies.active, true),
+    ))
+    .orderBy(foundationStudies.position, foundationStudies.id);
+}
+
+export async function getFoundationLessonProgress(churchId: number, enrollmentId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(foundationLessonProgress)
+    .where(and(
+      eq(foundationLessonProgress.churchId, churchId),
+      eq(foundationLessonProgress.enrollmentId, enrollmentId),
+      eq(foundationLessonProgress.studyId, studyId),
+    ))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFoundationCourseProgress(churchId: number, courseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    study: foundationStudies,
+    enrollment: courseEnrollments,
+    person: { id: people.id, fullName: people.fullName },
+    progress: foundationLessonProgress,
+  })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .innerJoin(foundationStudies, and(
+      eq(foundationStudies.courseId, courseId),
+      eq(foundationStudies.churchId, churchId),
+      eq(foundationStudies.active, true),
+    ))
+    .leftJoin(foundationLessonProgress, and(
+      eq(foundationLessonProgress.enrollmentId, courseEnrollments.id),
+      eq(foundationLessonProgress.studyId, foundationStudies.id),
+      eq(foundationLessonProgress.churchId, churchId),
+    ))
+    .where(and(
+      eq(courseEnrollments.courseId, courseId),
+      eq(courses.churchId, churchId),
+      eq(people.churchId, churchId),
+    ));
+}
+
+export async function touchFoundationLessonProgress(data: {
+  churchId: number; enrollmentId: number; studyId: number; lastBlockPosition: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db.insert(foundationLessonProgress).values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    status: "em_andamento",
+    lastBlockPosition: data.lastBlockPosition,
+    startedAt: now,
+    lastAccessedAt: now,
+  }).onDuplicateKeyUpdate({
+    set: {
+      status: "em_andamento",
+      lastBlockPosition: data.lastBlockPosition,
+      lastAccessedAt: now,
+    },
+  });
+}
+
+export async function completeFoundationLesson(data: {
+  churchId: number; enrollmentId: number; studyId: number; lastBlockPosition: number; reflection?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db.insert(foundationLessonProgress).values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    status: "concluida",
+    lastBlockPosition: data.lastBlockPosition,
+    startedAt: now,
+    lastAccessedAt: now,
+    completedAt: now,
+    reflection: data.reflection?.trim() || null,
+  }).onDuplicateKeyUpdate({
+    set: {
+      status: "concluida",
+      lastBlockPosition: data.lastBlockPosition,
+      lastAccessedAt: now,
+      completedAt: now,
+      reflection: data.reflection?.trim() || null,
+    },
+  });
+}
+
+export async function reviewFoundationLesson(data: {
+  churchId: number; enrollmentId: number; studyId: number; reviewStatus: "compreendeu" | "precisa_reforco" | "nao_participou"; reviewNotes?: string | null; reviewedByChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db.insert(foundationLessonProgress).values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    reviewStatus: data.reviewStatus,
+    reviewNotes: data.reviewNotes?.trim() || null,
+    reviewedAt: now,
+    reviewedByChurchUserId: data.reviewedByChurchUserId,
+  }).onDuplicateKeyUpdate({
+    set: {
+      reviewStatus: data.reviewStatus,
+      reviewNotes: data.reviewNotes?.trim() || null,
+      reviewedAt: now,
+      reviewedByChurchUserId: data.reviewedByChurchUserId,
+    },
+  });
+}
+
+export async function releaseFoundationNextStudy(data: {
+  churchId: number; enrollmentId: number; studyId: number; releasedByChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db.update(foundationLessonProgress).set({
+    releasedAt: now,
+    releasedByChurchUserId: data.releasedByChurchUserId,
+  }).where(and(
+    eq(foundationLessonProgress.churchId, data.churchId),
+    eq(foundationLessonProgress.enrollmentId, data.enrollmentId),
+    eq(foundationLessonProgress.studyId, data.studyId),
+  ));
 }
 
 export async function getLibraryItemById(id: number, churchId: number) {

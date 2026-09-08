@@ -273,6 +273,14 @@ import {
   isFoundationStudyAdministrator,
   assignFoundationStudyAdministrator,
   removeFoundationStudyAdministrator,
+  getFoundationEnrollmentForPerson,
+  getFoundationLearningProgress,
+  getFoundationLessonProgress,
+  getFoundationCourseProgress,
+  touchFoundationLessonProgress,
+  completeFoundationLesson,
+  reviewFoundationLesson,
+  releaseFoundationNextStudy,
   // Estudos semanais de Células
   getCellStudiesByChurch,
   getCellStudyById,
@@ -525,6 +533,28 @@ async function requireFoundationStudyPastor(userId: number, churchId: number) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem definir administradores de estudos." });
   }
   return access;
+}
+
+async function getFoundationStudentPath(userId: number, churchId: number, courseId: number) {
+  const access = await getFoundationStudyAccess(userId, churchId);
+  if (!access.member.personId) return { access, enrollment: null, items: [] as any[] };
+  const enrollment = await getFoundationEnrollmentForPerson(courseId, access.member.personId, churchId);
+  if (!enrollment) return { access, enrollment: null, items: [] as any[] };
+  const rows = await getFoundationLearningProgress(churchId, enrollment.id, courseId);
+  const items = rows.map((row, index) => ({
+    study: row.study,
+    progress: row.progress,
+    available: index === 0 || Boolean(rows[index - 1]?.progress?.releasedAt),
+  }));
+  return { access, enrollment, items };
+}
+
+async function requireFoundationStudentLesson(userId: number, churchId: number, courseId: number, studyId: number) {
+  const path = await getFoundationStudentPath(userId, churchId, courseId);
+  const item = path.items.find((candidate) => candidate.study.id === studyId);
+  if (!path.enrollment || !item) throw new TRPCError({ code: "NOT_FOUND", message: "Aula não encontrada na matrícula desta Pessoa." });
+  if (!item.available) throw new TRPCError({ code: "FORBIDDEN", message: "Esta aula ainda aguarda a liberação do professor." });
+  return { ...path, item };
 }
 
 async function getCellStudyAccess(userId: number, churchId: number) {
@@ -4917,6 +4947,67 @@ const escolaFundamentosRouter = router({
       const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
       return getFoundationModulesByCourse(input.churchId, input.courseId, access.canManageStudies);
+    }),
+  learningPath: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
+      if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
+      const path = await getFoundationStudentPath(ctx.user.id, input.churchId, input.courseId);
+      return {
+        enrollment: path.enrollment,
+        items: path.items,
+        canManageStudies: path.access.canManageStudies,
+      };
+    }),
+  startLesson: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), lastBlockPosition: z.number().int().min(0).max(999).default(0) }))
+    .mutation(async ({ input, ctx }) => {
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      await touchFoundationLessonProgress({ churchId: input.churchId, enrollmentId: enrollment.id, studyId: input.studyId, lastBlockPosition: input.lastBlockPosition });
+      return { success: true };
+    }),
+  completeLesson: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), lastBlockPosition: z.number().int().min(0).max(999).default(0), reflection: z.string().trim().max(4000).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      await completeFoundationLesson({ churchId: input.churchId, enrollmentId: enrollment.id, studyId: input.studyId, lastBlockPosition: input.lastBlockPosition, reflection: input.reflection });
+      if (enrollment.status === "matriculado") await updateCourseEnrollment(enrollment.id, { status: "em_andamento" });
+      return { success: true };
+    }),
+  courseProgress: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
+      if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
+      return getFoundationCourseProgress(input.churchId, input.courseId);
+    }),
+  reviewLesson: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), enrollmentId: z.number().int().positive(), studyId: z.number().int().positive(), reviewStatus: z.enum(["compreendeu", "precisa_reforco", "nao_participou"]), reviewNotes: z.string().trim().max(2000).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const [enrollment, study] = await Promise.all([
+        getCourseEnrollmentById(input.enrollmentId, input.churchId),
+        getFoundationStudyById(input.studyId, input.churchId),
+      ]);
+      if (!enrollment || !study || enrollment.courseId !== study.courseId) throw new TRPCError({ code: "NOT_FOUND", message: "Matrícula ou aula não pertence a esta igreja." });
+      await reviewFoundationLesson({ ...input, reviewedByChurchUserId: access.member.id });
+      return { success: true };
+    }),
+  releaseNextStudy: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), enrollmentId: z.number().int().positive(), studyId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const [enrollment, study, progress] = await Promise.all([
+        getCourseEnrollmentById(input.enrollmentId, input.churchId),
+        getFoundationStudyById(input.studyId, input.churchId),
+        getFoundationLessonProgress(input.churchId, input.enrollmentId, input.studyId),
+      ]);
+      if (!enrollment || !study || enrollment.courseId !== study.courseId || !progress) throw new TRPCError({ code: "NOT_FOUND", message: "Acompanhamento da aula não encontrado nesta igreja." });
+      if (progress.reviewStatus !== "compreendeu") throw new TRPCError({ code: "BAD_REQUEST", message: "Registre a revisão como Compreendeu antes de liberar o próximo tema." });
+      await releaseFoundationNextStudy({ churchId: input.churchId, enrollmentId: input.enrollmentId, studyId: input.studyId, releasedByChurchUserId: access.member.id });
+      return { success: true };
     }),
   createModule: protectedProcedure
     .input(z.object({
