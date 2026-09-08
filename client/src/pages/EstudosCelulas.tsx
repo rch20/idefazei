@@ -52,6 +52,7 @@ function AttachmentList({ studyId, attachments, canManage, churchId, onChanged }
   const [linkUrl, setLinkUrl] = useState("");
   const [showLink, setShowLink] = useState(false);
   const [targetFile, setTargetFile] = useState<File | null>(null);
+  const [openingPdfId, setOpeningPdfId] = useState<number | null>(null);
   const attachFile = trpc.cellStudies.attachFile.useMutation({ onSuccess: () => { toast.success("Arquivo anexado ao estudo."); setTargetFile(null); setUploading(false); onChanged(); }, onError: (error) => { setUploading(false); toast.error(error.message); } });
   const attachLink = trpc.cellStudies.attachLink.useMutation({ onSuccess: () => { toast.success("Link anexado ao estudo."); setLinkTitle(""); setLinkUrl(""); setShowLink(false); onChanged(); }, onError: (error) => toast.error(error.message) });
   const deleteAttachment = trpc.cellStudies.deleteAttachment.useMutation({ onSuccess: () => { toast.success("Anexo removido."); onChanged(); }, onError: (error) => toast.error(error.message) });
@@ -65,11 +66,41 @@ function AttachmentList({ studyId, attachments, canManage, churchId, onChanged }
       attachFile.mutate({ churchId, studyId, title: file.name.replace(/\.[^.]+$/, ""), mediaAssetId: uploaded.mediaAssetId, url: uploaded.url, mimeType: file.type, originalFilename: file.name });
     } catch (error) { setUploading(false); setTargetFile(null); toast.error(error instanceof Error ? error.message : "Não foi possível enviar o arquivo."); }
   };
+  const handlePdfAction = async (attachment: Attachment, mode: "open" | "download") => {
+    if (!attachment.url || openingPdfId === attachment.id) return;
+    const popup = mode === "open" ? window.open("about:blank", "_blank") : null;
+    if (mode === "open" && !popup) return toast.error("Permita pop-ups para abrir o PDF no navegador.");
+    setOpeningPdfId(attachment.id);
+    try {
+      const response = await fetch(attachment.url, { mode: "cors" });
+      if (!response.ok) throw new Error("Falha ao carregar o PDF");
+      const sourceBlob = await response.blob();
+      const pdfBlob = sourceBlob.type === "application/pdf" ? sourceBlob : new Blob([sourceBlob], { type: "application/pdf" });
+      const blobUrl = URL.createObjectURL(pdfBlob);
+      if (mode === "open" && popup) {
+        popup.location.href = blobUrl;
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      } else {
+        const link = document.createElement("a");
+        link.href = blobUrl;
+        link.download = attachment.originalFilename || `${attachment.title}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1_000);
+      }
+    } catch (error) {
+      popup?.close();
+      toast.error(error instanceof Error ? error.message : "Não foi possível carregar o PDF.");
+    } finally {
+      setOpeningPdfId(null);
+    }
+  };
   return <div className="mt-4 rounded-xl border border-[#c9a84c]/20 bg-[#fdfaf1] p-3">
     <div className="mb-2 flex items-center justify-between gap-2"><p className="flex items-center gap-2 text-sm font-semibold text-[#1e3a5f]"><FileText className="h-4 w-4 text-[#c9a84c]" />Materiais do estudo</p>{canManage ? <div className="flex flex-wrap gap-2"><input ref={fileRef} type="file" className="hidden" accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.webp,.mp3,.m4a,.wav,.ogg" onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadSelectedFile(file); event.target.value = ""; }} /><Button type="button" size="sm" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>{uploading ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Upload className="mr-1 h-3.5 w-3.5" />}Arquivo</Button><Button type="button" size="sm" variant="outline" onClick={() => setShowLink((value) => !value)}><Link2 className="mr-1 h-3.5 w-3.5" />Link externo</Button></div> : null}</div>
     {targetFile && uploading ? <p className="mb-2 text-xs text-muted-foreground">Enviando {targetFile.name}…</p> : null}
     {showLink ? <div className="mb-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_auto]"><Input value={linkTitle} onChange={(event) => setLinkTitle(event.target.value)} placeholder="Nome do material" /><Input value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder="https://…" inputMode="url" /><Button type="button" disabled={linkTitle.trim().length < 2 || !linkUrl.startsWith("https://") || attachLink.isPending} onClick={() => attachLink.mutate({ churchId, studyId, title: linkTitle, url: linkUrl })}>Adicionar</Button></div> : null}
-    {attachments.length ? <div className="space-y-2">{attachments.map((attachment) => { const isPdf = attachment.kind === "arquivo" && (attachment.mimeType?.toLowerCase() === "application/pdf" || attachment.originalFilename?.toLowerCase().endsWith(".pdf") || attachment.title.toLowerCase().endsWith(".pdf")); return <div key={attachment.id} className="flex flex-col gap-3 rounded-lg bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex min-w-0 items-center gap-2 text-sm font-medium text-[#1e3a5f]"><span className="shrink-0">{attachment.kind === "link" ? <ExternalLink className="h-4 w-4" /> : <FileDown className="h-4 w-4" />}</span><span className="truncate">{attachment.title}</span></div><div className="flex flex-wrap items-center gap-2">{isPdf && attachment.url ? <><Button type="button" size="sm" variant="outline" asChild><a href={attachment.url} target="_blank" rel="noopener noreferrer"><FileDown className="mr-1.5 h-3.5 w-3.5" />Abrir PDF</a></Button><Button type="button" size="sm" variant="outline" asChild><a href={attachment.url} download={attachment.originalFilename ?? `${attachment.title}.pdf`} rel="noopener noreferrer"><Download className="mr-1.5 h-3.5 w-3.5" />Baixar PDF</a></Button></> : <a className="text-sm font-medium text-[#1e3a5f] hover:underline" href={attachment.url ?? "#"} target="_blank" rel="noopener noreferrer">{attachment.kind === "link" ? "Abrir link" : "Abrir material"}</a>}{attachment.position === 0 ? <Badge variant="outline" className="hidden whitespace-nowrap border-[#c9a84c]/50 text-[10px] text-[#8a6b16] sm:inline-flex">Material principal</Badge> : null}{canManage ? <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" aria-label={`Remover ${attachment.title}`} onClick={() => deleteAttachment.mutate({ churchId, studyId, id: attachment.id })}><Trash2 className="h-4 w-4" /></Button> : null}</div></div>; })}</div> : <p className="text-sm text-muted-foreground">Nenhum material complementar anexado.</p>}
+    {attachments.length ? <div className="space-y-2">{attachments.map((attachment) => { const isPdf = attachment.kind === "arquivo" && (attachment.mimeType?.toLowerCase() === "application/pdf" || attachment.originalFilename?.toLowerCase().endsWith(".pdf") || attachment.title.toLowerCase().endsWith(".pdf")); return <div key={attachment.id} className="flex flex-col gap-3 rounded-lg bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex min-w-0 items-center gap-2 text-sm font-medium text-[#1e3a5f]"><span className="shrink-0">{attachment.kind === "link" ? <ExternalLink className="h-4 w-4" /> : <FileDown className="h-4 w-4" />}</span><span className="truncate">{attachment.title}</span></div><div className="flex flex-wrap items-center gap-2">{isPdf && attachment.url ? <><Button type="button" size="sm" variant="outline" disabled={openingPdfId === attachment.id} aria-label={`Abrir PDF ${attachment.title}`} onClick={() => void handlePdfAction(attachment, "open")}><FileDown className="mr-1.5 h-3.5 w-3.5" />Abrir PDF</Button><Button type="button" size="sm" variant="outline" disabled={openingPdfId === attachment.id} aria-label={`Baixar PDF ${attachment.title}`} onClick={() => void handlePdfAction(attachment, "download")}><Download className="mr-1.5 h-3.5 w-3.5" />Baixar PDF</Button></> : <a className="text-sm font-medium text-[#1e3a5f] hover:underline" href={attachment.url ?? "#"} target="_blank" rel="noopener noreferrer">{attachment.kind === "link" ? "Abrir link" : "Abrir material"}</a>}{attachment.position === 0 ? <Badge variant="outline" className="hidden whitespace-nowrap border-[#c9a84c]/50 text-[10px] text-[#8a6b16] sm:inline-flex">Material principal</Badge> : null}{canManage ? <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-destructive" aria-label={`Remover ${attachment.title}`} onClick={() => deleteAttachment.mutate({ churchId, studyId, id: attachment.id })}><Trash2 className="h-4 w-4" /></Button> : null}</div></div>; })}</div> : <p className="text-sm text-muted-foreground">Nenhum material complementar anexado.</p>}
   </div>;
 }
 

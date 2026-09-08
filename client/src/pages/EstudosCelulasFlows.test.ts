@@ -71,9 +71,12 @@ describe("Estudos de Células — biblioteca semanal", () => {
   it("oferece ações explícitas para abrir e baixar PDF na experiência mobile", () => {
     expect(page).toContain("Abrir PDF");
     expect(page).toContain("Baixar PDF");
-    expect(page).toContain("download={attachment.originalFilename");
+    expect(page).toContain("link.download = attachment.originalFilename");
     expect(page).toContain("target=\"_blank\"");
     expect(page).toContain("application/pdf");
+    expect(page).toContain("fetch(attachment.url, { mode: \"cors\" })");
+    expect(page).toContain("URL.createObjectURL(pdfBlob)");
+    expect(page).toContain("Permita pop-ups para abrir o PDF no navegador.");
     expect(page).toContain("sm:flex-row");
   });
 
