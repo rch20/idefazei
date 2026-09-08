@@ -257,7 +257,7 @@ export default function Pessoas() {
     { enabled: Boolean(selectedPerson?.id && isPastorPresident) }
   );
   const selectedPersonIsPastor = pastoralCoverageQuery.data?.isPastor === true;
-  const canManagePastoralCoverage = Boolean(isPastorPresident && selectedPerson?.id);
+  const canManagePastoralCoverage = Boolean(isPastorPresident && selectedPerson?.id && selectedPersonIsPastor);
   const personFunctionsQuery = trpc.ministries.personFunctions.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
@@ -882,12 +882,12 @@ export default function Pessoas() {
           </div>
 
           <AdaptiveFormDialogBody className="space-y-5">
-          <div role="tablist" aria-label="Seções da ficha da Pessoa" className={`grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 ${isPastorPresident && (pastoralCoverageCandidatesQuery.isLoading || selectedPersonIsPastor) ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
+          <div role="tablist" aria-label="Seções da ficha da Pessoa" className={`grid grid-cols-2 gap-1 rounded-xl bg-muted p-1 ${canManagePastoralCoverage ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
             {[
               ["resumo", "Resumo"],
               ["jornada", "Jornada"],
-              ["participacoes", "Participações"],
               ["cuidado", "Cuidado"],
+              ["participacoes", "Participações"],
               ...(canManagePastoralCoverage ? [["cobertura", "Cobertura espiritual"]] : []),
               ["historico", "Histórico"],
             ].map(([value, label]) => (
@@ -1006,11 +1006,45 @@ export default function Pessoas() {
             </section>
           )}
 
+          {personSection === "resumo" && selectedPerson && (
+            <section className={`rounded-xl border p-4 ${selectedAttention?.priority === "alta" ? "border-rose-200 bg-rose-50/60" : selectedAttention?.priority === "media" ? "border-amber-200 bg-amber-50/60" : selectedAttention?.priority === "normal" ? "border-green-200 bg-green-50/60" : "border-border bg-muted/20"}`}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <ArrowRight className={`mt-0.5 h-5 w-5 shrink-0 ${selectedAttention?.priority === "alta" ? "text-rose-600" : selectedAttention?.priority === "media" ? "text-amber-600" : "text-navy"}`} />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Próximo passo</p>
+                    <p className="mt-1 text-sm font-semibold text-navy">{selectedAttention?.nextStep ?? "Nenhum próximo passo definido"}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{selectedAttention ? (selectedAttention.reasons.length > 0 ? selectedAttention.reasons.join(" · ") : "Não há pendências críticas no momento.") : "A ficha ainda não possui uma pendência de cuidado registrada."}</p>
+                  </div>
+                </div>
+                {canActOnNextStep && nextStepLabel && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full shrink-0 gap-2 sm:w-auto"
+                    onClick={() => {
+                      if (!selectedAttention) return;
+                      if (selectedAttention.nextStep === "Registrar primeiro contato") {
+                        navigate("/app/consolidacao");
+                      } else if (selectedAttention.nextStep === "Enviar para célula") {
+                        setPersonSection("participacoes");
+                      } else {
+                        setPersonSection("cuidado");
+                      }
+                    }}
+                  >
+                    {nextStepLabel} <ArrowRight className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </section>
+          )}
+
           {personSection === "resumo" && selectedPerson && <div className="grid gap-2 sm:grid-cols-4">
             <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Jornada</p><p className="mt-1 text-sm font-semibold text-navy">{STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</p></div>
             <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Participações</p><p className="mt-1 text-sm font-semibold text-navy">{participationCount} ativa(s)</p></div>
-            <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Responsabilidade</p><p className="mt-1 truncate text-sm font-semibold text-navy">{currentResponsible?.fullName ?? "Não definida"}</p></div>
-            {canManageMinistryFunctions && <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Acesso</p><p className="mt-1 text-sm font-semibold text-navy">{accessSummaryText}</p></div>}
+            <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Acompanhado por</p><p className="mt-1 truncate text-sm font-semibold text-navy">{currentResponsible?.fullName ?? "Não definido"}</p></div>
+
           </div>}
 
           {personSection === "resumo" && canManagePastoralCoverage && (
@@ -1128,38 +1162,6 @@ export default function Pessoas() {
                 </>
               )}
             </section>
-          )}
-
-          {personSection === "resumo" && selectedAttention && (
-            <div className={`rounded-xl border p-4 ${selectedAttention.priority === "alta" ? "border-rose-200 bg-rose-50/60" : selectedAttention.priority === "media" ? "border-amber-200 bg-amber-50/60" : "border-green-200 bg-green-50/60"}`}>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex items-start gap-3">
-                  <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${selectedAttention.priority === "alta" ? "text-rose-600" : selectedAttention.priority === "media" ? "text-amber-600" : "text-green-600"}`} />
-                  <div>
-                    <p className="text-sm font-semibold text-navy">Próximo passo: {selectedAttention.nextStep}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{selectedAttention.reasons.length > 0 ? selectedAttention.reasons.join(" · ") : "Não há pendências críticas no momento."}</p>
-                  </div>
-                </div>
-                {canActOnNextStep && nextStepLabel && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full shrink-0 gap-2 sm:w-auto"
-                    onClick={() => {
-                      if (selectedAttention.nextStep === "Registrar primeiro contato") {
-                        navigate("/app/consolidacao");
-                      } else if (selectedAttention.nextStep === "Enviar para célula") {
-                        setPersonSection("participacoes");
-                      } else {
-                        setPersonSection("cuidado");
-                      }
-                    }}
-                  >
-                    {nextStepLabel} <ArrowRight className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
           )}
 
           {personSection === "cuidado" && <div className="grid gap-4 md:grid-cols-2">

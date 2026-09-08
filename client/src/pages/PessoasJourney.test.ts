@@ -49,7 +49,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("const isPastorPresident = effectiveRoles.includes(\"pastor_presidente\");");
     expect(pageSource).toContain("trpc.people.pastoralCoverage.useQuery");
     expect(pageSource).toContain("const selectedPersonIsPastor = pastoralCoverageQuery.data?.isPastor === true;");
-    expect(pageSource).toContain("const canManagePastoralCoverage = Boolean(isPastorPresident && selectedPerson?.id);");
+    expect(pageSource).toContain("const canManagePastoralCoverage = Boolean(isPastorPresident && selectedPerson?.id && selectedPersonIsPastor);");
     expect(pageSource).toContain("trpc.people.savePastoralCoverage.useMutation");
     expect(pageSource).toContain("trpc.people.removePastoralCoverage.useMutation");
     expect(pageSource).toContain("Cobertura espiritual");
@@ -97,6 +97,14 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("Para adicionar ou alterar uma atuação, abra o painel do Ministério correspondente.");
     expect(pageSource).not.toContain("Adicionar atuação na equipe");
     expect(pageSource).not.toContain("saveMinistryFunction");
+  });
+
+  it("prioriza cuidado no resumo e retira dados técnicos de acesso", () => {
+    expect(pageSource).toContain('>Próximo passo</p>');
+    expect(pageSource).toContain('>Acompanhado por</p>');
+    expect(pageSource).not.toContain('>Responsabilidade</p>');
+    expect(pageSource).not.toContain('>Acesso</p>');
+    expect(pageSource).toContain('Nenhum próximo passo definido');
   });
 
   it("mostra um próximo passo único e leva cada pendência ao contexto correto", () => {
