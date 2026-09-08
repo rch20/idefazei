@@ -80,6 +80,17 @@ describe("Estudos de Células — biblioteca semanal", () => {
     expect(page).toContain("sm:flex-row");
   });
 
+  it("mostra uma biblioteca resumida para líderes sem controles administrativos", () => {
+    expect(page).toContain("function LeaderStudyCards");
+    expect(page).toContain("Ver estudo");
+    expect(page).toContain("line-clamp-3");
+    expect(page).toContain("canManage ? <div className=\"space-y-4\">");
+    expect(page).toContain("<StudyReaderDialog");
+    expect(page).toContain("canManage={false}");
+    expect(page).toContain("Adicionar estudo pronto");
+    expect(page).toContain("Responsáveis pelos estudos");
+  });
+
   it("mantém a mesma biblioteca e valida o asset no tenant antes de associá-lo", () => {
     expect(page).not.toContain("ReadyStudyLibrary");
     expect(router).toContain("createReadyCellStudy");
