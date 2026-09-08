@@ -68,6 +68,15 @@ describe("Estudos de Células — biblioteca semanal", () => {
     expect(db).toContain("position: 0");
   });
 
+  it("oferece ações explícitas para abrir e baixar PDF na experiência mobile", () => {
+    expect(page).toContain("Abrir PDF");
+    expect(page).toContain("Baixar PDF");
+    expect(page).toContain("download={attachment.originalFilename");
+    expect(page).toContain("target=\"_blank\"");
+    expect(page).toContain("application/pdf");
+    expect(page).toContain("sm:flex-row");
+  });
+
   it("mantém a mesma biblioteca e valida o asset no tenant antes de associá-lo", () => {
     expect(page).not.toContain("ReadyStudyLibrary");
     expect(router).toContain("createReadyCellStudy");
