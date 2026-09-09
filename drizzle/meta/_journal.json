@@ -442,6 +442,13 @@
       "when": 1788965288042,
       "tag": "0062_narrow_ken_ellis",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "5",
+      "when": 1788989985296,
+      "tag": "0063_parched_valeria_richards",
+      "breakpoints": true
     }
   ]
 }

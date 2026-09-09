@@ -105,6 +105,32 @@ export const certificateTemplates = mysqlTable(
 export type CertificateTemplate = typeof certificateTemplates.$inferSelect;
 export type InsertCertificateTemplate = typeof certificateTemplates.$inferInsert;
 
+// Tipos adicionais criados pelo tenant; todos herdam o modelo visual protegido.
+export const certificateCustomTypes = mysqlTable(
+  "certificate_custom_types",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    modelKey: varchar("modelKey", { length: 50 }).notNull().default("modern-v1"),
+    title: varchar("title", { length: 160 }).notNull(),
+    subtitle: varchar("subtitle", { length: 180 }).notNull(),
+    body: text("body").notNull(),
+    verse: text("verse"),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => ({
+    churchNameUnique: uniqueIndex("certificate_custom_types_church_name_unique").on(table.churchId, table.name),
+    churchIdx: index("certificate_custom_types_church_idx").on(table.churchId),
+    activeIdx: index("certificate_custom_types_active_idx").on(table.churchId, table.active),
+  })
+);
+
+export type CertificateCustomType = typeof certificateCustomTypes.$inferSelect;
+export type InsertCertificateCustomType = typeof certificateCustomTypes.$inferInsert;
+
 // ─── SITE PÚBLICO MULTI-TENANT ─────────────────────────────────────────────────
 // A apresentação pública fica separada do cadastro operacional da igreja. Todas as
 // entidades carregam churchId para que tema, conteúdo e revisões nunca atravessem

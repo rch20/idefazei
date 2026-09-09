@@ -5814,6 +5814,77 @@ const comunicacaoRouter = router({
 // ─── CERTIFICATES ROUTER ─────────────────────────────────────────────────────────────────────────────────────
 
 const certificatesRouter = router({
+  listCustomTypes: protectedProcedure
+    .input(z.object({ churchId: z.number() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { certificateCustomTypes } = await import("../drizzle/schema");
+      const { and, eq } = await import("drizzle-orm");
+      return db
+        .select()
+        .from(certificateCustomTypes)
+        .where(and(eq(certificateCustomTypes.churchId, input.churchId), eq(certificateCustomTypes.active, true)));
+    }),
+
+  createCustomType: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      name: z.string().trim().min(2).max(160),
+      title: z.string().trim().min(2).max(160),
+      subtitle: z.string().trim().min(2).max(180),
+      body: z.string().trim().min(2).max(500),
+      verse: z.string().max(500).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { certificateCustomTypes } = await import("../drizzle/schema");
+      const { and, eq } = await import("drizzle-orm");
+      const [existing] = await db.select({ id: certificateCustomTypes.id }).from(certificateCustomTypes).where(and(eq(certificateCustomTypes.churchId, input.churchId), eq(certificateCustomTypes.name, input.name))).limit(1);
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "Já existe um certificado com esse nome" });
+      const [created] = await db.insert(certificateCustomTypes).values({ churchId: input.churchId, name: input.name, modelKey: "modern-v1", title: input.title, subtitle: input.subtitle, body: input.body, verse: input.verse || null }).$returningId();
+      return { id: created.id };
+    }),
+
+  updateCustomType: protectedProcedure
+    .input(z.object({
+      churchId: z.number(),
+      id: z.number(),
+      name: z.string().trim().min(2).max(160),
+      title: z.string().trim().min(2).max(160),
+      subtitle: z.string().trim().min(2).max(180),
+      body: z.string().trim().min(2).max(500),
+      verse: z.string().max(500).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { certificateCustomTypes } = await import("../drizzle/schema");
+      const { and, eq, ne } = await import("drizzle-orm");
+      const [existing] = await db.select({ id: certificateCustomTypes.id }).from(certificateCustomTypes).where(and(eq(certificateCustomTypes.churchId, input.churchId), eq(certificateCustomTypes.id, input.id), eq(certificateCustomTypes.active, true))).limit(1);
+      if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Tipo de certificado não encontrado" });
+      const [duplicate] = await db.select({ id: certificateCustomTypes.id }).from(certificateCustomTypes).where(and(eq(certificateCustomTypes.churchId, input.churchId), eq(certificateCustomTypes.name, input.name), ne(certificateCustomTypes.id, input.id))).limit(1);
+      if (duplicate) throw new TRPCError({ code: "CONFLICT", message: "Já existe um certificado com esse nome" });
+      await db.update(certificateCustomTypes).set({ name: input.name, title: input.title, subtitle: input.subtitle, body: input.body, verse: input.verse || null }).where(and(eq(certificateCustomTypes.churchId, input.churchId), eq(certificateCustomTypes.id, input.id)));
+      return { success: true };
+    }),
+
+  archiveCustomType: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { certificateCustomTypes } = await import("../drizzle/schema");
+      const { and, eq } = await import("drizzle-orm");
+      await db.update(certificateCustomTypes).set({ active: false }).where(and(eq(certificateCustomTypes.churchId, input.churchId), eq(certificateCustomTypes.id, input.id)));
+      return { success: true };
+    }),
+
   // Busca a configuração de certificado da igreja
   getConfig: protectedProcedure
     .input(z.object({ churchId: z.number() }))
@@ -5908,6 +5979,7 @@ const certificatesRouter = router({
     .input(
       z.object({
         type: z.enum(["fundamentos", "batismo", "lideres"]),
+        customTypeId: z.number().optional(),
         memberName: z.string().min(1),
         churchId: z.number(),
         // IDs opcionais para validar conclusão no backend
@@ -5921,6 +5993,9 @@ const certificatesRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
+      if (input.customTypeId) {
+        await requireChurchAdministrator(ctx.user.id, input.churchId);
+      }
 
       // Validar que a pessoa pertence à igreja (se personId fornecido)
       if (input.personId) {
@@ -5941,22 +6016,35 @@ const certificatesRouter = router({
 
       const church = await getChurchById(input.churchId);
       const churchName = church?.name ?? "Igreja";
-      const { certificateTemplates } = await import("../drizzle/schema");
+      const { certificateTemplates, certificateCustomTypes } = await import("../drizzle/schema");
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
       const { eq, and } = await import("drizzle-orm");
-      const [savedTemplate] = await db
-        .select({ modelKey: certificateTemplates.modelKey, title: certificateTemplates.title, subtitle: certificateTemplates.subtitle, body: certificateTemplates.body })
-        .from(certificateTemplates)
-        .where(and(eq(certificateTemplates.churchId, input.churchId), eq(certificateTemplates.type, input.type)))
-        .limit(1);
+      const [customType] = input.customTypeId
+        ? await db
+            .select()
+            .from(certificateCustomTypes)
+            .where(and(eq(certificateCustomTypes.churchId, input.churchId), eq(certificateCustomTypes.id, input.customTypeId), eq(certificateCustomTypes.active, true)))
+            .limit(1)
+        : [];
+      if (input.customTypeId && !customType) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Tipo de certificado não encontrado nesta igreja" });
+      }
+      const [savedTemplate] = customType
+        ? [{ modelKey: customType.modelKey, title: customType.title, subtitle: customType.subtitle, body: customType.body }]
+        : await db
+            .select({ modelKey: certificateTemplates.modelKey, title: certificateTemplates.title, subtitle: certificateTemplates.subtitle, body: certificateTemplates.body })
+            .from(certificateTemplates)
+            .where(and(eq(certificateTemplates.churchId, input.churchId), eq(certificateTemplates.type, input.type)))
+            .limit(1);
 
       // Usar dados de personalização da igreja
       const pastorName = input.pastorName ?? church?.certPastorName ?? undefined;
       const signatureLabel = church?.certSignatureLabel ?? "Pastor(a) Presidente";
       const logoUrl = church?.certLogoUrl ?? undefined;
-      const verse =
-        input.type === "fundamentos"
+      const verse = customType
+        ? (customType.verse ?? undefined)
+        : input.type === "fundamentos"
           ? (church?.certVerseFundamentos ?? undefined)
           : input.type === "batismo"
             ? (church?.certVerseBatismo ?? undefined)
@@ -5981,11 +6069,12 @@ const certificatesRouter = router({
 
       const timestamp = Date.now();
       const safeName = input.memberName.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
-      const fileKey = `churches/${input.churchId}/certificates/${input.type}-${safeName}-${timestamp}.pdf`;
+      const fileType = customType ? `custom-${customType.id}` : input.type;
+      const fileKey = `churches/${input.churchId}/certificates/${fileType}-${safeName}-${timestamp}.pdf`;
 
       const { url } = await storagePut(fileKey, Buffer.from(pdfBytes), "application/pdf");
 
-      return { url, fileName: `certificado-${input.type}-${safeName}.pdf` };
+      return { url, fileName: `certificado-${fileType}-${safeName}.pdf` };
     }),
 });
 

@@ -6,10 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Award, BookOpen, Droplets, GraduationCap, Save, Upload, Eye, Loader2 } from "lucide-react";
+import { Award, BookOpen, Droplets, GraduationCap, Save, Upload, Eye, Loader2, Plus, Pencil, Archive } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { CERTIFICATE_TEMPLATE_COPY, type CertificateTemplateOverride, type CertificateType } from "@shared/certificateTemplate";
 // ─── VERSÍCULOS PADRÃO ────────────────────────────────────────────────────────
@@ -33,6 +35,11 @@ export default function ConfiguracoesCertificados() {
     { churchId },
     { enabled: !!churchId }
   );
+  const customTypesQuery = trpc.certificates.listCustomTypes.useQuery(
+    { churchId },
+    { enabled: !!churchId }
+  );
+  const { data: people = [] } = trpc.people.list.useQuery({ churchId }, { enabled: !!churchId });
 
   const [pastorName, setPastorName] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
@@ -44,7 +51,14 @@ export default function ConfiguracoesCertificados() {
   const [templateBatismo, setTemplateBatismo] = useState<CertificateTemplateOverride>({ modelKey: "modern-v1", title: CERTIFICATE_TEMPLATE_COPY.batismo.title, subtitle: CERTIFICATE_TEMPLATE_COPY.batismo.subtitle, body: CERTIFICATE_TEMPLATE_COPY.batismo.body });
   const [templateLideres, setTemplateLideres] = useState<CertificateTemplateOverride>({ modelKey: "modern-v1", title: CERTIFICATE_TEMPLATE_COPY.lideres.title, subtitle: CERTIFICATE_TEMPLATE_COPY.lideres.subtitle, body: CERTIFICATE_TEMPLATE_COPY.lideres.body });
   const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [previewType, setPreviewType] = useState<"fundamentos" | "batismo" | "lideres" | null>(null);
+  const [previewType, setPreviewType] = useState<CertificatePreviewType | null>(null);
+  const [previewCustom, setPreviewCustom] = useState<CustomCertificateRow | null>(null);
+  const [customTypeDialogOpen, setCustomTypeDialogOpen] = useState(false);
+  const [customTypeEditingId, setCustomTypeEditingId] = useState<number | null>(null);
+  const [customTypeDraft, setCustomTypeDraft] = useState<CustomCertificateDraft>(EMPTY_CUSTOM_TYPE);
+  const [archiveTarget, setArchiveTarget] = useState<CustomCertificateRow | null>(null);
+  const [emitTarget, setEmitTarget] = useState<CustomCertificateRow | null>(null);
+  const [emitPersonId, setEmitPersonId] = useState("");
 
   // Preencher formulário com dados salvos
   useEffect(() => {
@@ -70,6 +84,83 @@ export default function ConfiguracoesCertificados() {
     },
     onError: () => toast.error("Erro ao salvar configurações"),
   });
+
+  const customTypeUtils = trpc.useUtils();
+  const createCustomTypeMutation = trpc.certificates.createCustomType.useMutation({
+    onSuccess: () => {
+      toast.success("Novo tipo de certificado criado!");
+      setCustomTypeDialogOpen(false);
+      setCustomTypeDraft(EMPTY_CUSTOM_TYPE);
+      customTypeUtils.certificates.listCustomTypes.invalidate({ churchId });
+    },
+    onError: (error) => toast.error(error.message || "Erro ao criar tipo de certificado"),
+  });
+  const updateCustomTypeMutation = trpc.certificates.updateCustomType.useMutation({
+    onSuccess: () => {
+      toast.success("Tipo de certificado atualizado!");
+      setCustomTypeDialogOpen(false);
+      setCustomTypeEditingId(null);
+      setCustomTypeDraft(EMPTY_CUSTOM_TYPE);
+      customTypeUtils.certificates.listCustomTypes.invalidate({ churchId });
+    },
+    onError: (error) => toast.error(error.message || "Erro ao atualizar tipo de certificado"),
+  });
+  const archiveCustomTypeMutation = trpc.certificates.archiveCustomType.useMutation({
+    onSuccess: () => {
+      toast.success("Tipo de certificado arquivado.");
+      setArchiveTarget(null);
+      customTypeUtils.certificates.listCustomTypes.invalidate({ churchId });
+    },
+    onError: (error) => toast.error(error.message || "Erro ao arquivar tipo de certificado"),
+  });
+
+  const emitCustomCertificateMutation = trpc.certificates.generate.useMutation({
+    onSuccess: (data) => {
+      window.open(data.url, "_blank");
+      toast.success("Certificado gerado.");
+      setEmitTarget(null);
+      setEmitPersonId("");
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível gerar o certificado."),
+  });
+
+  function openNewCustomType() {
+    setCustomTypeEditingId(null);
+    setCustomTypeDraft(EMPTY_CUSTOM_TYPE);
+    setCustomTypeDialogOpen(true);
+  }
+
+  function openEditCustomType(customType: CustomCertificateRow) {
+    setCustomTypeEditingId(customType.id);
+    setCustomTypeDraft({ name: customType.name, title: customType.title, subtitle: customType.subtitle, body: customType.body, verse: customType.verse || "" });
+    setCustomTypeDialogOpen(true);
+  }
+
+  function handleCustomTypeSave() {
+    const payload = { churchId, ...customTypeDraft, verse: customTypeDraft.verse || undefined };
+    if (customTypeEditingId) {
+      updateCustomTypeMutation.mutate({ ...payload, id: customTypeEditingId });
+    } else {
+      createCustomTypeMutation.mutate(payload);
+    }
+  }
+
+  function previewCustomType(customType: CustomCertificateRow) {
+    setPreviewType("fundamentos");
+    setPreviewCustom(customType);
+  }
+
+  function openEmitCustomType(customType: CustomCertificateRow) {
+    setEmitTarget(customType);
+    setEmitPersonId("");
+  }
+
+  function closePreview(open: boolean) {
+    if (!open) {
+      setPreviewType(null);
+      setPreviewCustom(null);
+    }
+  }
 
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -108,6 +199,7 @@ export default function ConfiguracoesCertificados() {
   }
 
   function handlePreview(type: "fundamentos" | "batismo" | "lideres") {
+    setPreviewCustom(null);
     setPreviewType(type);
   }
 
@@ -240,6 +332,49 @@ export default function ConfiguracoesCertificados() {
         </CardContent>
       </Card>
 
+      {/* Novos tipos de certificado */}
+      <Card className="border border-[#c9a84c]/20">
+        <CardHeader className="flex flex-row items-start justify-between gap-3">
+          <div>
+            <CardTitle className="text-[#1e3a5f] text-lg">Outros tipos de certificado</CardTitle>
+            <CardDescription>
+              Crie uma nova formação usando o mesmo modelo moderno protegido. O design não é editável.
+            </CardDescription>
+          </div>
+          <Button type="button" size="sm" className="shrink-0 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={openNewCustomType}>
+            <Plus className="mr-1 h-4 w-4" />
+            Novo tipo
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {customTypesQuery.isLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando tipos personalizados...</div>
+          ) : customTypesQuery.data?.length ? (
+            customTypesQuery.data.map((customType) => (
+              <div key={customType.id} className="flex flex-col gap-3 rounded-xl border border-[#c9a84c]/20 bg-[#fcf9f3] p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium text-[#1e3a5f]">{customType.name}</p>
+                    <span className="rounded-full bg-[#f8f4eb] px-2 py-1 text-[10px] font-medium text-[#8c6e2f]">Modelo moderno</span>
+                  </div>
+                  <p className="mt-1 truncate text-sm text-muted-foreground">{customType.subtitle}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => previewCustomType(customType)}><Eye className="mr-1 h-4 w-4" />Pré-visualizar</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => openEmitCustomType(customType)}><Award className="mr-1 h-4 w-4" />Emitir</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => openEditCustomType(customType)}><Pencil className="mr-1 h-4 w-4" />Editar</Button>
+                  <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => setArchiveTarget(customType)}><Archive className="mr-1 h-4 w-4" />Arquivar</Button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-xl border border-dashed border-[#c9a84c]/30 bg-[#fcf9f3] p-5 text-sm text-muted-foreground">
+              Nenhum tipo adicional criado. Os três tipos padrão continuam disponíveis acima.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Versículos por Tipo */}
       <Card className="border border-[#c9a84c]/20">
         <CardHeader>
@@ -356,21 +491,87 @@ export default function ConfiguracoesCertificados() {
       <CertificatePreviewDialog
         open={previewType !== null}
         type={previewType}
+        customType={previewCustom}
         churchName={churchName}
         pastorName={pastorName}
         signatureLabel={signatureLabel}
         logoUrl={logoUrl}
         verse={previewType === "fundamentos" ? verseFundamentos : previewType === "batismo" ? verseBatismo : verseLideres}
         template={previewType === "fundamentos" ? templateFundamentos : previewType === "batismo" ? templateBatismo : templateLideres}
-        onOpenChange={(open) => {
-          if (!open) setPreviewType(null);
+        onOpenChange={closePreview}
+      />
+
+      <CustomCertificateEmissionDialog
+        open={emitTarget !== null}
+        customType={emitTarget}
+        people={people as Array<{ id: number; fullName: string }>}
+        selectedPersonId={emitPersonId}
+        pending={emitCustomCertificateMutation.isPending}
+        onOpenChange={(open) => !open && setEmitTarget(null)}
+        onPersonChange={setEmitPersonId}
+        onEmit={() => {
+          const person = (people as Array<{ id: number; fullName: string }>).find((item) => String(item.id) === emitPersonId);
+          if (!emitTarget || !person) return;
+          emitCustomCertificateMutation.mutate({ type: "fundamentos", customTypeId: emitTarget.id, memberName: person.fullName, churchId, personId: person.id });
         }}
       />
+
+      <CustomCertificateDialog
+        open={customTypeDialogOpen}
+        draft={customTypeDraft}
+        editing={customTypeEditingId !== null}
+        pending={createCustomTypeMutation.isPending || updateCustomTypeMutation.isPending}
+        onOpenChange={setCustomTypeDialogOpen}
+        onChange={setCustomTypeDraft}
+        onSave={handleCustomTypeSave}
+      />
+
+      <AlertDialog open={archiveTarget !== null} onOpenChange={(open) => !open && setArchiveTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Arquivar tipo de certificado?</AlertDialogTitle>
+            <AlertDialogDescription>
+              “{archiveTarget?.name}” deixará de aparecer como tipo ativo. Certificados já emitidos não serão alterados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => archiveTarget && archiveCustomTypeMutation.mutate({ churchId, id: archiveTarget.id })}>
+              Arquivar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
 
 type CertificatePreviewType = "fundamentos" | "batismo" | "lideres";
+type CustomCertificateDraft = {
+  name: string;
+  title: string;
+  subtitle: string;
+  body: string;
+  verse: string;
+};
+type CustomCertificateRow = Omit<CustomCertificateDraft, "verse"> & {
+  id: number;
+  churchId: number;
+  modelKey: string;
+  verse: string | null;
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+const EMPTY_CUSTOM_TYPE: CustomCertificateDraft = {
+  name: "",
+  title: "CERTIFICADO DE CONCLUSÃO",
+  subtitle: "",
+  body: "concluiu com êxito a formação oferecida pela igreja.",
+  verse: "",
+};
 
 type CertificateTemplateEditorProps = {
   label: string;
@@ -403,9 +604,110 @@ function CertificateTemplateEditor({ label, value, onChange }: CertificateTempla
   );
 }
 
+type CustomCertificateEmissionDialogProps = {
+  open: boolean;
+  customType: CustomCertificateRow | null;
+  people: Array<{ id: number; fullName: string }>;
+  selectedPersonId: string;
+  pending: boolean;
+  onOpenChange: (open: boolean) => void;
+  onPersonChange: (personId: string) => void;
+  onEmit: () => void;
+};
+
+function CustomCertificateEmissionDialog({ open, customType, people, selectedPersonId, pending, onOpenChange, onPersonChange, onEmit }: CustomCertificateEmissionDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[calc(100%-1rem)] sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Emitir certificado</DialogTitle>
+          <DialogDescription>Selecione a pessoa que receberá “{customType?.name}”. A emissão usa o modelo moderno protegido.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label>Pessoa da igreja</Label>
+            <Select value={selectedPersonId} onValueChange={onPersonChange}>
+              <SelectTrigger><SelectValue placeholder="Selecione uma pessoa" /></SelectTrigger>
+              <SelectContent>{people.map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          <div className="rounded-lg bg-[#f8f4eb] p-3 text-xs text-[#6f5a2c]">A emissão gera um PDF com o nome da pessoa selecionada e mantém o histórico dos certificados já emitidos.</div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button type="button" className="bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" disabled={!selectedPersonId || pending} onClick={onEmit}>
+            {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Award className="mr-2 h-4 w-4" />}
+            {pending ? "Gerando…" : "Gerar PDF"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type CustomCertificateDialogProps = {
+  open: boolean;
+  draft: CustomCertificateDraft;
+  editing: boolean;
+  pending: boolean;
+  onOpenChange: (open: boolean) => void;
+  onChange: (draft: CustomCertificateDraft) => void;
+  onSave: () => void;
+};
+
+function CustomCertificateDialog({ open, draft, editing, pending, onOpenChange, onChange, onSave }: CustomCertificateDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{editing ? "Editar tipo de certificado" : "Novo tipo de certificado"}</DialogTitle>
+          <DialogDescription>
+            O conteúdo é personalizado pela igreja, mas o modelo moderno, as margens e a composição permanecem protegidos.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="customTypeName">Nome da formação</Label>
+            <Input id="customTypeName" placeholder="Ex.: Escola de Discípulos" value={draft.name} maxLength={160} onChange={(e) => onChange({ ...draft, name: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="customTypeTitle">Título do certificado</Label>
+              <Input id="customTypeTitle" placeholder="CERTIFICADO DE CONCLUSÃO" value={draft.title} maxLength={160} onChange={(e) => onChange({ ...draft, title: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customTypeSubtitle">Subtítulo</Label>
+              <Input id="customTypeSubtitle" placeholder="Nome da formação" value={draft.subtitle} maxLength={180} onChange={(e) => onChange({ ...draft, subtitle: e.target.value })} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="customTypeBody">Frase de reconhecimento</Label>
+            <Textarea id="customTypeBody" rows={3} maxLength={500} value={draft.body} onChange={(e) => onChange({ ...draft, body: e.target.value })} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="customTypeVerse">Versículo ou mensagem opcional</Label>
+            <Textarea id="customTypeVerse" rows={3} maxLength={500} placeholder="Você pode usar um versículo ou uma mensagem da igreja." value={draft.verse} onChange={(e) => onChange({ ...draft, verse: e.target.value })} />
+          </div>
+          <div className="rounded-lg bg-[#f8f4eb] p-3 text-xs text-[#6f5a2c]">
+            O modelo visual usado será <strong>Moderno</strong>. Não é necessário configurar fonte, moldura, posição ou tamanho dos elementos.
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+          <Button type="button" className="bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" disabled={pending || !draft.name.trim() || !draft.subtitle.trim() || !draft.body.trim()} onClick={onSave}>
+            {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            {editing ? "Salvar alterações" : "Criar tipo"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 type CertificatePreviewDialogProps = {
   open: boolean;
   type: CertificatePreviewType | null;
+  customType?: CustomCertificateRow | null;
   churchName: string;
   pastorName: string;
   signatureLabel: string;
@@ -417,9 +719,12 @@ type CertificatePreviewDialogProps = {
 
 const CERTIFICATE_PREVIEW_COPY = CERTIFICATE_TEMPLATE_COPY;
 
-function CertificatePreviewDialog({ open, type, churchName, pastorName, signatureLabel, logoUrl, verse, template, onOpenChange }: CertificatePreviewDialogProps) {
+function CertificatePreviewDialog({ open, type, customType, churchName, pastorName, signatureLabel, logoUrl, verse, template, onOpenChange }: CertificatePreviewDialogProps) {
   if (!type) return null;
-  const copy = { ...CERTIFICATE_PREVIEW_COPY[type], ...template, course: template.subtitle || CERTIFICATE_PREVIEW_COPY[type].course };
+  const copy = customType
+    ? { title: customType.title, subtitle: customType.subtitle, body: customType.body, course: customType.subtitle }
+    : { ...CERTIFICATE_PREVIEW_COPY[type], ...template, course: template.subtitle || CERTIFICATE_PREVIEW_COPY[type].course };
+  const effectiveVerse = customType?.verse || verse;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] max-w-5xl overflow-y-auto border-[#c9a84c]/30 bg-[#f7f1e5] p-3 sm:p-6">
@@ -444,7 +749,7 @@ function CertificatePreviewDialog({ open, type, churchName, pastorName, signatur
                       <p className="text-[clamp(0.32rem,0.8vw,0.46rem)] tracking-[0.28em] text-[#9b7b36]">AMAR · SERVIR · TRANSFORMAR</p>
                     </div>
                   </div>
-                  {verse ? <p className="hidden w-[23%] text-right text-[clamp(0.34rem,0.8vw,0.52rem)] italic leading-tight text-[#8c6e2f] sm:block">“{verse}”</p> : null}
+                  {effectiveVerse ? <p className="hidden w-[23%] text-right text-[clamp(0.34rem,0.8vw,0.52rem)] italic leading-tight text-[#8c6e2f] sm:block">“{effectiveVerse}”</p> : null}
                 </div>
 
                 <div className="relative mt-[4%] flex min-h-0 flex-1 flex-col items-center justify-start">
@@ -470,7 +775,7 @@ function CertificatePreviewDialog({ open, type, churchName, pastorName, signatur
                       <span>Igreja</span>
                     </div>
                   </div>
-                  {verse ? <p className="mt-[2%] line-clamp-2 text-[clamp(0.36rem,0.8vw,0.5rem)] italic leading-tight text-[#8c6e2f] sm:hidden">“{verse}”</p> : null}
+                  {effectiveVerse ? <p className="mt-[2%] line-clamp-2 text-[clamp(0.36rem,0.8vw,0.5rem)] italic leading-tight text-[#8c6e2f] sm:hidden">“{effectiveVerse}”</p> : null}
                 </div>
               </div>
             </div>
