@@ -385,31 +385,49 @@ function CertificatePreviewDialog({ open, type, churchName, pastorName, signatur
         <div className="mx-auto w-full max-w-[842px]">
           <div className="relative aspect-[1.414/1] overflow-hidden border-[3px] border-[#c9a84c] bg-[#fcf9f3] p-2 shadow-xl sm:border-4 sm:p-3">
             <div className="absolute inset-2 border border-[#9a7d2e] sm:inset-3" />
-            <div className="relative flex h-full flex-col items-center overflow-hidden px-[5%] pt-[5%] text-center text-[#1e3a5f]">
-              <div className="relative z-10 flex w-full items-center justify-center border-b-4 border-[#c9a84c] bg-[#1e3a5f] px-4 py-[2.5%] text-[#ffe08a] shadow-sm">
-                <h2 className="font-serif text-[clamp(0.65rem,2.1vw,1.15rem)] font-bold tracking-[0.1em] text-[#ffe08a] drop-shadow-sm">{copy.title}</h2>
-              </div>
-              {logoUrl ? <img src={logoUrl} alt="Logo da igreja" className="absolute left-[7%] top-[7%] z-20 h-[10%] w-[10%] object-contain" /> : null}
+            <div className="relative flex h-full flex-col overflow-hidden bg-[#f8f4eb] px-[7%] py-[5%] text-center text-[#1e3a5f]">
+              <div className="pointer-events-none absolute -left-[12%] -top-[30%] h-[72%] w-[48%] rounded-full border-[10px] border-[#d5aa52]/80 sm:border-[14px]" />
+              <div className="pointer-events-none absolute -bottom-[30%] -right-[12%] h-[72%] w-[48%] rounded-full border-[10px] border-[#d5aa52]/80 sm:border-[14px]" />
+              <div className="pointer-events-none absolute inset-[4%] border border-[#b9964b]/70" />
 
-              <div className="mt-[4%] flex h-[46%] w-full shrink-0 flex-col items-center justify-center overflow-hidden">
-                <p className="text-[clamp(0.55rem,1.7vw,0.9rem)] font-medium tracking-wide">{copy.subtitle}</p>
-                <div className="my-[2.5%] h-px w-2/3 shrink-0 bg-[#c9a84c]" />
-                <p className="text-[clamp(0.5rem,1.45vw,0.78rem)] italic text-[#365b8a]">Certificamos que</p>
-                <p className="mt-[2%] max-w-[90%] break-words font-serif text-[clamp(1rem,4.2vw,2.2rem)] font-bold leading-tight">Nome do Membro</p>
-                <div className="my-[2%] h-0.5 w-1/3 shrink-0 bg-[#c9a84c]" />
-                <p className="line-clamp-2 max-w-[82%] whitespace-pre-line text-[clamp(0.5rem,1.4vw,0.76rem)] leading-relaxed text-[#365b8a]">{copy.body}</p>
-                <p className="mt-[3%] line-clamp-1 font-serif text-[clamp(0.65rem,2vw,1rem)] font-bold">“{copy.course}”</p>
-              </div>
-
-              <div className="absolute bottom-[8%] left-[7%] right-[7%] flex min-h-[19%] flex-col items-center border-t border-[#c9a84c]/70 bg-[#fcf9f3]/95 pt-[1.5%] text-[#365b8a]">
-                <p className="text-[clamp(0.45rem,1.15vw,0.62rem)]">{churchName} — {new Date().toLocaleDateString("pt-BR")}</p>
-                <div className="mt-[1.5%] flex w-full max-w-[42%] flex-col items-center border-t border-[#1e3a5f] pt-[1%] text-[clamp(0.42rem,1vw,0.56rem)] text-[#1e3a5f]">
-                  <strong>{pastorName || "Nome do Pastor / Líder"}</strong>
-                  <span>{signatureLabel || "Pastor(a) Presidente"}</span>
+              <div className="relative z-10 flex h-full flex-col">
+                <div className="flex items-start justify-between gap-[4%]">
+                  <div className="flex min-w-0 flex-1 items-center justify-center gap-[2%]">
+                    {logoUrl ? <img src={logoUrl} alt="Logo da igreja" className="h-[12%] max-h-12 w-[12%] max-w-12 object-contain" /> : null}
+                    <div className="min-w-0 text-left">
+                      <p className="truncate font-serif text-[clamp(0.62rem,1.9vw,1.05rem)] tracking-[0.12em]">{churchName}</p>
+                      <p className="text-[clamp(0.32rem,0.8vw,0.46rem)] tracking-[0.28em] text-[#9b7b36]">AMAR · SERVIR · TRANSFORMAR</p>
+                    </div>
+                  </div>
+                  {verse ? <p className="hidden w-[23%] text-right text-[clamp(0.34rem,0.8vw,0.52rem)] italic leading-tight text-[#8c6e2f] sm:block">“{verse}”</p> : null}
                 </div>
-                {verse ? <p className="mt-[1.5%] line-clamp-2 max-w-[88%] text-[clamp(0.38rem,0.85vw,0.5rem)] italic leading-tight">{verse}</p> : null}
+
+                <div className="relative mt-[4%] flex min-h-0 flex-1 flex-col items-center justify-start">
+                  <p className="text-[clamp(0.45rem,1.1vw,0.68rem)] font-medium uppercase tracking-[0.22em] text-[#365b8a]">{copy.title}</p>
+                  <h2 className="mt-[1%] max-w-[92%] font-serif text-[clamp(1.1rem,5vw,2.8rem)] font-semibold leading-[0.95] text-[#b8892e]">{copy.subtitle}</h2>
+                  <div className="mt-[2.5%] h-px w-1/2 bg-[#b8892e]/70" />
+                  <p className="mt-[3%] text-[clamp(0.45rem,1.1vw,0.68rem)] italic tracking-[0.15em] text-[#365b8a]">CERTIFICAMOS QUE</p>
+                  <p className="mt-[2%] max-w-[90%] break-words font-serif text-[clamp(1rem,4.2vw,2.2rem)] font-semibold leading-tight text-[#1e3a5f]">Nome do Membro</p>
+                  <div className="mt-[1.5%] h-0.5 w-1/4 bg-[#b8892e]" />
+                  <p className="mt-[3%] line-clamp-2 max-w-[80%] whitespace-pre-line text-[clamp(0.48rem,1.25vw,0.72rem)] leading-relaxed text-[#365b8a]">{copy.body}</p>
+                  <p className="mt-[2%] line-clamp-1 max-w-[82%] font-serif text-[clamp(0.62rem,1.8vw,0.94rem)] font-medium text-[#8c6e2f]">“{copy.course}”</p>
+                </div>
+
+                <div className="relative z-10 mt-[2%] shrink-0 border-t border-[#b9964b]/70 pt-[1.5%] text-[#365b8a]">
+                  <p className="text-[clamp(0.42rem,1.05vw,0.6rem)]">{churchName} — {new Date().toLocaleDateString("pt-BR")}</p>
+                  <div className="mt-[2%] grid grid-cols-2 gap-[8%] text-[clamp(0.4rem,0.95vw,0.56rem)] text-[#1e3a5f]">
+                    <div className="flex flex-col items-center border-t border-[#1e3a5f] pt-[1%]">
+                      <strong>{pastorName || "Nome do Pastor / Líder"}</strong>
+                      <span>{signatureLabel || "Pastor(a) Presidente"}</span>
+                    </div>
+                    <div className="flex flex-col items-center border-t border-[#1e3a5f] pt-[1%]">
+                      <strong>{churchName}</strong>
+                      <span>Igreja</span>
+                    </div>
+                  </div>
+                  {verse ? <p className="mt-[2%] line-clamp-2 text-[clamp(0.36rem,0.8vw,0.5rem)] italic leading-tight text-[#8c6e2f] sm:hidden">“{verse}”</p> : null}
+                </div>
               </div>
-              <div className="absolute bottom-[2%] left-[7%] right-[7%] h-[5%] bg-[#1e3a5f]" />
             </div>
           </div>
           <p className="mt-3 text-center text-xs text-muted-foreground">Prévia usando os dados atuais. Salve as configurações somente quando estiver satisfeito.</p>

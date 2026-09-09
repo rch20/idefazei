@@ -25,10 +25,11 @@ describe("Configurações de Certificados", () => {
     expect(source).toContain('"lideres"');
   });
 
-  it("reserva uma área fixa para assinatura e versículo no mobile", () => {
-    expect(source).toContain("h-[46%]");
-    expect(source).toContain("bottom-[8%]");
+  it("protege a hierarquia moderna e separa assinatura e versículo no mobile", () => {
+    expect(source).toContain("rounded-full border-[10px]");
+    expect(source).toContain("grid grid-cols-2");
+    expect(source).toContain("hidden w-[23%]");
+    expect(source).toContain("sm:hidden");
     expect(source).toContain("line-clamp-2");
-    expect(source).toContain("bottom-[2%]");
   });
 });
