@@ -435,6 +435,13 @@
       "when": 1788860846519,
       "tag": "0061_icy_talon",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "5",
+      "when": 1788965288042,
+      "tag": "0062_narrow_ken_ellis",
+      "breakpoints": true
     }
   ]
 }

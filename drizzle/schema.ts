@@ -82,6 +82,29 @@ export const churches = mysqlTable("churches", {
 export type Church = typeof churches.$inferSelect;
 export type InsertChurch = typeof churches.$inferInsert;
 
+// Personalização limitada dos certificados: conteúdo por tenant e tipo; o design permanece protegido.
+export const certificateTemplates = mysqlTable(
+  "certificate_templates",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    type: mysqlEnum("type", ["fundamentos", "batismo", "lideres"]).notNull(),
+    modelKey: varchar("modelKey", { length: 50 }).notNull().default("modern-v1"),
+    title: varchar("title", { length: 160 }).notNull(),
+    subtitle: varchar("subtitle", { length: 180 }).notNull(),
+    body: text("body").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => ({
+    churchTypeUnique: uniqueIndex("certificate_templates_church_type_unique").on(table.churchId, table.type),
+    churchIdx: index("certificate_templates_church_idx").on(table.churchId),
+  })
+);
+
+export type CertificateTemplate = typeof certificateTemplates.$inferSelect;
+export type InsertCertificateTemplate = typeof certificateTemplates.$inferInsert;
+
 // ─── SITE PÚBLICO MULTI-TENANT ─────────────────────────────────────────────────
 // A apresentação pública fica separada do cadastro operacional da igreja. Todas as
 // entidades carregam churchId para que tema, conteúdo e revisões nunca atravessem

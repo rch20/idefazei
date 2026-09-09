@@ -5821,6 +5821,26 @@ const certificatesRouter = router({
       await requireChurchMember(ctx.user.id, input.churchId);
       const church = await getChurchById(input.churchId);
       if (!church) throw new TRPCError({ code: "NOT_FOUND" });
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      const { certificateTemplates } = await import("../drizzle/schema");
+      const { eq } = await import("drizzle-orm");
+      const { CERTIFICATE_TEMPLATE_COPY } = await import("../shared/certificateTemplate");
+      const templateRows = await db
+        .select()
+        .from(certificateTemplates)
+        .where(eq(certificateTemplates.churchId, input.churchId));
+      const templates = Object.fromEntries(
+        (["fundamentos", "batismo", "lideres"] as const).map((type) => {
+          const saved = templateRows.find((row) => row.type === type);
+          return [type, {
+            modelKey: saved?.modelKey ?? "modern-v1",
+            title: saved?.title ?? CERTIFICATE_TEMPLATE_COPY[type].title,
+            subtitle: saved?.subtitle ?? CERTIFICATE_TEMPLATE_COPY[type].subtitle,
+            body: saved?.body ?? CERTIFICATE_TEMPLATE_COPY[type].body,
+          }];
+        })
+      );
       return {
         pastorName: church.certPastorName ?? "",
         logoUrl: church.certLogoUrl ?? "",
@@ -5828,6 +5848,7 @@ const certificatesRouter = router({
         verseBatismo: church.certVerseBatismo ?? "",
         verseLideres: church.certVerseLideres ?? "",
         signatureLabel: church.certSignatureLabel ?? "Pastor(a) Presidente",
+        templates,
       };
     }),
 
@@ -5842,6 +5863,11 @@ const certificatesRouter = router({
         verseBatismo: z.string().max(500).optional(),
         verseLideres: z.string().max(500).optional(),
         signatureLabel: z.string().max(100).optional(),
+        templates: z.object({
+          fundamentos: z.object({ modelKey: z.literal("modern-v1"), title: z.string().max(160), subtitle: z.string().max(180), body: z.string().max(500) }),
+          batismo: z.object({ modelKey: z.literal("modern-v1"), title: z.string().max(160), subtitle: z.string().max(180), body: z.string().max(500) }),
+          lideres: z.object({ modelKey: z.literal("modern-v1"), title: z.string().max(160), subtitle: z.string().max(180), body: z.string().max(500) }),
+        }).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -5850,6 +5876,7 @@ const certificatesRouter = router({
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
       const { churches: churchesTable } = await import("../drizzle/schema");
       const { eq } = await import("drizzle-orm");
+      const { certificateTemplates } = await import("../drizzle/schema");
       await db
         .update(churchesTable)
         .set({
@@ -5861,6 +5888,18 @@ const certificatesRouter = router({
           certSignatureLabel: input.signatureLabel,
         })
         .where(eq(churchesTable.id, input.churchId));
+
+      if (input.templates) {
+        for (const type of ["fundamentos", "batismo", "lideres"] as const) {
+          const template = input.templates[type];
+          await db
+            .insert(certificateTemplates)
+            .values({ churchId: input.churchId, type, modelKey: template.modelKey, title: template.title, subtitle: template.subtitle, body: template.body })
+            .onDuplicateKeyUpdate({
+              set: { modelKey: template.modelKey, title: template.title, subtitle: template.subtitle, body: template.body },
+            });
+        }
+      }
       return { success: true };
     }),
 
@@ -5902,6 +5941,15 @@ const certificatesRouter = router({
 
       const church = await getChurchById(input.churchId);
       const churchName = church?.name ?? "Igreja";
+      const { certificateTemplates } = await import("../drizzle/schema");
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "DB indisponível" });
+      const { eq, and } = await import("drizzle-orm");
+      const [savedTemplate] = await db
+        .select({ modelKey: certificateTemplates.modelKey, title: certificateTemplates.title, subtitle: certificateTemplates.subtitle, body: certificateTemplates.body })
+        .from(certificateTemplates)
+        .where(and(eq(certificateTemplates.churchId, input.churchId), eq(certificateTemplates.type, input.type)))
+        .limit(1);
 
       // Usar dados de personalização da igreja
       const pastorName = input.pastorName ?? church?.certPastorName ?? undefined;
@@ -5928,6 +5976,7 @@ const certificatesRouter = router({
         courseName: input.courseName,
         className: input.className,
         date: input.date,
+        template: savedTemplate ? { modelKey: savedTemplate.modelKey, title: savedTemplate.title, subtitle: savedTemplate.subtitle, body: savedTemplate.body } : undefined,
       });
 
       const timestamp = Date.now();

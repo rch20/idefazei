@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { toast } from "sonner";
 import { Award, BookOpen, Droplets, GraduationCap, Save, Upload, Eye, Loader2 } from "lucide-react";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
+import { CERTIFICATE_TEMPLATE_COPY, type CertificateTemplateOverride, type CertificateType } from "@shared/certificateTemplate";
 // ─── VERSÍCULOS PADRÃO ────────────────────────────────────────────────────────
 
 const DEFAULT_VERSES = {
@@ -39,6 +40,9 @@ export default function ConfiguracoesCertificados() {
   const [verseFundamentos, setVerseFundamentos] = useState(DEFAULT_VERSES.fundamentos);
   const [verseBatismo, setVerseBatismo] = useState(DEFAULT_VERSES.batismo);
   const [verseLideres, setVerseLideres] = useState(DEFAULT_VERSES.lideres);
+  const [templateFundamentos, setTemplateFundamentos] = useState<CertificateTemplateOverride>({ modelKey: "modern-v1", title: CERTIFICATE_TEMPLATE_COPY.fundamentos.title, subtitle: CERTIFICATE_TEMPLATE_COPY.fundamentos.subtitle, body: CERTIFICATE_TEMPLATE_COPY.fundamentos.body });
+  const [templateBatismo, setTemplateBatismo] = useState<CertificateTemplateOverride>({ modelKey: "modern-v1", title: CERTIFICATE_TEMPLATE_COPY.batismo.title, subtitle: CERTIFICATE_TEMPLATE_COPY.batismo.subtitle, body: CERTIFICATE_TEMPLATE_COPY.batismo.body });
+  const [templateLideres, setTemplateLideres] = useState<CertificateTemplateOverride>({ modelKey: "modern-v1", title: CERTIFICATE_TEMPLATE_COPY.lideres.title, subtitle: CERTIFICATE_TEMPLATE_COPY.lideres.subtitle, body: CERTIFICATE_TEMPLATE_COPY.lideres.body });
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [previewType, setPreviewType] = useState<"fundamentos" | "batismo" | "lideres" | null>(null);
 
@@ -51,6 +55,11 @@ export default function ConfiguracoesCertificados() {
       setVerseFundamentos(config.verseFundamentos || DEFAULT_VERSES.fundamentos);
       setVerseBatismo(config.verseBatismo || DEFAULT_VERSES.batismo);
       setVerseLideres(config.verseLideres || DEFAULT_VERSES.lideres);
+      if (config.templates) {
+        setTemplateFundamentos(config.templates.fundamentos);
+        setTemplateBatismo(config.templates.batismo);
+        setTemplateLideres(config.templates.lideres);
+      }
     }
   }, [config]);
 
@@ -90,6 +99,11 @@ export default function ConfiguracoesCertificados() {
       verseFundamentos,
       verseBatismo,
       verseLideres,
+      templates: {
+        fundamentos: { ...templateFundamentos, modelKey: "modern-v1" as const },
+        batismo: { ...templateBatismo, modelKey: "modern-v1" as const },
+        lideres: { ...templateLideres, modelKey: "modern-v1" as const },
+      },
     });
   }
 
@@ -206,6 +220,23 @@ export default function ConfiguracoesCertificados() {
               </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Conteúdo por tipo, com design protegido */}
+      <Card className="border border-[#c9a84c]/20">
+        <CardHeader>
+          <CardTitle className="text-[#1e3a5f] text-lg">Conteúdo dos Certificados</CardTitle>
+          <CardDescription>
+            Personalize o nome da formação e a frase de reconhecimento. O modelo visual moderno permanece protegido para manter a aparência profissional.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <CertificateTemplateEditor label="Escola de Fundamentos" value={templateFundamentos} onChange={setTemplateFundamentos} />
+          <Separator />
+          <CertificateTemplateEditor label="Batismo nas Águas" value={templateBatismo} onChange={setTemplateBatismo} />
+          <Separator />
+          <CertificateTemplateEditor label="Escola de Líderes" value={templateLideres} onChange={setTemplateLideres} />
         </CardContent>
       </Card>
 
@@ -330,6 +361,7 @@ export default function ConfiguracoesCertificados() {
         signatureLabel={signatureLabel}
         logoUrl={logoUrl}
         verse={previewType === "fundamentos" ? verseFundamentos : previewType === "batismo" ? verseBatismo : verseLideres}
+        template={previewType === "fundamentos" ? templateFundamentos : previewType === "batismo" ? templateBatismo : templateLideres}
         onOpenChange={(open) => {
           if (!open) setPreviewType(null);
         }}
@@ -340,6 +372,37 @@ export default function ConfiguracoesCertificados() {
 
 type CertificatePreviewType = "fundamentos" | "batismo" | "lideres";
 
+type CertificateTemplateEditorProps = {
+  label: string;
+  value: CertificateTemplateOverride;
+  onChange: (value: CertificateTemplateOverride) => void;
+};
+
+function CertificateTemplateEditor({ label, value, onChange }: CertificateTemplateEditorProps) {
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <Label className="text-[#1e3a5f]">{label}</Label>
+        <span className="rounded-full bg-[#f8f4eb] px-2 py-1 text-[10px] font-medium text-[#8c6e2f]">Modelo moderno</span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Título superior</Label>
+          <Input value={value.title} maxLength={160} onChange={(e) => onChange({ ...value, title: e.target.value })} />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Nome da formação</Label>
+          <Input value={value.subtitle} maxLength={180} onChange={(e) => onChange({ ...value, subtitle: e.target.value })} />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs text-muted-foreground">Frase de reconhecimento</Label>
+        <Textarea value={value.body} maxLength={500} rows={2} className="resize-none text-sm" onChange={(e) => onChange({ ...value, body: e.target.value })} />
+      </div>
+    </div>
+  );
+}
+
 type CertificatePreviewDialogProps = {
   open: boolean;
   type: CertificatePreviewType | null;
@@ -348,33 +411,15 @@ type CertificatePreviewDialogProps = {
   signatureLabel: string;
   logoUrl: string;
   verse: string;
+  template: CertificateTemplateOverride;
   onOpenChange: (open: boolean) => void;
 };
 
-const CERTIFICATE_PREVIEW_COPY: Record<CertificatePreviewType, { title: string; subtitle: string; body: string; course: string }> = {
-  fundamentos: {
-    title: "CERTIFICADO DE CONCLUSÃO",
-    subtitle: "Escola de Fundamentos",
-    body: "concluiu com êxito o curso de",
-    course: "Escola de Fundamentos",
-  },
-  batismo: {
-    title: "CERTIFICADO DE BATISMO",
-    subtitle: "Batismo nas Águas",
-    body: "foi batizado(a) nas águas em obediência ao mandamento de Cristo, professando publicamente sua fé e compromisso com o Evangelho.",
-    course: "Batismo nas Águas",
-  },
-  lideres: {
-    title: "CERTIFICADO DE FORMAÇÃO",
-    subtitle: "Escola de Líderes",
-    body: "concluiu com distinção o programa de formação de líderes",
-    course: "Escola de Líderes",
-  },
-};
+const CERTIFICATE_PREVIEW_COPY = CERTIFICATE_TEMPLATE_COPY;
 
-function CertificatePreviewDialog({ open, type, churchName, pastorName, signatureLabel, logoUrl, verse, onOpenChange }: CertificatePreviewDialogProps) {
+function CertificatePreviewDialog({ open, type, churchName, pastorName, signatureLabel, logoUrl, verse, template, onOpenChange }: CertificatePreviewDialogProps) {
   if (!type) return null;
-  const copy = CERTIFICATE_PREVIEW_COPY[type];
+  const copy = { ...CERTIFICATE_PREVIEW_COPY[type], ...template, course: template.subtitle || CERTIFICATE_PREVIEW_COPY[type].course };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] max-w-5xl overflow-y-auto border-[#c9a84c]/30 bg-[#f7f1e5] p-3 sm:p-6">

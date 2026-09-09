@@ -1,63 +1,40 @@
 /**
- * Geração de Certificados em PDF — Ide Fazei
+ * Geração de Certificados em PDF — Ide Fazei.
  *
- * Usa pdf-lib para criar certificados com layout personalizado:
- * fundo pergaminho, bordas douradas, nome em destaque, dados da igreja.
+ * O PDF usa o mesmo contrato moderno de conteúdo da pré-visualização:
+ * identidade no topo, título hierárquico, nome central, mensagem, data,
+ * duas assinaturas e versículo no rodapé. O tenant personaliza conteúdo;
+ * a composição visual permanece protegida.
  */
 
 import fontkit from "@pdf-lib/fontkit";
-import { degrees, PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { PDFDocument, rgb, StandardFonts, type PDFFont } from "pdf-lib";
+import { CERTIFICATE_TEMPLATE_COPY, type CertificateTemplateOverride, type CertificateType } from "../shared/certificateTemplate";
 
-// ─── TIPOS ────────────────────────────────────────────────────────────────────
-
-export type CertificateType = "fundamentos" | "batismo" | "lideres";
+export type { CertificateType } from "../shared/certificateTemplate";
 
 export interface CertificateData {
   type: CertificateType;
   memberName: string;
   churchName: string;
   pastorName?: string;
-  signatureLabel?: string; // Ex: "Pastor(a) Presidente", "Bispa", etc.
-  logoUrl?: string; // URL do logo da igreja para incluir no certificado
-  verse?: string; // Versículo personalizado por tipo de certificado
-  courseName?: string; // Para fundamentos: nome do curso específico
-  date?: string; // ISO string ou "DD/MM/YYYY"
-  className?: string; // Nome da turma
+  signatureLabel?: string;
+  logoUrl?: string;
+  verse?: string;
+  courseName?: string;
+  date?: string;
+  className?: string;
+  template?: CertificateTemplateOverride;
 }
 
-// ─── CORES ────────────────────────────────────────────────────────────────────
-
-const NAVY = rgb(0.118, 0.227, 0.373); // #1e3a5f
-const GOLD = rgb(0.788, 0.659, 0.298); // #c9a84c
-const CREAM = rgb(0.988, 0.976, 0.953); // #fcf9f3
-const DARK_GOLD = rgb(0.6, 0.49, 0.18);
-const WHITE = rgb(1, 1, 1);
+const NAVY = rgb(0.118, 0.227, 0.373);
+const GOLD = rgb(0.722, 0.537, 0.18);
+const CREAM = rgb(0.973, 0.957, 0.922);
+const DARK_GOLD = rgb(0.55, 0.42, 0.17);
 const LIGHT_NAVY = rgb(0.2, 0.35, 0.55);
+const WHITE = rgb(1, 1, 1);
 
-// ─── TÍTULOS POR TIPO ─────────────────────────────────────────────────────────
-
-const CERTIFICATE_CONFIG: Record<
-  CertificateType,
-  { title: string; subtitle: string; body: string }
-> = {
-  fundamentos: {
-    title: "CERTIFICADO DE CONCLUSÃO",
-    subtitle: "Escola de Fundamentos",
-    body: "concluiu com êxito o curso de",
-  },
-  batismo: {
-    title: "CERTIFICADO DE BATISMO",
-    subtitle: "Batismo nas Águas",
-    body: "foi batizado(a) nas águas em obediência ao mandamento de Cristo,\nprofessando publicamente sua fé e compromisso com o Evangelho.",
-  },
-  lideres: {
-    title: "CERTIFICADO DE FORMAÇÃO",
-    subtitle: "Escola de Líderes",
-    body: "concluiu com distinção o programa de formação de líderes",
-  },
-};
-
-// ─── FORMATAÇÃO DE DATA ───────────────────────────────────────────────────────
+type CertificatePage = ReturnType<PDFDocument["addPage"]>;
 
 function formatDate(dateStr?: string): string {
   if (!dateStr) {
@@ -67,111 +44,78 @@ function formatDate(dateStr?: string): string {
       year: "numeric",
     });
   }
-  // Tenta parsear ISO ou DD/MM/YYYY
-  const d = new Date(dateStr);
-  if (!isNaN(d.getTime())) {
-    return d.toLocaleDateString("pt-BR", {
+
+  const parsed = new Date(dateStr);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "long",
       year: "numeric",
     });
   }
+
   return dateStr;
 }
 
-// ─── DESENHAR BORDA ORNAMENTAL ────────────────────────────────────────────────
+function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+  if (!words.length) return [];
 
-function drawBorder(page: ReturnType<PDFDocument["addPage"]>, width: number, height: number) {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth || !line) {
+      line = candidate;
+    } else {
+      lines.push(line);
+      line = word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function fitTextSize(text: string, font: PDFFont, preferred: number, min: number, maxWidth: number): number {
+  let size = preferred;
+  while (size > min && font.widthOfTextAtSize(text, size) > maxWidth) size -= 1;
+  return size;
+}
+
+function drawCenteredText(
+  page: CertificatePage,
+  text: string,
+  y: number,
+  font: PDFFont,
+  size: number,
+  color: ReturnType<typeof rgb>,
+  centerX: number,
+) {
+  const width = font.widthOfTextAtSize(text, size);
+  page.drawText(text, { x: centerX - width / 2, y, size, font, color });
+}
+
+function drawCenteredWrapped(
+  page: CertificatePage,
+  text: string,
+  topY: number,
+  font: PDFFont,
+  size: number,
+  color: ReturnType<typeof rgb>,
+  centerX: number,
+  maxWidth: number,
+  lineGap: number,
+  maxLines = 3,
+): number {
+  const lines = wrapText(text, font, size, maxWidth).slice(0, maxLines);
+  lines.forEach((line, index) => drawCenteredText(page, line, topY - index * lineGap, font, size, color, centerX));
+  return lines.length;
+}
+
+function drawModernBorder(page: CertificatePage, width: number, height: number) {
   const margin = 20;
   const innerMargin = 28;
 
-  // Borda externa dourada grossa
-  page.drawRectangle({
-    x: margin,
-    y: margin,
-    width: width - margin * 2,
-    height: height - margin * 2,
-    borderColor: GOLD,
-    borderWidth: 3,
-    color: undefined,
-  });
-
-  // Borda interna dourada fina
-  page.drawRectangle({
-    x: innerMargin,
-    y: innerMargin,
-    width: width - innerMargin * 2,
-    height: height - innerMargin * 2,
-    borderColor: DARK_GOLD,
-    borderWidth: 1,
-    color: undefined,
-  });
-
-  // Cantos ornamentais — quadradinhos dourados
-  const cornerSize = 8;
-  const corners = [
-    { x: margin - cornerSize / 2, y: margin - cornerSize / 2 },
-    { x: width - margin - cornerSize / 2, y: margin - cornerSize / 2 },
-    { x: margin - cornerSize / 2, y: height - margin - cornerSize / 2 },
-    { x: width - margin - cornerSize / 2, y: height - margin - cornerSize / 2 },
-  ];
-  for (const c of corners) {
-    page.drawRectangle({
-      x: c.x,
-      y: c.y,
-      width: cornerSize,
-      height: cornerSize,
-      color: GOLD,
-    });
-  }
-}
-
-// ─── LINHA DECORATIVA ─────────────────────────────────────────────────────────
-
-function drawDecorativeLine(
-  page: ReturnType<PDFDocument["addPage"]>,
-  y: number,
-  width: number,
-  margin: number
-) {
-  const lineWidth = width - margin * 2 - 60;
-  const startX = margin + 30;
-
-  page.drawLine({
-    start: { x: startX, y },
-    end: { x: startX + lineWidth, y },
-    thickness: 0.5,
-    color: GOLD,
-  });
-
-  // Losango central
-  const cx = startX + lineWidth / 2;
-  const diamond = 4;
-  page.drawRectangle({
-    x: cx - diamond / 2,
-    y: y - diamond / 2,
-    width: diamond,
-    height: diamond,
-    color: GOLD,
-    rotate: degrees(45),
-  });
-}
-
-// ─── GERADOR PRINCIPAL ────────────────────────────────────────────────────────
-
-export async function generateCertificatePDF(data: CertificateData): Promise<Uint8Array> {
-  const pdfDoc = await PDFDocument.create();
-  pdfDoc.registerFontkit(fontkit);
-
-  // Página A4 landscape
-  const width = 841.89;
-  const height = 595.28;
-  const page = pdfDoc.addPage([width, height]);
-
-  const margin = 20;
-  const centerX = width / 2;
-
-  // ── Fundo creme ──
   page.drawRectangle({
     x: 0,
     y: 0,
@@ -180,266 +124,169 @@ export async function generateCertificatePDF(data: CertificateData): Promise<Uin
     color: CREAM,
   });
 
-  // ── Logo da Igreja (se fornecida) ──
-  if (data.logoUrl) {
-    try {
-      const logoResp = await fetch(data.logoUrl);
-      if (logoResp.ok) {
-        const logoBuffer = await logoResp.arrayBuffer();
-        const logoBytes = new Uint8Array(logoBuffer);
-        const contentType = logoResp.headers.get("content-type") ?? "";
-        let logoImage;
-        if (contentType.includes("png") || data.logoUrl.endsWith(".png")) {
-          logoImage = await pdfDoc.embedPng(logoBytes);
-        } else {
-          logoImage = await pdfDoc.embedJpg(logoBytes);
-        }
-        const logoDims = logoImage.scaleToFit(50, 50);
-        page.drawImage(logoImage, {
-          x: margin + 8,
-          y: height - margin - 1 - 55,
-          width: logoDims.width,
-          height: logoDims.height,
-        });
-      }
-    } catch {
-      // Logo não pôde ser carregada — continua sem ela
+  page.drawEllipse({
+    x: -45,
+    y: height - 160,
+    xScale: 150,
+    yScale: 180,
+    borderColor: GOLD,
+    borderWidth: 12,
+    opacity: 0.82,
+  });
+
+  page.drawEllipse({
+    x: width + 45,
+    y: -10,
+    xScale: 150,
+    yScale: 180,
+    borderColor: GOLD,
+    borderWidth: 12,
+    opacity: 0.82,
+  });
+
+  page.drawRectangle({
+    x: margin,
+    y: margin,
+    width: width - margin * 2,
+    height: height - margin * 2,
+    borderColor: GOLD,
+    borderWidth: 3,
+  });
+
+  page.drawRectangle({
+    x: innerMargin,
+    y: innerMargin,
+    width: width - innerMargin * 2,
+    height: height - innerMargin * 2,
+    borderColor: DARK_GOLD,
+    borderWidth: 1,
+  });
+}
+
+async function embedLogo(pdfDoc: PDFDocument, logoUrl?: string) {
+  if (!logoUrl) return null;
+  try {
+    const response = await fetch(logoUrl);
+    if (!response.ok) return null;
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("png") || logoUrl.toLowerCase().includes(".png")) {
+      return await pdfDoc.embedPng(bytes);
     }
+    return await pdfDoc.embedJpg(bytes);
+  } catch {
+    return null;
   }
+}
 
-  // ── Faixa decorativa superior (azul-marinho) ──
-  page.drawRectangle({
-    x: margin + 1,
-    y: height - margin - 1 - 60,
-    width: width - (margin + 1) * 2,
-    height: 60,
-    color: NAVY,
-  });
+export async function generateCertificatePDF(data: CertificateData): Promise<Uint8Array> {
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.registerFontkit(fontkit);
 
-  // ── Faixa decorativa inferior (azul-marinho) ──
-  page.drawRectangle({
-    x: margin + 1,
-    y: margin + 1,
-    width: width - (margin + 1) * 2,
-    height: 50,
-    color: NAVY,
-  });
+  const width = 841.89;
+  const height = 595.28;
+  const centerX = width / 2;
+  const page = pdfDoc.addPage([width, height]);
+  drawModernBorder(page, width, height);
 
-  // ── Borda ornamental ──
-  drawBorder(page, width, height);
-
-  // ── Fontes padrão ──
-  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const timesRoman = await pdfDoc.embedFont(StandardFonts.TimesRoman);
   const timesBold = await pdfDoc.embedFont(StandardFonts.TimesRomanBold);
   const timesItalic = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
+  const copy = { ...CERTIFICATE_TEMPLATE_COPY[data.type], ...(data.template ?? {}) };
 
-  const config = CERTIFICATE_CONFIG[data.type];
-
-  // ── TÍTULO (na faixa superior) ──
-  const titleSize = 18;
-  const titleWidth = helveticaBold.widthOfTextAtSize(config.title, titleSize);
-  page.drawText(config.title, {
-    x: centerX - titleWidth / 2,
-    y: height - margin - 1 - 38,
-    size: titleSize,
-    font: helveticaBold,
-    color: GOLD,
-  });
-
-  // ── SUBTÍTULO (abaixo da faixa) ──
-  const subtitleSize = 13;
-  const subtitleWidth = helvetica.widthOfTextAtSize(config.subtitle, subtitleSize);
-  page.drawText(config.subtitle, {
-    x: centerX - subtitleWidth / 2,
-    y: height - margin - 1 - 60 - 28,
-    size: subtitleSize,
-    font: helvetica,
-    color: NAVY,
-  });
-
-  // ── Linha decorativa 1 ──
-  drawDecorativeLine(page, height - margin - 60 - 50, width, margin);
-
-  // ── Texto "Certificamos que" ──
-  const certText = "Certificamos que";
-  const certSize = 12;
-  const certWidth = timesItalic.widthOfTextAtSize(certText, certSize);
-  page.drawText(certText, {
-    x: centerX - certWidth / 2,
-    y: height - margin - 60 - 80,
-    size: certSize,
-    font: timesItalic,
-    color: LIGHT_NAVY,
-  });
-
-  // ── NOME DO MEMBRO (destaque) ──
-  const nameSize = 36;
-  const nameWidth = timesBold.widthOfTextAtSize(data.memberName, nameSize);
-  page.drawText(data.memberName, {
-    x: centerX - nameWidth / 2,
-    y: height - margin - 60 - 130,
-    size: nameSize,
-    font: timesBold,
-    color: NAVY,
-  });
-
-  // Linha abaixo do nome
-  const nameLineY = height - margin - 60 - 140;
-  page.drawLine({
-    start: { x: centerX - nameWidth / 2 - 10, y: nameLineY },
-    end: { x: centerX + nameWidth / 2 + 10, y: nameLineY },
-    thickness: 1.5,
-    color: GOLD,
-  });
-
-  // ── Corpo do texto ──
-  const bodyY = height - margin - 60 - 175;
-
-  if (data.type === "batismo") {
-    // Texto de batismo em duas linhas
-    const line1 = "foi batizado(a) nas águas em obediência ao mandamento de Cristo,";
-    const line2 = "professando publicamente sua fé e compromisso com o Evangelho.";
-    const bodySize = 12;
-
-    const l1Width = timesRoman.widthOfTextAtSize(line1, bodySize);
-    page.drawText(line1, {
-      x: centerX - l1Width / 2,
-      y: bodyY,
-      size: bodySize,
-      font: timesRoman,
-      color: LIGHT_NAVY,
-    });
-
-    const l2Width = timesRoman.widthOfTextAtSize(line2, bodySize);
-    page.drawText(line2, {
-      x: centerX - l2Width / 2,
-      y: bodyY - 18,
-      size: bodySize,
-      font: timesRoman,
-      color: LIGHT_NAVY,
-    });
-  } else {
-    // Fundamentos e Líderes
-    const bodyText = config.body;
-    const bodySize = 12;
-    const bodyWidth = timesRoman.widthOfTextAtSize(bodyText, bodySize);
-    page.drawText(bodyText, {
-      x: centerX - bodyWidth / 2,
-      y: bodyY,
-      size: bodySize,
-      font: timesRoman,
-      color: LIGHT_NAVY,
-    });
-
-    // Nome do curso/turma
-    if (data.courseName || data.className) {
-      const courseName = data.courseName ?? data.className ?? "";
-      const courseSize = 16;
-      const courseWidth = timesBold.widthOfTextAtSize(`"${courseName}"`, courseSize);
-      page.drawText(`"${courseName}"`, {
-        x: centerX - courseWidth / 2,
-        y: bodyY - 28,
-        size: courseSize,
-        font: timesBold,
-        color: NAVY,
-      });
-    }
-  }
-
-  // ── Linha decorativa 2 ──
-  drawDecorativeLine(page, bodyY - 60, width, margin);
-
-  // ── Data e Igreja ──
-  const dateStr = formatDate(data.date);
-  const dateText = `${data.churchName} — ${dateStr}`;
-  const dateSize = 10;
-  const dateWidth = helvetica.widthOfTextAtSize(dateText, dateSize);
-  page.drawText(dateText, {
-    x: centerX - dateWidth / 2,
-    y: bodyY - 80,
-    size: dateSize,
-    font: helvetica,
-    color: LIGHT_NAVY,
-  });
-
-  // ── Assinatura do Pastor (se fornecida) ──
-  if (data.pastorName) {
-    const sigY = bodyY - 115;
-    const sigLineWidth = 160;
-
-    // Linha de assinatura
-    page.drawLine({
-      start: { x: centerX - sigLineWidth / 2, y: sigY },
-      end: { x: centerX + sigLineWidth / 2, y: sigY },
-      thickness: 0.8,
-      color: NAVY,
-    });
-
-    // Nome do pastor
-    const pastorSize = 10;
-    const pastorWidth = helveticaBold.widthOfTextAtSize(data.pastorName, pastorSize);
-    page.drawText(data.pastorName, {
-      x: centerX - pastorWidth / 2,
-      y: sigY - 14,
-      size: pastorSize,
-      font: helveticaBold,
-      color: NAVY,
-    });
-
-    // Cargo
-    const cargoText = data.signatureLabel ?? "Pastor(a) Presidente";
-    const cargoSize = 9;
-    const cargoWidth = helvetica.widthOfTextAtSize(cargoText, cargoSize);
-    page.drawText(cargoText, {
-      x: centerX - cargoWidth / 2,
-      y: sigY - 26,
-      size: cargoSize,
-      font: helvetica,
-      color: LIGHT_NAVY,
+  const logo = await embedLogo(pdfDoc, data.logoUrl);
+  if (logo) {
+    const logoDims = logo.scaleToFit(68, 68);
+    page.drawImage(logo, {
+      x: 94,
+      y: height - 86,
+      width: logoDims.width,
+      height: logoDims.height,
     });
   }
 
-  // ── Versículo personalizado (se fornecido) ──
+  drawCenteredText(page, data.churchName || "Igreja", height - 55, timesRoman, 18, NAVY, 360);
+  drawCenteredText(page, "AMAR · SERVIR · TRANSFORMAR", height - 73, helvetica, 7, DARK_GOLD, 360);
+
   if (data.verse) {
-    const verseY = bodyY - (data.pastorName ? 145 : 100);
-    // Limitar versículo a 80 caracteres por linha
-    const maxLen = 80;
-    const verseLines: string[] = [];
-    let remaining = data.verse;
-    while (remaining.length > maxLen) {
-      const breakAt = remaining.lastIndexOf(" ", maxLen);
-      verseLines.push(remaining.slice(0, breakAt > 0 ? breakAt : maxLen));
-      remaining = remaining.slice(breakAt > 0 ? breakAt + 1 : maxLen);
-    }
-    verseLines.push(remaining);
-
-    const verseSize = 8;
-    verseLines.forEach((line, i) => {
-      const vw = timesItalic.widthOfTextAtSize(line, verseSize);
-      page.drawText(line, {
-        x: centerX - vw / 2,
-        y: verseY - i * 12,
-        size: verseSize,
-        font: timesItalic,
-        color: LIGHT_NAVY,
-      });
-    });
+    drawCenteredWrapped(page, `“${data.verse}”`, height - 45, timesItalic, 7, DARK_GOLD, 735, 145, 10, 3);
   }
 
-  // ── Rodapé (na faixa inferior) ──
-  const footerText = "Ide Fazei • Plataforma de Crescimento e Discipulado";
-  const footerSize = 8;
-  const footerWidth = helvetica.widthOfTextAtSize(footerText, footerSize);
-  page.drawText(footerText, {
-    x: centerX - footerWidth / 2,
-    y: margin + 18,
-    size: footerSize,
-    font: helvetica,
+  drawCenteredText(page, copy.title, height - 132, helveticaBold, 16, NAVY, centerX);
+  const subtitleSize = fitTextSize(copy.subtitle, timesBold, 31, 20, 520);
+  drawCenteredText(page, copy.subtitle, height - 174, timesBold, subtitleSize, GOLD, centerX);
+  page.drawLine({
+    start: { x: centerX - 220, y: height - 194 },
+    end: { x: centerX + 220, y: height - 194 },
+    thickness: 1,
     color: GOLD,
   });
 
-  const pdfBytes = await pdfDoc.save();
-  return pdfBytes;
+  drawCenteredText(page, "CERTIFICAMOS QUE", height - 226, timesItalic, 11, LIGHT_NAVY, centerX);
+  const nameSize = fitTextSize(data.memberName, timesBold, 34, 18, 550);
+  drawCenteredText(page, data.memberName, height - 268, timesBold, nameSize, NAVY, centerX);
+  page.drawLine({
+    start: { x: centerX - 105, y: height - 284 },
+    end: { x: centerX + 105, y: height - 284 },
+    thickness: 1.4,
+    color: GOLD,
+  });
+
+  const bodyLines = drawCenteredWrapped(
+    page,
+    copy.body,
+    height - 317,
+    timesRoman,
+    12,
+    LIGHT_NAVY,
+    centerX,
+    535,
+    16,
+    2,
+  );
+  const courseLabel = data.courseName || data.className || copy.subtitle;
+  drawCenteredText(page, `“${courseLabel}”`, height - 350 - (bodyLines - 1) * 14, timesRoman, 13, DARK_GOLD, centerX);
+
+  page.drawLine({
+    start: { x: 125, y: 175 },
+    end: { x: width - 125, y: 175 },
+    thickness: 0.8,
+    color: GOLD,
+  });
+
+  drawCenteredText(page, `${data.churchName} — ${formatDate(data.date)}`, 153, helvetica, 10, LIGHT_NAVY, centerX);
+
+  const signatureY = 118;
+  const signatureWidth = 165;
+  const leftSignatureX = 260;
+  const rightSignatureX = 580;
+  page.drawLine({
+    start: { x: leftSignatureX - signatureWidth / 2, y: signatureY },
+    end: { x: leftSignatureX + signatureWidth / 2, y: signatureY },
+    thickness: 0.8,
+    color: NAVY,
+  });
+  page.drawLine({
+    start: { x: rightSignatureX - signatureWidth / 2, y: signatureY },
+    end: { x: rightSignatureX + signatureWidth / 2, y: signatureY },
+    thickness: 0.8,
+    color: NAVY,
+  });
+
+  const pastorName = data.pastorName || "Nome do Pastor / Líder";
+  drawCenteredText(page, pastorName, 103, helveticaBold, 10, NAVY, leftSignatureX);
+  drawCenteredText(page, data.signatureLabel || "Pastor(a) Presidente", 91, helvetica, 9, LIGHT_NAVY, leftSignatureX);
+  drawCenteredText(page, data.churchName || "Igreja", 103, helveticaBold, 10, NAVY, rightSignatureX);
+  drawCenteredText(page, "Igreja", 91, helvetica, 9, LIGHT_NAVY, rightSignatureX);
+
+  if (data.verse) {
+    drawCenteredWrapped(page, `“${data.verse}”`, 67, timesItalic, 8, DARK_GOLD, centerX, 560, 10, 2);
+  }
+
+  const footerText = `Certificado emitido por ${data.churchName || "sua igreja"}`;
+  drawCenteredText(page, footerText, 31, helvetica, 7, DARK_GOLD, centerX);
+
+  return await pdfDoc.save();
 }

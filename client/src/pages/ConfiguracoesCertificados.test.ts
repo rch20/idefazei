@@ -19,10 +19,13 @@ describe("Configurações de Certificados", () => {
     expect(source).toContain("verse={previewType === \"fundamentos\" ? verseFundamentos");
   });
 
-  it("mantém os três tipos existentes de certificado", () => {
+  it("mantém os três tipos existentes e permite conteúdo sem editor livre", () => {
     expect(source).toContain('"fundamentos"');
     expect(source).toContain('"batismo"');
     expect(source).toContain('"lideres"');
+    expect(source).toContain("Conteúdo dos Certificados");
+    expect(source).toContain("Modelo moderno");
+    expect(source).toContain("Frase de reconhecimento");
   });
 
   it("protege a hierarquia moderna e separa assinatura e versículo no mobile", () => {
