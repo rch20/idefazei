@@ -24,4 +24,11 @@ describe("Configurações de Certificados", () => {
     expect(source).toContain('"batismo"');
     expect(source).toContain('"lideres"');
   });
+
+  it("reserva uma área fixa para assinatura e versículo no mobile", () => {
+    expect(source).toContain("pb-[20%]");
+    expect(source).toContain("bottom-[6.5%]");
+    expect(source).toContain("line-clamp-3");
+    expect(source).toContain("bottom-[2%]");
+  });
 });
