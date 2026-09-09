@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Award, BookOpen, Droplets, GraduationCap, Save, Upload, Eye, Loader2 } from "lucide-react";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
@@ -24,7 +25,7 @@ const DEFAULT_VERSES = {
 // ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 
 export default function ConfiguracoesCertificados() {
-  const { churchId } = useChurch();
+  const { churchId, churchName } = useChurch();
   const utils = trpc.useUtils();
 
   const { data: config, isLoading } = trpc.certificates.getConfig.useQuery(
@@ -61,17 +62,6 @@ export default function ConfiguracoesCertificados() {
     onError: () => toast.error("Erro ao salvar configurações"),
   });
 
-  const previewMutation = trpc.certificates.generate.useMutation({
-    onSuccess: (data) => {
-      window.open(data.url, "_blank");
-      setPreviewType(null);
-    },
-    onError: () => {
-      toast.error("Erro ao gerar pré-visualização");
-      setPreviewType(null);
-    },
-  });
-
   async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -105,13 +95,6 @@ export default function ConfiguracoesCertificados() {
 
   function handlePreview(type: "fundamentos" | "batismo" | "lideres") {
     setPreviewType(type);
-    previewMutation.mutate({
-      type,
-      memberName: "Nome do Membro",
-      churchId,
-      courseName: type === "fundamentos" ? "Escola de Fundamentos" : undefined,
-      className: type === "lideres" ? "Turma de Líderes 2025" : undefined,
-    });
   }
 
   if (isLoading) {
@@ -247,14 +230,10 @@ export default function ConfiguracoesCertificados() {
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
-                disabled={previewType === "fundamentos"}
+                disabled={false}
                 onClick={() => handlePreview("fundamentos")}
               >
-                {previewType === "fundamentos" ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <Eye className="h-3 w-3 mr-1" />
-                )}
+                <Eye className="h-3 w-3 mr-1" />
                 Pré-visualizar
               </Button>
             </div>
@@ -280,14 +259,10 @@ export default function ConfiguracoesCertificados() {
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
-                disabled={previewType === "batismo"}
+                disabled={false}
                 onClick={() => handlePreview("batismo")}
               >
-                {previewType === "batismo" ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <Eye className="h-3 w-3 mr-1" />
-                )}
+                <Eye className="h-3 w-3 mr-1" />
                 Pré-visualizar
               </Button>
             </div>
@@ -313,14 +288,10 @@ export default function ConfiguracoesCertificados() {
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
-                disabled={previewType === "lideres"}
+                disabled={false}
                 onClick={() => handlePreview("lideres")}
               >
-                {previewType === "lideres" ? (
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                ) : (
-                  <Eye className="h-3 w-3 mr-1" />
-                )}
+                <Eye className="h-3 w-3 mr-1" />
                 Pré-visualizar
               </Button>
             </div>
@@ -350,6 +321,94 @@ export default function ConfiguracoesCertificados() {
           Salvar Configurações
         </Button>
       </div>
+
+      <CertificatePreviewDialog
+        open={previewType !== null}
+        type={previewType}
+        churchName={churchName}
+        pastorName={pastorName}
+        signatureLabel={signatureLabel}
+        logoUrl={logoUrl}
+        verse={previewType === "fundamentos" ? verseFundamentos : previewType === "batismo" ? verseBatismo : verseLideres}
+        onOpenChange={(open) => {
+          if (!open) setPreviewType(null);
+        }}
+      />
     </div>
+  );
+}
+
+type CertificatePreviewType = "fundamentos" | "batismo" | "lideres";
+
+type CertificatePreviewDialogProps = {
+  open: boolean;
+  type: CertificatePreviewType | null;
+  churchName: string;
+  pastorName: string;
+  signatureLabel: string;
+  logoUrl: string;
+  verse: string;
+  onOpenChange: (open: boolean) => void;
+};
+
+const CERTIFICATE_PREVIEW_COPY: Record<CertificatePreviewType, { title: string; subtitle: string; body: string; course: string }> = {
+  fundamentos: {
+    title: "CERTIFICADO DE CONCLUSÃO",
+    subtitle: "Escola de Fundamentos",
+    body: "concluiu com êxito o curso de",
+    course: "Escola de Fundamentos",
+  },
+  batismo: {
+    title: "CERTIFICADO DE BATISMO",
+    subtitle: "Batismo nas Águas",
+    body: "foi batizado(a) nas águas em obediência ao mandamento de Cristo, professando publicamente sua fé e compromisso com o Evangelho.",
+    course: "Batismo nas Águas",
+  },
+  lideres: {
+    title: "CERTIFICADO DE FORMAÇÃO",
+    subtitle: "Escola de Líderes",
+    body: "concluiu com distinção o programa de formação de líderes",
+    course: "Escola de Líderes",
+  },
+};
+
+function CertificatePreviewDialog({ open, type, churchName, pastorName, signatureLabel, logoUrl, verse, onOpenChange }: CertificatePreviewDialogProps) {
+  if (!type) return null;
+  const copy = CERTIFICATE_PREVIEW_COPY[type];
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] max-w-5xl overflow-y-auto border-[#c9a84c]/30 bg-[#f7f1e5] p-3 sm:p-6">
+        <DialogHeader className="sr-only">
+          <DialogTitle>Pré-visualização do certificado</DialogTitle>
+          <DialogDescription>Exemplo visual usando os dados atuais do formulário. Nenhum arquivo definitivo é gerado.</DialogDescription>
+        </DialogHeader>
+        <div className="mx-auto w-full max-w-[842px]">
+          <div className="relative aspect-[1.414/1] overflow-hidden border-[3px] border-[#c9a84c] bg-[#fcf9f3] p-2 shadow-xl sm:border-4 sm:p-3">
+            <div className="absolute inset-2 border border-[#9a7d2e] sm:inset-3" />
+            <div className="relative flex h-full flex-col items-center px-[5%] py-[5%] text-center text-[#1e3a5f]">
+              <div className="flex w-full items-center justify-center border-b-4 border-[#1e3a5f] bg-[#1e3a5f] px-4 py-[2.5%] text-[#c9a84c]">
+                <h2 className="text-[clamp(0.65rem,2.1vw,1.15rem)] font-bold tracking-[0.12em]">{copy.title}</h2>
+              </div>
+              {logoUrl ? <img src={logoUrl} alt="Logo da igreja" className="absolute left-[7%] top-[8%] h-[10%] w-[10%] object-contain" /> : null}
+              <p className="mt-[4%] text-[clamp(0.55rem,1.7vw,0.9rem)] font-medium tracking-wide">{copy.subtitle}</p>
+              <div className="my-[2.5%] h-px w-2/3 bg-[#c9a84c]" />
+              <p className="text-[clamp(0.5rem,1.45vw,0.78rem)] italic text-[#365b8a]">Certificamos que</p>
+              <p className="mt-[2%] max-w-[90%] break-words font-serif text-[clamp(1rem,4.2vw,2.2rem)] font-bold leading-tight">Nome do Membro</p>
+              <div className="my-[2%] h-0.5 w-1/3 bg-[#c9a84c]" />
+              <p className="max-w-[82%] whitespace-pre-line text-[clamp(0.5rem,1.4vw,0.76rem)] leading-relaxed text-[#365b8a]">{copy.body}</p>
+              <p className="mt-[2%] font-serif text-[clamp(0.65rem,2vw,1rem)] font-bold">“{copy.course}”</p>
+              <p className="mt-auto text-[clamp(0.45rem,1.15vw,0.62rem)] text-[#365b8a]">{churchName} — {new Date().toLocaleDateString("pt-BR")}</p>
+              <div className="mt-[2%] flex w-full max-w-[42%] flex-col items-center border-t border-[#1e3a5f] pt-[1%] text-[clamp(0.42rem,1vw,0.56rem)]">
+                <strong>{pastorName || "Nome do Pastor / Líder"}</strong>
+                <span>{signatureLabel || "Pastor(a) Presidente"}</span>
+              </div>
+              {verse ? <p className="mt-[2%] max-w-[78%] text-[clamp(0.4rem,0.95vw,0.52rem)] italic leading-tight text-[#365b8a]">{verse}</p> : null}
+              <div className="absolute bottom-[2%] left-[7%] right-[7%] h-[5%] bg-[#1e3a5f]" />
+            </div>
+          </div>
+          <p className="mt-3 text-center text-xs text-muted-foreground">Prévia usando os dados atuais. Salve as configurações somente quando estiver satisfeito.</p>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
