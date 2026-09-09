@@ -26,9 +26,9 @@ describe("Configurações de Certificados", () => {
   });
 
   it("reserva uma área fixa para assinatura e versículo no mobile", () => {
-    expect(source).toContain("h-[56%]");
-    expect(source).toContain("bottom-[6.5%]");
-    expect(source).toContain("line-clamp-3");
+    expect(source).toContain("h-[46%]");
+    expect(source).toContain("bottom-[8%]");
+    expect(source).toContain("line-clamp-2");
     expect(source).toContain("bottom-[2%]");
   });
 });

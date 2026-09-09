@@ -391,23 +391,23 @@ function CertificatePreviewDialog({ open, type, churchName, pastorName, signatur
               </div>
               {logoUrl ? <img src={logoUrl} alt="Logo da igreja" className="absolute left-[7%] top-[7%] z-20 h-[10%] w-[10%] object-contain" /> : null}
 
-              <div className="mt-[3%] flex h-[56%] w-full shrink-0 flex-col items-center justify-center overflow-hidden">
+              <div className="mt-[4%] flex h-[46%] w-full shrink-0 flex-col items-center justify-center overflow-hidden">
                 <p className="text-[clamp(0.55rem,1.7vw,0.9rem)] font-medium tracking-wide">{copy.subtitle}</p>
                 <div className="my-[2.5%] h-px w-2/3 shrink-0 bg-[#c9a84c]" />
                 <p className="text-[clamp(0.5rem,1.45vw,0.78rem)] italic text-[#365b8a]">Certificamos que</p>
                 <p className="mt-[2%] max-w-[90%] break-words font-serif text-[clamp(1rem,4.2vw,2.2rem)] font-bold leading-tight">Nome do Membro</p>
                 <div className="my-[2%] h-0.5 w-1/3 shrink-0 bg-[#c9a84c]" />
-                <p className="line-clamp-3 max-w-[82%] whitespace-pre-line text-[clamp(0.5rem,1.4vw,0.76rem)] leading-relaxed text-[#365b8a]">{copy.body}</p>
-                <p className="mt-[2%] line-clamp-2 font-serif text-[clamp(0.65rem,2vw,1rem)] font-bold">“{copy.course}”</p>
+                <p className="line-clamp-2 max-w-[82%] whitespace-pre-line text-[clamp(0.5rem,1.4vw,0.76rem)] leading-relaxed text-[#365b8a]">{copy.body}</p>
+                <p className="mt-[3%] line-clamp-1 font-serif text-[clamp(0.65rem,2vw,1rem)] font-bold">“{copy.course}”</p>
               </div>
 
-              <div className="absolute bottom-[6.5%] left-[7%] right-[7%] flex flex-col items-center text-[#365b8a]">
+              <div className="absolute bottom-[8%] left-[7%] right-[7%] flex min-h-[19%] flex-col items-center border-t border-[#c9a84c]/70 bg-[#fcf9f3]/95 pt-[1.5%] text-[#365b8a]">
                 <p className="text-[clamp(0.45rem,1.15vw,0.62rem)]">{churchName} — {new Date().toLocaleDateString("pt-BR")}</p>
                 <div className="mt-[1.5%] flex w-full max-w-[42%] flex-col items-center border-t border-[#1e3a5f] pt-[1%] text-[clamp(0.42rem,1vw,0.56rem)] text-[#1e3a5f]">
                   <strong>{pastorName || "Nome do Pastor / Líder"}</strong>
                   <span>{signatureLabel || "Pastor(a) Presidente"}</span>
                 </div>
-                {verse ? <p className="mt-[1.5%] line-clamp-3 max-w-[78%] text-[clamp(0.38rem,0.85vw,0.5rem)] italic leading-tight">{verse}</p> : null}
+                {verse ? <p className="mt-[1.5%] line-clamp-2 max-w-[88%] text-[clamp(0.38rem,0.85vw,0.5rem)] italic leading-tight">{verse}</p> : null}
               </div>
               <div className="absolute bottom-[2%] left-[7%] right-[7%] h-[5%] bg-[#1e3a5f]" />
             </div>
