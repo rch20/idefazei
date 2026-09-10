@@ -53,6 +53,8 @@ const EncontroComDeus = lazy(() => import("./pages/EncontroComDeus"));
 const EncontroComDeusDetalhe = lazy(() => import("./pages/EncontroComDeusDetalhe"));
 const EncontroFichaPublica = lazy(() => import("./pages/EncontroFichaPublica"));
 const EscolaLideres = lazy(() => import("./pages/EscolaLideres"));
+const EscolaLideresProfessor = lazy(() => import("./pages/EscolaLideresProfessor"));
+const EscolaLideresAluno = lazy(() => import("./pages/EscolaLideresAluno"));
 const GestaoLideranca = lazy(() => import("./pages/GestaoLideranca"));
 const Aconselhamento = lazy(() => import("./pages/Aconselhamento"));
 const Comunicacao = lazy(() => import("./pages/Comunicacao"));
@@ -281,6 +283,18 @@ function Router() {
       <Route path="/app/encontro-com-deus">
         <AppPage title="Encontro com Deus" requiredAccess="canManageEncounter">
           <EncontroComDeus />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/escola-lideres/aluno">
+        <AppPage title="Minha formação — Escola de Líderes">
+          <EscolaLideresAluno />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/escola-lideres/professor">
+        <AppPage title="Painel do Professor — Escola de Líderes">
+          <EscolaLideresProfessor />
         </AppPage>
       </Route>
 

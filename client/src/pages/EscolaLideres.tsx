@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
+import { Link } from "wouter";
 import { useState } from "react";
 import { GraduationCap, Users, Award, Plus, Calendar, User, Star, Loader2 } from "lucide-react";
 
@@ -42,6 +43,9 @@ function LeadershipClassCard({ cls, churchId, people }: {
   const utils = trpc.useUtils();
 
   const { data: enrollments } = trpc.escolaLideres.getEnrollments.useQuery({ classId: cls.id, churchId });
+  const { data: teachers } = trpc.escolaLideres.teachers.useQuery({ classId: cls.id, churchId });
+  const { data: teacherCandidates } = trpc.escolaLideres.teacherCandidates.useQuery({ churchId });
+  const [selectedTeacherId, setSelectedTeacherId] = useState("");
 
   const enrollMutation = trpc.escolaLideres.enroll.useMutation({
     onSuccess: () => {
@@ -54,6 +58,11 @@ function LeadershipClassCard({ cls, churchId, people }: {
       setEnrollError(error.message || "Erro ao matricular");
       toast.error(error.message || "Erro ao matricular");
     },
+  });
+
+  const assignTeacherMutation = trpc.escolaLideres.assignTeacher.useMutation({
+    onSuccess: () => { toast.success("Professor atribuído à turma."); setSelectedTeacherId(""); utils.escolaLideres.teachers.invalidate(); },
+    onError: (error) => toast.error(error.message || "Não foi possível atribuir o professor"),
   });
 
   const updateMutation = trpc.escolaLideres.updateEnrollment.useMutation({
@@ -104,10 +113,19 @@ function LeadershipClassCard({ cls, churchId, people }: {
       </CardHeader>
       <CardContent>
         {cls.description && <p className="text-sm text-muted-foreground mb-4">{cls.description}</p>}
-        <div className="flex gap-4 text-sm mb-4">
+        <div className="flex flex-wrap gap-4 text-sm mb-4">
           <span className="flex items-center gap-1 text-muted-foreground"><Users className="h-4 w-4" /> {total} alunos</span>
           <span className="flex items-center gap-1 text-purple-600"><Star className="h-4 w-4" /> {emFormacao} em formação</span>
           <span className="flex items-center gap-1 text-green-600"><Award className="h-4 w-4" /> {concluidos} formados</span>
+        </div>
+
+        <div className="mb-4 rounded-xl border border-[#c9a84c]/20 bg-[#fdfaf1] p-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div><p className="text-xs font-semibold uppercase tracking-wide text-[#c9a84c]">Professores atribuídos</p><p className="text-sm text-muted-foreground">Somente professores atribuídos veem o diário desta turma.</p></div>
+            <Link href="/app/escola-lideres/professor"><Button size="sm" variant="outline">Abrir painel do professor</Button></Link>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">{(teachers ?? []).map((item) => <Badge key={item.assignment.id} variant="secondary">{item.user.name}</Badge>)}{!(teachers ?? []).length ? <span className="text-xs text-muted-foreground">Nenhum professor atribuído.</span> : null}</div>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row"><Select value={selectedTeacherId} onValueChange={setSelectedTeacherId}><SelectTrigger className="sm:max-w-xs"><SelectValue placeholder="Selecionar usuário para ensinar" /></SelectTrigger><SelectContent>{(teacherCandidates ?? []).filter((candidate) => !(teachers ?? []).some((item) => item.user.id === candidate.id)).map((candidate) => <SelectItem key={candidate.id} value={String(candidate.id)}>{candidate.name}</SelectItem>)}</SelectContent></Select><Button type="button" size="sm" disabled={!selectedTeacherId || assignTeacherMutation.isPending} onClick={() => assignTeacherMutation.mutate({ churchId, classId: cls.id, churchUserId: Number(selectedTeacherId) })}>{assignTeacherMutation.isPending ? "Atribuindo..." : "Atribuir professor"}</Button></div>
         </div>
 
         {updateError && <div role="alert" className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{updateError}</div>}
@@ -262,7 +280,7 @@ export default function EscolaLideres() {
           </h1>
           <p className="text-muted-foreground mt-1">Formação e capacitação de líderes para multiplicação</p>
         </div>
-        <Dialog open={createOpen} onOpenChange={(nextOpen) => { setCreateOpen(nextOpen); if (nextOpen) setCreateError(null); }}>
+        <div className="flex flex-wrap gap-2"><Link href="/app/escola-lideres/professor"><Button variant="outline">Painel do Professor</Button></Link><Dialog open={createOpen} onOpenChange={(nextOpen) => { setCreateOpen(nextOpen); if (nextOpen) setCreateError(null); }}>
           <DialogTrigger asChild>
             <Button className="bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90">
               <Plus className="h-4 w-4 mr-2" /> Nova Turma
@@ -309,7 +327,7 @@ export default function EscolaLideres() {
               </AdaptiveFormDialogFooter>
             </form>
           </AdaptiveFormDialogContent>
-        </Dialog>
+        </Dialog></div>
       </div>
 
       {isLoading ? (

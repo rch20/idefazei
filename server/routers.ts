@@ -337,6 +337,22 @@ import {
   // Escola de Líderes
   getLeadershipClassesByChurch,
   getLeadershipEnrollments,
+  getLeadershipClassById,
+  getLeadershipLessonsByClass,
+  getLeadershipLessonById,
+  getLeadershipClassesForTeacher,
+  getLeadershipTeachers,
+  hasLeadershipTeacherAssignment,
+  assignLeadershipTeacher,
+  removeLeadershipTeacher,
+  createLeadershipLesson,
+  updateLeadershipLesson,
+  getLeadershipLessonRoster,
+  getLeadershipStudentPath,
+  getLeadershipProgressByEnrollmentLesson,
+  saveLeadershipAttendance,
+  saveLeadershipProgress,
+  releaseLeadershipLesson,
   createLeadershipClass,
   enrollInLeadershipSchool,
   updateLeadershipEnrollment,
@@ -379,6 +395,14 @@ async function requireChurchMember(userId: number, churchId: number) {
   const member = await getChurchMemberByUserId(userId, churchId);
 if (!member) throw new TRPCError({ code: "FORBIDDEN", message: "Acesso negado a esta igreja" });
 	return member;
+}
+
+async function requireLeadershipTeacher(userId: number, churchId: number) {
+  const member = await requireChurchMember(userId, churchId);
+  const executive = ["pastor_presidente", "pastor_local", "secretario", "supervisor"].includes(member.role);
+  const assigned = userId < 0 ? await hasLeadershipTeacherAssignment(Math.abs(userId), churchId) : false;
+  if (!executive && !assigned) throw new TRPCError({ code: "FORBIDDEN", message: "Você não está atribuído como professor nesta Escola de Líderes." });
+  return { member, canManage: executive, churchUserId: userId < 0 ? Math.abs(userId) : userId };
 }
 
 async function emitNotificationWithoutBlocking(data: Parameters<typeof emitInternalNotification>[0]) {
@@ -5631,6 +5655,158 @@ const encontroRouter = router({
 
 // ─── ESCOLA DE LÍDERES ROUTER ─────────────────────────────────────────────────
 const escolaLideresRouter = router({
+  studentPath: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) return [];
+      return getLeadershipStudentPath(actor.personId, input.churchId);
+    }),
+  startStudentLesson: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), enrollmentId: z.number().int().positive(), lessonId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Sua conta ainda não está vinculada a uma Pessoa." });
+      const path = await getLeadershipStudentPath(actor.personId, input.churchId);
+      const item = path.flatMap((course) => course.lessons.map((lesson) => ({ ...lesson, enrollment: course.enrollment }))).find((row) => row.enrollment.id === input.enrollmentId && row.lesson.id === input.lessonId);
+      if (!item || !item.available) throw new TRPCError({ code: "FORBIDDEN", message: "Esta aula ainda aguarda a liberação do professor." });
+      await saveLeadershipProgress({ churchId: input.churchId, enrollmentId: input.enrollmentId, lessonId: input.lessonId, status: "em_andamento" });
+      return { success: true };
+    }),
+  completeStudentLesson: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), enrollmentId: z.number().int().positive(), lessonId: z.number().int().positive(), reflection: z.string().trim().max(4000).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Sua conta ainda não está vinculada a uma Pessoa." });
+      const path = await getLeadershipStudentPath(actor.personId, input.churchId);
+      const item = path.flatMap((course) => course.lessons.map((lesson) => ({ ...lesson, enrollment: course.enrollment }))).find((row) => row.enrollment.id === input.enrollmentId && row.lesson.id === input.lessonId);
+      if (!item || !item.available) throw new TRPCError({ code: "FORBIDDEN", message: "Esta aula ainda aguarda a liberação do professor." });
+      await saveLeadershipProgress({ churchId: input.churchId, enrollmentId: input.enrollmentId, lessonId: input.lessonId, status: "concluida", reflection: input.reflection ?? null });
+      return { success: true };
+    }),
+  access: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
+      return { canManage: access.canManage, canTeach: true };
+    }),
+  teacherCandidates: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
+      if (!access.canManage) throw new TRPCError({ code: "FORBIDDEN", message: "Somente a liderança pode atribuir professores." });
+      return getChurchUsersByChurch(input.churchId);
+    }),
+  teachers: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), classId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
+      const schoolClass = await getLeadershipClassById(input.classId, input.churchId);
+      if (!schoolClass) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
+      if (!access.canManage && !(await getLeadershipTeachers(input.classId, input.churchId)).some((row) => row.assignment.churchUserId === access.churchUserId)) throw new TRPCError({ code: "FORBIDDEN", message: "Você não está atribuído a esta turma." });
+      return getLeadershipTeachers(input.classId, input.churchId);
+    }),
+  teacherClasses: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
+      if (access.canManage) return getLeadershipClassesByChurch(input.churchId);
+      return (await getLeadershipClassesForTeacher(access.churchUserId, input.churchId)).map((row) => row.class);
+    }),
+  lessons: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), classId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
+      const schoolClass = await getLeadershipClassById(input.classId, input.churchId);
+      if (!schoolClass) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
+      if (!access.canManage && !(await getLeadershipTeachers(input.classId, input.churchId)).some((row) => row.assignment.churchUserId === access.churchUserId)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Você não está atribuído a esta turma." });
+      }
+      return getLeadershipLessonsByClass(input.classId, input.churchId);
+    }),
+  lessonRoster: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), lessonId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
+      const lesson = await getLeadershipLessonById(input.lessonId, input.churchId);
+      if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Aula não encontrada nesta igreja." });
+      if (!access.canManage && !(await getLeadershipTeachers(lesson.classId, input.churchId)).some((row) => row.assignment.churchUserId === access.churchUserId)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Você não está atribuído a esta turma." });
+      }
+      return getLeadershipLessonRoster(input.lessonId, input.churchId);
+    }),
+  assignTeacher: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), classId: z.number().int().positive(), churchUserId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireExecutiveReadAccess(ctx.user.id, input.churchId);
+      const schoolClass = await getLeadershipClassById(input.classId, input.churchId);
+      const teacher = await getActiveChurchUserById(input.churchUserId);
+      if (!schoolClass || !teacher || teacher.churchId !== input.churchId) throw new TRPCError({ code: "BAD_REQUEST", message: "Turma e professor devem pertencer a esta igreja." });
+      await assignLeadershipTeacher({ churchId: input.churchId, classId: input.classId, churchUserId: input.churchUserId, assignedByChurchUserId: access.actorPersonId ?? ctx.user.id });
+      return { success: true };
+    }),
+  removeTeacher: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireExecutiveReadAccess(ctx.user.id, input.churchId);
+      await removeLeadershipTeacher(input.id, input.churchId);
+      return { success: true };
+    }),
+  createLesson: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), classId: z.number().int().positive(), title: z.string().trim().min(3).max(160), summary: z.string().trim().max(500).nullable().optional(), content: z.string().trim().max(12000).nullable().optional(), lessonDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).nullable().optional(), status: z.enum(["rascunho", "publicada", "concluida"]).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
+      const schoolClass = await getLeadershipClassById(input.classId, input.churchId);
+      if (!schoolClass) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
+      if (!access.canManage && !(await getLeadershipTeachers(input.classId, input.churchId)).some((row) => row.assignment.churchUserId === access.churchUserId)) throw new TRPCError({ code: "FORBIDDEN", message: "Você não está atribuído a esta turma." });
+      const lessons = await getLeadershipLessonsByClass(input.classId, input.churchId);
+      return createLeadershipLesson({ ...input, position: lessons.length, createdByChurchUserId: access.churchUserId });
+    }),
+  updateLesson: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive(), title: z.string().trim().min(3).max(160).optional(), summary: z.string().trim().max(500).nullable().optional(), content: z.string().trim().max(12000).nullable().optional(), lessonDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).nullable().optional(), position: z.number().int().min(0).max(999).optional(), status: z.enum(["rascunho", "publicada", "concluida"]).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const lesson = await getLeadershipLessonById(input.id, input.churchId);
+      if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Aula não encontrada nesta igreja." });
+      const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
+      if (!access.canManage && !(await getLeadershipTeachers(lesson.classId, input.churchId)).some((row) => row.assignment.churchUserId === access.churchUserId)) throw new TRPCError({ code: "FORBIDDEN", message: "Você não está atribuído a esta turma." });
+      const { id: _id, churchId: _churchId, ...data } = input;
+      await updateLeadershipLesson(_id, _churchId, data);
+      return { success: true };
+    }),
+  saveAttendance: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), lessonId: z.number().int().positive(), enrollmentId: z.number().int().positive(), status: z.enum(["presente", "ausente", "justificado"]), note: z.string().trim().max(500).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const lesson = await getLeadershipLessonById(input.lessonId, input.churchId);
+      if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Aula não encontrada nesta igreja." });
+      const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
+      if (!access.canManage && !(await getLeadershipTeachers(lesson.classId, input.churchId)).some((row) => row.assignment.churchUserId === access.churchUserId)) throw new TRPCError({ code: "FORBIDDEN", message: "Você não está atribuído a esta turma." });
+      const enrollment = (await getLeadershipEnrollments(lesson.classId, input.churchId)).find((row) => row.enrollment.id === input.enrollmentId);
+      if (!enrollment) throw new TRPCError({ code: "BAD_REQUEST", message: "Aluno não pertence a esta turma." });
+      await saveLeadershipAttendance({ ...input, recordedByChurchUserId: access.churchUserId });
+      return { success: true };
+    }),
+  reviewProgress: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), lessonId: z.number().int().positive(), enrollmentId: z.number().int().positive(), reviewStatus: z.enum(["compreendeu", "precisa_reforco", "nao_participou"]), reviewNotes: z.string().trim().max(2000).nullable().optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const lesson = await getLeadershipLessonById(input.lessonId, input.churchId);
+      if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Aula não encontrada nesta igreja." });
+      const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
+      if (!access.canManage && !(await getLeadershipTeachers(lesson.classId, input.churchId)).some((row) => row.assignment.churchUserId === access.churchUserId)) throw new TRPCError({ code: "FORBIDDEN", message: "Você não está atribuído a esta turma." });
+      await saveLeadershipProgress({ ...input, status: "concluida", reviewedByChurchUserId: access.churchUserId });
+      return { success: true };
+    }),
+  releaseNextLesson: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), lessonId: z.number().int().positive(), enrollmentId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const lesson = await getLeadershipLessonById(input.lessonId, input.churchId);
+      if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Aula não encontrada nesta igreja." });
+      const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
+      if (!access.canManage && !(await getLeadershipTeachers(lesson.classId, input.churchId)).some((row) => row.assignment.churchUserId === access.churchUserId)) throw new TRPCError({ code: "FORBIDDEN", message: "Você não está atribuído a esta turma." });
+      const progress = await getLeadershipProgressByEnrollmentLesson(input.churchId, input.enrollmentId, input.lessonId);
+      if (!progress || progress.reviewStatus !== "compreendeu") throw new TRPCError({ code: "BAD_REQUEST", message: "Registre a revisão presencial como Compreendeu antes de liberar o próximo tema." });
+      await releaseLeadershipLesson({ ...input, releasedByChurchUserId: access.churchUserId });
+      return { success: true };
+    }),
   listClasses: protectedProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {

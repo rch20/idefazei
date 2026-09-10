@@ -68,6 +68,10 @@ import {
   leadershipHistory,
   leadershipSchoolClasses,
   leadershipSchoolEnrollments,
+  leadershipSchoolTeachers,
+  leadershipSchoolLessons,
+  leadershipSchoolAttendance,
+  leadershipSchoolProgress,
   libraryItems,
   ministries,
   ministryMembers,
@@ -5695,6 +5699,145 @@ export async function updateLeadershipEnrollment(id: number, churchId: number, d
   if (data.attendance !== undefined) update.attendance = data.attendance;
   if (data.completedAt !== undefined) update.completedAt = data.completedAt;
   await db.update(leadershipSchoolEnrollments).set(update).where(and(eq(leadershipSchoolEnrollments.id, id), eq(leadershipSchoolEnrollments.churchId, churchId)));
+}
+
+export async function getLeadershipClassById(classId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(leadershipSchoolClasses).where(and(eq(leadershipSchoolClasses.id, classId), eq(leadershipSchoolClasses.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getLeadershipLessonsByClass(classId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(leadershipSchoolLessons)
+    .where(and(eq(leadershipSchoolLessons.classId, classId), eq(leadershipSchoolLessons.churchId, churchId)))
+    .orderBy(leadershipSchoolLessons.position, leadershipSchoolLessons.id);
+}
+
+export async function getLeadershipLessonById(lessonId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(leadershipSchoolLessons).where(and(eq(leadershipSchoolLessons.id, lessonId), eq(leadershipSchoolLessons.churchId, churchId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getLeadershipClassesForTeacher(churchUserId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ class: leadershipSchoolClasses, assignment: leadershipSchoolTeachers })
+    .from(leadershipSchoolTeachers)
+    .innerJoin(leadershipSchoolClasses, eq(leadershipSchoolTeachers.classId, leadershipSchoolClasses.id))
+    .where(and(eq(leadershipSchoolTeachers.churchUserId, churchUserId), eq(leadershipSchoolTeachers.churchId, churchId), eq(leadershipSchoolTeachers.active, true), eq(leadershipSchoolClasses.churchId, churchId), eq(leadershipSchoolClasses.active, true)));
+}
+
+export async function getLeadershipTeachers(classId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ assignment: leadershipSchoolTeachers, user: { id: churchUsers.id, name: churchUsers.name, email: churchUsers.email, personId: churchUsers.personId } })
+    .from(leadershipSchoolTeachers)
+    .innerJoin(churchUsers, eq(leadershipSchoolTeachers.churchUserId, churchUsers.id))
+    .where(and(eq(leadershipSchoolTeachers.classId, classId), eq(leadershipSchoolTeachers.churchId, churchId), eq(leadershipSchoolTeachers.active, true)));
+}
+
+export async function hasLeadershipTeacherAssignment(churchUserId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db.select({ id: leadershipSchoolTeachers.id }).from(leadershipSchoolTeachers)
+    .where(and(eq(leadershipSchoolTeachers.churchUserId, churchUserId), eq(leadershipSchoolTeachers.churchId, churchId), eq(leadershipSchoolTeachers.active, true))).limit(1);
+  return rows.length > 0;
+}
+
+export async function assignLeadershipTeacher(data: { churchId: number; classId: number; churchUserId: number; assignedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(leadershipSchoolTeachers).values({ ...data, active: true }).onDuplicateKeyUpdate({ set: { active: true, assignedByChurchUserId: data.assignedByChurchUserId } });
+}
+
+export async function removeLeadershipTeacher(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(leadershipSchoolTeachers).set({ active: false }).where(and(eq(leadershipSchoolTeachers.id, id), eq(leadershipSchoolTeachers.churchId, churchId)));
+}
+
+export async function createLeadershipLesson(data: { churchId: number; classId: number; title: string; summary?: string | null; content?: string | null; lessonDate?: string | null; position: number; status?: "rascunho" | "publicada" | "concluida"; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { lessonDate: lessonDateInput, ...rest } = data;
+  const lessonDate = lessonDateInput ? parseCivilDateAsUtcNoon(lessonDateInput) : lessonDateInput === null ? null : undefined;
+  const result = await db.insert(leadershipSchoolLessons).values({ ...rest, lessonDate, status: data.status ?? "rascunho" });
+  return { id: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0) };
+}
+
+export async function updateLeadershipLesson(id: number, churchId: number, data: { title?: string; summary?: string | null; content?: string | null; lessonDate?: string | null; position?: number; status?: "rascunho" | "publicada" | "concluida" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { lessonDate, ...rest } = data;
+  await db.update(leadershipSchoolLessons).set({ ...rest, lessonDate: lessonDate === undefined ? undefined : lessonDate ? parseCivilDateAsUtcNoon(lessonDate) : null }).where(and(eq(leadershipSchoolLessons.id, id), eq(leadershipSchoolLessons.churchId, churchId)));
+}
+
+export async function getLeadershipLessonRoster(lessonId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    enrollment: leadershipSchoolEnrollments,
+    person: { id: people.id, fullName: people.fullName },
+    attendance: leadershipSchoolAttendance,
+    progress: leadershipSchoolProgress,
+  }).from(leadershipSchoolEnrollments)
+    .innerJoin(people, eq(leadershipSchoolEnrollments.personId, people.id))
+    .leftJoin(leadershipSchoolAttendance, and(eq(leadershipSchoolAttendance.enrollmentId, leadershipSchoolEnrollments.id), eq(leadershipSchoolAttendance.lessonId, lessonId), eq(leadershipSchoolAttendance.churchId, churchId)))
+    .leftJoin(leadershipSchoolProgress, and(eq(leadershipSchoolProgress.enrollmentId, leadershipSchoolEnrollments.id), eq(leadershipSchoolProgress.lessonId, lessonId), eq(leadershipSchoolProgress.churchId, churchId)))
+    .where(and(eq(leadershipSchoolEnrollments.churchId, churchId), eq(leadershipSchoolEnrollments.classId, db.select({ classId: leadershipSchoolLessons.classId }).from(leadershipSchoolLessons).where(and(eq(leadershipSchoolLessons.id, lessonId), eq(leadershipSchoolLessons.churchId, churchId))).limit(1))))
+    .orderBy(people.fullName);
+}
+
+export async function getLeadershipStudentPath(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const enrollments = await db.select({ enrollment: leadershipSchoolEnrollments, class: leadershipSchoolClasses })
+    .from(leadershipSchoolEnrollments)
+    .innerJoin(leadershipSchoolClasses, eq(leadershipSchoolEnrollments.classId, leadershipSchoolClasses.id))
+    .where(and(eq(leadershipSchoolEnrollments.personId, personId), eq(leadershipSchoolEnrollments.churchId, churchId), eq(leadershipSchoolClasses.churchId, churchId)));
+  return Promise.all(enrollments.filter(({ enrollment }) => enrollment.status !== "cancelado").map(async ({ enrollment, class: schoolClass }) => {
+    const lessons = await getLeadershipLessonsByClass(schoolClass.id, churchId);
+    const progress = await db.select().from(leadershipSchoolProgress).where(and(eq(leadershipSchoolProgress.churchId, churchId), eq(leadershipSchoolProgress.enrollmentId, enrollment.id)));
+    const progressByLesson = new Map(progress.map((item) => [item.lessonId, item]));
+    return { enrollment, class: schoolClass, lessons: lessons.map((lesson, index) => ({ lesson, progress: progressByLesson.get(lesson.id) ?? null, available: index === 0 || Boolean(progressByLesson.get(lessons[index - 1]?.id ?? 0)?.releasedAt) })) };
+  }));
+}
+
+export async function getLeadershipProgressByEnrollmentLesson(churchId: number, enrollmentId: number, lessonId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(leadershipSchoolProgress).where(and(eq(leadershipSchoolProgress.churchId, churchId), eq(leadershipSchoolProgress.enrollmentId, enrollmentId), eq(leadershipSchoolProgress.lessonId, lessonId))).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function saveLeadershipAttendance(data: { churchId: number; lessonId: number; enrollmentId: number; status: "presente" | "ausente" | "justificado"; note?: string | null; recordedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(leadershipSchoolAttendance).values(data).onDuplicateKeyUpdate({ set: { status: data.status, note: data.note ?? null, recordedByChurchUserId: data.recordedByChurchUserId } });
+}
+
+export async function saveLeadershipProgress(data: { churchId: number; enrollmentId: number; lessonId: number; status?: "nao_iniciada" | "em_andamento" | "concluida"; reflection?: string | null; reviewStatus?: "pendente" | "compreendeu" | "precisa_reforco" | "nao_participou"; reviewNotes?: string | null; reviewedByChurchUserId?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const values = { churchId: data.churchId, enrollmentId: data.enrollmentId, lessonId: data.lessonId, status: data.status ?? "nao_iniciada", reflection: data.reflection ?? null, reviewStatus: data.reviewStatus ?? "pendente", reviewNotes: data.reviewNotes ?? null, reviewedByChurchUserId: data.reviewedByChurchUserId ?? null };
+  const set: Record<string, unknown> = {};
+  if (data.status !== undefined) set.status = data.status;
+  if (data.reflection !== undefined) set.reflection = data.reflection;
+  if (data.reviewStatus !== undefined) set.reviewStatus = data.reviewStatus;
+  if (data.reviewNotes !== undefined) set.reviewNotes = data.reviewNotes;
+  if (data.reviewedByChurchUserId !== undefined) { set.reviewedAt = data.reviewedByChurchUserId ? new Date() : null; set.reviewedByChurchUserId = data.reviewedByChurchUserId; }
+  await db.insert(leadershipSchoolProgress).values(values).onDuplicateKeyUpdate({ set });
+}
+
+export async function releaseLeadershipLesson(data: { churchId: number; enrollmentId: number; lessonId: number; releasedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(leadershipSchoolProgress).set({ releasedAt: new Date(), releasedByChurchUserId: data.releasedByChurchUserId }).where(and(eq(leadershipSchoolProgress.churchId, data.churchId), eq(leadershipSchoolProgress.enrollmentId, data.enrollmentId), eq(leadershipSchoolProgress.lessonId, data.lessonId)));
 }
 
 // ─── HISTÓRICO DE LIDERANÇA ───────────────────────────────────────────────────

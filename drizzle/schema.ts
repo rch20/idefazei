@@ -1597,6 +1597,84 @@ export const leadershipSchoolEnrollments = mysqlTable("leadership_school_enrollm
 
 export type LeadershipSchoolEnrollment = typeof leadershipSchoolEnrollments.$inferSelect;
 
+/** Professores atribuídos explicitamente a cada turma; não depende do texto pastoral legado. */
+export const leadershipSchoolTeachers = mysqlTable("leadership_school_teachers", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  classId: int("classId").notNull(),
+  churchUserId: int("churchUserId").notNull(),
+  assignedByChurchUserId: int("assignedByChurchUserId").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("leadership_school_teachers_church_class_idx").on(table.churchId, table.classId),
+  uniqueIndex("leadership_school_teachers_unique").on(table.churchId, table.classId, table.churchUserId),
+]);
+
+export type LeadershipSchoolTeacher = typeof leadershipSchoolTeachers.$inferSelect;
+
+/** Aula/encontro da turma, com roteiro curto e data civil sem conversão de fuso. */
+export const leadershipSchoolLessons = mysqlTable("leadership_school_lessons", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  classId: int("classId").notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  summary: varchar("summary", { length: 500 }),
+  content: text("content"),
+  lessonDate: date("lessonDate"),
+  position: int("position").notNull().default(0),
+  status: mysqlEnum("status", ["rascunho", "publicada", "concluida"]).notNull().default("rascunho"),
+  createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("leadership_school_lessons_church_class_position_idx").on(table.churchId, table.classId, table.position),
+]);
+
+export type LeadershipSchoolLesson = typeof leadershipSchoolLessons.$inferSelect;
+
+/** Presença individual por encontro; a chave única impede duplicar o mesmo registro. */
+export const leadershipSchoolAttendance = mysqlTable("leadership_school_attendance", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  lessonId: int("lessonId").notNull(),
+  enrollmentId: int("enrollmentId").notNull(),
+  status: mysqlEnum("status", ["presente", "ausente", "justificado"]).notNull(),
+  note: varchar("note", { length: 500 }),
+  recordedByChurchUserId: int("recordedByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("leadership_school_attendance_church_lesson_idx").on(table.churchId, table.lessonId),
+  uniqueIndex("leadership_school_attendance_unique").on(table.churchId, table.lessonId, table.enrollmentId),
+]);
+
+export type LeadershipSchoolAttendance = typeof leadershipSchoolAttendance.$inferSelect;
+
+/** Progresso pedagógico da matrícula em cada aula, incluindo revisão presencial e liberação. */
+export const leadershipSchoolProgress = mysqlTable("leadership_school_progress", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  enrollmentId: int("enrollmentId").notNull(),
+  lessonId: int("lessonId").notNull(),
+  status: mysqlEnum("status", ["nao_iniciada", "em_andamento", "concluida"]).notNull().default("nao_iniciada"),
+  reflection: text("reflection"),
+  reviewStatus: mysqlEnum("reviewStatus", ["pendente", "compreendeu", "precisa_reforco", "nao_participou"]).notNull().default("pendente"),
+  reviewNotes: text("reviewNotes"),
+  reviewedAt: timestamp("reviewedAt"),
+  reviewedByChurchUserId: int("reviewedByChurchUserId"),
+  releasedAt: timestamp("releasedAt"),
+  releasedByChurchUserId: int("releasedByChurchUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("leadership_school_progress_church_enrollment_idx").on(table.churchId, table.enrollmentId),
+  index("leadership_school_progress_church_lesson_idx").on(table.churchId, table.lessonId),
+  uniqueIndex("leadership_school_progress_unique").on(table.churchId, table.enrollmentId, table.lessonId),
+]);
+
+export type LeadershipSchoolProgress = typeof leadershipSchoolProgress.$inferSelect;
+
 // ─── HISTÓRICO DE LIDERANÇA ───────────────────────────────────────────────────
 
 export const leadershipHistory = mysqlTable("leadership_history", {
