@@ -32,6 +32,8 @@ describe("Escola de Líderes — Painel do Professor", () => {
     expect(router).toContain("saveAttendance");
     expect(router).toContain("reviewProgress");
     expect(router).toContain("releaseNextLesson");
+    expect(router).toContain("lessonDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/)");
+    expect(router).not.toContain("lessonDate: z.string().regex(/^\\\\d{4}-\\\\d{2}-\\\\d{2}$/)");
     expect(router).toContain("Você não está atribuído a esta turma.");
     expect(db).toContain("getLeadershipLessonRoster");
     expect(db).toContain("saveLeadershipAttendance");

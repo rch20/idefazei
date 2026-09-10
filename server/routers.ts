@@ -5753,7 +5753,7 @@ const escolaLideresRouter = router({
       return { success: true };
     }),
   createLesson: protectedProcedure
-    .input(z.object({ churchId: z.number().int().positive(), classId: z.number().int().positive(), title: z.string().trim().min(3).max(160), summary: z.string().trim().max(500).nullable().optional(), content: z.string().trim().max(12000).nullable().optional(), lessonDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).nullable().optional(), status: z.enum(["rascunho", "publicada", "concluida"]).optional() }))
+    .input(z.object({ churchId: z.number().int().positive(), classId: z.number().int().positive(), title: z.string().trim().min(3).max(160), summary: z.string().trim().max(500).nullable().optional(), content: z.string().trim().max(12000).nullable().optional(), lessonDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), status: z.enum(["rascunho", "publicada", "concluida"]).optional() }))
     .mutation(async ({ input, ctx }) => {
       const access = await requireLeadershipTeacher(ctx.user.id, input.churchId);
       const schoolClass = await getLeadershipClassById(input.classId, input.churchId);
@@ -5763,7 +5763,7 @@ const escolaLideresRouter = router({
       return createLeadershipLesson({ ...input, position: lessons.length, createdByChurchUserId: access.churchUserId });
     }),
   updateLesson: protectedProcedure
-    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive(), title: z.string().trim().min(3).max(160).optional(), summary: z.string().trim().max(500).nullable().optional(), content: z.string().trim().max(12000).nullable().optional(), lessonDate: z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/).nullable().optional(), position: z.number().int().min(0).max(999).optional(), status: z.enum(["rascunho", "publicada", "concluida"]).optional() }))
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive(), title: z.string().trim().min(3).max(160).optional(), summary: z.string().trim().max(500).nullable().optional(), content: z.string().trim().max(12000).nullable().optional(), lessonDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(), position: z.number().int().min(0).max(999).optional(), status: z.enum(["rascunho", "publicada", "concluida"]).optional() }))
     .mutation(async ({ input, ctx }) => {
       const lesson = await getLeadershipLessonById(input.id, input.churchId);
       if (!lesson) throw new TRPCError({ code: "NOT_FOUND", message: "Aula não encontrada nesta igreja." });
