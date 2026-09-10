@@ -226,6 +226,7 @@ vi.mock("./db", () => ({
   getActiveMediaAssetById: vi.fn().mockResolvedValue({ id: 1, churchId: 100, purpose: "announcement_image", resourceType: "image", url: "https://example.com/notice.webp", secureUrl: "https://example.com/notice.webp", status: "active" }),
   updateAnnouncement: vi.fn().mockResolvedValue({ id: 1, churchId: 100 }),
   createAnnouncement: vi.fn().mockResolvedValue({ id: 1 }),
+  deleteAnnouncement: vi.fn().mockResolvedValue({ id: 1, title: "Aviso" }),
   getPrayerRequests: vi.fn().mockResolvedValue([]),
   createPrayerRequest: vi.fn().mockResolvedValue({ id: 1 }),
   getDashboardStats: vi.fn().mockResolvedValue({}),
@@ -2515,5 +2516,46 @@ describe("Governança transversal — escopo e acumulação de funções", () =>
     expect(db.assignMinistryRole).toHaveBeenCalledWith(expect.objectContaining({ ministryId: 7, personId: 11, roleKey: "membro_ministerio" }));
 
     await expect(caller.ministries.assignFunction({ churchId: CHURCH_ID, ministryId: 7, personId: 11, roleKey: "lider_louvor" })).rejects.toThrow("funções operacionais");
+  });
+});
+
+
+describe("Mural — exclusão segura de anúncios", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const db = await import("./db");
+    vi.mocked(db.getChurchMemberByUserId).mockResolvedValue({
+      id: 1,
+      userId: 10,
+      churchId: CHURCH_ID,
+      role: "pastor_presidente",
+      active: true,
+    } as any);
+    vi.mocked(db.getComplementaryRolesByChurchUser).mockResolvedValue([]);
+    vi.mocked(db.getActiveMinistryRoleKeysByPerson).mockResolvedValue([]);
+    vi.mocked(db.getActiveDepartmentRoleKeysByPerson).mockResolvedValue([]);
+    vi.mocked(db.getMinistryRoleDefinitionsByChurch).mockResolvedValue([]);
+  });
+
+  it("exclui pelo id e churchId do tenant autenticado", async () => {
+    const db = await import("./db");
+    vi.mocked(db.deleteAnnouncement).mockResolvedValueOnce({ id: 91, title: "Culto de celebração" });
+    const caller = appRouter.createCaller(createMemberContext());
+
+    await expect(caller.announcements.remove({ churchId: CHURCH_ID, id: 91 })).resolves.toEqual({
+      success: true,
+      id: 91,
+      title: "Culto de celebração",
+    });
+    expect(db.deleteAnnouncement).toHaveBeenCalledWith(91, CHURCH_ID);
+  });
+
+  it("não trata como existente um anúncio fora do tenant informado", async () => {
+    const db = await import("./db");
+    vi.mocked(db.deleteAnnouncement).mockResolvedValueOnce(null);
+    const caller = appRouter.createCaller(createMemberContext());
+
+    await expect(caller.announcements.remove({ churchId: CHURCH_ID, id: 999 })).rejects.toThrow("Aviso não encontrado nesta igreja.");
+    expect(db.deleteAnnouncement).toHaveBeenCalledWith(999, CHURCH_ID);
   });
 });

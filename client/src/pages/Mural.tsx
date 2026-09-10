@@ -1,6 +1,7 @@
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { trpc } from "@/lib/trpc";
-import { Archive, BookOpen, FileText, Globe2, ImagePlus, Megaphone, Pin, Plus } from "lucide-react";
+import { Archive, BookOpen, FileText, Globe2, ImagePlus, Megaphone, Pin, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -97,6 +98,7 @@ export default function Mural() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
 
   const { data: announcements, isLoading, refetch } = trpc.announcements.list.useQuery({ churchId });
   const create = trpc.announcements.create.useMutation({
@@ -126,6 +128,15 @@ export default function Mural() {
   const archive = trpc.announcements.archivePublic.useMutation({
     onSuccess: () => { toast.success("Aviso retirado da página pública."); refetch(); },
     onError: (error) => toast.error(error.message || "Não foi possível arquivar o aviso"),
+  });
+  const remove = trpc.announcements.remove.useMutation({
+    onSuccess: (deleted) => {
+      toast.success(`Anúncio “${deleted.title}” excluído.`);
+      if (selectedAnnouncement?.id === deleted.id) setSelectedAnnouncement(null);
+      setDeleteTarget(null);
+      refetch();
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível excluir o anúncio"),
   });
 
   const pinned = ((announcements ?? []) as Announcement[]).filter((announcement) => announcement.pinned);
@@ -232,8 +243,8 @@ export default function Mural() {
         <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-muted" />)}</div>
       ) : (
         <div className="space-y-6">
-          {pinned.length > 0 && <AnnouncementGroup title="Fixados" icon={<Pin className="h-3 w-3" />} announcements={pinned} onEdit={openEdit} onPreview={setSelectedAnnouncement} onArchive={(item) => archive.mutate({ churchId, id: item.id })} />}
-          {regular.length > 0 && <AnnouncementGroup title={pinned.length > 0 ? "Recentes" : "Avisos"} announcements={regular} onEdit={openEdit} onPreview={setSelectedAnnouncement} onArchive={(item) => archive.mutate({ churchId, id: item.id })} />}
+          {pinned.length > 0 && <AnnouncementGroup title="Fixados" icon={<Pin className="h-3 w-3" />} announcements={pinned} onEdit={openEdit} onPreview={setSelectedAnnouncement} onArchive={(item) => archive.mutate({ churchId, id: item.id })} onDelete={setDeleteTarget} />}
+          {regular.length > 0 && <AnnouncementGroup title={pinned.length > 0 ? "Recentes" : "Avisos"} announcements={regular} onEdit={openEdit} onPreview={setSelectedAnnouncement} onArchive={(item) => archive.mutate({ churchId, id: item.id })} onDelete={setDeleteTarget} />}
           {(announcements ?? []).length === 0 && <div className="card-sacred flex flex-col items-center gap-3 p-12 text-center"><div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50"><Megaphone className="h-7 w-7 text-blue-500" /></div><p className="font-semibold text-navy">Nenhum aviso publicado</p><p className="text-sm text-muted-foreground">Publique o primeiro comunicado da sua igreja.</p></div>}
         </div>
       )}
@@ -291,15 +302,39 @@ export default function Mural() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(value) => { if (!value && !remove.isPending) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir anúncio?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget ? `O anúncio “${deleteTarget.title}” será excluído permanentemente do Mural${deleteTarget.publicVisible ? " e deixará de aparecer na página pública" : ""}. Esta ação não pode ser desfeita.` : "Esta ação não pode ser desfeita."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={remove.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (deleteTarget) remove.mutate({ churchId, id: deleteTarget.id });
+              }}
+            >
+              {remove.isPending ? "Excluindo..." : "Excluir definitivamente"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function AnnouncementGroup({ title, icon, announcements, onEdit, onPreview, onArchive }: { title: string; icon?: React.ReactNode; announcements: Announcement[]; onEdit: (announcement: Announcement) => void; onPreview: (announcement: Announcement) => void; onArchive: (announcement: Announcement) => void }) {
-  return <div><h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{icon}{title}</h2><div className="space-y-3">{announcements.map((announcement) => <AnnouncementCard key={announcement.id} announcement={announcement} onEdit={onEdit} onPreview={onPreview} onArchive={onArchive} />)}</div></div>;
+function AnnouncementGroup({ title, icon, announcements, onEdit, onPreview, onArchive, onDelete }: { title: string; icon?: React.ReactNode; announcements: Announcement[]; onEdit: (announcement: Announcement) => void; onPreview: (announcement: Announcement) => void; onArchive: (announcement: Announcement) => void; onDelete: (announcement: Announcement) => void }) {
+  return <div><h2 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{icon}{title}</h2><div className="space-y-3">{announcements.map((announcement) => <AnnouncementCard key={announcement.id} announcement={announcement} onEdit={onEdit} onPreview={onPreview} onArchive={onArchive} onDelete={onDelete} />)}</div></div>;
 }
 
-function AnnouncementCard({ announcement, onEdit, onPreview, onArchive }: { announcement: Announcement; onEdit: (announcement: Announcement) => void; onPreview: (announcement: Announcement) => void; onArchive: (announcement: Announcement) => void }) {
+function AnnouncementCard({ announcement, onEdit, onPreview, onArchive, onDelete }: { announcement: Announcement; onEdit: (announcement: Announcement) => void; onPreview: (announcement: Announcement) => void; onArchive: (announcement: Announcement) => void; onDelete: (announcement: Announcement) => void }) {
   const cfg = TYPE_CONFIG[announcement.type ?? "aviso"] ?? TYPE_CONFIG.aviso;
   const Icon = cfg.icon;
   const isPublic = Boolean(announcement.publicVisible);
@@ -308,7 +343,7 @@ function AnnouncementCard({ announcement, onEdit, onPreview, onArchive }: { anno
     <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start">
       <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${cfg.color.split(" ")[0]}`}><Icon className="h-4 w-4" /></div>
       <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-navy">{announcement.title}</p>{announcement.pinned && <Pin className="h-3 w-3 text-gold" />}<span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${cfg.color}`}>{cfg.label}</span></div><p className={`mt-1 whitespace-pre-line text-sm leading-relaxed text-foreground${showPreview ? " mural-announcement-summary" : ""}`}>{announcement.content}</p>{showPreview && <button type="button" className="mural-announcement-preview-trigger" aria-haspopup="dialog" onClick={() => onPreview(announcement)}>Ver conteúdo completo</button>}<div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>Criado em {formatDate(announcement.createdAt)}</span>{isPublic && <span className="inline-flex items-center gap-1 text-green-700"><Globe2 className="h-3 w-3" />{STATUS_LABELS[announcement.publicStatus] ?? "Público"}</span>}{announcement.expiresAt && <span>Expira em {formatDate(announcement.expiresAt)}</span>}</div></div>
-      <div className="flex flex-wrap gap-2 sm:justify-end"><Button type="button" size="sm" variant="outline" onClick={() => onEdit(announcement)}>Editar</Button>{isPublic && announcement.publicStatus !== "arquivado" && <Button type="button" size="sm" variant="outline" className="text-amber-700" onClick={() => onArchive(announcement)}><Archive className="mr-1.5 h-3.5 w-3.5" />Retirar</Button>}</div>
+      <div className="flex flex-wrap gap-2 sm:justify-end"><Button type="button" size="sm" variant="outline" onClick={() => onEdit(announcement)}>Editar</Button>{isPublic && announcement.publicStatus !== "arquivado" && <Button type="button" size="sm" variant="outline" className="text-amber-700" onClick={() => onArchive(announcement)}><Archive className="mr-1.5 h-3.5 w-3.5" />Retirar</Button>}<Button type="button" size="sm" variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(announcement)}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Excluir</Button></div>
     </div>
   </article>;
 }

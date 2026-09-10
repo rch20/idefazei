@@ -4098,6 +4098,20 @@ export async function createAnnouncement(data: typeof announcements.$inferInsert
   return rows[0] ?? result[0];
 }
 
+export async function deleteAnnouncement(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const rows = await db
+    .select({ id: announcements.id, title: announcements.title })
+    .from(announcements)
+    .where(and(eq(announcements.id, id), eq(announcements.churchId, churchId)))
+    .limit(1);
+  const announcement = rows[0];
+  if (!announcement) return null;
+  await db.delete(announcements).where(and(eq(announcements.id, id), eq(announcements.churchId, churchId)));
+  return announcement;
+}
+
 // ─── PRAYER REQUESTS ──────────────────────────────────────────────────────────
 
 export async function getPrayerRequestsByChurch(churchId: number) {

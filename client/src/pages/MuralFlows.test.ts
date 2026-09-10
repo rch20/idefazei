@@ -42,6 +42,15 @@ describe("Mural — Avisos Públicos", () => {
     expect(page).toContain("AdaptiveFormDialogFooter");
   });
 
+  it("permite excluir um anúncio com confirmação e feedback explícitos", () => {
+    expect(page).toContain("announcements.remove.useMutation");
+    expect(page).toContain("Excluir anúncio?");
+    expect(page).toContain("Excluir definitivamente");
+    expect(page).toContain("Esta ação não pode ser desfeita");
+    expect(page).toContain("remove.mutate({ churchId, id: deleteTarget.id })");
+    expect(page).toContain("Não foi possível excluir o anúncio");
+  });
+
   it("compacta avisos longos do painel sem retirar acesso ao conteúdo integral", () => {
     expect(page).toContain("ANNOUNCEMENT_ADMIN_SUMMARY_CHAR_LIMIT");
     expect(page).toContain("mural-announcement-summary");

@@ -59,4 +59,15 @@ describe("Avisos Públicos — contrato e isolamento", () => {
     expect(source).toContain("archivePublic");
     expect(source).toContain('publicVisible: false');
   });
+
+  it("exclui somente anúncios do tenant com permissão de Comunicação", () => {
+    const source = announcementRouterSource();
+    expect(source).toContain("remove: protectedProcedure");
+    expect(source).toContain("requireCommunicationManager(ctx.user.id, input.churchId)");
+    expect(source).toContain("deleteAnnouncement(input.id, input.churchId)");
+    expect(source).toContain("Aviso não encontrado nesta igreja.");
+    expect(db).toContain("export async function deleteAnnouncement(id: number, churchId: number)");
+    expect(db).toContain("eq(announcements.id, id), eq(announcements.churchId, churchId)");
+    expect(db).toContain("db.delete(announcements)");
+  });
 });

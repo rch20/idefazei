@@ -21,6 +21,7 @@ import {
 import { requestChurchPasswordReset, resetChurchPassword } from "./passwordRecovery";
 import {
   createAnnouncement,
+  deleteAnnouncement,
   createCell,
   updateCell,
   assignPersonToCell,
@@ -4187,6 +4188,15 @@ const announcementsRouter = router({
     .mutation(async ({ input, ctx }) => {
       await requireChurchPublicSitePublisher(ctx.user.id, input.churchId);
       return updateAnnouncement(input.id, input.churchId, { publicVisible: false, publicStatus: "arquivado" });
+    }),
+
+  remove: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireCommunicationManager(ctx.user.id, input.churchId);
+      const deleted = await deleteAnnouncement(input.id, input.churchId);
+      if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "Aviso não encontrado nesta igreja." });
+      return { success: true, id: deleted.id, title: deleted.title };
     }),
 });
 
