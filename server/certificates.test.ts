@@ -1,4 +1,6 @@
+import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
+import { CERTIFICATE_ARTBOARD } from "../shared/certificateTemplate";
 import { generateCertificatePDF } from "./certificates";
 
 describe("geração do modelo moderno de certificados", () => {
@@ -16,6 +18,31 @@ describe("geração do modelo moderno de certificados", () => {
 
     expect(pdf.byteLength).toBeGreaterThan(1000);
     expect(new TextDecoder().decode(pdf.slice(0, 5))).toBe("%PDF-");
+    const document = await PDFDocument.load(pdf);
+    const page = document.getPage(0);
+    expect(page.getWidth()).toBeCloseTo(CERTIFICATE_ARTBOARD.pdfWidth, 1);
+    expect(page.getHeight()).toBeCloseTo(CERTIFICATE_ARTBOARD.pdfHeight, 1);
+  });
+
+  it("aceita conteúdo longo sem alterar a página nem o modelo protegido", async () => {
+    const pdf = await generateCertificatePDF({
+      type: "batismo",
+      memberName: "Uma pessoa com um nome muito extenso para validar o limite seguro",
+      churchName: "Igreja Cristã Viver",
+      pastorName: "Pr. Luiz Rocha",
+      signatureLabel: "Pastor Presidente",
+      verse: "Uma mensagem extensa para verificar que o versículo permanece em sua região própria.",
+      template: {
+        modelKey: "modern-v1",
+        title: "CERTIFICADO DE BATISMO",
+        subtitle: "Uma formação cristã extraordinariamente longa para teste",
+        body: "Uma frase longa de reconhecimento para validar a composição do documento.",
+      },
+    });
+    const document = await PDFDocument.load(pdf);
+    expect(document.getPageCount()).toBe(1);
+    expect(document.getPage(0).getWidth()).toBeCloseTo(CERTIFICATE_ARTBOARD.pdfWidth, 1);
+    expect(document.getPage(0).getHeight()).toBeCloseTo(CERTIFICATE_ARTBOARD.pdfHeight, 1);
   });
 
   it("aceita personalização de nome, subtítulo e frase mantendo o modelo protegido", async () => {

@@ -10,9 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Award, BookOpen, Droplets, GraduationCap, Save, Upload, Eye, Loader2, Plus, Pencil, Archive } from "lucide-react";
+import { Award, BookOpen, Droplets, GraduationCap, Save, Upload, Eye, Loader2, Plus, Pencil, Archive, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
+import { CertificateArtboard } from "@/components/CertificateArtboard";
 import { CERTIFICATE_TEMPLATE_COPY, type CertificateTemplateOverride, type CertificateType } from "@shared/certificateTemplate";
 // ─── VERSÍCULOS PADRÃO ────────────────────────────────────────────────────────
 
@@ -717,70 +718,63 @@ type CertificatePreviewDialogProps = {
   onOpenChange: (open: boolean) => void;
 };
 
-const CERTIFICATE_PREVIEW_COPY = CERTIFICATE_TEMPLATE_COPY;
-
 function CertificatePreviewDialog({ open, type, customType, churchName, pastorName, signatureLabel, logoUrl, verse, template, onOpenChange }: CertificatePreviewDialogProps) {
+  const [zoom, setZoom] = useState(1);
   if (!type) return null;
-  const copy = customType
-    ? { title: customType.title, subtitle: customType.subtitle, body: customType.body, course: customType.subtitle }
-    : { ...CERTIFICATE_PREVIEW_COPY[type], ...template, course: template.subtitle || CERTIFICATE_PREVIEW_COPY[type].course };
+
+  const effectiveTemplate = customType
+    ? { modelKey: "modern-v1", title: customType.title, subtitle: customType.subtitle, body: customType.body }
+    : template;
   const effectiveVerse = customType?.verse || verse;
+  const dateLabel = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+
+  function resetZoom() {
+    setZoom(1);
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92dvh] w-[calc(100%-1rem)] max-w-5xl overflow-y-auto border-[#c9a84c]/30 bg-[#f7f1e5] p-3 sm:p-6">
-        <DialogHeader className="sr-only">
-          <DialogTitle>Pré-visualização do certificado</DialogTitle>
-          <DialogDescription>Exemplo visual usando os dados atuais do formulário. Nenhum arquivo definitivo é gerado.</DialogDescription>
+      <DialogContent className="flex h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden rounded-none border-0 bg-[#17283d] p-0 text-white sm:h-[calc(100dvh-2rem)] sm:w-[min(96vw,1280px)] sm:rounded-2xl sm:border sm:border-[#c9a84c]/30">
+        <DialogHeader className="flex shrink-0 flex-row items-center justify-between border-b border-white/10 bg-[#1e3a5f] px-4 py-3 pr-14 text-left sm:px-6">
+          <div>
+            <DialogTitle className="text-base font-semibold text-white sm:text-lg">Prévia do certificado</DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs text-white/65 sm:text-sm">Modelo moderno · proporção A4 horizontal</DialogDescription>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-white hover:bg-white/10 hover:text-white" onClick={() => setZoom((value) => Math.max(0.75, Number((value - 0.15).toFixed(2))))} aria-label="Reduzir zoom">
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-white hover:bg-white/10 hover:text-white" onClick={resetZoom} aria-label="Restaurar zoom">
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+            <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-white hover:bg-white/10 hover:text-white" onClick={() => setZoom((value) => Math.min(1.8, Number((value + 0.15).toFixed(2))))} aria-label="Aumentar zoom">
+              <ZoomIn className="h-4 w-4" />
+            </Button>
+            <span className="ml-1 min-w-12 text-center text-xs tabular-nums text-white/70">{Math.round(zoom * 100)}%</span>
+          </div>
         </DialogHeader>
-        <div className="mx-auto w-full max-w-[842px]">
-          <div className="relative aspect-[1.414/1] overflow-hidden border-[3px] border-[#c9a84c] bg-[#fcf9f3] p-2 shadow-xl sm:border-4 sm:p-3">
-            <div className="absolute inset-2 border border-[#9a7d2e] sm:inset-3" />
-            <div className="relative flex h-full flex-col overflow-hidden bg-[#f8f4eb] px-[7%] py-[5%] text-center text-[#1e3a5f]">
-              <div className="pointer-events-none absolute -left-[12%] -top-[30%] h-[72%] w-[48%] rounded-full border-[10px] border-[#d5aa52]/80 sm:border-[14px]" />
-              <div className="pointer-events-none absolute -bottom-[30%] -right-[12%] h-[72%] w-[48%] rounded-full border-[10px] border-[#d5aa52]/80 sm:border-[14px]" />
-              <div className="pointer-events-none absolute inset-[4%] border border-[#b9964b]/70" />
 
-              <div className="relative z-10 flex h-full flex-col">
-                <div className="flex items-start justify-between gap-[4%]">
-                  <div className="flex min-w-0 flex-1 items-center justify-center gap-[2%]">
-                    {logoUrl ? <img src={logoUrl} alt="Logo da igreja" className="h-[12%] max-h-12 w-[12%] max-w-12 object-contain" /> : null}
-                    <div className="min-w-0 text-left">
-                      <p className="truncate font-serif text-[clamp(0.62rem,1.9vw,1.05rem)] tracking-[0.12em]">{churchName}</p>
-                      <p className="text-[clamp(0.32rem,0.8vw,0.46rem)] tracking-[0.28em] text-[#9b7b36]">AMAR · SERVIR · TRANSFORMAR</p>
-                    </div>
-                  </div>
-                  {effectiveVerse ? <p className="hidden w-[23%] text-right text-[clamp(0.34rem,0.8vw,0.52rem)] italic leading-tight text-[#8c6e2f] sm:block">“{effectiveVerse}”</p> : null}
-                </div>
-
-                <div className="relative mt-[4%] flex min-h-0 flex-1 flex-col items-center justify-start">
-                  <p className="text-[clamp(0.45rem,1.1vw,0.68rem)] font-medium uppercase tracking-[0.22em] text-[#365b8a]">{copy.title}</p>
-                  <h2 className="mt-[1%] max-w-[92%] font-serif text-[clamp(1.1rem,5vw,2.8rem)] font-semibold leading-[0.95] text-[#b8892e]">{copy.subtitle}</h2>
-                  <div className="mt-[2.5%] h-px w-1/2 bg-[#b8892e]/70" />
-                  <p className="mt-[3%] text-[clamp(0.45rem,1.1vw,0.68rem)] italic tracking-[0.15em] text-[#365b8a]">CERTIFICAMOS QUE</p>
-                  <p className="mt-[2%] max-w-[90%] break-words font-serif text-[clamp(1rem,4.2vw,2.2rem)] font-semibold leading-tight text-[#1e3a5f]">Nome do Membro</p>
-                  <div className="mt-[1.5%] h-0.5 w-1/4 bg-[#b8892e]" />
-                  <p className="mt-[3%] line-clamp-2 max-w-[80%] whitespace-pre-line text-[clamp(0.48rem,1.25vw,0.72rem)] leading-relaxed text-[#365b8a]">{copy.body}</p>
-                  <p className="mt-[2%] line-clamp-1 max-w-[82%] font-serif text-[clamp(0.62rem,1.8vw,0.94rem)] font-medium text-[#8c6e2f]">“{copy.course}”</p>
-                </div>
-
-                <div className="relative z-10 mt-[2%] shrink-0 border-t border-[#b9964b]/70 pt-[1.5%] text-[#365b8a]">
-                  <p className="text-[clamp(0.42rem,1.05vw,0.6rem)]">{churchName} — {new Date().toLocaleDateString("pt-BR")}</p>
-                  <div className="mt-[2%] grid grid-cols-2 gap-[8%] text-[clamp(0.4rem,0.95vw,0.56rem)] text-[#1e3a5f]">
-                    <div className="flex flex-col items-center border-t border-[#1e3a5f] pt-[1%]">
-                      <strong>{pastorName || "Nome do Pastor / Líder"}</strong>
-                      <span>{signatureLabel || "Pastor(a) Presidente"}</span>
-                    </div>
-                    <div className="flex flex-col items-center border-t border-[#1e3a5f] pt-[1%]">
-                      <strong>{churchName}</strong>
-                      <span>Igreja</span>
-                    </div>
-                  </div>
-                  {effectiveVerse ? <p className="mt-[2%] line-clamp-2 text-[clamp(0.36rem,0.8vw,0.5rem)] italic leading-tight text-[#8c6e2f] sm:hidden">“{effectiveVerse}”</p> : null}
-                </div>
-              </div>
+        <div className="min-h-0 flex-1 overflow-auto overscroll-contain bg-[#17283d] p-4 sm:p-8">
+          <div className="flex min-h-full min-w-full items-center justify-center">
+            <div className="w-[min(92vw,1123px)] shrink-0 transition-transform duration-200" style={{ transform: `scale(${zoom})`, transformOrigin: "center center" }}>
+              <CertificateArtboard
+                type={type}
+                memberName="Nome do Membro"
+                churchName={churchName}
+                pastorName={pastorName}
+                signatureLabel={signatureLabel}
+                verse={effectiveVerse}
+                dateLabel={dateLabel}
+                template={effectiveTemplate}
+                logoUrl={logoUrl}
+                className="block h-auto w-full overflow-visible rounded-[2px] shadow-2xl"
+              />
             </div>
           </div>
-          <p className="mt-3 text-center text-xs text-muted-foreground">Prévia usando os dados atuais. Salve as configurações somente quando estiver satisfeito.</p>
+        </div>
+
+        <div className="shrink-0 border-t border-white/10 bg-[#1e3a5f] px-4 py-3 text-center text-xs text-white/65 sm:px-6">
+          A prévia respeita a proporção original do documento. Use os controles de zoom para conferir o nome, a mensagem e as assinaturas antes de salvar.
         </div>
       </DialogContent>
     </Dialog>
