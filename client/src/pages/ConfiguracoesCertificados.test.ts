@@ -6,13 +6,11 @@ const artboardSource = readFileSync(new URL("../components/CertificateArtboard.t
 const templateSource = readFileSync(new URL("../../../shared/certificateTemplate.ts", import.meta.url), "utf8");
 
 describe("Configurações de Certificados", () => {
-  it("exibe o aviso de construção e bloqueia a prévia enquanto o modelo não está aprovado", () => {
-    expect(pageSource).toContain("CERTIFICATES_UNDER_CONSTRUCTION = true");
-    expect(pageSource).toContain("Certificados em construção");
-    expect(pageSource).toContain("A prévia e a emissão permanecem temporariamente indisponíveis");
-    expect(pageSource).toContain("disabled={CERTIFICATES_UNDER_CONSTRUCTION}");
-    expect(pageSource).toContain("enabled: !!churchId && !CERTIFICATES_UNDER_CONSTRUCTION");
-    expect(pageSource).toContain("A criação e a emissão de tipos adicionais serão liberadas depois");
+  it("mantém o módulo completo liberado sem estado temporário de construção", () => {
+    expect(pageSource).not.toContain("CERTIFICATES_UNDER_CONSTRUCTION");
+    expect(pageSource).not.toContain("Certificados em construção");
+    expect(pageSource).not.toContain("temporariamente indisponíveis");
+    expect(pageSource).toContain("{ enabled: !!churchId }");
   });
 
   it("usa uma prévia interna fullscreen e mantém a emissão explícita separada", () => {

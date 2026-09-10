@@ -17,8 +17,6 @@ import { CertificateArtboard } from "@/components/CertificateArtboard";
 import { CERTIFICATE_TEMPLATE_COPY, type CertificateTemplateOverride, type CertificateType } from "@shared/certificateTemplate";
 // ─── VERSÍCULOS PADRÃO ────────────────────────────────────────────────────────
 
-const CERTIFICATES_UNDER_CONSTRUCTION = true;
-
 const DEFAULT_VERSES = {
   fundamentos:
     '"Toda a Escritura é inspirada por Deus e útil para o ensino, para a repreensão, para a correção e para a instrução na justiça." — 2 Timóteo 3:16',
@@ -40,7 +38,7 @@ export default function ConfiguracoesCertificados() {
   );
   const customTypesQuery = trpc.certificates.listCustomTypes.useQuery(
     { churchId },
-    { enabled: !!churchId && !CERTIFICATES_UNDER_CONSTRUCTION }
+    { enabled: !!churchId }
   );
   const { data: people = [] } = trpc.people.list.useQuery({ churchId }, { enabled: !!churchId });
 
@@ -228,20 +226,6 @@ export default function ConfiguracoesCertificados() {
         </p>
       </div>
 
-      <div role="status" className="rounded-2xl border border-[#d6b56b] bg-[#fff8e8] p-4 shadow-sm sm:p-5">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1e3a5f] text-[#f4d88a]" aria-hidden="true">
-            <Award className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-semibold text-[#1e3a5f]">Certificados em construção</p>
-            <p className="mt-1 text-sm leading-relaxed text-[#6f5a2c]">
-              Estamos reconstruindo o modelo visual para entregar um certificado oficial, bem ajustado e confiável em desktop e mobile. A prévia e a emissão permanecem temporariamente indisponíveis; as configurações existentes estão preservadas.
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* Dados do Signatário */}
       <Card className="border border-[#c9a84c]/20">
         <CardHeader>
@@ -358,17 +342,13 @@ export default function ConfiguracoesCertificados() {
               Crie uma nova formação usando o mesmo modelo moderno protegido. O design não é editável.
             </CardDescription>
           </div>
-          <Button type="button" size="sm" className="shrink-0 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={openNewCustomType} disabled={CERTIFICATES_UNDER_CONSTRUCTION}>
+          <Button type="button" size="sm" className="shrink-0 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={openNewCustomType}>
             <Plus className="mr-1 h-4 w-4" />
             Novo tipo
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          {CERTIFICATES_UNDER_CONSTRUCTION ? (
-            <div className="rounded-xl border border-dashed border-[#d6b56b] bg-[#fff8e8] p-5 text-sm leading-relaxed text-[#6f5a2c]">
-              A criação e a emissão de tipos adicionais serão liberadas depois que o novo modelo visual de certificados for concluído e aprovado.
-            </div>
-          ) : customTypesQuery.isLoading ? (
+          {customTypesQuery.isLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando tipos personalizados...</div>
           ) : customTypesQuery.data?.length ? (
             customTypesQuery.data.map((customType) => (
@@ -381,8 +361,8 @@ export default function ConfiguracoesCertificados() {
                   <p className="mt-1 truncate text-sm text-muted-foreground">{customType.subtitle}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => previewCustomType(customType)} disabled={CERTIFICATES_UNDER_CONSTRUCTION}><Eye className="mr-1 h-4 w-4" />Pré-visualizar</Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => openEmitCustomType(customType)} disabled={CERTIFICATES_UNDER_CONSTRUCTION}><Award className="mr-1 h-4 w-4" />Emitir</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => previewCustomType(customType)}><Eye className="mr-1 h-4 w-4" />Pré-visualizar</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => openEmitCustomType(customType)}><Award className="mr-1 h-4 w-4" />Emitir</Button>
                   <Button type="button" variant="outline" size="sm" onClick={() => openEditCustomType(customType)}><Pencil className="mr-1 h-4 w-4" />Editar</Button>
                   <Button type="button" variant="outline" size="sm" className="text-destructive" onClick={() => setArchiveTarget(customType)}><Archive className="mr-1 h-4 w-4" />Arquivar</Button>
                 </div>
@@ -417,7 +397,6 @@ export default function ConfiguracoesCertificados() {
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
-                disabled={CERTIFICATES_UNDER_CONSTRUCTION}
                 onClick={() => handlePreview("fundamentos")}
               >
                 <Eye className="h-3 w-3 mr-1" />
@@ -446,7 +425,6 @@ export default function ConfiguracoesCertificados() {
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
-                disabled={CERTIFICATES_UNDER_CONSTRUCTION}
                 onClick={() => handlePreview("batismo")}
               >
                 <Eye className="h-3 w-3 mr-1" />
@@ -475,7 +453,6 @@ export default function ConfiguracoesCertificados() {
                 variant="outline"
                 size="sm"
                 className="h-7 text-xs"
-                disabled={CERTIFICATES_UNDER_CONSTRUCTION}
                 onClick={() => handlePreview("lideres")}
               >
                 <Eye className="h-3 w-3 mr-1" />
