@@ -40,7 +40,7 @@ export default function ConfiguracoesCertificados() {
   );
   const customTypesQuery = trpc.certificates.listCustomTypes.useQuery(
     { churchId },
-    { enabled: !!churchId }
+    { enabled: !!churchId && !CERTIFICATES_UNDER_CONSTRUCTION }
   );
   const { data: people = [] } = trpc.people.list.useQuery({ churchId }, { enabled: !!churchId });
 
@@ -364,7 +364,11 @@ export default function ConfiguracoesCertificados() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          {customTypesQuery.isLoading ? (
+          {CERTIFICATES_UNDER_CONSTRUCTION ? (
+            <div className="rounded-xl border border-dashed border-[#d6b56b] bg-[#fff8e8] p-5 text-sm leading-relaxed text-[#6f5a2c]">
+              A criação e a emissão de tipos adicionais serão liberadas depois que o novo modelo visual de certificados for concluído e aprovado.
+            </div>
+          ) : customTypesQuery.isLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando tipos personalizados...</div>
           ) : customTypesQuery.data?.length ? (
             customTypesQuery.data.map((customType) => (

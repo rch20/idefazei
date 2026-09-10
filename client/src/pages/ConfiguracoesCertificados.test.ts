@@ -11,6 +11,8 @@ describe("Configurações de Certificados", () => {
     expect(pageSource).toContain("Certificados em construção");
     expect(pageSource).toContain("A prévia e a emissão permanecem temporariamente indisponíveis");
     expect(pageSource).toContain("disabled={CERTIFICATES_UNDER_CONSTRUCTION}");
+    expect(pageSource).toContain("enabled: !!churchId && !CERTIFICATES_UNDER_CONSTRUCTION");
+    expect(pageSource).toContain("A criação e a emissão de tipos adicionais serão liberadas depois");
   });
 
   it("usa uma prévia interna fullscreen e mantém a emissão explícita separada", () => {
