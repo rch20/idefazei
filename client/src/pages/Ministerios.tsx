@@ -13,23 +13,35 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Calendar, ChevronDown, Clock, Edit3, Music, Users, Plus, Search, Star, Trash2 } from "lucide-react";
+import { Baby, BookOpen, Calendar, ChevronDown, Clock, Edit3, Globe2, HandHeart, Heart, HeartHandshake, MapPin, Megaphone, MessageCircle, Mic2, Music, Music2, Plus, Search, Speaker, Sparkles, Star, Trash2, Utensils, Users, UsersRound } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { formatCivilDate } from "@/lib/civilDate";
+import { DEFAULT_MINISTRY_ICON_KEY, MINISTRY_ICON_OPTIONS, type MinistryIconKey } from "../../../shared/ministryIcons";
 
 const OPERATIONAL_FUNCTION_KEYS = new Set(["membro_ministerio", "musico", "vocalista", "visitador"]);
 
-const MINISTRY_ICONS: Record<string, string> = {
-  louvor: "🎵",
-  jovens: "⚡",
-  criancas: "🌟",
-  intercessao: "🙏",
-  evangelismo: "🌍",
-  diaconia: "🤝",
-  comunicacao: "📡",
-  consolidacao: "🤍",
-  visitas: "📍",
-  default: "✨",
+const MINISTRY_ICON_COMPONENTS: Record<string, LucideIcon> = {
+  sparkles: Sparkles,
+  music: Music2,
+  mic: Mic2,
+  speaker: Speaker,
+  "message-circle": MessageCircle,
+  "hands-praying": HandHeart,
+  "heart-handshake": HeartHandshake,
+  heart: Heart,
+  baby: Baby,
+  "book-open": BookOpen,
+  megaphone: Megaphone,
+  utensils: Utensils,
+  "users-round": UsersRound,
+  "map-pin": MapPin,
+  globe: Globe2,
 };
+
+function MinistryIcon({ iconKey, className = "h-8 w-8" }: { iconKey?: string | null; className?: string }) {
+  const Icon = MINISTRY_ICON_COMPONENTS[iconKey ?? DEFAULT_MINISTRY_ICON_KEY] ?? Sparkles;
+  return <Icon className={className} aria-hidden="true" />;
+}
 
 function isConsolidationMinistry(ministry: { type?: string | null; name: string }) {
   const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -55,9 +67,9 @@ export default function Ministerios() {
   const [statusFilter, setStatusFilter] = useState<"todos" | "sem_lider">("todos");
   const [open, setOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", description: "" });
+  const [editForm, setEditForm] = useState({ name: "", description: "", iconKey: DEFAULT_MINISTRY_ICON_KEY as MinistryIconKey });
   const [archiveTarget, setArchiveTarget] = useState<{ id: number; name: string } | null>(null);
-  const [form, setForm] = useState({ name: "", description: "", type: "outro", leaderId: "", participantIds: [] as string[] });
+  const [form, setForm] = useState({ name: "", description: "", type: "outro", iconKey: DEFAULT_MINISTRY_ICON_KEY as MinistryIconKey, leaderId: "", participantIds: [] as string[] });
   const [selectedMinistry, setSelectedMinistry] = useState<any>(null);
   const [selectedPersonId, setSelectedPersonId] = useState("");
   const [functionPersonId, setFunctionPersonId] = useState("");
@@ -98,7 +110,7 @@ export default function Ministerios() {
     onSuccess: () => {
       toast.success("Ministério criado com sucesso!");
       setOpen(false);
-      setForm({ name: "", description: "", type: "outro", leaderId: "", participantIds: [] });
+      setForm({ name: "", description: "", type: "outro", iconKey: DEFAULT_MINISTRY_ICON_KEY, leaderId: "", participantIds: [] });
       refetch();
     },
     onError: (err: { message: string }) => toast.error(err.message),
@@ -173,6 +185,7 @@ export default function Ministerios() {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
         type: form.type as "louvor" | "infantil" | "recepcao" | "midia" | "intercessao" | "evangelismo" | "casais" | "jovens" | "consolidacao" | "visitas" | "outro",
+        iconKey: form.iconKey,
         leaderId: form.leaderId ? Number(form.leaderId) : null,
         participantIds: isTeamMinistryType(form.type) ? form.participantIds.map(Number) : [],
     });
@@ -203,14 +216,14 @@ export default function Ministerios() {
 
   const openEditMinistry = () => {
     if (!selectedMinistry) return;
-    setEditForm({ name: selectedMinistry.name, description: selectedMinistry.description ?? "" });
+    setEditForm({ name: selectedMinistry.name, description: selectedMinistry.description ?? "", iconKey: (selectedMinistry.iconKey ?? DEFAULT_MINISTRY_ICON_KEY) as MinistryIconKey });
     setEditOpen(true);
   };
 
   const saveEditMinistry = (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedMinistry || !editForm.name.trim()) return toast.error("Informe o nome do Ministério.");
-    updateMutation.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, name: editForm.name.trim(), description: editForm.description.trim() || null });
+    updateMutation.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, name: editForm.name.trim(), description: editForm.description.trim() || null, iconKey: editForm.iconKey });
   };
 
   const filtered = ministries?.filter((m: { name: string; leaderId?: number | null }) =>
@@ -277,6 +290,13 @@ export default function Ministerios() {
                       <SelectItem value="louvor">Louvor</SelectItem><SelectItem value="infantil">Infantil</SelectItem><SelectItem value="recepcao">Recepção</SelectItem><SelectItem value="midia">Mídia</SelectItem><SelectItem value="intercessao">Intercessão</SelectItem><SelectItem value="evangelismo">Evangelismo</SelectItem><SelectItem value="casais">Casais</SelectItem><SelectItem value="jovens">Jovens</SelectItem><SelectItem value="consolidacao">Consolidação</SelectItem><SelectItem value="visitas">Visitas</SelectItem><SelectItem value="outro">Outro</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div>
+                  <Label>Ícone do Ministério</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">Escolha uma opção visual oficial do Ide Fazei.</p>
+                  <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-5">
+                    {MINISTRY_ICON_OPTIONS.map((option) => <button key={option.key} type="button" aria-pressed={form.iconKey === option.key} onClick={() => setForm((current) => ({ ...current, iconKey: option.key }))} className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border p-2 text-center transition ${form.iconKey === option.key ? "border-gold bg-gold/10 text-navy ring-2 ring-gold/30" : "border-border bg-background text-muted-foreground hover:border-gold/50 hover:text-navy"}`}><MinistryIcon iconKey={option.key} className="h-6 w-6" /><span className="text-[10px] leading-tight">{option.label}</span></button>)}
+                  </div>
                 </div>
                 {form.type === "consolidacao" && <p className="rounded-lg border border-gold/30 bg-gold/5 p-3 text-xs leading-relaxed text-navy">Os participantes deste Ministério terão acesso à aba de Consolidação como equipe de cuidado. A liderança continuará responsável por aceitar as indicações; depois da aprovação, o Consolidador atribuído poderá assumir o cuidado.</p>}
                 {form.type === "visitas" && <p className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs leading-relaxed text-navy">Os participantes deste Ministério terão acesso à área <strong>Consolidação → Visitas</strong> como equipe de Visitadores. O líder poderá organizar os liderados no painel da equipe, e os Visitadores poderão aceitar as visitas disponíveis para assumir o atendimento.</p>}
@@ -363,9 +383,8 @@ export default function Ministerios() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {filtered.map((ministry: { id: number; name: string; type?: string | null; description?: string | null; memberCount?: number; leaderId?: number | null; leaderName?: string | null }) => {
-              const key = isConsolidationMinistry(ministry) ? "consolidacao" : isVisitsMinistry(ministry) ? "visitas" : ministry.name.toLowerCase().replace(/\s+/g, "");
-              const icon = Object.keys(MINISTRY_ICONS).find((k) => key.includes(k)) ?? "default";
+            {filtered.map((ministry: { id: number; name: string; type?: string | null; iconKey?: string | null; description?: string | null; memberCount?: number; leaderId?: number | null; leaderName?: string | null }) => {
+              const iconKey = ministry.iconKey ?? DEFAULT_MINISTRY_ICON_KEY;
               return (
                 <div
                   key={ministry.id}
@@ -377,7 +396,7 @@ export default function Ministerios() {
                   aria-label={`Abrir equipe do Ministério ${ministry.name}`}
                 >
                   <div className="mb-3 flex items-start justify-between gap-2">
-                    <div className="text-3xl">{MINISTRY_ICONS[icon]}</div>
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 text-gold"><MinistryIcon iconKey={iconKey} className="h-7 w-7" /></div>
                     {canCreateMinistry && <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Excluir ${ministry.name}`} onClick={(event) => { event.stopPropagation(); setArchiveTarget({ id: ministry.id, name: ministry.name }); }}><Trash2 className="h-4 w-4" /></Button>}
                   </div>
                   <h3 className="font-semibold text-navy text-sm mb-1">{ministry.name}</h3>
@@ -544,6 +563,12 @@ export default function Ministerios() {
             <form onSubmit={saveEditMinistry} className="space-y-4">
               <div><Label htmlFor="edit-ministry-name">Nome do Ministério *</Label><Input id="edit-ministry-name" className="mt-1" value={editForm.name} onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))} /></div>
               <div><Label htmlFor="edit-ministry-description">Descrição</Label><Input id="edit-ministry-description" className="mt-1" value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} placeholder="Descreva a finalidade do Ministério" /></div>
+              <div>
+                <Label>Ícone do Ministério</Label>
+                <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-5">
+                  {MINISTRY_ICON_OPTIONS.map((option) => <button key={option.key} type="button" aria-pressed={editForm.iconKey === option.key} onClick={() => setEditForm((current) => ({ ...current, iconKey: option.key }))} className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border p-2 text-center transition ${editForm.iconKey === option.key ? "border-gold bg-gold/10 text-navy ring-2 ring-gold/30" : "border-border bg-background text-muted-foreground hover:border-gold/50 hover:text-navy"}`}><MinistryIcon iconKey={option.key} className="h-6 w-6" /><span className="text-[10px] leading-tight">{option.label}</span></button>)}
+                </div>
+              </div>
               <DialogFooter className="pt-3"><Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button><Button type="submit" className="bg-navy text-white" disabled={updateMutation.isPending}>{updateMutation.isPending ? "Salvando…" : "Salvar alterações"}</Button></DialogFooter>
             </form>
           </DialogContent>

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
 import { HERO_PRESET_IDS } from "../shared/publicHero";
+import { MINISTRY_ICON_KEYS, DEFAULT_MINISTRY_ICON_KEY } from "../shared/ministryIcons";
 import { getOptimizedMediaUrls } from "./media";
 import { currentCivilDateAsUtcNoon, formatCivilDateValue, normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -3508,6 +3509,7 @@ const ministriesRouter = router({
       type: z.enum(["louvor", "infantil", "recepcao", "midia", "intercessao", "evangelismo", "casais", "jovens", "consolidacao", "visitas", "outro"]).default("outro"),
       leaderId: z.number().int().positive().nullable().optional(),
       participantIds: z.array(z.number().int().positive()).max(100).default([]),
+      iconKey: z.enum(MINISTRY_ICON_KEYS as [string, ...string[]]).default(DEFAULT_MINISTRY_ICON_KEY),
     }))
     .mutation(async ({ input, ctx }) => {
       await requirePastor(ctx.user.id, input.churchId);
@@ -3527,6 +3529,7 @@ const ministriesRouter = router({
         description: input.description || null,
         type: input.type,
         leaderId: input.leaderId ?? null,
+        iconKey: input.iconKey,
       }, participantIds);
       return ministry;
     }),
@@ -3536,12 +3539,13 @@ const ministriesRouter = router({
       ministryId: z.number().int().positive(),
       name: z.string().trim().min(2).max(255),
       description: z.string().trim().max(3000).nullable().optional(),
+      iconKey: z.enum(MINISTRY_ICON_KEYS as [string, ...string[]]).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       await requirePastor(ctx.user.id, input.churchId);
       const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === input.ministryId);
       if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
-      return updateMinistry(input.ministryId, input.churchId, { name: input.name.trim(), description: input.description?.trim() || null });
+      return updateMinistry(input.ministryId, input.churchId, { name: input.name.trim(), description: input.description?.trim() || null, ...(input.iconKey ? { iconKey: input.iconKey } : {}) });
     }),
   archive: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), ministryId: z.number().int().positive() }))

@@ -687,6 +687,7 @@ export const ministries = mysqlTable("ministries", {
   ]).notNull(),
   leaderId: int("leaderId"),
   description: text("description"),
+  iconKey: varchar("iconKey", { length: 40 }).default("sparkles").notNull(),
   active: boolean("active").default(true).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

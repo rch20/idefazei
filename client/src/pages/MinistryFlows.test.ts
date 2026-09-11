@@ -10,6 +10,8 @@ const layoutSource = readFileSync(resolve(root, "client/src/components/ChurchLay
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 const schedulesSource = readFileSync(resolve(root, "client/src/pages/Escalas.tsx"), "utf8");
+const iconsSource = readFileSync(resolve(root, "shared/ministryIcons.ts"), "utf8");
+const schemaSource = readFileSync(resolve(root, "drizzle/schema.ts"), "utf8");
 
 describe("Fluxo responsivo e seguro de Ministérios", () => {
   it("mantém os modais limitados à viewport e com rolagem vertical", () => {
@@ -49,6 +51,19 @@ describe("Fluxo responsivo e seguro de Ministérios", () => {
     expect(routerSource).toContain('update: protectedProcedure');
     expect(routerSource).toContain('return updateMinistry(input.ministryId, input.churchId');
     expect(routerSource).toContain('await requirePastor(ctx.user.id, input.churchId);');
+  });
+
+  it("oferece biblioteca fechada de ícones e persiste a escolha por tenant", () => {
+    expect(ministrySource).toContain('MINISTRY_ICON_OPTIONS.map');
+    expect(ministrySource).toContain('aria-pressed={form.iconKey === option.key}');
+    expect(ministrySource).toContain('aria-pressed={editForm.iconKey === option.key}');
+    expect(iconsSource).toContain('key: "sparkles"');
+    expect(iconsSource).toContain('key: "music"');
+    expect(iconsSource).toContain('key: "utensils"');
+    expect(iconsSource).toContain('DEFAULT_MINISTRY_ICON_KEY');
+    expect(routerSource).toContain('iconKey: z.enum(MINISTRY_ICON_KEYS as [string, ...string[]])');
+    expect(routerSource).toContain('iconKey: input.iconKey');
+    expect(schemaSource).toContain('iconKey: varchar("iconKey", { length: 40 }).default("sparkles").notNull()');
   });
 
   it("completa o fluxo de funções personalizadas e mostra a função ao lado da pessoa", () => {
