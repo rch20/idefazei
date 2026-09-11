@@ -12,6 +12,7 @@ const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 const schedulesSource = readFileSync(resolve(root, "client/src/pages/Escalas.tsx"), "utf8");
 const iconsSource = readFileSync(resolve(root, "shared/ministryIcons.ts"), "utf8");
 const schemaSource = readFileSync(resolve(root, "drizzle/schema.ts"), "utf8");
+const sonnerSource = readFileSync(resolve(root, "client/src/components/ui/sonner.tsx"), "utf8");
 
 describe("Fluxo responsivo e seguro de Ministérios", () => {
   it("mantém os modais limitados à viewport e com rolagem vertical", () => {
@@ -102,7 +103,16 @@ describe("Fluxo responsivo e seguro de Ministérios", () => {
     expect(ministrySource).toContain("archiveMutation.mutate");
     expect(routerSource).toContain("archiveMinistry({ ministryId: input.ministryId, churchId: input.churchId })");
     expect(dbSource).toContain("preservando o histórico");
-    expect(dbSource).toContain("eq(scheduleItems.status, \"agendada\")");
+    expect(dbSource).toContain('eq(scheduleItems.status, "agendada")');
     expect(dbSource).toContain("sourceMinistryId, data.ministryId");
+  });
+
+  it("exibe o bloqueio de exclusão com contraste e acima do menu mobile", () => {
+    expect(ministrySource).toContain('toast.error("Não foi possível excluir o Ministério"');
+    expect(ministrySource).toContain('position: "top-center"');
+    expect(sonnerSource).toContain('position="top-center"');
+    expect(sonnerSource).toContain('className="toaster group z-[9999]"');
+    expect(sonnerSource).toContain('!bg-white !text-red-900 !border-red-300');
+    expect(sonnerSource).toContain('closeButton');
   });
 });

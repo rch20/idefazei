@@ -131,7 +131,12 @@ export default function Ministerios() {
       if (selectedMinistry?.id === result.ministryId) setSelectedMinistry(null);
       await refetch();
     },
-    onError: (error) => toast.error(error.message || "Não foi possível remover o Ministério."),
+    onError: (error) => toast.error("Não foi possível excluir o Ministério", {
+      description: error.message || "O histórico operacional impede a remoção deste Ministério.",
+      duration: 10000,
+      closeButton: true,
+      position: "top-center",
+    }),
   });
   const updateLeader = trpc.ministries.updateLeader.useMutation({
     onSuccess: async (updated) => {
