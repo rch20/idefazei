@@ -11,12 +11,22 @@ const schemaSource = readFileSync(resolve(root, "drizzle/schema.ts"), "utf8");
 const migrationSource = readFileSync(resolve(root, "drizzle/0056_cell_address_cep.sql"), "utf8");
 
 describe("Cadastro de Células com endereço por CEP", () => {
-  it("usa o Formulário Adaptativo somente no cadastro longo de Nova Célula", () => {
-    expect(pageSource).toContain("AdaptiveFormDialogContent");
+  it("usa o Formulário Adaptativo em Nova Célula e no detalhe da Célula", () => {
+    expect(pageSource.match(/AdaptiveFormDialogContent/g)?.length).toBeGreaterThanOrEqual(2);
     expect(pageSource).toContain("AdaptiveFormDialogBody");
     expect(pageSource).toContain("AdaptiveFormDialogFooter");
     expect(pageSource).toContain("Nova Célula");
     expect(pageSource).toContain("Criar Célula");
+    expect(pageSource).toContain('min-w-0 truncate');
+    expect(pageSource).toContain('onClick={() => setSelectedCell(null)}>Fechar</Button>');
+  });
+
+  it("mantém o detalhe da Célula organizado em cabeçalho, corpo rolável e ações fixas", () => {
+    expect(pageSource).toContain('adaptiveFormDialogHeaderClassName');
+    expect(pageSource).toContain('<AdaptiveFormDialogBody className="space-y-4">');
+    expect(pageSource).toContain('<AdaptiveFormDialogFooter>');
+    expect(pageSource).toContain('onClick={openAttendanceDialog}');
+    expect(pageSource).toContain('Registrar encontro');
   });
 
   it("oferece busca por CEP e mantém preenchimento manual como fallback", () => {

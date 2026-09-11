@@ -476,11 +476,11 @@ export default function Celulas() {
           setPublicSettingsOpen(false);
         }
       }}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 font-display text-navy"><Globe className="h-5 w-5 text-indigo-600" />{selectedCell?.name}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
+        <AdaptiveFormDialogContent className="sm:max-w-lg">
+          <div className={adaptiveFormDialogHeaderClassName}>
+            <DialogTitle className="flex items-center gap-2 font-display text-navy"><Globe className="h-5 w-5 shrink-0 text-indigo-600" /><span className="min-w-0 truncate">{selectedCell?.name}</span></DialogTitle>
+          </div>
+          <AdaptiveFormDialogBody className="space-y-4">
             {canPublishCells && (
               <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
                 <p className="text-sm font-semibold text-navy">Responsáveis da Célula</p>
@@ -602,8 +602,11 @@ export default function Celulas() {
                 </div>
               </div>
             )}
-          </div>
-        </DialogContent>
+          </AdaptiveFormDialogBody>
+          <AdaptiveFormDialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSelectedCell(null)}>Fechar</Button>
+          </AdaptiveFormDialogFooter>
+        </AdaptiveFormDialogContent>
       </Dialog>
 
       <CellPublicSettingsDialog
