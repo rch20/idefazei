@@ -25,7 +25,6 @@ describe("Fluxo responsivo e seguro de Ministérios", () => {
   it("mantém ações críticas em rodapé visível e oferece fechamento explícito", () => {
     expect(dialogSource).toContain('data-slot="dialog-footer"');
     expect(dialogSource).toContain("sticky bottom-0");
-    expect(ministrySource).toContain("<DialogFooter className=\"pt-3\">");
     expect(ministrySource).toContain("AdaptiveFormDialogFooter");
     expect(ministrySource).toContain("Fechar");
   });
@@ -35,7 +34,10 @@ describe("Fluxo responsivo e seguro de Ministérios", () => {
     expect(ministrySource).toContain("Criar Ministério");
     expect(ministrySource).toContain("Equipe do Ministério");
     expect(ministrySource).toContain("Funções avançadas");
-    expect(ministrySource).toContain("<DialogContent className=\"max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg\">");
+    expect(ministrySource).toContain("<AdaptiveFormDialogContent className=\"sm:max-w-lg\">");
+    expect(ministrySource).toContain("setSelectedMinistry(null);");
+    expect(ministrySource).toContain("setEditTarget(target);");
+    expect(ministrySource).toContain("const closeEditMinistry");
     expect(ministrySource).toContain("Excluir Ministério?");
   });
 
@@ -49,6 +51,7 @@ describe("Fluxo responsivo e seguro de Ministérios", () => {
   it("permite editar o cadastro básico do Ministério sem alterar sua estrutura", () => {
     expect(ministrySource).toContain('Editar Ministério');
     expect(ministrySource).toContain('ministries.update.useMutation');
+    expect(ministrySource).toContain('ministryId: editTarget.id');
     expect(routerSource).toContain('update: protectedProcedure');
     expect(routerSource).toContain('return updateMinistry(input.ministryId, input.churchId');
     expect(routerSource).toContain('await requirePastor(ctx.user.id, input.churchId);');

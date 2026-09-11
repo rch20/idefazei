@@ -71,6 +71,7 @@ export default function Ministerios() {
   const [archiveTarget, setArchiveTarget] = useState<{ id: number; name: string } | null>(null);
   const [form, setForm] = useState({ name: "", description: "", type: "outro", iconKey: DEFAULT_MINISTRY_ICON_KEY as MinistryIconKey, leaderId: "", participantIds: [] as string[] });
   const [selectedMinistry, setSelectedMinistry] = useState<any>(null);
+  const [editTarget, setEditTarget] = useState<any>(null);
   const [selectedPersonId, setSelectedPersonId] = useState("");
   const [functionPersonId, setFunctionPersonId] = useState("");
   const [selectedRoleKey, setSelectedRoleKey] = useState("");
@@ -120,7 +121,8 @@ export default function Ministerios() {
       toast.success("Ministério atualizado com sucesso!");
       setEditOpen(false);
       const refreshed = await refetch();
-      setSelectedMinistry(refreshed.data?.find((ministry) => ministry.id === updated?.id) ?? selectedMinistry);
+      setSelectedMinistry(refreshed.data?.find((ministry) => ministry.id === updated?.id) ?? editTarget);
+      setEditTarget(null);
     },
     onError: (error) => toast.error(error.message || "Não foi possível atualizar o Ministério."),
   });
@@ -221,14 +223,24 @@ export default function Ministerios() {
 
   const openEditMinistry = () => {
     if (!selectedMinistry) return;
-    setEditForm({ name: selectedMinistry.name, description: selectedMinistry.description ?? "", iconKey: (selectedMinistry.iconKey ?? DEFAULT_MINISTRY_ICON_KEY) as MinistryIconKey });
+    const target = selectedMinistry;
+    setEditForm({ name: target.name, description: target.description ?? "", iconKey: (target.iconKey ?? DEFAULT_MINISTRY_ICON_KEY) as MinistryIconKey });
+    setEditTarget(target);
+    setSelectedMinistry(null);
     setEditOpen(true);
+  };
+
+  const closeEditMinistry = () => {
+    const target = editTarget;
+    setEditOpen(false);
+    setEditTarget(null);
+    if (target) setSelectedMinistry(target);
   };
 
   const saveEditMinistry = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedMinistry || !editForm.name.trim()) return toast.error("Informe o nome do Ministério.");
-    updateMutation.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, name: editForm.name.trim(), description: editForm.description.trim() || null, iconKey: editForm.iconKey });
+    if (!editTarget || !editForm.name.trim()) return toast.error("Informe o nome do Ministério.");
+    updateMutation.mutate({ churchId: churchId!, ministryId: editTarget.id, name: editForm.name.trim(), description: editForm.description.trim() || null, iconKey: editForm.iconKey });
   };
 
   const filtered = ministries?.filter((m: { name: string; leaderId?: number | null }) =>
@@ -560,8 +572,8 @@ export default function Ministerios() {
           </AlertDialogContent>
         </AlertDialog>
 
-        <Dialog open={editOpen} onOpenChange={setEditOpen}>
-          <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
+        <Dialog open={editOpen} onOpenChange={(nextOpen) => nextOpen ? setEditOpen(true) : closeEditMinistry()}>
+          <AdaptiveFormDialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="font-display text-navy">Editar Ministério</DialogTitle>
             </DialogHeader>
@@ -574,9 +586,9 @@ export default function Ministerios() {
                   {MINISTRY_ICON_OPTIONS.map((option) => <button key={option.key} type="button" aria-pressed={editForm.iconKey === option.key} onClick={() => setEditForm((current) => ({ ...current, iconKey: option.key }))} className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border p-2 text-center transition ${editForm.iconKey === option.key ? "border-gold bg-gold/10 text-navy ring-2 ring-gold/30" : "border-border bg-background text-muted-foreground hover:border-gold/50 hover:text-navy"}`}><MinistryIcon iconKey={option.key} className="h-6 w-6" /><span className="text-[10px] leading-tight">{option.label}</span></button>)}
                 </div>
               </div>
-              <DialogFooter className="pt-3"><Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button><Button type="submit" className="bg-navy text-white" disabled={updateMutation.isPending}>{updateMutation.isPending ? "Salvando…" : "Salvar alterações"}</Button></DialogFooter>
+              <AdaptiveFormDialogFooter><Button type="button" variant="outline" onClick={closeEditMinistry}>Cancelar</Button><Button type="submit" className="bg-navy text-white" disabled={updateMutation.isPending}>{updateMutation.isPending ? "Salvando…" : "Salvar alterações"}</Button></AdaptiveFormDialogFooter>
             </form>
-          </DialogContent>
+          </AdaptiveFormDialogContent>
         </Dialog>
       </div>
   );
