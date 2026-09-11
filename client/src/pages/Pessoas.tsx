@@ -791,8 +791,8 @@ export default function Pessoas() {
                     <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="(00) 00000-0000" />
                   </div>
                   <div>
-                    <Label>WhatsApp</Label>
-                    <Input value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} placeholder="(00) 00000-0000" />
+                    <Label>WhatsApp *</Label>
+                    <Input required minLength={10} maxLength={20} value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} placeholder="(00) 00000-0000" />
                   </div>
                   <div className="col-span-2">
                     <Label>E-mail</Label>

@@ -383,6 +383,11 @@ const birthDateInput = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe a
   return Boolean(date && date.getTime() <= Date.now());
 }, "Informe uma data de nascimento válida e não futura.");
 
+const whatsappInput = z.string().trim().min(1, "Informe o WhatsApp.").max(20, "O WhatsApp deve ter no máximo 20 caracteres.").refine((value) => {
+  const digits = value.replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, "");
+  return /^\d{10,11}$/.test(digits);
+}, "Informe um WhatsApp válido com DDD.");
+
 async function requireChurchMember(userId: number, churchId: number) {
   if (userId < 0) {
     const churchUser = await getActiveChurchUserById(Math.abs(userId));
@@ -1453,7 +1458,7 @@ const peopleRouter = router({
         profession: z.string().optional(),
         education: z.string().optional(),
         phone: z.string().optional(),
-        whatsapp: z.string().optional(),
+        whatsapp: whatsappInput,
         email: z.string().email().optional(),
         zipCode: z.string().optional(),
         street: z.string().optional(),
@@ -4704,7 +4709,7 @@ const registerRouter = router({
       password: z.string().min(8).max(128),
       birthDate: birthDateInput,
       phone: z.string().max(20).optional(),
-      whatsapp: z.string().max(20).optional(),
+      whatsapp: whatsappInput,
       zipCode: z.string().regex(/^\d{5}-?\d{3}$/),
       street: z.string().max(255).optional(),
       number: z.string().min(1).max(10),

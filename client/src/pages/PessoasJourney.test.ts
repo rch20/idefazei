@@ -146,4 +146,12 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(routerSource).toContain("birthDate: birthDateInput.optional(),");
     expect(routerSource).toContain("if (!isSelfIndication && !input.birthDate)");
   });
+
+  it("exige WhatsApp no cadastro manual de Pessoa e valida no servidor", () => {
+    expect(pageSource).toContain("<Label>WhatsApp *</Label>");
+    expect(pageSource).toContain("required minLength={10}");
+    expect(routerSource).toContain("const whatsappInput");
+    expect(routerSource).toContain("whatsapp: whatsappInput,");
+    expect(routerSource).toContain("Informe um WhatsApp válido com DDD.");
+  });
 });
