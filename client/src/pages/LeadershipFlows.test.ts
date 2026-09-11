@@ -30,7 +30,8 @@ describe("Fluxos de liderança — contratos da interface", () => {
     expect(source).toContain("cells.managementAccess.useQuery");
     expect(source).toContain("cells.assignmentCandidates.useQuery");
     expect(source).toContain("selectedCell?.canManage");
-    expect(source).toContain("Adicionar pessoa à equipe");
+    expect(source).toContain("Adicionar pessoa à Célula");
+    expect(source).toContain("Adicionar à Célula");
     expect(source).toContain("Transferências entre Células continuam sob responsabilidade pastoral");
     expect(source).toContain("canCreateCell &&");
   });

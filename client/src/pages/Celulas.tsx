@@ -555,7 +555,7 @@ export default function Celulas() {
               )}
             </div>
             {selectedCell?.canManage && <div className="rounded-xl border border-indigo-200 bg-indigo-50/35 p-4">
-              <p className="text-sm font-semibold text-navy">Adicionar pessoa à equipe</p>
+              <p className="text-sm font-semibold text-navy">Adicionar pessoa à Célula</p>
               <p className="mt-1 text-xs text-muted-foreground">Escolha uma Pessoa ainda sem Célula. Transferências entre Células continuam sob responsabilidade pastoral.</p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
@@ -563,7 +563,7 @@ export default function Celulas() {
                   <SelectContent>{(assignmentCandidates.data ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                 </Select>
                 <Button type="button" className="bg-navy text-white hover:bg-navy-light" disabled={!selectedCandidateId || assignPerson.isPending} onClick={() => assignPerson.mutate({ churchId, cellId: selectedCell.id, personId: Number(selectedCandidateId) })}>
-                  {assignPerson.isPending ? "Integrando…" : "Adicionar"}
+                  {assignPerson.isPending ? "Integrando…" : "Adicionar à Célula"}
                 </Button>
               </div>
               {!assignmentCandidates.isLoading && (assignmentCandidates.data ?? []).length === 0 && <p className="mt-2 text-xs text-muted-foreground">Não há Pessoas ativas sem Célula para adicionar.</p>}
