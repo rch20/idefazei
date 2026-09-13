@@ -8,8 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
+import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
-import { Building2, ExternalLink, Palette, Users, Globe, MessageCircle, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, Settings2, RotateCcw, Share2, Copy } from "lucide-react";
+import { Building2, ExternalLink, Palette, Users, Globe, MessageCircle, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, Settings2, RotateCcw, Share2, Copy, QrCode } from "lucide-react";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { TenantPublicSettings } from "@/components/TenantPublicSettings";
@@ -59,13 +60,22 @@ function normalizePastoralSupportInput(value: string): string | null {
 
 function publicRegistrationUrl(slug: string) {
   if (typeof window !== "undefined" && window.location.hostname.startsWith(`${slug}.`) && window.location.hostname.endsWith(".idefazei.com.br")) {
-    return `${window.location.origin}/cadastro`;
+    return `${window.location.origin}/cadastro-publico`;
   }
-  return `https://${slug}.idefazei.com.br/cadastro`;
+  return `https://${slug}.idefazei.com.br/cadastro-publico`;
 }
 
 function publicRegistrationShareMessage(churchName: string, title: string, message: string, link: string) {
   return `Olá! ${churchName} convida você a realizar seu cadastro e ficar por dentro de tudo o que acontece em nossa igreja.\n\n${title}\n${message}\n\nCadastre-se pelo link abaixo:\n${link}`;
+}
+
+function publicRegistrationQrUrl(slug: string, source: "qrcode" | "convite" | "evento" | "link", campaign: string) {
+  const base = typeof window !== "undefined" && window.location.hostname.startsWith(`${slug}.`) && window.location.hostname.endsWith(".idefazei.com.br")
+    ? `${window.location.origin}/cadastro-publico`
+    : `https://${slug}.idefazei.com.br/cadastro-publico`;
+  const params = new URLSearchParams({ origem: source });
+  if (campaign.trim()) params.set("campanha", campaign.trim().slice(0, 120));
+  return `${base}?${params.toString()}`;
 }
 
 const COMPLEMENTARY_ROLES = [
@@ -114,6 +124,9 @@ export default function Configuracoes() {
   const [pwaIconPreviewUrl, setPwaIconPreviewUrl] = useState<string | null>(church?.pwaIcon192Url ?? church?.logoUrl ?? null);
   const [activeTab, setActiveTab] = useState("geral");
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [qrSource, setQrSource] = useState<"qrcode" | "convite" | "evento" | "link">("qrcode");
+  const [qrCampaign, setQrCampaign] = useState("");
+  const qrSvgRef = useRef<SVGSVGElement>(null);
   const settingsSectionsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -222,6 +235,7 @@ export default function Configuracoes() {
   });
 
   const registrationLink = churchForm.slug ? publicRegistrationUrl(churchForm.slug) : "";
+  const registrationQrLink = churchForm.slug ? publicRegistrationQrUrl(churchForm.slug, qrSource, qrCampaign) : "";
   const registrationShareText = registrationLink ? publicRegistrationShareMessage(churchForm.name || "A igreja", churchForm.publicRegistrationTitle, churchForm.publicRegistrationMessage, registrationLink) : "";
   const canUseNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
@@ -266,6 +280,32 @@ export default function Configuracoes() {
     } catch {
       toast.error("Não foi possível copiar o link. Copie-o manualmente.");
     }
+  };
+
+  const handleCopyQrLink = async () => {
+    if (!registrationQrLink || !navigator.clipboard) {
+      toast.error("Copie o endereço exibido manualmente neste navegador.");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(registrationQrLink);
+      toast.success("Link do QR Code copiado.");
+    } catch {
+      toast.error("Não foi possível copiar o link do QR Code.");
+    }
+  };
+
+  const handleDownloadQr = () => {
+    if (!qrSvgRef.current || !registrationQrLink) return;
+    const source = new XMLSerializer().serializeToString(qrSvgRef.current);
+    const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${churchForm.slug || "igreja"}-cadastro-publico.svg`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    toast.success("QR Code baixado. Você pode inserir o SVG no telão ou no convite.");
   };
 
   const handleSave = () => {
@@ -418,13 +458,13 @@ export default function Configuracoes() {
                 <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs leading-relaxed text-muted-foreground">Os links são validados no servidor e aceitam somente os domínios oficiais de cada plataforma. Deixe em branco para ocultar uma rede do site.</p>
               </section>
               <section className="card-sacred p-5 sm:p-6">
-                <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="text-base font-semibold text-navy">Convite e cadastro público</h3><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Compartilhe uma página de entrada com a identidade da sua igreja. Cadastros feitos por este link oficial são aprovados automaticamente como membros comuns; outras formas de cadastro continuam sujeitas à aprovação da liderança.</p></div><Switch checked={churchForm.publicRegistrationEnabled} onCheckedChange={(enabled) => setChurchForm({ ...churchForm, publicRegistrationEnabled: enabled })} aria-label="Ativar cadastro público" /></div>
+                <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="text-base font-semibold text-navy">Convite e cadastro público</h3><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Compartilhe uma página de entrada com a identidade da sua igreja. Cadastros feitos por este link oficial entram como registros públicos pendentes para a equipe; nenhuma conta de acesso é criada automaticamente.</p></div><Switch checked={churchForm.publicRegistrationEnabled} onCheckedChange={(enabled) => setChurchForm({ ...churchForm, publicRegistrationEnabled: enabled })} aria-label="Ativar cadastro público" /></div>
                 <div className="mt-5 grid gap-4 lg:grid-cols-2">
                   <div><Label htmlFor="public-registration-title">Título da página</Label><Input id="public-registration-title" value={churchForm.publicRegistrationTitle} maxLength={140} onChange={(event) => setChurchForm({ ...churchForm, publicRegistrationTitle: event.target.value })} className="mt-1" placeholder="Cadastre-se e fique por perto" /><p className="mt-1 text-xs text-muted-foreground">Um título curto funciona melhor no celular.</p></div>
                   <div><Label htmlFor="public-registration-message">Mensagem de boas-vindas</Label><Textarea id="public-registration-message" value={churchForm.publicRegistrationMessage} maxLength={500} onChange={(event) => setChurchForm({ ...churchForm, publicRegistrationMessage: event.target.value })} className="mt-1" rows={3} placeholder="Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você." /><p className="mt-1 text-xs text-muted-foreground">{churchForm.publicRegistrationMessage.length}/500 caracteres</p></div>
                 </div>
                 <div className="mt-4 rounded-xl border border-gold/25 bg-gold/5 p-4"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-gold">Link oficial da igreja</p><p className="mt-1 break-all font-mono text-xs leading-relaxed text-navy">{churchForm.slug ? registrationLink : "Salve o subdomínio para gerar o link"}</p><p className="mt-1 text-xs text-muted-foreground">Compartilhe com uma mensagem pronta ou copie somente o endereço.</p></div><div className="mt-4 flex flex-col gap-2 sm:flex-row"><Button type="button" className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" disabled={!churchForm.slug} onClick={() => setShareDialogOpen(true)}><Share2 className="h-4 w-4" />Compartilhar cadastro</Button><Button type="button" variant="outline" className="w-full gap-2 bg-white text-navy sm:w-auto" disabled={!churchForm.slug} onClick={() => void handleCopyRegistrationLink()}><Copy className="h-4 w-4" />Copiar link</Button></div></div>
-                <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Compartilhar cadastro</DialogTitle><DialogDescription>Escolha como deseja enviar o convite da {churchForm.name || "igreja"}. A mensagem já incluirá o link oficial.</DialogDescription></DialogHeader><div className="grid gap-2 py-2"><Button type="button" className="h-auto justify-start gap-3 whitespace-normal bg-navy px-4 py-3 text-left text-white hover:bg-navy-light" onClick={() => void handleNativeShare()} disabled={!canUseNativeShare}><Smartphone className="h-5 w-5 shrink-0" /><span><strong className="block">Compartilhar pelo celular</strong><small className="font-normal opacity-80">{canUseNativeShare ? "Escolha WhatsApp, Mensagens, Mail ou outro aplicativo." : "Indisponível neste navegador; use WhatsApp ou Copiar link."}</small></span></Button><Button type="button" variant="outline" className="h-auto justify-start gap-3 whitespace-normal px-4 py-3 text-left" onClick={handleWhatsAppShare}><MessageCircle className="h-5 w-5 shrink-0 text-emerald-600" /><span><strong className="block">WhatsApp</strong><small className="font-normal text-muted-foreground">Abrir com a mensagem e o link já preparados.</small></span></Button><Button type="button" variant="outline" className="h-auto justify-start gap-3 px-4 py-3 text-left" onClick={() => void handleCopyRegistrationLink(true)}><Copy className="h-5 w-5 shrink-0" /><span><strong className="block">Copiar link</strong><small className="font-normal text-muted-foreground">Copiar somente o endereço do cadastro.</small></span></Button></div></DialogContent></Dialog>
+                <div className="mt-4 grid gap-5 rounded-2xl border border-navy/10 bg-slate-50/70 p-4 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-center"><div className="min-w-0"><div className="flex items-center gap-2"><QrCode className="h-4 w-4 text-gold" /><h4 className="font-semibold text-navy">QR Code de cadastro público</h4></div><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Mostre no telão, coloque em convites ou use em um evento. A pessoa preencherá o cadastro sem login; o envio ficará pendente para a equipe da igreja.</p><div className="mt-4 grid gap-3 sm:grid-cols-2"><div><Label htmlFor="public-registration-qr-source">Origem do QR Code</Label><select id="public-registration-qr-source" value={qrSource} onChange={(event) => setQrSource(event.target.value as typeof qrSource)} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none focus:ring-2 focus:ring-gold/50"><option value="qrcode">QR Code da igreja</option><option value="convite">Convite</option><option value="evento">Evento</option><option value="link">Link compartilhado</option></select></div><div><Label htmlFor="public-registration-qr-campaign">Identificação opcional</Label><Input id="public-registration-qr-campaign" value={qrCampaign} maxLength={120} onChange={(event) => setQrCampaign(event.target.value)} className="mt-1" placeholder="Ex.: Culto de domingo" /></div></div><p className="mt-3 break-all rounded-lg bg-white px-3 py-2 font-mono text-[11px] leading-relaxed text-navy">{registrationQrLink || "Salve o subdomínio para gerar o QR Code"}</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><Button type="button" className="gap-2 bg-navy text-white hover:bg-navy-light" disabled={!registrationQrLink} onClick={handleDownloadQr}><QrCode className="h-4 w-4" />Baixar QR Code</Button><Button type="button" variant="outline" className="gap-2 bg-white text-navy" disabled={!registrationQrLink} onClick={() => void handleCopyQrLink()}><Copy className="h-4 w-4" />Copiar link</Button></div></div><div className="flex flex-col items-center gap-2 rounded-xl border border-white bg-white p-3 shadow-sm"><QRCodeSVG ref={qrSvgRef} value={registrationQrLink || "https://idefazei.com.br"} size={190} level="M" fgColor="#1e3a5f" bgColor="#ffffff" title="QR Code de cadastro público" /><p className="text-center text-[11px] leading-relaxed text-muted-foreground">Pronto para telão, impressão e compartilhamento.</p></div></div><Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Compartilhar cadastro</DialogTitle><DialogDescription>Escolha como deseja enviar o convite da {churchForm.name || "igreja"}. A mensagem já incluirá o link oficial.</DialogDescription></DialogHeader><div className="grid gap-2 py-2"><Button type="button" className="h-auto justify-start gap-3 whitespace-normal bg-navy px-4 py-3 text-left text-white hover:bg-navy-light" onClick={() => void handleNativeShare()} disabled={!canUseNativeShare}><Smartphone className="h-5 w-5 shrink-0" /><span><strong className="block">Compartilhar pelo celular</strong><small className="font-normal opacity-80">{canUseNativeShare ? "Escolha WhatsApp, Mensagens, Mail ou outro aplicativo." : "Indisponível neste navegador; use WhatsApp ou Copiar link."}</small></span></Button><Button type="button" variant="outline" className="h-auto justify-start gap-3 whitespace-normal px-4 py-3 text-left" onClick={handleWhatsAppShare}><MessageCircle className="h-5 w-5 shrink-0 text-emerald-600" /><span><strong className="block">WhatsApp</strong><small className="font-normal text-muted-foreground">Abrir com a mensagem e o link já preparados.</small></span></Button><Button type="button" variant="outline" className="h-auto justify-start gap-3 px-4 py-3 text-left" onClick={() => void handleCopyRegistrationLink(true)}><Copy className="h-5 w-5 shrink-0" /><span><strong className="block">Copiar link</strong><small className="font-normal text-muted-foreground">Copiar somente o endereço do cadastro.</small></span></Button></div></DialogContent></Dialog>
               </section>
               <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Mensagem da igreja</h3><p className="mt-1 text-sm text-muted-foreground">Registre a visão e a missão que orientam sua comunidade.</p></div><div className="mt-5 grid gap-4 lg:grid-cols-2"><div><Label htmlFor="vision">Visão</Label><Textarea id="vision" value={churchForm.vision} onChange={(e) => setChurchForm({ ...churchForm, vision: e.target.value })} className="mt-1" placeholder="A visão da sua igreja..." rows={5} /></div><div><Label htmlFor="mission">Missão</Label><Textarea id="mission" value={churchForm.mission} onChange={(e) => setChurchForm({ ...churchForm, mission: e.target.value })} className="mt-1" placeholder="A missão da sua igreja..." rows={5} /></div></div></section>
               <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">Revise os dados e salve somente esta seção.</p><Button className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar alterações"}</Button></div>

@@ -249,6 +249,9 @@ import {
   createChurchRegistration,
   createVisitorLead,
   getVisitorLeadsByChurch,
+  createPublicRegistrationLead,
+  getPublicRegistrationLeadsByChurch,
+  updatePublicRegistrationLeadStatus,
   getOnboardingProgress,
   getPublishedTenantPublicExperienceBySlug,
   getTenantPublicSiteByChurchId,
@@ -4733,6 +4736,97 @@ const visitorRouter = router({
     }),
 });
 
+// ─── PUBLIC REGISTRATION QR ROUTER ───────────────────────────────────────────
+
+const publicRegistrationAttempts = new Map<string, { startedAt: number; count: number }>();
+const PUBLIC_REGISTRATION_WINDOW_MS = 60 * 60 * 1000;
+const PUBLIC_REGISTRATION_MAX_ATTEMPTS = 5;
+
+function enforcePublicRegistrationRateLimit(ctx: { req: { headers: Record<string, unknown>; socket?: { remoteAddress?: string | null } } }, churchId: number) {
+  const forwarded = ctx.req.headers["x-forwarded-for"];
+  const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  const ip = String(forwardedValue ?? ctx.req.socket?.remoteAddress ?? "unknown").split(",")[0].trim().slice(0, 128) || "unknown";
+  const key = `${churchId}:${ip}`;
+  const now = Date.now();
+  const current = publicRegistrationAttempts.get(key);
+  if (!current || now - current.startedAt >= PUBLIC_REGISTRATION_WINDOW_MS) {
+    publicRegistrationAttempts.set(key, { startedAt: now, count: 1 });
+    return;
+  }
+  if (current.count >= PUBLIC_REGISTRATION_MAX_ATTEMPTS) {
+    throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Aguarde um pouco antes de enviar outro cadastro." });
+  }
+  current.count += 1;
+}
+
+const publicRegistrationRouter = router({
+  submit: publicProcedure
+    .input(z.object({
+      churchSlug: z.string().trim().min(3).max(100),
+      name: z.string().trim().min(2).max(255),
+      whatsapp: whatsappInput,
+      email: z.string().trim().email().max(320).optional().or(z.literal("")),
+      zipCode: z.string().trim().regex(/^\d{5}-?\d{3}$/).optional().or(z.literal("")),
+      street: z.string().trim().max(255).optional().or(z.literal("")),
+      number: z.string().trim().max(10).optional().or(z.literal("")),
+      neighborhood: z.string().trim().max(100).optional().or(z.literal("")),
+      city: z.string().trim().max(100).optional().or(z.literal("")),
+      state: z.string().trim().regex(/^[A-Za-z]{2}$/).optional().or(z.literal("")),
+      source: z.enum(["qrcode", "convite", "evento", "link"]).default("qrcode"),
+      campaign: z.string().trim().max(120).optional().or(z.literal("")),
+      consentAccepted: z.literal(true),
+      website: z.string().max(120).optional().or(z.literal("")),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      if (input.website) return { success: true, duplicate: false, message: "Cadastro recebido." };
+      if (!ctx.tenantSlug || ctx.tenantSlug !== input.churchSlug) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Envie seu cadastro pelo endereço oficial da igreja correta." });
+      }
+      const church = await getChurchBySlug(input.churchSlug);
+      if (!church?.active) throw new TRPCError({ code: "NOT_FOUND", message: "Igreja não encontrada ou indisponível." });
+      if (!church.publicRegistrationEnabled) throw new TRPCError({ code: "FORBIDDEN", message: "O cadastro público está temporariamente fechado por esta igreja." });
+      enforcePublicRegistrationRateLimit(ctx, church.id);
+      const result = await createPublicRegistrationLead({
+        churchId: church.id,
+        name: input.name,
+        whatsapp: input.whatsapp,
+        email: input.email || null,
+        zipCode: input.zipCode ? input.zipCode.replace(/\D/g, "") : null,
+        street: input.street || null,
+        number: input.number || null,
+        neighborhood: input.neighborhood || null,
+        city: input.city || null,
+        state: input.state?.toUpperCase() || null,
+        source: input.source,
+        campaign: input.campaign || null,
+        consentAccepted: true,
+      });
+      return {
+        success: true,
+        duplicate: result.duplicate,
+        message: result.duplicate
+          ? "Já recebemos seu cadastro. A equipe da igreja entrará em contato quando possível."
+          : "Cadastro recebido. A equipe da igreja entrará em contato quando possível.",
+      };
+    }),
+  list: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      return getPublicRegistrationLeadsByChurch(input.churchId);
+    }),
+  updateStatus: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      id: z.number().int().positive(),
+      status: z.enum(["novo", "em_atendimento", "convertido", "encerrado"]),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      return updatePublicRegistrationLeadStatus(input.id, input.churchId, input.status);
+    }),
+});
+
 // ─── REGISTER ROUTER ──────────────────────────────────────────────────────────
 
 const registerRouter = router({
@@ -7100,6 +7194,7 @@ export const appRouter = router({
   superAdmin: superAdminRouter,
   diagnostics: diagnosticsRouter,
   visitor: visitorRouter,
+  publicRegistration: publicRegistrationRouter,
   register: registerRouter,
   onboarding: onboardingRouter,
   reports: reportsRouter,

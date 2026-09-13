@@ -16,6 +16,7 @@ const LoginIgreja = lazy(() => import("./pages/LoginIgreja"));
 const RedefinirSenha = lazy(() => import("./pages/RedefinirSenha"));
 const CadastroIgreja = lazy(() => import("./pages/CadastroIgreja"));
 const CadastroDiscipulo = lazy(() => import("./pages/CadastroDiscipulo"));
+const CadastroPublico = lazy(() => import("./pages/CadastroPublico"));
 const PortalVisitante = lazy(() => import("./pages/PortalVisitante"));
 const VisiteNos = lazy(() => import("./pages/VisiteNos"));
 const AdminPanel = lazy(() => import("./pages/AdminPanel"));
@@ -128,6 +129,7 @@ function Router() {
       <Route path="/login" component={LoginIgreja} />
       <Route path="/redefinir-senha" component={RedefinirSenha} />
       <Route path="/cadastro" component={CadastroDiscipulo} />
+      <Route path="/cadastro-publico" component={CadastroPublico} />
       <Route path="/devocional" component={DevocionalDiario} />
       <Route path="/encontro/ficha/:token" component={EncontroFichaPublica} />
       <Route path="/evento/inscricao/:token" component={EventoInscricaoPublica} />

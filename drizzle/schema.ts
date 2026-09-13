@@ -1364,6 +1364,36 @@ export const visitorLeads = mysqlTable("visitor_leads", {
 
 export type VisitorLead = typeof visitorLeads.$inferSelect;
 
+/** Cadastros públicos recebidos por QR Code, convite ou link, sem criar conta de acesso. */
+export const publicRegistrationLeads = mysqlTable("public_registration_leads", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  soulId: int("soulId"),
+  identityHash: varchar("identityHash", { length: 64 }).notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  whatsapp: varchar("whatsapp", { length: 20 }).notNull(),
+  email: varchar("email", { length: 320 }),
+  zipCode: varchar("zipCode", { length: 9 }),
+  street: varchar("street", { length: 255 }),
+  number: varchar("number", { length: 10 }),
+  neighborhood: varchar("neighborhood", { length: 100 }),
+  city: varchar("city", { length: 100 }),
+  state: varchar("state", { length: 2 }),
+  source: mysqlEnum("source", ["qrcode", "convite", "evento", "link"]).notNull().default("qrcode"),
+  campaign: varchar("campaign", { length: 120 }),
+  consentAccepted: boolean("consentAccepted").notNull(),
+  consentVersion: varchar("consentVersion", { length: 20 }).notNull().default("v1"),
+  status: mysqlEnum("status", ["novo", "em_atendimento", "convertido", "encerrado"]).notNull().default("novo"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("public_registration_leads_church_identity_unique").on(table.churchId, table.identityHash),
+  index("public_registration_leads_church_status_idx").on(table.churchId, table.status, table.createdAt),
+  index("public_registration_leads_church_soul_idx").on(table.churchId, table.soulId),
+]);
+
+export type PublicRegistrationLead = typeof publicRegistrationLeads.$inferSelect;
+
 // ─── ONBOARDING ───────────────────────────────────────────────────────────────
 
 export const onboardingProgress = mysqlTable("onboarding_progress", {

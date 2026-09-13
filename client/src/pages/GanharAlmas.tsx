@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { CalendarDays, Check, ChevronsUpDown, Flame, Plus, Search, Users, X } from "lucide-react";
+import { CalendarDays, Check, ChevronsUpDown, Flame, Plus, Search, Users, X, QrCode } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { currentCivilDateKey } from "@/lib/civilDate";
@@ -31,6 +31,20 @@ const STATUS_MAP = {
   nova_alma: { label: "Nova alma", class: "badge-nova-alma" },
   em_consolidacao: { label: "Em consolidação", class: "badge-consolidacao" },
   consolidado: { label: "Consolidado", class: "badge-celula" },
+} as const;
+
+const PUBLIC_LEAD_STATUS = {
+  novo: { label: "Novo", className: "border-amber-200 bg-amber-50 text-amber-800" },
+  em_atendimento: { label: "Em atendimento", className: "border-blue-200 bg-blue-50 text-blue-800" },
+  convertido: { label: "Convertido", className: "border-emerald-200 bg-emerald-50 text-emerald-800" },
+  encerrado: { label: "Encerrado", className: "border-slate-200 bg-slate-100 text-slate-700" },
+} as const;
+
+const PUBLIC_LEAD_SOURCE = {
+  qrcode: "QR Code",
+  convite: "Convite",
+  evento: "Evento",
+  link: "Link",
 } as const;
 
 function createInitialForm() {
@@ -63,6 +77,18 @@ export default function GanharAlmas() {
     { churchId: churchId! },
     { enabled: Boolean(churchId) }
   );
+  const canReviewPublicRegistrations = Boolean(accessSummary?.isExecutive);
+  const publicLeadsQuery = trpc.publicRegistration.list.useQuery(
+    { churchId: churchId! },
+    { enabled: Boolean(churchId && canReviewPublicRegistrations) }
+  );
+  const updatePublicLeadStatus = trpc.publicRegistration.updateStatus.useMutation({
+    onSuccess: () => {
+      void publicLeadsQuery.refetch();
+      toast.success("Status do cadastro atualizado.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
   const peopleQuery = trpc.people.list.useQuery(
     { churchId: churchId! },
     { enabled: Boolean(churchId && !isLimitedMember) }
@@ -193,8 +219,11 @@ export default function GanharAlmas() {
             <Badge variant="outline" className={`text-[11px] font-medium sm:text-xs ${className}`}>{label}</Badge>
           </div>
         ))}
-      </div>
-
+            </div>
+      {canReviewPublicRegistrations && <section className="card-sacred space-y-4 border border-navy/10 p-4 sm:p-5" aria-labelledby="public-registration-leads-title">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2"><QrCode className="h-5 w-5 text-gold" aria-hidden="true" /><h2 id="public-registration-leads-title" className="font-display text-xl font-bold text-navy">Cadastros públicos recebidos</h2></div><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Registros enviados pelo QR Code, convites e links. Eles ainda não criam conta de acesso; acompanhe o contato antes de converter.</p></div><Badge variant="outline" className="w-fit border-gold/30 bg-gold/5 text-gold">{publicLeadsQuery.data?.length ?? 0} recebidos</Badge></div>
+        {publicLeadsQuery.isLoading ? <div className="h-20 animate-pulse rounded-xl bg-muted" /> : publicLeadsQuery.isError ? <p className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">Não foi possível carregar os cadastros públicos.</p> : (publicLeadsQuery.data ?? []).length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-center"><p className="text-sm font-medium text-navy">Nenhum cadastro público recebido ainda.</p><p className="mt-1 text-xs text-muted-foreground">O próximo envio pelo QR Code aparecerá aqui.</p></div> : <div className="space-y-3">{(publicLeadsQuery.data ?? []).map((lead) => { const status = PUBLIC_LEAD_STATUS[lead.status]; return <article key={lead.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-navy">{lead.name}</p><Badge variant="outline" className={`text-[10px] ${status.className}`}>{status.label}</Badge></div><p className="mt-1 text-sm text-slate-700">WhatsApp: {lead.whatsapp}{lead.email ? ` · ${lead.email}` : ""}</p><p className="mt-1 text-xs text-muted-foreground">{PUBLIC_LEAD_SOURCE[lead.source]}{lead.campaign ? ` · ${lead.campaign}` : ""} · {new Date(lead.createdAt).toLocaleDateString("pt-BR")}{lead.city ? ` · ${lead.city}${lead.state ? `/${lead.state}` : ""}` : ""}</p></div><label className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">Status<select aria-label={`Status do cadastro de ${lead.name}`} value={lead.status} disabled={updatePublicLeadStatus.isPending} onChange={(event) => updatePublicLeadStatus.mutate({ churchId: churchId!, id: lead.id, status: event.target.value as keyof typeof PUBLIC_LEAD_STATUS })} className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground"><option value="novo">Novo</option><option value="em_atendimento">Em atendimento</option><option value="convertido">Convertido</option><option value="encerrado">Encerrado</option></select></label></div></article>; })}</div>}
+      </section>}
       <div className="relative">
         <Label htmlFor="soul-search" className="sr-only">Buscar nova alma</Label>
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />

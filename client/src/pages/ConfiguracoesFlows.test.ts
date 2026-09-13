@@ -18,6 +18,7 @@ const visiteNosSource = readFileSync(resolve(root, "client/src/pages/VisiteNos.t
 const portalVisitanteSource = readFileSync(resolve(root, "client/src/pages/PortalVisitante.tsx"), "utf8");
 const loginIgrejaSource = readFileSync(resolve(root, "client/src/pages/LoginIgreja.tsx"), "utf8");
 const cadastroSource = readFileSync(resolve(root, "client/src/pages/CadastroDiscipulo.tsx"), "utf8");
+const cadastroPublicoSource = readFileSync(resolve(root, "client/src/pages/CadastroPublico.tsx"), "utf8");
 const churchLayoutSource = readFileSync(resolve(root, "client/src/components/ChurchLayout.tsx"), "utf8");
 
 describe("Fluxo estrutural da Configuração da Igreja", () => {
@@ -81,6 +82,10 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("publicRegistrationMessage");
     expect(settingsSource).toContain("Link oficial da igreja");
     expect(settingsSource).toContain("Copiar link");
+    expect(settingsSource).toContain("QR Code de cadastro público");
+    expect(settingsSource).toContain("Baixar QR Code");
+    expect(settingsSource).toContain("publicRegistrationQrUrl");
+    expect(settingsSource).toContain("new XMLSerializer()");
     expect(settingsSource).toContain("Compartilhar cadastro");
     expect(settingsSource).toContain("Compartilhar pelo celular");
     expect(settingsSource).toContain("navigator.share");
@@ -99,6 +104,12 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(cadastroSource).toContain("https://viacep.com.br/ws/");
     expect(cadastroSource).toContain("Endereço preenchido");
     expect(cadastroSource).toContain("postal-code");
+    expect(cadastroPublicoSource).toContain("trpc.publicRegistration.submit.useMutation");
+    expect(cadastroPublicoSource).toContain("consentAccepted");
+    expect(cadastroPublicoSource).toContain("Cadastro recebido");
+    expect(cadastroPublicoSource).toContain("não cria uma conta de acesso automaticamente");
+    expect(cadastroPublicoSource).toContain("website");
+    expect(cadastroPublicoSource).not.toContain("password");
   });
 
   it("oferece configuração de redes sociais oficiais por tenant", () => {

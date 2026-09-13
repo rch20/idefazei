@@ -387,7 +387,7 @@ describe("Galeria pública por tenant", () => {
     expect(routerSource).toContain("approvedAt: new Date()");
     expect(routerSource).toContain("Cadastro aprovado. Você já pode entrar");
     expect(dbSource).toContain("publicRegistration: {");
-    expect(dbSource).toContain('path: "/cadastro"');
+    expect(dbSource).toContain('path: "/cadastro-publico"');
     expect(dbSource).toContain("eq(churches.slug, slug)");
   });
 
