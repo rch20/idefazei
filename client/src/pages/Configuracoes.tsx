@@ -78,6 +78,111 @@ function publicRegistrationQrUrl(slug: string, source: "qrcode" | "convite" | "e
   return `${base}?${params.toString()}`;
 }
 
+function safeQrColor(value: string | undefined, fallback: string) {
+  return /^#[0-9a-f]{6}$/i.test(value?.trim() ?? "") ? value!.trim() : fallback;
+}
+
+function escapeSvgText(value: string) {
+  return value.replace(/[&<>\"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;", "'": "&apos;" })[character] ?? character);
+}
+
+function wrapSvgText(value: string, maxCharacters: number, maxLines: number) {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (current && candidate.length > maxCharacters) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  if (lines.length <= maxLines) return lines;
+  const truncated = lines.slice(0, maxLines);
+  truncated[maxLines - 1] = `${truncated[maxLines - 1].slice(0, Math.max(0, maxCharacters - 1)).trimEnd()}…`;
+  return truncated;
+}
+
+function svgTextBlock(value: string, x: number, y: number, maxCharacters: number, maxLines: number, fontSize: number, fill: string, weight = 400) {
+  return wrapSvgText(value, maxCharacters, maxLines).map((line, index) => `<text x="${x}" y="${y + index * (fontSize + 10)}" text-anchor="middle" font-family="Arial, sans-serif" font-size="${fontSize}px" font-weight="${weight}" fill="${fill}">${escapeSvgText(line)}</text>`).join("");
+}
+
+function encodeSvgDataUrl(source: string) {
+  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(source)))}`;
+}
+
+function buildQrArtworkSvg({ qrSource, churchName, title, message, campaign, primaryColor, secondaryColor, logoDataUrl }: { qrSource: string; churchName: string; title: string; message: string; campaign: string; primaryColor: string; secondaryColor: string; logoDataUrl?: string | null }) {
+  const safeChurchName = churchName.trim() || "Sua igreja";
+  const safeTitle = title.trim() || "Faça seu cadastro";
+  const safeMessage = message.trim() || "Aponte a câmera do celular para acessar.";
+  const safeCampaign = campaign.trim();
+  const logo = logoDataUrl ? `<image href="${logoDataUrl}" x="500" y="80" width="200" height="200" preserveAspectRatio="xMidYMid meet" />` : "";
+  const campaignBlock = safeCampaign ? svgTextBlock(safeCampaign, 600, 1320, 42, 1, 28, primaryColor, 700) : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1200" height="1500" viewBox="0 0 1200 1500"><rect width="1200" height="1500" rx="56" fill="#ffffff"/><rect width="1200" height="18" fill="${primaryColor}"/><rect x="70" y="70" width="1060" height="1360" rx="42" fill="#ffffff" stroke="${secondaryColor}" stroke-width="5"/><circle cx="600" cy="610" r="390" fill="${primaryColor}" opacity="0.06"/>${logo}${svgTextBlock(safeChurchName, 600, 330, 32, 2, 38, primaryColor, 700)}${svgTextBlock(safeTitle, 600, 420, 38, 2, 30, "#172033", 700)}${svgTextBlock(safeMessage, 600, 485, 48, 3, 24, "#475569", 400)}<rect x="250" y="580" width="700" height="700" rx="28" fill="#ffffff" stroke="${secondaryColor}" stroke-width="6"/><image href="${encodeSvgDataUrl(qrSource)}" x="270" y="600" width="660" height="660" preserveAspectRatio="xMidYMid meet"/>${campaignBlock}${svgTextBlock("Aponte a câmera do celular para acessar", 600, 1380, 48, 1, 22, "#475569", 400)}</svg>`;
+}
+
+async function loadImageAsDataUrl(url: string | null) {
+  if (!url) return null;
+  try {
+    const response = await fetch(url, { credentials: "same-origin" });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function rasterizeSvg(source: string, width: number, height: number) {
+  return new Promise<Blob>((resolve, reject) => {
+    const svgUrl = URL.createObjectURL(new Blob([source], { type: "image/svg+xml;charset=utf-8" }));
+    const image = new Image();
+    image.decoding = "async";
+    image.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas indisponível");
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, width, height);
+        context.drawImage(image, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(svgUrl);
+          if (blob) resolve(blob);
+          else reject(new Error("Não foi possível gerar a imagem PNG"));
+        }, "image/png");
+      } catch (error) {
+        URL.revokeObjectURL(svgUrl);
+        reject(error);
+      }
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(svgUrl);
+      reject(new Error("Não foi possível carregar a arte do QR Code"));
+    };
+    image.src = svgUrl;
+  });
+}
+
 const COMPLEMENTARY_ROLES = [
   { value: "consolidador", label: "Consolidador" },
   { value: "diacono", label: "Diácono" },
@@ -237,6 +342,9 @@ export default function Configuracoes() {
   const registrationLink = churchForm.slug ? publicRegistrationUrl(churchForm.slug) : "";
   const registrationQrLink = churchForm.slug ? publicRegistrationQrUrl(churchForm.slug, qrSource, qrCampaign) : "";
   const registrationShareText = registrationLink ? publicRegistrationShareMessage(churchForm.name || "A igreja", churchForm.publicRegistrationTitle, churchForm.publicRegistrationMessage, registrationLink) : "";
+  const qrPrimaryColor = safeQrColor(churchForm.primaryColor, "#1e3a5f");
+  const qrSecondaryColor = safeQrColor(churchForm.secondaryColor, "#c9a84c");
+  const qrLogoUrl = pwaIconPreviewUrl || churchForm.logoUrl || null;
   const canUseNativeShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
 
   const handleQuickSectionChange = (tab: string) => {
@@ -295,59 +403,40 @@ export default function Configuracoes() {
     }
   };
 
-  const handleDownloadQr = async (format: "png" | "svg" = "png") => {
+  const handleDownloadQr = async (format: "custom-png" | "simple-png" | "custom-svg" = "custom-png") => {
     if (!qrSvgRef.current || !registrationQrLink) return;
-    const source = new XMLSerializer().serializeToString(qrSvgRef.current);
+    const qrSource = new XMLSerializer().serializeToString(qrSvgRef.current);
     const baseName = `${churchForm.slug || "igreja"}-cadastro-publico`;
     try {
-      if (format === "svg") {
-        const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = `${baseName}.svg`;
-        anchor.click();
-        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-        toast.success("SVG baixado para uso em impressão profissional.");
+      if (format === "simple-png") {
+        const pngBlob = await rasterizeSvg(qrSource, 1024, 1024);
+        triggerDownload(pngBlob, `${baseName}.png`);
+        toast.success("PNG simples baixado para uso no celular, telão ou WhatsApp.");
         return;
       }
 
-      const svgBlob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
-      const svgUrl = URL.createObjectURL(svgBlob);
-      const image = new Image();
-      image.decoding = "async";
-      image.onload = () => {
-        const size = 1024;
-        const canvas = document.createElement("canvas");
-        canvas.width = size;
-        canvas.height = size;
-        const context = canvas.getContext("2d");
-        if (!context) throw new Error("Canvas indisponível");
-        context.fillStyle = "#ffffff";
-        context.fillRect(0, 0, size, size);
-        context.drawImage(image, 0, 0, size, size);
-        URL.revokeObjectURL(svgUrl);
-        canvas.toBlob((pngBlob) => {
-          if (!pngBlob) {
-            toast.error("Não foi possível gerar a imagem PNG.");
-            return;
-          }
-          const pngUrl = URL.createObjectURL(pngBlob);
-          const anchor = document.createElement("a");
-          anchor.href = pngUrl;
-          anchor.download = `${baseName}.png`;
-          anchor.click();
-          window.setTimeout(() => URL.revokeObjectURL(pngUrl), 1000);
-          toast.success("PNG baixado. Ele pode ser aberto e compartilhado no iPhone, Android ou WhatsApp.");
-        }, "image/png");
-      };
-      image.onerror = () => {
-        URL.revokeObjectURL(svgUrl);
-        toast.error("Não foi possível gerar a imagem PNG.");
-      };
-      image.src = svgUrl;
+      const logoDataUrl = await loadImageAsDataUrl(qrLogoUrl);
+      const artwork = buildQrArtworkSvg({
+        qrSource,
+        churchName: churchForm.name,
+        title: churchForm.publicRegistrationTitle,
+        message: churchForm.publicRegistrationMessage,
+        campaign: qrCampaign,
+        primaryColor: qrPrimaryColor,
+        secondaryColor: qrSecondaryColor,
+        logoDataUrl,
+      });
+      if (format === "custom-svg") {
+        triggerDownload(new Blob([artwork], { type: "image/svg+xml;charset=utf-8" }), `${baseName}-personalizado.svg`);
+        toast.success("SVG personalizado baixado para impressão profissional.");
+        return;
+      }
+
+      const pngBlob = await rasterizeSvg(artwork, 1200, 1500);
+      triggerDownload(pngBlob, `${baseName}-personalizado.png`);
+      toast.success("PNG personalizado baixado com a identidade da igreja.");
     } catch {
-      toast.error("Não foi possível baixar o QR Code.");
+      toast.error("Não foi possível gerar o arquivo personalizado do QR Code.");
     }
   };
 
@@ -507,7 +596,7 @@ export default function Configuracoes() {
                   <div><Label htmlFor="public-registration-message">Mensagem de boas-vindas</Label><Textarea id="public-registration-message" value={churchForm.publicRegistrationMessage} maxLength={500} onChange={(event) => setChurchForm({ ...churchForm, publicRegistrationMessage: event.target.value })} className="mt-1" rows={3} placeholder="Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você." /><p className="mt-1 text-xs text-muted-foreground">{churchForm.publicRegistrationMessage.length}/500 caracteres</p></div>
                 </div>
                 <div className="mt-4 rounded-xl border border-gold/25 bg-gold/5 p-4"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-gold">Link oficial da igreja</p><p className="mt-1 break-all font-mono text-xs leading-relaxed text-navy">{churchForm.slug ? registrationLink : "Salve o subdomínio para gerar o link"}</p><p className="mt-1 text-xs text-muted-foreground">Compartilhe com uma mensagem pronta ou copie somente o endereço.</p></div><div className="mt-4 flex flex-col gap-2 sm:flex-row"><Button type="button" className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" disabled={!churchForm.slug} onClick={() => setShareDialogOpen(true)}><Share2 className="h-4 w-4" />Compartilhar cadastro</Button><Button type="button" variant="outline" className="w-full gap-2 bg-white text-navy sm:w-auto" disabled={!churchForm.slug} onClick={() => void handleCopyRegistrationLink()}><Copy className="h-4 w-4" />Copiar link</Button></div></div>
-                <div className="mt-4 grid gap-5 rounded-2xl border border-navy/10 bg-slate-50/70 p-4 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-center"><div className="min-w-0"><div className="flex items-center gap-2"><QrCode className="h-4 w-4 text-gold" /><h4 className="font-semibold text-navy">QR Code de cadastro público</h4></div><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Mostre no telão, coloque em convites ou use em um evento. A pessoa preencherá o cadastro sem login; o envio ficará pendente para a equipe da igreja.</p><div className="mt-4 grid gap-3 sm:grid-cols-2"><div><Label htmlFor="public-registration-qr-source">Origem do QR Code</Label><select id="public-registration-qr-source" value={qrSource} onChange={(event) => setQrSource(event.target.value as typeof qrSource)} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none focus:ring-2 focus:ring-gold/50"><option value="qrcode">QR Code da igreja</option><option value="convite">Convite</option><option value="evento">Evento</option><option value="link">Link compartilhado</option></select></div><div><Label htmlFor="public-registration-qr-campaign">Identificação opcional</Label><Input id="public-registration-qr-campaign" value={qrCampaign} maxLength={120} onChange={(event) => setQrCampaign(event.target.value)} className="mt-1" placeholder="Ex.: Culto de domingo" /></div></div><p className="mt-3 break-all rounded-lg bg-white px-3 py-2 font-mono text-[11px] leading-relaxed text-navy">{registrationQrLink || "Salve o subdomínio para gerar o QR Code"}</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><Button type="button" className="gap-2 bg-navy text-white hover:bg-navy-light" disabled={!registrationQrLink} onClick={() => void handleDownloadQr("png")}><QrCode className="h-4 w-4" />Baixar PNG</Button><Button type="button" variant="outline" className="gap-2 bg-white text-navy" disabled={!registrationQrLink} onClick={() => void handleDownloadQr("svg")}><QrCode className="h-4 w-4" />SVG para impressão</Button><Button type="button" variant="outline" className="gap-2 bg-white text-navy" disabled={!registrationQrLink} onClick={() => void handleCopyQrLink()}><Copy className="h-4 w-4" />Copiar link</Button></div></div><div className="flex flex-col items-center gap-2 rounded-xl border border-white bg-white p-3 shadow-sm"><QRCodeSVG ref={qrSvgRef} value={registrationQrLink || "https://idefazei.com.br"} size={190} level="M" fgColor="#1e3a5f" bgColor="#ffffff" title="QR Code de cadastro público" /><p className="text-center text-[11px] leading-relaxed text-muted-foreground">PNG: melhor para iPhone, Android, telão e WhatsApp. SVG: impressão profissional.</p></div></div><Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Compartilhar cadastro</DialogTitle><DialogDescription>Escolha como deseja enviar o convite da {churchForm.name || "igreja"}. A mensagem já incluirá o link oficial.</DialogDescription></DialogHeader><div className="grid gap-2 py-2"><Button type="button" className="h-auto justify-start gap-3 whitespace-normal bg-navy px-4 py-3 text-left text-white hover:bg-navy-light" onClick={() => void handleNativeShare()} disabled={!canUseNativeShare}><Smartphone className="h-5 w-5 shrink-0" /><span><strong className="block">Compartilhar pelo celular</strong><small className="font-normal opacity-80">{canUseNativeShare ? "Escolha WhatsApp, Mensagens, Mail ou outro aplicativo." : "Indisponível neste navegador; use WhatsApp ou Copiar link."}</small></span></Button><Button type="button" variant="outline" className="h-auto justify-start gap-3 whitespace-normal px-4 py-3 text-left" onClick={handleWhatsAppShare}><MessageCircle className="h-5 w-5 shrink-0 text-emerald-600" /><span><strong className="block">WhatsApp</strong><small className="font-normal text-muted-foreground">Abrir com a mensagem e o link já preparados.</small></span></Button><Button type="button" variant="outline" className="h-auto justify-start gap-3 px-4 py-3 text-left" onClick={() => void handleCopyRegistrationLink(true)}><Copy className="h-5 w-5 shrink-0" /><span><strong className="block">Copiar link</strong><small className="font-normal text-muted-foreground">Copiar somente o endereço do cadastro.</small></span></Button></div></DialogContent></Dialog>
+                <div className="mt-4 grid gap-5 rounded-2xl border border-navy/10 bg-slate-50/70 p-4 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-center"><div className="min-w-0"><div className="flex items-center gap-2"><QrCode className="h-4 w-4 text-gold" /><h4 className="font-semibold text-navy">QR Code de cadastro público</h4></div><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Mostre no telão, coloque em convites ou use em um evento. A pessoa preencherá o cadastro sem login; o envio ficará pendente para a equipe da igreja.</p><div className="mt-4 grid gap-3 sm:grid-cols-2"><div><Label htmlFor="public-registration-qr-source">Origem do QR Code</Label><select id="public-registration-qr-source" value={qrSource} onChange={(event) => setQrSource(event.target.value as typeof qrSource)} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm outline-none focus:ring-2 focus:ring-gold/50"><option value="qrcode">QR Code da igreja</option><option value="convite">Convite</option><option value="evento">Evento</option><option value="link">Link compartilhado</option></select></div><div><Label htmlFor="public-registration-qr-campaign">Identificação opcional</Label><Input id="public-registration-qr-campaign" value={qrCampaign} maxLength={120} onChange={(event) => setQrCampaign(event.target.value)} className="mt-1" placeholder="Ex.: Culto de domingo" /></div></div><p className="mt-3 break-all rounded-lg bg-white px-3 py-2 font-mono text-[11px] leading-relaxed text-navy">{registrationQrLink || "Salve o subdomínio para gerar o QR Code"}</p><div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap"><Button type="button" className="gap-2 bg-navy text-white hover:bg-navy-light" disabled={!registrationQrLink} onClick={() => void handleDownloadQr("custom-png")}><QrCode className="h-4 w-4" />Baixar PNG personalizado</Button><Button type="button" variant="outline" className="gap-2 bg-white text-navy" disabled={!registrationQrLink} onClick={() => void handleDownloadQr("simple-png")}><QrCode className="h-4 w-4" />PNG simples</Button><Button type="button" variant="outline" className="gap-2 bg-white text-navy" disabled={!registrationQrLink} onClick={() => void handleDownloadQr("custom-svg")}><QrCode className="h-4 w-4" />SVG personalizado</Button><Button type="button" variant="outline" className="gap-2 bg-white text-navy" disabled={!registrationQrLink} onClick={() => void handleCopyQrLink()}><Copy className="h-4 w-4" />Copiar link</Button></div></div><div className="flex flex-col items-center gap-2 rounded-xl border border-white bg-white p-3 shadow-sm"><div className="w-full max-w-[240px] overflow-hidden rounded-xl border bg-white shadow-sm" style={{ borderColor: `${qrSecondaryColor}66` }}><div className="h-1.5" style={{ backgroundColor: qrPrimaryColor }} /><div className="flex flex-col items-center px-3 pb-3 pt-4 text-center"><div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border bg-white" style={{ borderColor: `${qrSecondaryColor}99` }}>{qrLogoUrl ? <img src={qrLogoUrl} alt="Logo da igreja" className="h-full w-full object-contain" /> : <QrCode className="h-6 w-6" style={{ color: qrPrimaryColor }} />}</div><p className="mt-2 line-clamp-2 text-xs font-bold" style={{ color: qrPrimaryColor }}>{churchForm.name || "Sua igreja"}</p><p className="mt-1 line-clamp-2 text-[11px] font-semibold text-slate-800">{churchForm.publicRegistrationTitle || "Faça seu cadastro"}</p><p className="mt-1 line-clamp-3 text-[10px] leading-relaxed text-slate-500">{churchForm.publicRegistrationMessage || "Aponte a câmera do celular para acessar."}</p><div className="mt-3 rounded-lg border bg-white p-2" style={{ borderColor: `${qrSecondaryColor}99` }}><QRCodeSVG ref={qrSvgRef} value={registrationQrLink || "https://idefazei.com.br"} size={156} level="M" fgColor={qrPrimaryColor} bgColor="#ffffff" title="QR Code de cadastro público" /></div>{qrCampaign.trim() && <p className="mt-2 line-clamp-1 text-[10px] font-bold" style={{ color: qrPrimaryColor }}>{qrCampaign.trim()}</p>}<p className="mt-2 text-[9px] leading-relaxed text-slate-500">Aponte a câmera do celular para acessar</p></div></div><p className="text-center text-[11px] leading-relaxed text-muted-foreground">Esta prévia será baixada como PNG personalizado.</p></div></div><Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Compartilhar cadastro</DialogTitle><DialogDescription>Escolha como deseja enviar o convite da {churchForm.name || "igreja"}. A mensagem já incluirá o link oficial.</DialogDescription></DialogHeader><div className="grid gap-2 py-2"><Button type="button" className="h-auto justify-start gap-3 whitespace-normal bg-navy px-4 py-3 text-left text-white hover:bg-navy-light" onClick={() => void handleNativeShare()} disabled={!canUseNativeShare}><Smartphone className="h-5 w-5 shrink-0" /><span><strong className="block">Compartilhar pelo celular</strong><small className="font-normal opacity-80">{canUseNativeShare ? "Escolha WhatsApp, Mensagens, Mail ou outro aplicativo." : "Indisponível neste navegador; use WhatsApp ou Copiar link."}</small></span></Button><Button type="button" variant="outline" className="h-auto justify-start gap-3 whitespace-normal px-4 py-3 text-left" onClick={handleWhatsAppShare}><MessageCircle className="h-5 w-5 shrink-0 text-emerald-600" /><span><strong className="block">WhatsApp</strong><small className="font-normal text-muted-foreground">Abrir com a mensagem e o link já preparados.</small></span></Button><Button type="button" variant="outline" className="h-auto justify-start gap-3 px-4 py-3 text-left" onClick={() => void handleCopyRegistrationLink(true)}><Copy className="h-5 w-5 shrink-0" /><span><strong className="block">Copiar link</strong><small className="font-normal text-muted-foreground">Copiar somente o endereço do cadastro.</small></span></Button></div></DialogContent></Dialog>
               </section>
               <section className="card-sacred p-5 sm:p-6"><div className="border-b border-border pb-4"><h3 className="text-base font-semibold text-navy">Mensagem da igreja</h3><p className="mt-1 text-sm text-muted-foreground">Registre a visão e a missão que orientam sua comunidade.</p></div><div className="mt-5 grid gap-4 lg:grid-cols-2"><div><Label htmlFor="vision">Visão</Label><Textarea id="vision" value={churchForm.vision} onChange={(e) => setChurchForm({ ...churchForm, vision: e.target.value })} className="mt-1" placeholder="A visão da sua igreja..." rows={5} /></div><div><Label htmlFor="mission">Missão</Label><Textarea id="mission" value={churchForm.mission} onChange={(e) => setChurchForm({ ...churchForm, mission: e.target.value })} className="mt-1" placeholder="A missão da sua igreja..." rows={5} /></div></div></section>
               <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">Revise os dados e salve somente esta seção.</p><Button className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto" onClick={handleSave} disabled={updateMutation.isPending}><Save className="h-4 w-4" />{updateMutation.isPending ? "Salvando..." : "Salvar alterações"}</Button></div>
