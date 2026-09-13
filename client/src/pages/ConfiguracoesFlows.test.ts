@@ -83,8 +83,13 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("Link oficial da igreja");
     expect(settingsSource).toContain("Copiar link");
     expect(settingsSource).toContain("QR Code de cadastro público");
-    expect(settingsSource).toContain("Baixar QR Code");
+    expect(settingsSource).toContain("Baixar PNG");
+    expect(settingsSource).toContain("SVG para impressão");
     expect(settingsSource).toContain("publicRegistrationQrUrl");
+    expect(settingsSource).toContain('handleDownloadQr("png")');
+    expect(settingsSource).toContain('handleDownloadQr("svg")');
+    expect(settingsSource).toContain("canvas.toBlob");
+    expect(settingsSource).toContain('"image/png"');
     expect(settingsSource).toContain("new XMLSerializer()");
     expect(settingsSource).toContain("Compartilhar cadastro");
     expect(settingsSource).toContain("Compartilhar pelo celular");
