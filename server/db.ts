@@ -97,6 +97,7 @@ import {
   tenantThemes,
   users,
   visitorLeads,
+  publicRegistrationLeads,
   onboardingProgress,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -660,7 +661,7 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
         enabled: church.publicRegistrationEnabled,
         title: church.publicRegistrationTitle,
         message: church.publicRegistrationMessage,
-        path: "/cadastro",
+        path: "/cadastro-publico",
       },
     },
     site,
@@ -4556,6 +4557,136 @@ export async function getVisitorLeadsByChurch(churchId: number) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(visitorLeads).where(eq(visitorLeads.churchId, churchId)).orderBy(visitorLeads.createdAt);
+}
+
+// ─── PUBLIC REGISTRATION QR LEADS ─────────────────────────────────────────────
+
+function normalizePublicRegistrationWhatsapp(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function publicRegistrationIdentityHash(churchId: number, whatsapp: string) {
+  return createHash("sha256").update(`${churchId}:${normalizePublicRegistrationWhatsapp(whatsapp)}`).digest("hex");
+}
+
+function formatPublicRegistrationAddress(input: {
+  zipCode?: string | null;
+  street?: string | null;
+  number?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+}) {
+  const parts = [
+    input.street && input.number ? `${input.street}, ${input.number}` : input.street || input.number,
+    input.neighborhood,
+    input.city && input.state ? `${input.city}/${input.state}` : input.city || input.state,
+    input.zipCode ? `CEP ${input.zipCode}` : null,
+  ].filter(Boolean);
+  return parts.join(" · ") || null;
+}
+
+export async function createPublicRegistrationLead(input: {
+  churchId: number;
+  name: string;
+  whatsapp: string;
+  email?: string | null;
+  zipCode?: string | null;
+  street?: string | null;
+  number?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state?: string | null;
+  source: "qrcode" | "convite" | "evento" | "link";
+  campaign?: string | null;
+  consentAccepted: boolean;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const identityHash = publicRegistrationIdentityHash(input.churchId, input.whatsapp);
+  const existing = await db.select().from(publicRegistrationLeads).where(and(
+    eq(publicRegistrationLeads.churchId, input.churchId),
+    eq(publicRegistrationLeads.identityHash, identityHash),
+  )).limit(1);
+  if (existing[0]) return { created: false as const, duplicate: true as const, lead: existing[0] };
+
+  const origin = input.source === "evento"
+    ? "evento" as const
+    : input.source === "convite"
+      ? "indicacao" as const
+      : input.source === "link"
+        ? "redes_sociais" as const
+        : "visita_espontanea" as const;
+  const address = formatPublicRegistrationAddress(input);
+  const notes = input.campaign ? `Cadastro público · ${input.campaign}` : "Cadastro público recebido por QR Code ou link oficial.";
+  return db.transaction(async (tx) => {
+    const soulResult = await tx.insert(souls).values({
+      churchId: input.churchId,
+      personId: null,
+      name: input.name,
+      phone: input.whatsapp,
+      address,
+      decisionDate: currentCivilDateAsUtcNoon(),
+      origin,
+      acceptedJesus: false,
+      reconciliation: false,
+      firstVisit: true,
+      wonById: null,
+      notes,
+      status: "nova_alma",
+    });
+    const soulId = Number((soulResult[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!soulId) throw new Error("Failed to create public registration soul");
+    const leadResult = await tx.insert(publicRegistrationLeads).values({
+      churchId: input.churchId,
+      soulId,
+      identityHash,
+      name: input.name,
+      whatsapp: input.whatsapp,
+      email: input.email || null,
+      zipCode: input.zipCode || null,
+      street: input.street || null,
+      number: input.number || null,
+      neighborhood: input.neighborhood || null,
+      city: input.city || null,
+      state: input.state || null,
+      source: input.source,
+      campaign: input.campaign || null,
+      consentAccepted: input.consentAccepted,
+      consentVersion: "v1",
+      status: "novo",
+    });
+    const leadId = Number((leadResult[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!leadId) throw new Error("Failed to create public registration lead");
+    const rows = await tx.select().from(publicRegistrationLeads).where(and(
+      eq(publicRegistrationLeads.id, leadId),
+      eq(publicRegistrationLeads.churchId, input.churchId),
+    )).limit(1);
+    return { created: true as const, duplicate: false as const, lead: rows[0] ?? null };
+  });
+}
+
+export async function getPublicRegistrationLeadsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(publicRegistrationLeads)
+    .where(eq(publicRegistrationLeads.churchId, churchId))
+    .orderBy(desc(publicRegistrationLeads.createdAt))
+    .limit(100);
+}
+
+export async function updatePublicRegistrationLeadStatus(
+  id: number,
+  churchId: number,
+  status: "novo" | "em_atendimento" | "convertido" | "encerrado",
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(publicRegistrationLeads).set({ status }).where(and(
+    eq(publicRegistrationLeads.id, id),
+    eq(publicRegistrationLeads.churchId, churchId),
+  ));
+  return { success: true };
 }
 
 // ─── CHURCH REGISTRATION ──────────────────────────────────────────────────────
