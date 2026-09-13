@@ -235,12 +235,13 @@ function hashWebPushEndpoint(endpoint: string) {
   return createHash("sha256").update(endpoint).digest("hex");
 }
 
-export async function hasActiveWebPushSubscription(data: { churchId: number; churchUserId: number }) {
+export async function hasActiveWebPushSubscription(data: { churchId: number; churchUserId: number; endpoint?: string }) {
   const db = await getDb();
   if (!db) return false;
   const rows = await db.select({ id: webPushSubscriptions.id }).from(webPushSubscriptions).where(and(
     eq(webPushSubscriptions.churchId, data.churchId),
     eq(webPushSubscriptions.churchUserId, data.churchUserId),
+    ...(data.endpoint ? [eq(webPushSubscriptions.endpointHash, hashWebPushEndpoint(data.endpoint))] : []),
     isNull(webPushSubscriptions.revokedAt),
   )).limit(1);
   return Boolean(rows[0]);

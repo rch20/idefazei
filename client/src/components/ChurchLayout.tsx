@@ -46,6 +46,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 import { getChurchHomePath } from "@/lib/churchHome";
+import { WebPushControl } from "@/components/WebPushControl";
 import { normalizePastoralSupportConfig, shouldShowPastoralSupport, type PastoralSupportConfig } from "../../../shared/pastoralSupport";
 
 // ─── CHURCH CONTEXT ───────────────────────────────────────────────────────────
@@ -493,6 +494,7 @@ function TopBar({ title }: { title?: string }) {
           </button>
           {notificationsOpen && <div className="absolute right-0 top-11 z-50 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border bg-card shadow-xl">
             <div className="flex items-center justify-between border-b border-border px-4 py-3"><div><p className="font-semibold text-navy">Notificações</p><p className="text-xs text-muted-foreground">Avisos da sua igreja</p></div><button type="button" className="rounded p-1 text-muted-foreground hover:bg-muted" aria-label="Fechar notificações" onClick={() => setNotificationsOpen(false)}><X className="h-4 w-4" /></button></div>
+            <WebPushControl churchId={churchId} />
             <div className="max-h-[min(28rem,calc(100vh-8rem))] overflow-y-auto">
               {notificationsQuery.isLoading ? <div className="space-y-3 p-4">{[1, 2, 3].map((item) => <div key={item} className="h-14 animate-pulse rounded-lg bg-muted" />)}</div> : (notificationsQuery.data ?? []).length === 0 ? <div className="p-7 text-center text-sm text-muted-foreground">Você não tem notificações por enquanto.</div> : (notificationsQuery.data ?? []).map(({ delivery, event }) => <button key={delivery.id} type="button" className={`block w-full border-b border-border px-4 py-3 text-left transition-colors hover:bg-muted/70 ${delivery.readAt ? "opacity-70" : "bg-gold/5"}`} onClick={() => { if (!delivery.readAt) markReadMutation.mutate({ churchId, id: delivery.id }); }}><div className="flex gap-2"><span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${delivery.readAt ? "bg-transparent" : "bg-gold"}`} /><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-navy">{event.title}</p><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{event.body}</p><p className="mt-1 text-[10px] text-muted-foreground">{new Date(event.createdAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</p></div>{!delivery.readAt && <Check className="mt-1 h-4 w-4 shrink-0 text-gold" />}</div></button>) }
             </div>

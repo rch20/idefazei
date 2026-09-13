@@ -113,6 +113,21 @@ describe("confirmação de logout no painel", () => {
     expect(source).not.toContain('label: "Indicações"');
   });
 
+  it("mantém o botão voluntário de Web Push separado do sino interno", () => {
+    const layout = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
+    const control = readFileSync(resolve(process.cwd(), "client/src/components/WebPushControl.tsx"), "utf8");
+    const hook = readFileSync(resolve(process.cwd(), "client/src/hooks/useWebPush.ts"), "utf8");
+    expect(layout).toContain("<WebPushControl churchId={churchId} />");
+    expect(control).toContain("Ativar notificações");
+    expect(control).toContain("Desativar neste dispositivo");
+    expect(control).toContain('role="alert"');
+    expect(control).toContain("instale o Ide Fazei na Tela de Início");
+    expect(hook).toContain("Notification.requestPermission()");
+    expect(hook).toContain("webPushSubscribe");
+    expect(hook).toContain("webPushUnsubscribe");
+    expect(hook).toContain('state: WebPushState');
+  });
+
   it("mantém as ações de membro separadas do acesso administrativo", () => {
     const ganharAlmas = readFileSync(resolve(process.cwd(), "client/src/pages/GanharAlmas.tsx"), "utf8");
     const oracao = readFileSync(resolve(process.cwd(), "client/src/pages/Oracao.tsx"), "utf8");

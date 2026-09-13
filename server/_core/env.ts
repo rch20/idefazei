@@ -21,4 +21,6 @@ export const ENV = {
   smtpSecure: process.env.SMTP_SECURE !== "false",
   smtpUser: process.env.SMTP_USER ?? process.env.MAIL_FROM ?? "noreply.idefazei@gmail.com",
   smtpPassword: process.env.SMTP_PASSWORD ?? "",
+  vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? "",
+  vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? "",
 };

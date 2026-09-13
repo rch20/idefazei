@@ -10,6 +10,7 @@ import { getOptimizedMediaUrls } from "./media";
 import { currentCivilDateAsUtcNoon, formatCivilDateValue, normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
+import { ENV } from "./_core/env";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import {
   loginChurchUser,
@@ -6808,11 +6809,20 @@ const notificationsRouter = router({
       await markNotificationRead({ id: input.id, churchId: input.churchId, churchUserId: actor.id });
       return { success: true };
     }),
-  webPushStatus: protectedProcedure
+  webPushConfig: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return { publicKey: ENV.vapidPublicKey || null } as const;
+    }),
+  webPushStatus: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      endpoint: z.string().trim().url().max(2048).refine((value) => value.startsWith("https://"), "O endpoint Push deve usar HTTPS.").nullable().optional(),
+    }))
+    .query(async ({ input, ctx }) => {
       const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      return { subscribed: await hasActiveWebPushSubscription({ churchId: input.churchId, churchUserId: actor.id }) };
+      return { subscribed: await hasActiveWebPushSubscription({ churchId: input.churchId, churchUserId: actor.id, endpoint: input.endpoint ?? undefined }) };
     }),
   webPushSubscribe: protectedProcedure
     .input(z.object({

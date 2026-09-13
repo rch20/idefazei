@@ -60,11 +60,18 @@ describe("notifications.webPush*", () => {
     vi.mocked(revokeWebPushSubscription).mockResolvedValue(true);
   });
 
-  it("consulta o status somente no tenant e usuário autenticados", async () => {
+  it("expõe somente a chave pública VAPID para o tenant autenticado", async () => {
     const caller = appRouter.createCaller(createContext());
 
-    await expect(caller.notifications.webPushStatus({ churchId: 100 })).resolves.toEqual({ subscribed: false });
-    expect(hasActiveWebPushSubscription).toHaveBeenCalledWith({ churchId: 100, churchUserId: 2 });
+    await expect(caller.notifications.webPushConfig({ churchId: 100 })).resolves.toEqual({ publicKey: null });
+  });
+
+  it("consulta o status somente no tenant, usuário e dispositivo autenticados", async () => {
+    const caller = appRouter.createCaller(createContext());
+    const endpoint = "https://push.example.test/subscription/abc";
+
+    await expect(caller.notifications.webPushStatus({ churchId: 100, endpoint })).resolves.toEqual({ subscribed: false });
+    expect(hasActiveWebPushSubscription).toHaveBeenCalledWith({ churchId: 100, churchUserId: 2, endpoint });
   });
 
   it("registra novamente a mesma subscription sem devolver chaves ao cliente", async () => {
