@@ -96,6 +96,9 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(settingsSource).toContain("buildQrLandscapeSvg");
     expect(settingsSource).toContain("buildQrPortraitSvg");
     expect(settingsSource).toContain("width=\"1600\" height=\"900\"");
+    expect(settingsSource).toContain("width=\"625\" height=\"625\"");
+    expect(settingsSource).toContain("Leia com a câmera");
+    expect(settingsSource).toContain("Escaneie o QR Code");
     expect(settingsSource).toContain("loadImageAsDataUrl");
     expect(settingsSource).toContain("canvas.toBlob");
     expect(settingsSource).toContain('"image/png"');
