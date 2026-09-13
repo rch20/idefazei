@@ -90,6 +90,9 @@ import {
   getNotificationsForChurchUser,
   getUnreadNotificationCount,
   markNotificationRead,
+  hasActiveWebPushSubscription,
+  upsertWebPushSubscription,
+  revokeWebPushSubscription,
   getConsolidationsByChurch,
   getConsolidationsBySoul,
   getConsolidationById,
@@ -6804,6 +6807,43 @@ const notificationsRouter = router({
       const actor = await requireChurchMember(ctx.user.id, input.churchId);
       await markNotificationRead({ id: input.id, churchId: input.churchId, churchUserId: actor.id });
       return { success: true };
+    }),
+  webPushStatus: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      return { subscribed: await hasActiveWebPushSubscription({ churchId: input.churchId, churchUserId: actor.id }) };
+    }),
+  webPushSubscribe: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      endpoint: z.string().trim().url().max(2048).refine((value) => value.startsWith("https://"), "O endpoint Push deve usar HTTPS."),
+      keys: z.object({
+        p256dh: z.string().trim().min(16).max(255),
+        auth: z.string().trim().min(8).max(255),
+      }),
+      userAgent: z.string().trim().max(512).nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      return upsertWebPushSubscription({
+        churchId: input.churchId,
+        churchUserId: actor.id,
+        endpoint: input.endpoint,
+        p256dh: input.keys.p256dh,
+        auth: input.keys.auth,
+        userAgent: input.userAgent ?? null,
+      });
+    }),
+  webPushUnsubscribe: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      endpoint: z.string().trim().url().max(2048).refine((value) => value.startsWith("https://"), "O endpoint Push deve usar HTTPS."),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      await revokeWebPushSubscription({ churchId: input.churchId, churchUserId: actor.id, endpoint: input.endpoint });
+      return { subscribed: false } as const;
     }),
 });
 

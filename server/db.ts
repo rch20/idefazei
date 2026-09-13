@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, count, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
@@ -18,6 +19,7 @@ import {
   churchUserComplementaryRoles,
   churchPasswordResetTokens,
   churchUsers,
+  webPushSubscriptions,
   churches,
   communicationLogs,
   consolidations,
@@ -227,6 +229,74 @@ export async function markNotificationRead(data: { id: number; churchId: number;
   if (!db) throw new Error("Database not available");
   await db.update(notificationDeliveries).set({ status: "lida", readAt: new Date() })
     .where(and(eq(notificationDeliveries.id, data.id), eq(notificationDeliveries.churchId, data.churchId), eq(notificationDeliveries.recipientChurchUserId, data.churchUserId), eq(notificationDeliveries.channel, "sistema")));
+}
+
+function hashWebPushEndpoint(endpoint: string) {
+  return createHash("sha256").update(endpoint).digest("hex");
+}
+
+export async function hasActiveWebPushSubscription(data: { churchId: number; churchUserId: number }) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db.select({ id: webPushSubscriptions.id }).from(webPushSubscriptions).where(and(
+    eq(webPushSubscriptions.churchId, data.churchId),
+    eq(webPushSubscriptions.churchUserId, data.churchUserId),
+    isNull(webPushSubscriptions.revokedAt),
+  )).limit(1);
+  return Boolean(rows[0]);
+}
+
+export async function upsertWebPushSubscription(data: {
+  churchId: number;
+  churchUserId: number;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  userAgent?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const endpointHash = hashWebPushEndpoint(data.endpoint);
+  const existing = await db.select({ id: webPushSubscriptions.id }).from(webPushSubscriptions)
+    .where(eq(webPushSubscriptions.endpointHash, endpointHash)).limit(1);
+  const now = new Date();
+  if (existing[0]) {
+    await db.update(webPushSubscriptions).set({
+      churchId: data.churchId,
+      churchUserId: data.churchUserId,
+      endpoint: data.endpoint,
+      endpointHash,
+      p256dh: data.p256dh,
+      auth: data.auth,
+      userAgent: data.userAgent ?? null,
+      lastSeenAt: now,
+      revokedAt: null,
+    }).where(eq(webPushSubscriptions.id, existing[0].id));
+  } else {
+    await db.insert(webPushSubscriptions).values({
+      churchId: data.churchId,
+      churchUserId: data.churchUserId,
+      endpoint: data.endpoint,
+      endpointHash,
+      p256dh: data.p256dh,
+      auth: data.auth,
+      userAgent: data.userAgent ?? null,
+      lastSeenAt: now,
+    });
+  }
+  return { subscribed: true } as const;
+}
+
+export async function revokeWebPushSubscription(data: { churchId: number; churchUserId: number; endpoint: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.update(webPushSubscriptions).set({ revokedAt: new Date() }).where(and(
+    eq(webPushSubscriptions.churchId, data.churchId),
+    eq(webPushSubscriptions.churchUserId, data.churchUserId),
+    eq(webPushSubscriptions.endpointHash, hashWebPushEndpoint(data.endpoint)),
+    isNull(webPushSubscriptions.revokedAt),
+  ));
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0) > 0;
 }
 
 // ─── DIAGNÓSTICOS DE INICIALIZAÇÃO ────────────────────────────────────────────

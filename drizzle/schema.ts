@@ -1086,6 +1086,27 @@ export const churchUsers = mysqlTable("church_users", {
 export type ChurchUser = typeof churchUsers.$inferSelect;
 export type InsertChurchUser = typeof churchUsers.$inferInsert;
 
+/** Assinaturas Web Push voluntárias, isoladas por igreja e usuário. */
+export const webPushSubscriptions = mysqlTable("web_push_subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  churchUserId: int("churchUserId").notNull(),
+  endpoint: text("endpoint").notNull(),
+  endpointHash: varchar("endpointHash", { length: 64 }).notNull().unique(),
+  p256dh: varchar("p256dh", { length: 255 }).notNull(),
+  auth: varchar("auth", { length: 255 }).notNull(),
+  userAgent: varchar("userAgent", { length: 512 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  lastSeenAt: timestamp("lastSeenAt").defaultNow().notNull(),
+  revokedAt: timestamp("revokedAt"),
+}, (table) => ({
+  churchUserIdx: index("web_push_subscriptions_church_user_idx").on(table.churchId, table.churchUserId),
+  activeChurchIdx: index("web_push_subscriptions_church_active_idx").on(table.churchId, table.revokedAt),
+}));
+
+export type WebPushSubscription = typeof webPushSubscriptions.$inferSelect;
+export type InsertWebPushSubscription = typeof webPushSubscriptions.$inferInsert;
+
 /** Atribuições adicionais de serviço; não substituem a função principal de hierarquia. */
 export const churchUserComplementaryRoleEnum = mysqlEnum("churchUserComplementaryRole", [
   "consolidador",
