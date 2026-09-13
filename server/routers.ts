@@ -79,6 +79,7 @@ import {
   getActiveChurchUserById,
   getChurchMembersByChurch,
   getChurchUsersByChurch,
+  getChurchUserIdsWithActiveCell,
   getChurchUserByEmail,
   getPendingChurchUsers,
   resolveChurchUserRegistration,
@@ -2685,7 +2686,7 @@ const cellsRouter = router({
           message: "Registre a presença de todas as Pessoas atualmente vinculadas à Célula.",
         });
       }
-      return createCellMeetingWithAttendance({
+      const createdMeeting = await createCellMeetingWithAttendance({
         cellId: input.cellId,
         churchId: input.churchId,
         meetingDate: input.meetingDate,
@@ -2693,6 +2694,29 @@ const cellsRouter = router({
         notes: input.notes || null,
         attendance: input.attendance,
       });
+      const [cell, cellMembers, churchAccounts] = await Promise.all([
+        getCellById(input.cellId, input.churchId),
+        getActiveMembersByCell(input.cellId, input.churchId),
+        getChurchUsersByChurch(input.churchId),
+      ]);
+      const memberPersonIds = new Set(cellMembers.map((member) => member.person.id));
+      const recipients = churchAccounts
+        .filter((account) => account.active && account.personId !== null && memberPersonIds.has(account.personId))
+        .map((account) => account.id);
+      await emitNotificationWithoutBlocking({
+        churchId: input.churchId,
+        type: "celula_encontro_registrado",
+        recipientChurchUserIds: recipients,
+        title: `Novo encontro na ${cell?.name ?? "sua Célula"}`,
+        body: `${input.topic?.trim() || "O encontro da Célula foi registrado."} Confira os detalhes no painel.`,
+        entityType: "cell_meeting",
+        entityId: createdMeeting.id,
+        metadata: { cellId: input.cellId, meetingDate: input.meetingDate, topic: input.topic || null },
+        dedupeKey: `celula-encontro-registrado:${createdMeeting.id}`,
+        push: true,
+        url: `/app/celulas?cellId=${input.cellId}`,
+      });
+      return createdMeeting;
     }),
 
   assignmentCandidates: protectedProcedure
@@ -3816,7 +3840,7 @@ const schedulesRouter = router({
       const { scheduleItems } = await import("../drizzle/schema");
       const scheduledDate = parseCivilDateAsUtcNoon(input.scheduledDate);
       if (!scheduledDate) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma data de calendário válida." });
-      await db.insert(scheduleItems).values({
+      const insertResult = await db.insert(scheduleItems).values({
         churchId: input.churchId,
         ministryId: input.ministryId,
         departmentId: input.departmentId ?? null,
@@ -3826,7 +3850,26 @@ const schedulesRouter = router({
         endTime: input.endTime,
         role: input.role ?? null,
       });
-      return { success: true };
+      const scheduleId = Number((insertResult[0] as { insertId?: number })?.insertId ?? 0);
+      const [ministryName, accounts] = await Promise.all([
+        getMinistriesByChurch(input.churchId).then((items) => items.find((item) => item.id === input.ministryId)?.name ?? "Ministério"),
+        getChurchUsersByChurch(input.churchId),
+      ]);
+      const recipients = accounts.filter((account) => account.active && account.personId === input.personId).map((account) => account.id);
+      await emitNotificationWithoutBlocking({
+        churchId: input.churchId,
+        type: "escala_atribuida",
+        recipientChurchUserIds: recipients,
+        title: "Nova escala atribuída",
+        body: `Você foi escalado(a) no ${ministryName} para ${input.scheduledDate.split("-").reverse().join("/")} das ${input.startTime} às ${input.endTime}.`,
+        entityType: "schedule_item",
+        entityId: scheduleId || undefined,
+        metadata: { ministryId: input.ministryId, departmentId: input.departmentId ?? null, personId: input.personId, scheduledDate: input.scheduledDate, startTime: input.startTime, endTime: input.endTime, role: input.role ?? null },
+        dedupeKey: `escala-atribuida:${scheduleId || input.personId}:${input.churchId}`,
+        push: true,
+        url: `/app/escalas?ministerio=${input.ministryId}`,
+      });
+      return { success: true, id: scheduleId || null };
     }),
   update: protectedProcedure
     .input(z.object({
@@ -3878,6 +3921,8 @@ const schedulesRouter = router({
         entityId: updated.id,
         metadata: { ministryId: updated.ministryId, departmentId: updated.departmentId, personId: updated.personId, scheduledDate: input.scheduledDate, startTime: updated.startTime, endTime: updated.endTime },
         dedupeKey: `escala-alterada:${updated.id}:${updated.ministryId}:${updated.departmentId ?? "ministerio"}:${updated.personId}:${input.scheduledDate}:${updated.startTime}:${updated.endTime}:${updated.role ?? ""}`,
+        push: true,
+        url: `/app/escalas?ministerio=${updated.ministryId}`,
       });
       return updated;
     }),
@@ -3913,6 +3958,8 @@ const schedulesRouter = router({
         entityId: cancelled.id,
         metadata: { ministryId: existing.ministryId, departmentId: existing.departmentId, personId: existing.personId, scheduledDate: existing.scheduledDate, cancelReason: input.reason },
         dedupeKey: `escala-cancelada:${cancelled.id}`,
+        push: true,
+        url: `/app/escalas?ministerio=${existing.ministryId}`,
       });
       return cancelled;
     }),
@@ -3976,8 +4023,27 @@ const cellStudiesRouter = router({
       if (input.weekStart) {
         try { parseCivilDateAsUtcNoon(input.weekStart); } catch { throw new TRPCError({ code: "BAD_REQUEST", message: "Informe uma semana válida." }); }
       }
-      if (!(await getCellStudyById(input.id, input.churchId))) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
-      return updateCellStudy({ ...input, updatedByChurchUserId: access.member.id });
+      const existingStudy = await getCellStudyById(input.id, input.churchId);
+      if (!existingStudy) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      const updatedStudy = await updateCellStudy({ ...input, updatedByChurchUserId: access.member.id });
+      if (!updatedStudy) throw new TRPCError({ code: "CONFLICT", message: "O Estudo não pôde ser atualizado." });
+      if (input.status === "publicado" && existingStudy.status !== "publicado") {
+        const recipients = await getChurchUserIdsWithActiveCell(input.churchId);
+        await emitNotificationWithoutBlocking({
+          churchId: input.churchId,
+          type: "celula_aviso",
+          recipientChurchUserIds: recipients,
+          title: "Novo estudo disponível para sua Célula",
+          body: `${updatedStudy.title} já está publicado. Abra o estudo no painel para acompanhar a reunião.`,
+          entityType: "cell_study",
+          entityId: updatedStudy.id,
+          metadata: { studyId: updatedStudy.id, weekStart: updatedStudy.weekStart },
+          dedupeKey: `celula-aviso-estudo-${updatedStudy.id}-${updatedStudy.updatedAt?.getTime?.() ?? Date.now()}`,
+          push: true,
+          url: `/app/estudos-celula?studyId=${updatedStudy.id}`,
+        });
+      }
+      return updatedStudy;
     }),
   createReady: protectedProcedure
     .input(z.object({

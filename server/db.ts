@@ -157,8 +157,11 @@ export type NotificationEventType =
   | "comunicado_lideranca"
   | "encaminhamento_sem_aceite"
   | "lembrete_escala"
+  | "escala_atribuida"
   | "escala_alterada"
-  | "escala_cancelada";
+  | "escala_cancelada"
+  | "celula_encontro_registrado"
+  | "celula_aviso";
 
 export type NotificationChannel = "sistema" | "whatsapp";
 
@@ -286,6 +289,40 @@ export async function upsertWebPushSubscription(data: {
     });
   }
   return { subscribed: true } as const;
+}
+
+export async function getChurchUserIdsWithActiveCell(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ id: churchUsers.id }).from(churchUsers)
+    .innerJoin(cellMembers, eq(cellMembers.personId, churchUsers.personId))
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .where(and(
+      eq(churchUsers.churchId, churchId),
+      eq(churchUsers.active, true),
+      isNotNull(churchUsers.personId),
+      eq(cellMembers.active, true),
+      eq(cells.churchId, churchId),
+      eq(cells.active, true),
+    ));
+  return Array.from(new Set(rows.map((row) => row.id)));
+}
+
+export async function getActiveWebPushSubscriptionsByChurchUsers(data: { churchId: number; churchUserIds: number[] }) {
+  const db = await getDb();
+  if (!db || data.churchUserIds.length === 0) return [];
+  return db.select({
+    id: webPushSubscriptions.id,
+    churchId: webPushSubscriptions.churchId,
+    churchUserId: webPushSubscriptions.churchUserId,
+    endpoint: webPushSubscriptions.endpoint,
+    p256dh: webPushSubscriptions.p256dh,
+    auth: webPushSubscriptions.auth,
+  }).from(webPushSubscriptions).where(and(
+    eq(webPushSubscriptions.churchId, data.churchId),
+    inArray(webPushSubscriptions.churchUserId, Array.from(new Set(data.churchUserIds))),
+    isNull(webPushSubscriptions.revokedAt),
+  ));
 }
 
 export async function revokeWebPushSubscription(data: { churchId: number; churchUserId: number; endpoint: string }) {

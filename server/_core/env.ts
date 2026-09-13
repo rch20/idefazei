@@ -23,4 +23,5 @@ export const ENV = {
   smtpPassword: process.env.SMTP_PASSWORD ?? "",
   vapidPublicKey: process.env.VAPID_PUBLIC_KEY ?? "",
   vapidPrivateKey: process.env.VAPID_PRIVATE_KEY ?? "",
+  vapidSubject: process.env.VAPID_SUBJECT ?? "mailto:noreply@idefazei.com.br",
 };

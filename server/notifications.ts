@@ -5,6 +5,7 @@ import {
   isNotificationChannelActive,
   type NotificationEventType,
 } from "./db";
+import { dispatchWebPush } from "./webPush";
 
 /**
  * Orquestra a regra de negócio Event → Recipients → Delivery channel.
@@ -21,6 +22,8 @@ export async function emitInternalNotification(data: {
   entityId?: number;
   metadata?: Record<string, unknown>;
   dedupeKey?: string;
+  push?: boolean;
+  url?: string;
 }) {
   const recipients = Array.from(new Set(data.recipientChurchUserIds.filter((id) => Number.isInteger(id) && id > 0)));
   if (recipients.length === 0) return { created: false, eventId: null, deliveries: 0 };
@@ -40,5 +43,17 @@ export async function emitInternalNotification(data: {
     dedupeKey: data.dedupeKey,
   });
   await Promise.all(recipients.map((recipientChurchUserId) => createInternalNotificationDelivery({ churchId: data.churchId, eventId: event.id, recipientChurchUserId })));
+  if (data.push) {
+    void dispatchWebPush({
+      churchId: data.churchId,
+      recipientChurchUserIds: recipients,
+      title: data.title,
+      body: data.body,
+      url: data.url,
+      entityType: data.entityType,
+      entityId: data.entityId,
+      dedupeKey: data.dedupeKey ?? `notification-event-${event.id}`,
+    }).catch((error) => console.error("[notifications] Web Push dispatch failed", error));
+  }
   return { created: true, eventId: event.id, deliveries: recipients.length };
 }
