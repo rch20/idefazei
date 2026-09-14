@@ -1450,8 +1450,15 @@ export async function getSoulsByChurch(churchId: number) {
   const db = await getDb();
   if (!db) return [];
   return db
-    .select()
+    .select({
+      ...getTableColumns(souls),
+      discipleshipStage: people.discipleshipStage,
+    })
     .from(souls)
+    .leftJoin(people, and(
+      eq(people.id, souls.personId),
+      eq(people.churchId, churchId),
+    ))
     .where(eq(souls.churchId, churchId))
     .orderBy(desc(souls.createdAt))
     .limit(100);
@@ -4672,10 +4679,16 @@ export async function getPublicRegistrationLeadsByChurch(churchId: number) {
   return db.select({
     ...getTableColumns(publicRegistrationLeads),
     personId: souls.personId,
+    soulStatus: souls.status,
+    discipleshipStage: people.discipleshipStage,
   }).from(publicRegistrationLeads)
     .leftJoin(souls, and(
       eq(souls.id, publicRegistrationLeads.soulId),
       eq(souls.churchId, churchId),
+    ))
+    .leftJoin(people, and(
+      eq(people.id, souls.personId),
+      eq(people.churchId, churchId),
     ))
     .where(eq(publicRegistrationLeads.churchId, churchId))
     .orderBy(desc(publicRegistrationLeads.createdAt))

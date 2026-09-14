@@ -14,18 +14,9 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { civilDateParts, currentCivilDateKey, currentCivilDateParts } from "@/lib/civilDate";
+import { DISCIPLESHIP_STAGE_LABELS } from "@/lib/discipleshipState";
 
-const STAGES_LABELS: Record<string, string> = {
-  nova_alma: "Nova Alma",
-  consolidacao: "Consolidação",
-  fundamentos: "Fundamentos",
-  celula: "Célula",
-  batismo: "Batismo",
-  encontro_com_deus: "Encontro com Deus",
-  escola_de_lideres: "Escola de Líderes",
-  lideranca: "Liderança",
-  multiplicador: "Multiplicador",
-};
+const STAGES_LABELS: Record<string, string> = DISCIPLESHIP_STAGE_LABELS;
 
 const JOURNEY_STAGES = [
   "nova_alma",
@@ -731,7 +722,7 @@ export default function Pessoas() {
                 </div>
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-shrink-0 ${STAGE_BADGE[person.discipleshipStage ?? "nova_alma"]}`}>
-                Jornada: {STAGES_LABELS[person.discipleshipStage ?? "nova_alma"]}
+                Discípulo · Jornada: {STAGES_LABELS[person.discipleshipStage ?? "nova_alma"]}
               </span>
             </button>
           ))}
@@ -944,7 +935,7 @@ export default function Pessoas() {
                 <div className="w-full shrink-0 sm:w-64">
                   <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground"><span>Progresso da jornada</span><span>{journeyCompletedCount}/{JOURNEY_STAGES.length}</span></div>
                   <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-200" aria-label={`${journeyProgressPercent}% da Jornada concluída`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={journeyProgressPercent}><div className="h-full rounded-full bg-gradient-to-r from-navy to-gold transition-all" style={{ width: `${journeyProgressPercent}%` }} /></div>
-                  <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground"><span>{journeyPendingCount} pendente{journeyPendingCount === 1 ? "" : "s"}</span><span>Atual: {STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</span></div>
+                  <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground"><span>{journeyPendingCount} pendente{journeyPendingCount === 1 ? "" : "s"}</span><span>Etapa principal: {STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</span></div>
                 </div>
               </div>
 
@@ -1287,7 +1278,7 @@ export default function Pessoas() {
                 <BriefcaseBusiness className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />
                 <div>
                   <h3 className="text-sm font-semibold text-navy">Participações e atuações</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">A Jornada é apenas um marcador. A Pessoa pode participar de vários Ministérios, e os acessos são calculados pelos vínculos ativos.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">A Jornada é a etapa principal. A Pessoa pode participar de vários Ministérios e cursos paralelamente, sem criar uma segunda etapa principal.</p>
                 </div>
               </div>
 

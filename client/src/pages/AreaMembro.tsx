@@ -154,7 +154,7 @@ export default function AreaMembro() {
                 ) : member ? (
                   <>
                     {[
-                      { icon: Star, label: "Jornada atual", value: member.discipleshipStage ?? "Nova Alma" },
+                      { icon: Star, label: "Etapa principal da Jornada", value: member.discipleshipStage ?? "Nova Alma" },
                       { icon: CheckCircle2, label: "Batizado", value: member.baptismDate ? `Sim — ${new Date(member.baptismDate).toLocaleDateString("pt-BR")}` : "Não" },
                       { icon: Heart, label: "Data de Conversão", value: member.conversionDate ? new Date(member.conversionDate).toLocaleDateString("pt-BR") : "—" },
                       { icon: MapPin, label: "Igreja Anterior", value: member.previousChurch ?? "—" },

@@ -55,7 +55,7 @@ export default function FunilDiscipulado() {
       <div>
         <h1 className="text-2xl font-bold font-display text-navy">Acompanhamento da jornada</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Veja em que momento cada pessoa está e avance somente quando fizer sentido
+          Veja a etapa principal de cada Discípulo e avance somente quando o próximo passo fizer sentido
         </p>
       </div>
 
