@@ -40,10 +40,15 @@ describe("Fluxos de liderança — contratos da interface", () => {
     const source = read("client/src/pages/Celulas.tsx");
     expect(source).toContain("sm:max-w-2xl");
     expect(source).toContain("Gestão da Célula, liderança, rotina e pessoas vinculadas em um só lugar.");
-    expect(source).toContain("lg:grid-cols-3");
+    expect(source).toContain("lg:grid-cols-2");
     expect(source).toContain("Encontro semanal");
     expect(source).toContain("Localização");
     expect(source).toContain("Rotina da Célula");
+    expect(source).toContain("lg:overflow-y-auto");
+    expect(source).toContain("lg:grid-cols-2");
+    expect(source).toContain("lg:col-span-2");
+    expect(source).toContain("Pessoa sem Célula");
+    expect(source).toContain("lg:grid-cols-[minmax(0,1fr)_auto]");
     expect(source).toContain("rounded-2xl border");
   });
 
