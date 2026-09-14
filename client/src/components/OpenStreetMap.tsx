@@ -71,15 +71,19 @@ export function OpenStreetMap({
     });
     mapRef.current = map;
     setReady(true);
+    const container = containerRef.current;
     const observer = new ResizeObserver(() => map.invalidateSize({ animate: false }));
-    observer.observe(containerRef.current);
+    observer.observe(container);
+    requestAnimationFrame(() => map.invalidateSize({ animate: false }));
     return () => {
       observer.disconnect();
       map.remove();
       mapRef.current = null;
       markerLayerRef.current = null;
     };
-  }, [initialCenter.latitude, initialCenter.longitude, initialZoom]);
+    // O mapa deve ser criado uma vez por montagem. Mudanças de marcadores ou centro não podem removê-lo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -101,8 +105,10 @@ export function OpenStreetMap({
       map.setView([markers[0].latitude, markers[0].longitude], Math.max(initialZoom, 14));
     } else if (markers.length > 1) {
       map.fitBounds(bounds, { padding: [32, 32], maxZoom: 15 });
+    } else {
+      map.setView([initialCenter.latitude, initialCenter.longitude], initialZoom);
     }
-  }, [initialZoom, markers, ready, selectedId]);
+  }, [initialCenter.latitude, initialCenter.longitude, initialZoom, markers, ready, selectedId]);
 
   return (
     <div className={cn("relative overflow-hidden rounded-xl border border-border bg-muted/20", className)}>
