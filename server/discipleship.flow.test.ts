@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, createEvent, createManualEventRegistration, getEventAttendanceReport, updateEventRegistrationPayment, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, getDiscipleshipStageEvents, getDiscipleshipStageProgress, upsertDiscipleshipStageProgress, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, createEvent, createManualEventRegistration, getEventAttendanceReport, updateEventRegistrationPayment, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, setParallelJourneyStage, getDiscipleshipStageEvents, getDiscipleshipStageProgress, upsertDiscipleshipStageProgress, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -138,6 +138,7 @@ vi.mock("./db", () => ({
   setCurrentCareAssignment: vi.fn().mockResolvedValue({ id: 1, personId: 1, responsiblePersonId: 10 }),
   canChurchUserManageJourney: vi.fn().mockResolvedValue(true),
   getJourneyManagedPersonIds: vi.fn().mockResolvedValue([]),
+  setParallelJourneyStage: vi.fn().mockImplementation(async (input: any) => ({ id: 1, ...input, status: "pendente" })),
   getChurchUsersByChurch: vi.fn().mockResolvedValue([]),
   getChurchUserByEmail: vi.fn().mockResolvedValue(null),
   getStartupDiagnostics: vi.fn().mockResolvedValue([]),
@@ -544,6 +545,44 @@ describe("Fluxo completo de discipulado", () => {
       });
       expect(updatePerson).not.toHaveBeenCalled();
       expect((await import("./db")).createPerson).not.toHaveBeenCalled();
+    });
+
+    it("permite ao Pastor Presidente ativar uma frente paralela sem trocar a etapa principal", async () => {
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.people.setParallelJourneyStage({
+        churchId: CHURCH_ID,
+        id: 10,
+        stage: "fundamentos",
+        isCurrent: true,
+      })).resolves.toMatchObject({ stage: "fundamentos", isCurrent: true });
+
+      expect(setParallelJourneyStage).toHaveBeenCalledWith({
+        churchId: CHURCH_ID,
+        personId: 10,
+        stage: "fundamentos",
+        isCurrent: true,
+        updatedByChurchUserId: 1,
+      });
+    });
+
+    it("bloqueia frente paralela para conta sem papel pastoral", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 2,
+        userId: 10,
+        churchId: CHURCH_ID,
+        role: "secretario",
+        active: true,
+      });
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.people.setParallelJourneyStage({
+        churchId: CHURCH_ID,
+        id: 10,
+        stage: "consolidacao",
+        isCurrent: true,
+      })).rejects.toThrow("Somente o Pastor Presidente ou Pastor Local");
+      expect(setParallelJourneyStage).not.toHaveBeenCalled();
     });
 
     it("bloqueia Jornada de outra igreja antes de consultar ou alterar a Pessoa", async () => {

@@ -37,11 +37,26 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("journeyProgressPercent");
     expect(pageSource).toContain('role="progressbar"');
     expect(pageSource).toContain('isCurrent ? "border-gold/70');
-    expect(pageSource).toContain("Etapa atual");
+    expect(pageSource).toContain("Etapa principal");
     expect(pageSource).toContain("Concluir etapa");
     expect(pageSource).toContain("A etapa principal é alterada em Acompanhamento da Jornada");
     expect(pageSource).not.toContain("Tornar atual");
     expect(pageSource).toContain("Observação desta atualização");
+  });
+
+  it("separa etapa principal de frentes atuais e limita a gestão ao pastor", () => {
+    expect(pageSource).toContain("const parallelJourneyStages");
+    expect(pageSource).toContain("Frentes atuais");
+    expect(pageSource).toContain("Participações formativas que acontecem em paralelo à etapa principal.");
+    expect(pageSource).toContain("isParallelCurrent");
+    expect(pageSource).toContain("Tornar frente atual");
+    expect(pageSource).toContain("Remover frente atual");
+    expect(pageSource).toContain("{isPastor && !isCurrent");
+    expect(routerSource).toContain("setParallelJourneyStage: protectedProcedure");
+    expect(routerSource).toContain("requireParallelJourneyPermission");
+    expect(routerSource).toContain("Somente o Pastor Presidente ou Pastor Local pode definir frentes paralelas");
+    expect(dbSource).toContain("setParallelJourneyStage");
+    expect(dbSource).toContain("discipleshipStageProgress.isCurrent");
   });
 
   it("preserva eventos auditáveis e mantém a proteção server-side", () => {
