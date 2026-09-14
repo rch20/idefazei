@@ -15,7 +15,7 @@ import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { trpc } from "@/lib/trpc";
 import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, MapPin, Phone, Plus, Send, Settings2, Users, UserRound } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { currentCivilDateKey } from "@/lib/civilDate";
 
@@ -74,7 +74,9 @@ function hasPublicCellLocation(cell: { latitude?: string | number | null; longit
   return Number.isFinite(Number(cell.latitude)) && Number.isFinite(Number(cell.longitude));
 }
 
-export default function Celulas() {
+type CelulasProps = { initialTab?: "lista" | "mapa" };
+
+export default function Celulas({ initialTab = "lista" }: CelulasProps) {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
   const utils = trpc.useUtils();
@@ -82,7 +84,11 @@ export default function Celulas() {
   const [selectedCell, setSelectedCell] = useState<any>(null);
   const [selectedMember, setSelectedMember] = useState<any>(null);
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
-  const [activeTab, setActiveTab] = useState("lista");
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
   const [form, setForm] = useState(defaultForm);
   const [cepStatus, setCepStatus] = useState<"idle" | "loading" | "found" | "not-found">("idle");
   const [cepError, setCepError] = useState("");
@@ -366,7 +372,7 @@ export default function Celulas() {
       </div>
 
       {/* Tabs: Lista / Mapa */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as "lista" | "mapa")}>
         <TabsList>
           <TabsTrigger value="lista">Lista</TabsTrigger>
           <TabsTrigger value="mapa">Mapa</TabsTrigger>

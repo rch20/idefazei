@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Redirect, Route, Switch } from "wouter";
 import { lazy, Suspense } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -177,9 +177,7 @@ function Router() {
       </Route>
 
       <Route path="/app/ganhar-almas">
-        <AppPage title="Novas Almas">
-          <GanharAlmas />
-        </AppPage>
+        <Redirect to="/app/almas" />
       </Route>
 
       <Route path="/app/consolidacao">
@@ -216,7 +214,7 @@ function Router() {
 
       <Route path="/app/mapa">
         <AppPage title="Mapa de Células">
-          <Celulas />
+          <Celulas initialTab="mapa" />
         </AppPage>
       </Route>
 

@@ -930,7 +930,7 @@ export default function Pessoas() {
                     <h3 className="text-base font-semibold text-navy">Jornada do discípulo</h3>
                     <Badge variant="outline" className="border-navy/15 bg-background text-[10px] text-navy">{journeyProgressPercent}% concluída</Badge>
                   </div>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Acompanhe o caminho de formação sem perder o histórico. A cor de cada cartão mostra o estado da etapa, e o destaque dourado indica onde a pessoa está agora.</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Consulte o caminho de formação sem perder o histórico. A etapa principal é alterada em Acompanhamento da Jornada; aqui você registra progresso, observações e histórico de cada etapa.</p>
                 </div>
                 <div className="w-full shrink-0 sm:w-64">
                   <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground"><span>Progresso da jornada</span><span>{journeyCompletedCount}/{JOURNEY_STAGES.length}</span></div>
@@ -1008,16 +1008,7 @@ export default function Pessoas() {
                               >
                                 Não registrada
                               </Button>}
-                              {!isCurrent && <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 border-gold/40 bg-gold/10 text-[11px] text-navy hover:bg-gold/20"
-                                disabled={updateJourneyStage.isPending}
-                                onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status, notes: noteForUpdate, setCurrentStage: true })}
-                              >
-                                Tornar atual
-                              </Button>}
+
                             </div>
                           )}
                         </div>
