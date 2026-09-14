@@ -487,7 +487,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
             <DialogTitle className="flex items-center gap-2 font-display text-navy"><Globe className="h-5 w-5 shrink-0 text-indigo-600" /><span className="min-w-0 truncate">{selectedCell?.name}</span></DialogTitle>
             <p className="mt-1 text-sm text-muted-foreground">Gestão da Célula, liderança, rotina e pessoas vinculadas em um só lugar.</p>
           </div>
-          <AdaptiveFormDialogBody className="space-y-5">
+          <AdaptiveFormDialogBody className="space-y-5 lg:overflow-y-auto lg:overscroll-contain lg:pr-2">
             {canPublishCells && (
               <section className="rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 via-background to-background p-4 shadow-sm">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
@@ -498,25 +498,25 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                   </div>
                   <span className="rounded-full border border-indigo-200 bg-background/80 px-2.5 py-1 text-[10px] font-medium text-indigo-700">Gestão pastoral</span>
                 </div>
-                <div className="mt-4 grid gap-3 lg:grid-cols-3">
-                  <div className="min-w-0 space-y-1.5">
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div className="min-w-0 space-y-1.5 lg:col-span-2">
                     <Label className="text-[11px] text-muted-foreground">Líder</Label>
                     <Select value={leadershipForm.leaderId} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, leaderId: value }))}>
-                      <SelectTrigger className="h-10 min-w-0 bg-background"><SelectValue placeholder="Selecione o líder" /></SelectTrigger>
+                      <SelectTrigger className="h-10 min-w-0 w-full bg-background [&>span]:min-w-0 [&>span]:truncate"><SelectValue placeholder="Selecione o líder" /></SelectTrigger>
                       <SelectContent>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div className="min-w-0 space-y-1.5">
                     <Label className="text-[11px] text-muted-foreground">Co-líder</Label>
                     <Select value={leadershipForm.coLeaderId || "none"} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, coLeaderId: value === "none" ? "" : value }))}>
-                      <SelectTrigger className="h-10 min-w-0 bg-background"><SelectValue placeholder="Sem co-líder" /></SelectTrigger>
+                      <SelectTrigger className="h-10 min-w-0 w-full bg-background [&>span]:min-w-0 [&>span]:truncate"><SelectValue placeholder="Sem co-líder" /></SelectTrigger>
                       <SelectContent><SelectItem value="none">Sem co-líder</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div className="min-w-0 space-y-1.5">
                     <Label className="text-[11px] text-muted-foreground">Supervisor</Label>
                     <Select value={leadershipForm.supervisorId || "none"} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, supervisorId: value === "none" ? "" : value }))}>
-                      <SelectTrigger className="h-10 min-w-0 bg-background"><SelectValue placeholder="Sem supervisor" /></SelectTrigger>
+                      <SelectTrigger className="h-10 min-w-0 w-full bg-background [&>span]:min-w-0 [&>span]:truncate"><SelectValue placeholder="Sem supervisor" /></SelectTrigger>
                       <SelectContent><SelectItem value="none">Sem supervisor</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
@@ -595,11 +595,14 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
               <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-700">Integração</p>
               <h3 className="mt-1 text-sm font-semibold text-navy">Adicionar pessoa à Célula</h3>
               <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">Escolha uma Pessoa ainda sem Célula. Transferências entre Células continuam sob responsabilidade pastoral.</p>
-              <div className="mt-4 flex flex-col gap-2 lg:flex-row">
-                <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
-                  <SelectTrigger className="h-10 min-w-0 flex-1 bg-background"><SelectValue placeholder={assignmentCandidates.isLoading ? "Carregando…" : "Selecione uma Pessoa"} /></SelectTrigger>
-                  <SelectContent>{(assignmentCandidates.data ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
-                </Select>
+              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <div className="min-w-0 space-y-1.5">
+                  <Label className="text-[11px] text-muted-foreground">Pessoa sem Célula</Label>
+                  <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
+                    <SelectTrigger className="h-10 min-w-0 w-full bg-background [&>span]:min-w-0 [&>span]:truncate"><SelectValue placeholder={assignmentCandidates.isLoading ? "Carregando…" : "Selecione uma Pessoa"} /></SelectTrigger>
+                    <SelectContent>{(assignmentCandidates.data ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
                 <Button type="button" className="h-10 shrink-0 bg-navy text-white shadow-sm hover:bg-navy-light" disabled={!selectedCandidateId || assignPerson.isPending} onClick={() => assignPerson.mutate({ churchId, cellId: selectedCell.id, personId: Number(selectedCandidateId) })}>
                   {assignPerson.isPending ? "Integrando…" : "Adicionar à Célula"}
                 </Button>

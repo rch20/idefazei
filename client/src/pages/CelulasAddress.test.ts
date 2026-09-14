@@ -23,7 +23,7 @@ describe("Cadastro de Células com endereço por CEP", () => {
 
   it("mantém o detalhe da Célula organizado em cabeçalho, corpo rolável e ações fixas", () => {
     expect(pageSource).toContain('adaptiveFormDialogHeaderClassName');
-    expect(pageSource).toContain('<AdaptiveFormDialogBody className="space-y-5">');
+    expect(pageSource).toContain('<AdaptiveFormDialogBody className="space-y-5 lg:overflow-y-auto lg:overscroll-contain lg:pr-2">');
     expect(pageSource).toContain('<AdaptiveFormDialogFooter>');
     expect(pageSource).toContain('onClick={openAttendanceDialog}');
     expect(pageSource).toContain('Registrar encontro');
