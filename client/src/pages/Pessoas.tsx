@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { AlertCircle, ArrowRight, BriefcaseBusiness, Cake, CheckCircle2, Circle, Clock3, HeartHandshake, MessageCircle, Plus, Search, Send, ShieldCheck, User, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { civilDateParts, currentCivilDateKey, currentCivilDateParts } from "@/lib/civilDate";
@@ -216,6 +216,7 @@ export default function Pessoas() {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(defaultForm);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
+  const consumedPersonDeepLinkRef = useRef<string | null>(null);
   const [journeyNoteStage, setJourneyNoteStage] = useState<JourneyStage | null>(null);
   const [journeyNote, setJourneyNote] = useState("");
   const [personSection, setPersonSection] = useState<"resumo" | "jornada" | "participacoes" | "cuidado" | "cobertura" | "historico">("resumo");
@@ -243,6 +244,9 @@ export default function Pessoas() {
   const requestedPersonSection = validPersonSections.includes(routeSection as (typeof validPersonSections)[number])
     ? routeSection as (typeof validPersonSections)[number]
     : "resumo";
+  const personDeepLinkKey = Number.isInteger(routePersonId) && routePersonId > 0
+    ? `${routePersonId}:${requestedPersonSection}`
+    : null;
   const linkedPersonQuery = trpc.people.getById.useQuery(
     { churchId, id: routePersonId },
     { enabled: Boolean(churchId && Number.isInteger(routePersonId) && routePersonId > 0) }
@@ -451,15 +455,20 @@ export default function Pessoas() {
   }, [pastoralCoverageQuery.data?.coverage?.id, pastoralCoverageQuery.data?.coverage?.updatedAt, pastoralCoverageQuery.data?.isPastor, pastoralCoverageQuery.isLoading, selectedPerson?.id, isPastorPresident]);
 
   useEffect(() => {
-    if (!routePersonId) return;
+    if (!personDeepLinkKey) {
+      consumedPersonDeepLinkRef.current = null;
+      return;
+    }
+    if (consumedPersonDeepLinkRef.current === personDeepLinkKey) return;
     const person = linkedPersonQuery.data ?? (people ?? []).find((candidate) => candidate.id === routePersonId);
     if (!person) return;
+    consumedPersonDeepLinkRef.current = personDeepLinkKey;
     if (selectedPerson?.id !== person.id) {
       openPersonJourney(person, requestedPersonSection);
     } else if (personSection !== requestedPersonSection) {
       setPersonSection(requestedPersonSection);
     }
-  }, [linkedPersonQuery.data, people, routePersonId, requestedPersonSection, selectedPerson?.id]);
+  }, [linkedPersonQuery.data, people, personDeepLinkKey, requestedPersonSection, routePersonId, selectedPerson?.id]);
 
   const modernConsolidationTimeline = (consolidationHistoryQuery.data ?? []).flatMap(({ referral, assignments, followUps, visits }) => [
     {

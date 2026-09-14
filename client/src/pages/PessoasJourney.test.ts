@@ -104,6 +104,16 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("<Dialog open={Boolean(selectedPerson)}");
   });
 
+  it("consome o deep link uma única vez e não reabre a ficha após o fechamento", () => {
+    expect(pageSource).toContain('import { useEffect, useMemo, useRef, useState } from "react";');
+    expect(pageSource).toContain("const consumedPersonDeepLinkRef = useRef<string | null>(null);");
+    expect(pageSource).toContain("const personDeepLinkKey = Number.isInteger(routePersonId) && routePersonId > 0");
+    expect(pageSource).toContain("if (!personDeepLinkKey)");
+    expect(pageSource).toContain("consumedPersonDeepLinkRef.current = null;");
+    expect(pageSource).toContain("if (consumedPersonDeepLinkRef.current === personDeepLinkKey) return;");
+    expect(pageSource).toContain("consumedPersonDeepLinkRef.current = personDeepLinkKey;");
+  });
+
   it("abre diretamente a Pessoa selecionada a partir das filas de cuidado", () => {
     expect(centralCareSource).toContain("navigate(`/app/pessoas?personId=${personId}&section=cuidado`)");
     expect(centralCareSource).toContain("aria-label={`Abrir ficha de ${item.person.fullName}`}");
