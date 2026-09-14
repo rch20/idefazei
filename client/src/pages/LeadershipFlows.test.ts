@@ -36,6 +36,17 @@ describe("Fluxos de liderança — contratos da interface", () => {
     expect(source).toContain("canCreateCell &&");
   });
 
+  it("organiza o modal de gestão da Célula para leitura no desktop", () => {
+    const source = read("client/src/pages/Celulas.tsx");
+    expect(source).toContain("sm:max-w-2xl");
+    expect(source).toContain("Gestão da Célula, liderança, rotina e pessoas vinculadas em um só lugar.");
+    expect(source).toContain("lg:grid-cols-3");
+    expect(source).toContain("Encontro semanal");
+    expect(source).toContain("Localização");
+    expect(source).toContain("Rotina da Célula");
+    expect(source).toContain("rounded-2xl border");
+  });
+
   it("mantém operações críticas protegidas por transação e bloqueio", () => {
     const source = read("server/db.ts");
     expect(source).toContain("startConsolidationWorkflow");

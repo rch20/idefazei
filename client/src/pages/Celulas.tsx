@@ -482,98 +482,130 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
           setPublicSettingsOpen(false);
         }
       }}>
-        <AdaptiveFormDialogContent className="sm:max-w-lg">
+        <AdaptiveFormDialogContent className="sm:max-w-2xl">
           <div className={adaptiveFormDialogHeaderClassName}>
             <DialogTitle className="flex items-center gap-2 font-display text-navy"><Globe className="h-5 w-5 shrink-0 text-indigo-600" /><span className="min-w-0 truncate">{selectedCell?.name}</span></DialogTitle>
+            <p className="mt-1 text-sm text-muted-foreground">Gestão da Célula, liderança, rotina e pessoas vinculadas em um só lugar.</p>
           </div>
-          <AdaptiveFormDialogBody className="space-y-4">
+          <AdaptiveFormDialogBody className="space-y-5">
             {canPublishCells && (
-              <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
-                <p className="text-sm font-semibold text-navy">Responsáveis da Célula</p>
-                <p className="mt-1 text-xs text-muted-foreground">Somente o Pastor nomeia ou remove líder, co-líder e supervisor.</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  <Select value={leadershipForm.leaderId} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, leaderId: value }))}>
-                    <SelectTrigger><SelectValue placeholder="Líder" /></SelectTrigger>
-                    <SelectContent>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Select value={leadershipForm.coLeaderId || "none"} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, coLeaderId: value === "none" ? "" : value }))}>
-                    <SelectTrigger><SelectValue placeholder="Co-líder" /></SelectTrigger>
-                    <SelectContent><SelectItem value="none">Sem co-líder</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <Select value={leadershipForm.supervisorId || "none"} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, supervisorId: value === "none" ? "" : value }))}>
-                    <SelectTrigger><SelectValue placeholder="Supervisor" /></SelectTrigger>
-                    <SelectContent><SelectItem value="none">Sem supervisor</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
-                  </Select>
+              <section className="rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 via-background to-background p-4 shadow-sm">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-700">Liderança</p>
+                    <h3 className="mt-1 text-sm font-semibold text-navy">Responsáveis da Célula</h3>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Somente o Pastor nomeia ou remove líder, co-líder e supervisor.</p>
+                  </div>
+                  <span className="rounded-full border border-indigo-200 bg-background/80 px-2.5 py-1 text-[10px] font-medium text-indigo-700">Gestão pastoral</span>
                 </div>
-                <Button type="button" size="sm" className="mt-3 bg-navy text-white hover:bg-navy-light" onClick={saveLeadership} disabled={updateLeadership.isPending}>
-                  {updateLeadership.isPending ? "Salvando…" : "Salvar liderança"}
-                </Button>
+                <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                  <div className="min-w-0 space-y-1.5">
+                    <Label className="text-[11px] text-muted-foreground">Líder</Label>
+                    <Select value={leadershipForm.leaderId} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, leaderId: value }))}>
+                      <SelectTrigger className="h-10 min-w-0 bg-background"><SelectValue placeholder="Selecione o líder" /></SelectTrigger>
+                      <SelectContent>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label className="text-[11px] text-muted-foreground">Co-líder</Label>
+                    <Select value={leadershipForm.coLeaderId || "none"} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, coLeaderId: value === "none" ? "" : value }))}>
+                      <SelectTrigger className="h-10 min-w-0 bg-background"><SelectValue placeholder="Sem co-líder" /></SelectTrigger>
+                      <SelectContent><SelectItem value="none">Sem co-líder</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <Label className="text-[11px] text-muted-foreground">Supervisor</Label>
+                    <Select value={leadershipForm.supervisorId || "none"} onValueChange={(value) => setLeadershipForm((current) => ({ ...current, supervisorId: value === "none" ? "" : value }))}>
+                      <SelectTrigger className="h-10 min-w-0 bg-background"><SelectValue placeholder="Sem supervisor" /></SelectTrigger>
+                      <SelectContent><SelectItem value="none">Sem supervisor</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <Button type="button" size="sm" className="bg-navy text-white shadow-sm hover:bg-navy-light" onClick={saveLeadership} disabled={updateLeadership.isPending}>
+                    {updateLeadership.isPending ? "Salvando…" : "Salvar liderança"}
+                  </Button>
+                </div>
               </section>
             )}
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 text-sm text-muted-foreground">
-              <p>{selectedCell?.meetingDay ? `${DAYS.find((day) => day.value === selectedCell.meetingDay)?.label} às ${selectedCell.meetingTime ?? "—"}` : "Horário ainda não definido"}</p>
-              {selectedCell?.neighborhood && <p className="mt-1">{selectedCell.neighborhood}{selectedCell.city ? ` · ${selectedCell.city}` : ""}</p>}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-indigo-100 bg-indigo-50/45 p-4 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-700">Encontro semanal</p>
+                <p className="mt-2 text-sm font-semibold text-navy">{selectedCell?.meetingDay ? `${DAYS.find((day) => day.value === selectedCell.meetingDay)?.label} às ${selectedCell.meetingTime ?? "—"}` : "Horário ainda não definido"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Rotina principal da Célula</p>
+              </div>
+              <div className="rounded-2xl border border-border bg-muted/20 p-4 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Localização</p>
+                <p className="mt-2 text-sm font-semibold text-navy">{selectedCell?.neighborhood || "Local não informado"}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{selectedCell?.city || "Cadastre o bairro e a cidade da Célula"}</p>
+              </div>
             </div>
             {canPublishCells && (
-              <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="flex items-center gap-2 text-sm font-semibold text-navy"><Eye className="h-4 w-4 text-indigo-600" />Página pública</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {selectedCell?.publicVisible
-                        ? hasPublicCellLocation(selectedCell) ? "Publicada em Visite-nos, com localização configurada." : "Marcada como pública, mas falta um ponto no mapa para aparecer em Visite-nos."
-                        : "Esta Célula permanece privada."}
-                    </p>
+              <section className="rounded-2xl border border-indigo-200/80 bg-indigo-50/35 p-4 shadow-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-background text-indigo-600 shadow-sm"><Eye className="h-4 w-4" /></div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-700">Visibilidade</p>
+                      <h3 className="mt-1 text-sm font-semibold text-navy">Página pública</h3>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        {selectedCell?.publicVisible
+                          ? hasPublicCellLocation(selectedCell) ? "Publicada em Visite-nos, com localização configurada." : "Marcada como pública, mas falta um ponto no mapa para aparecer em Visite-nos."
+                          : "Esta Célula permanece privada."}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 sm:justify-end">
-                    {selectedCell?.publicVisible && hasPublicCellLocation(selectedCell) && <Button type="button" size="sm" variant="outline" asChild><a href="/visite-nos" target="_blank" rel="noreferrer"><Eye className="mr-1.5 h-4 w-4" />Visualizar Visite-nos</a></Button>}
-                    <Button type="button" size="sm" variant="outline" onClick={() => setPublicSettingsOpen(true)}>
+                  <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+                    {selectedCell?.publicVisible && hasPublicCellLocation(selectedCell) && <Button type="button" size="sm" variant="outline" className="bg-background" asChild><a href="/visite-nos" target="_blank" rel="noreferrer"><Eye className="mr-1.5 h-4 w-4" />Visualizar Visite-nos</a></Button>}
+                    <Button type="button" size="sm" variant="outline" className="bg-background" onClick={() => setPublicSettingsOpen(true)}>
                       <Settings2 className="mr-1.5 h-4 w-4" />Configurar
                     </Button>
                   </div>
                 </div>
-              </div>
+              </section>
             )}
-            <div className="rounded-xl border border-gold/30 bg-gold/5 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold"><CalendarCheck2 className="h-4 w-4" /></div>
-                  <div>
-                    <p className="text-sm font-semibold text-navy">Rotina da Célula</p>
+            <section className="rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/10 via-background to-background p-4 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gold/15 text-gold"><CalendarCheck2 className="h-4 w-4" /></div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-gold-700">Acompanhamento</p>
+                    <h3 className="mt-1 text-sm font-semibold text-navy">Rotina da Célula</h3>
                     {meetingHistory.isLoading ? (
-                      <p className="mt-0.5 text-xs text-muted-foreground">Carregando histórico…</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Carregando histórico…</p>
                     ) : latestMeeting ? (
-                      <p className="mt-0.5 text-xs text-muted-foreground">Último encontro em {formatMeetingDate(latestMeeting.meeting.meetingDate)} · {Number(latestMeeting.present)} presentes e {Number(latestMeeting.absent)} ausentes</p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Último encontro em {formatMeetingDate(latestMeeting.meeting.meetingDate)} · {Number(latestMeeting.present)} presentes e {Number(latestMeeting.absent)} ausentes</p>
                     ) : (
-                      <p className="mt-0.5 text-xs text-muted-foreground">Nenhum encontro registrado ainda.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Nenhum encontro registrado ainda.</p>
                     )}
                   </div>
                 </div>
                 {meetingAccess.data?.canRecord && (
-                  <Button type="button" size="sm" onClick={openAttendanceDialog} disabled={cellMembers.isLoading || membersInSelectedCell.length === 0} className="bg-navy text-white hover:bg-navy-light">
+                  <Button type="button" size="sm" onClick={openAttendanceDialog} disabled={cellMembers.isLoading || membersInSelectedCell.length === 0} className="shrink-0 bg-navy text-white shadow-sm hover:bg-navy-light">
                     <CheckCircle2 className="mr-1.5 h-4 w-4" />
                     Registrar encontro
                   </Button>
                 )}
               </div>
               {!meetingAccess.isLoading && !meetingAccess.data?.canRecord && (
-                <p className="mt-3 text-xs text-muted-foreground">O registro é liberado para o líder, supervisor ou pastor responsável pela Célula.</p>
+                <p className="mt-3 rounded-lg border border-gold/20 bg-background/60 px-3 py-2 text-xs text-muted-foreground">O registro é liberado para o líder, supervisor ou pastor responsável pela Célula.</p>
               )}
-            </div>
-            {selectedCell?.canManage && <div className="rounded-xl border border-indigo-200 bg-indigo-50/35 p-4">
-              <p className="text-sm font-semibold text-navy">Adicionar pessoa à Célula</p>
-              <p className="mt-1 text-xs text-muted-foreground">Escolha uma Pessoa ainda sem Célula. Transferências entre Células continuam sob responsabilidade pastoral.</p>
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            </section>
+            {selectedCell?.canManage && <section className="rounded-2xl border border-indigo-200/80 bg-indigo-50/30 p-4 shadow-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-700">Integração</p>
+              <h3 className="mt-1 text-sm font-semibold text-navy">Adicionar pessoa à Célula</h3>
+              <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">Escolha uma Pessoa ainda sem Célula. Transferências entre Células continuam sob responsabilidade pastoral.</p>
+              <div className="mt-4 flex flex-col gap-2 lg:flex-row">
                 <Select value={selectedCandidateId} onValueChange={setSelectedCandidateId}>
-                  <SelectTrigger className="flex-1"><SelectValue placeholder={assignmentCandidates.isLoading ? "Carregando…" : "Selecione uma Pessoa"} /></SelectTrigger>
+                  <SelectTrigger className="h-10 min-w-0 flex-1 bg-background"><SelectValue placeholder={assignmentCandidates.isLoading ? "Carregando…" : "Selecione uma Pessoa"} /></SelectTrigger>
                   <SelectContent>{(assignmentCandidates.data ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                 </Select>
-                <Button type="button" className="bg-navy text-white hover:bg-navy-light" disabled={!selectedCandidateId || assignPerson.isPending} onClick={() => assignPerson.mutate({ churchId, cellId: selectedCell.id, personId: Number(selectedCandidateId) })}>
+                <Button type="button" className="h-10 shrink-0 bg-navy text-white shadow-sm hover:bg-navy-light" disabled={!selectedCandidateId || assignPerson.isPending} onClick={() => assignPerson.mutate({ churchId, cellId: selectedCell.id, personId: Number(selectedCandidateId) })}>
                   {assignPerson.isPending ? "Integrando…" : "Adicionar à Célula"}
                 </Button>
               </div>
               {!assignmentCandidates.isLoading && (assignmentCandidates.data ?? []).length === 0 && <p className="mt-2 text-xs text-muted-foreground">Não há Pessoas ativas sem Célula para adicionar.</p>}
-            </div>}
+            </section>}
             <div className="rounded-xl border border-border">
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
                 <span className="text-sm font-semibold text-navy">Pessoas na célula</span>
