@@ -9,11 +9,13 @@ vi.mock("./db", async () => {
     createPublicRegistrationLead: vi.fn(),
     getPublicRegistrationLeadsByChurch: vi.fn(),
     updatePublicRegistrationLeadStatus: vi.fn(),
+    convertPublicRegistrationLeadToDisciple: vi.fn(),
+    getChurchMemberByUserId: vi.fn(),
   };
 });
 
 import { appRouter } from "./routers";
-import { createPublicRegistrationLead, getChurchBySlug } from "./db";
+import { convertPublicRegistrationLeadToDisciple, createPublicRegistrationLead, getChurchBySlug, getChurchMemberByUserId } from "./db";
 
 function createContext(tenantSlug: string | null = "igreja-teste"): TrpcContext {
   return {
@@ -22,6 +24,28 @@ function createContext(tenantSlug: string | null = "igreja-teste"): TrpcContext 
     res: {} as TrpcContext["res"],
     tenantChurchId: 100,
     tenantSlug,
+  };
+}
+
+function createAdminContext(): TrpcContext {
+  return {
+    user: {
+      id: 42,
+      openId: "user:42",
+      name: "Administrador",
+      email: "admin@igreja-teste.com",
+      loginMethod: "church-jwt",
+      role: "pastor_presidente",
+      churchId: 100,
+      authSource: "church",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastSignedIn: new Date(),
+    },
+    req: { headers: {}, socket: { remoteAddress: "127.0.0.1" } } as TrpcContext["req"],
+    res: {} as TrpcContext["res"],
+    tenantChurchId: 100,
+    tenantSlug: "igreja-teste",
   };
 }
 
@@ -102,5 +126,30 @@ describe("publicRegistration.submit", () => {
 
     await expect(caller.publicRegistration.submit({ ...validInput, consentAccepted: false as never })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     expect(createPublicRegistrationLead).not.toHaveBeenCalled();
+  });
+});
+
+describe("publicRegistration.convertToDisciple", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getChurchMemberByUserId).mockResolvedValue({ id: 7, userId: 42, churchId: 100, role: "pastor_presidente", active: true } as never);
+  });
+
+  it("permite ao administrador criar a ficha e retorna o resultado sem criar conta", async () => {
+    vi.mocked(convertPublicRegistrationLeadToDisciple).mockResolvedValue({ status: "created", person: { id: 501, fullName: "Maria da Silva" } } as never);
+    const caller = appRouter.createCaller(createAdminContext());
+
+    await expect(caller.publicRegistration.convertToDisciple({ churchId: 100, id: 9 })).resolves.toMatchObject({ status: "created", person: { id: 501 } });
+    expect(convertPublicRegistrationLeadToDisciple).toHaveBeenCalledWith({ id: 9, churchId: 100, changedByChurchUserId: 42, personId: null });
+  });
+
+  it("devolve a ambiguidade sem escolher uma ficha automaticamente", async () => {
+    vi.mocked(convertPublicRegistrationLeadToDisciple).mockResolvedValue({
+      status: "ambiguous",
+      matches: [{ id: 11, fullName: "Maria 1" }, { id: 12, fullName: "Maria 2" }],
+    } as never);
+    const caller = appRouter.createCaller(createAdminContext());
+
+    await expect(caller.publicRegistration.convertToDisciple({ churchId: 100, id: 9 })).resolves.toMatchObject({ status: "ambiguous", matches: [{ id: 11 }, { id: 12 }] });
   });
 });

@@ -4669,7 +4669,14 @@ export async function createPublicRegistrationLead(input: {
 export async function getPublicRegistrationLeadsByChurch(churchId: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(publicRegistrationLeads)
+  return db.select({
+    ...getTableColumns(publicRegistrationLeads),
+    personId: souls.personId,
+  }).from(publicRegistrationLeads)
+    .leftJoin(souls, and(
+      eq(souls.id, publicRegistrationLeads.soulId),
+      eq(souls.churchId, churchId),
+    ))
     .where(eq(publicRegistrationLeads.churchId, churchId))
     .orderBy(desc(publicRegistrationLeads.createdAt))
     .limit(100);
@@ -4687,6 +4694,163 @@ export async function updatePublicRegistrationLeadStatus(
     eq(publicRegistrationLeads.churchId, churchId),
   ));
   return { success: true };
+}
+
+function publicRegistrationPhoneExpression(column: any, normalizedWhatsapp: string) {
+  return sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') = ${normalizedWhatsapp}`;
+}
+
+export async function convertPublicRegistrationLeadToDisciple(input: {
+  id: number;
+  churchId: number;
+  changedByChurchUserId: number;
+  personId?: number | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async (tx) => {
+    const leadRows = await tx.select().from(publicRegistrationLeads).where(and(
+      eq(publicRegistrationLeads.id, input.id),
+      eq(publicRegistrationLeads.churchId, input.churchId),
+    )).limit(1);
+    const lead = leadRows[0];
+    if (!lead) return { status: "not_found" as const };
+
+    if (lead.soulId) {
+      const soulRows = await tx.select({ personId: souls.personId }).from(souls).where(and(
+        eq(souls.id, lead.soulId),
+        eq(souls.churchId, input.churchId),
+      )).limit(1);
+      const existingPersonId = soulRows[0]?.personId ?? null;
+      if (existingPersonId) {
+        if (lead.status !== "convertido") {
+          await tx.update(publicRegistrationLeads).set({ status: "convertido" }).where(and(
+            eq(publicRegistrationLeads.id, input.id),
+            eq(publicRegistrationLeads.churchId, input.churchId),
+          ));
+        }
+        const existingPerson = await tx.select({
+          id: people.id,
+          fullName: people.fullName,
+          phone: people.phone,
+          whatsapp: people.whatsapp,
+          email: people.email,
+        }).from(people).where(and(eq(people.id, existingPersonId), eq(people.churchId, input.churchId))).limit(1);
+        return { status: "already_converted" as const, person: existingPerson[0] ?? { id: existingPersonId, fullName: lead.name, phone: lead.whatsapp, whatsapp: lead.whatsapp, email: lead.email } };
+      }
+    }
+
+    let personId = input.personId ?? null;
+    let resultStatus: "created" | "linked" = input.personId ? "linked" : "created";
+    if (personId) {
+      const selected = await tx.select({
+        id: people.id,
+        fullName: people.fullName,
+        phone: people.phone,
+        whatsapp: people.whatsapp,
+        email: people.email,
+      }).from(people).where(and(
+        eq(people.id, personId),
+        eq(people.churchId, input.churchId),
+        eq(people.active, true),
+      )).limit(1);
+      if (!selected[0]) return { status: "person_not_found" as const };
+    } else {
+      const normalizedWhatsapp = normalizePublicRegistrationWhatsapp(lead.whatsapp);
+      const matches = await tx.select({
+        id: people.id,
+        fullName: people.fullName,
+        phone: people.phone,
+        whatsapp: people.whatsapp,
+        email: people.email,
+      }).from(people).where(and(
+        eq(people.churchId, input.churchId),
+        eq(people.active, true),
+        or(
+          publicRegistrationPhoneExpression(people.whatsapp, normalizedWhatsapp),
+          publicRegistrationPhoneExpression(people.phone, normalizedWhatsapp),
+        ),
+      )).orderBy(people.fullName).limit(10);
+      if (matches.length > 1) return { status: "ambiguous" as const, matches };
+      if (matches.length === 1) {
+        personId = matches[0].id;
+        resultStatus = "linked";
+      }
+    }
+
+    if (!personId) {
+      const personResult = await tx.insert(people).values({
+        churchId: input.churchId,
+        fullName: lead.name,
+        phone: lead.whatsapp,
+        whatsapp: lead.whatsapp,
+        email: lead.email,
+        zipCode: lead.zipCode,
+        street: lead.street,
+        number: lead.number,
+        neighborhood: lead.neighborhood,
+        city: lead.city,
+        state: lead.state,
+        conversionDate: currentCivilDateAsUtcNoon(),
+        discipleshipStage: "nova_alma",
+        active: true,
+      });
+      personId = Number((personResult[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      if (!personId) throw new Error("Failed to create disciple person");
+    }
+
+    await tx.update(souls).set({ personId }).where(and(
+      eq(souls.id, lead.soulId ?? -1),
+      eq(souls.churchId, input.churchId),
+    ));
+    await tx.update(publicRegistrationLeads).set({ status: "convertido" }).where(and(
+      eq(publicRegistrationLeads.id, input.id),
+      eq(publicRegistrationLeads.churchId, input.churchId),
+    ));
+
+    const progress = await tx.select({ id: discipleshipStageProgress.id }).from(discipleshipStageProgress).where(and(
+      eq(discipleshipStageProgress.churchId, input.churchId),
+      eq(discipleshipStageProgress.personId, personId),
+      eq(discipleshipStageProgress.stage, "nova_alma"),
+    )).limit(1);
+    const conversionNote = "Ficha criada ou vinculada a partir de cadastro público.";
+    if (progress[0]) {
+      await tx.update(discipleshipStageProgress).set({
+        status: "concluida",
+        notes: conversionNote,
+        completedAt: new Date(),
+        updatedByChurchUserId: input.changedByChurchUserId,
+      }).where(eq(discipleshipStageProgress.id, progress[0].id));
+    } else {
+      await tx.insert(discipleshipStageProgress).values({
+        churchId: input.churchId,
+        personId,
+        stage: "nova_alma",
+        status: "concluida",
+        notes: conversionNote,
+        completedAt: new Date(),
+        updatedByChurchUserId: input.changedByChurchUserId,
+      });
+    }
+    await tx.insert(discipleshipStageEvents).values({
+      churchId: input.churchId,
+      personId,
+      stage: "nova_alma",
+      status: "concluida",
+      notes: conversionNote,
+      changedByChurchUserId: input.changedByChurchUserId,
+    });
+
+    const person = await tx.select({
+      id: people.id,
+      fullName: people.fullName,
+      phone: people.phone,
+      whatsapp: people.whatsapp,
+      email: people.email,
+    }).from(people).where(and(eq(people.id, personId), eq(people.churchId, input.churchId))).limit(1);
+    return { status: resultStatus, person: person[0] ?? null };
+  });
 }
 
 // ─── CHURCH REGISTRATION ──────────────────────────────────────────────────────

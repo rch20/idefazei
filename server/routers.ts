@@ -86,6 +86,7 @@ import {
   linkChurchUserToPerson,
   updateChurchUserAssignment,
   getComplementaryRolesByChurchUser,
+  convertPublicRegistrationLeadToDisciple,
   setComplementaryRolesForChurchUser,
   canChurchUserManageJourney,
   getJourneyManagedPersonIds,
@@ -4824,6 +4825,34 @@ const publicRegistrationRouter = router({
     .mutation(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
       return updatePublicRegistrationLeadStatus(input.id, input.churchId, input.status);
+    }),
+  convertToDisciple: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      id: z.number().int().positive(),
+      personId: z.number().int().positive().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const member = await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const churchUserId = ctx.user.id < 0
+        ? Math.abs(ctx.user.id)
+        : Number((member as { userId?: number | null; id?: number }).userId ?? member.id ?? 0);
+      if (!churchUserId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Não foi possível identificar o responsável pela conversão." });
+      }
+      const result = await convertPublicRegistrationLeadToDisciple({
+        id: input.id,
+        churchId: input.churchId,
+        changedByChurchUserId: churchUserId,
+        personId: input.personId ?? null,
+      });
+      if (result.status === "not_found") {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Cadastro público não encontrado nesta igreja." });
+      }
+      if (result.status === "person_not_found") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa selecionada não pertence a esta igreja ou está inativa." });
+      }
+      return result;
     }),
 });
 

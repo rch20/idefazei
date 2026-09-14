@@ -92,6 +92,31 @@ export default function GanharAlmas() {
     },
     onError: (error) => toast.error(error.message),
   });
+  const convertPublicLead = trpc.publicRegistration.convertToDisciple.useMutation({
+    onSuccess: async (result) => {
+      await Promise.all([publicLeadsQuery.refetch(), soulsQuery.refetch(), peopleQuery.refetch()]);
+      if (result.status === "ambiguous") {
+        toast.error(`Encontramos ${result.matches.length} fichas com este WhatsApp. Revise a aba Pessoas antes de vincular.`);
+      } else if (result.status === "already_converted") {
+        toast.success("Este cadastro já estava vinculado a uma ficha de Discípulo.");
+      } else if (result.status === "linked") {
+        toast.success("Cadastro convertido e vinculado à ficha existente em Discípulos.");
+      } else {
+        toast.success("Discípulo convertido. A ficha foi criada em Pessoas.");
+      }
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  function handleConvertPublicLead(lead: { id: number; name: string; whatsapp: string; personId: number | null; status: keyof typeof PUBLIC_LEAD_STATUS }) {
+    if (lead.personId) {
+      toast.info("Este cadastro já possui uma ficha vinculada em Discípulos.");
+      return;
+    }
+    const confirmed = window.confirm(`Converter ${lead.name} em Discípulo?\n\nO sistema procurará uma ficha pelo WhatsApp ${lead.whatsapp}. Se encontrar uma única ficha, fará o vínculo; caso contrário, criará uma nova ficha sem duplicar cadastros.`);
+    if (!confirmed || !churchId) return;
+    convertPublicLead.mutate({ churchId, id: lead.id });
+  }
   const peopleQuery = trpc.people.list.useQuery(
     { churchId: churchId! },
     { enabled: Boolean(churchId && !isLimitedMember) }
@@ -225,7 +250,7 @@ export default function GanharAlmas() {
             </div>
       <section className="card-sacred space-y-4 border border-navy/10 p-4 sm:p-5" aria-labelledby="public-registration-leads-title">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2"><QrCode className="h-5 w-5 text-gold" aria-hidden="true" /><h2 id="public-registration-leads-title" className="font-display text-xl font-bold text-navy">Cadastros públicos recebidos</h2></div><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Registros enviados pelo QR Code, convites e links. Eles ainda não criam conta de acesso; acompanhe o contato antes de converter.</p></div>{publicLeadsQuery.isSuccess ? <Badge variant="outline" className="w-fit border-gold/30 bg-gold/5 text-gold">{publicLeadsQuery.data.length} recebidos</Badge> : <Badge variant="outline" className="w-fit border-slate-200 bg-slate-50 text-slate-600">Acesso protegido</Badge>}</div>
-        {publicLeadsQuery.isLoading ? <div className="h-20 animate-pulse rounded-xl bg-muted" /> : publicLeadsQuery.isError ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Os cadastros públicos aparecem somente para a liderança administrativa autorizada desta igreja.</p> : (publicLeadsQuery.data ?? []).length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-center"><p className="text-sm font-medium text-navy">Nenhum cadastro público recebido ainda.</p><p className="mt-1 text-xs text-muted-foreground">O próximo envio pelo QR Code aparecerá aqui.</p></div> : <div className="space-y-3">{(publicLeadsQuery.data ?? []).map((lead) => { const status = PUBLIC_LEAD_STATUS[lead.status]; return <article key={lead.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-navy">{lead.name}</p><Badge variant="outline" className={`text-[10px] ${status.className}`}>{status.label}</Badge></div><p className="mt-1 text-sm text-slate-700">WhatsApp: {lead.whatsapp}{lead.email ? ` · ${lead.email}` : ""}</p><p className="mt-1 text-xs text-muted-foreground">{PUBLIC_LEAD_SOURCE[lead.source]}{lead.campaign ? ` · ${lead.campaign}` : ""} · {new Date(lead.createdAt).toLocaleDateString("pt-BR")}{lead.city ? ` · ${lead.city}${lead.state ? `/${lead.state}` : ""}` : ""}</p></div><label className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">Status<select aria-label={`Status do cadastro de ${lead.name}`} value={lead.status} disabled={updatePublicLeadStatus.isPending} onChange={(event) => updatePublicLeadStatus.mutate({ churchId: churchId!, id: lead.id, status: event.target.value as keyof typeof PUBLIC_LEAD_STATUS })} className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground"><option value="novo">Novo</option><option value="em_atendimento">Em atendimento</option><option value="convertido">Convertido</option><option value="encerrado">Encerrado</option></select></label></div></article>; })}</div>}
+        {publicLeadsQuery.isLoading ? <div className="h-20 animate-pulse rounded-xl bg-muted" /> : publicLeadsQuery.isError ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Os cadastros públicos aparecem somente para a liderança administrativa autorizada desta igreja.</p> : (publicLeadsQuery.data ?? []).length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-center"><p className="text-sm font-medium text-navy">Nenhum cadastro público recebido ainda.</p><p className="mt-1 text-xs text-muted-foreground">O próximo envio pelo QR Code aparecerá aqui.</p></div> : <div className="space-y-3">{(publicLeadsQuery.data ?? []).map((lead) => { const status = PUBLIC_LEAD_STATUS[lead.status]; return <article key={lead.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-navy">{lead.name}</p><Badge variant="outline" className={`text-[10px] ${status.className}`}>{status.label}</Badge></div><p className="mt-1 text-sm text-slate-700">WhatsApp: {lead.whatsapp}{lead.email ? ` · ${lead.email}` : ""}</p><p className="mt-1 text-xs text-muted-foreground">{PUBLIC_LEAD_SOURCE[lead.source]}{lead.campaign ? ` · ${lead.campaign}` : ""} · {new Date(lead.createdAt).toLocaleDateString("pt-BR")}{lead.city ? ` · ${lead.city}${lead.state ? `/${lead.state}` : ""}` : ""}</p></div><div className="flex flex-wrap items-center gap-2 sm:justify-end"><label className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">Status<select aria-label={`Status do cadastro de ${lead.name}`} value={lead.status} disabled={updatePublicLeadStatus.isPending || convertPublicLead.isPending} onChange={(event) => updatePublicLeadStatus.mutate({ churchId: churchId!, id: lead.id, status: event.target.value as keyof typeof PUBLIC_LEAD_STATUS })} className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground"><option value="novo">Novo</option><option value="em_atendimento">Em atendimento</option><option value="convertido">Convertido</option><option value="encerrado">Encerrado</option></select></label>{lead.personId ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">Ficha em Discípulos</Badge> : <Button type="button" size="sm" variant="outline" className="border-navy/20 text-navy hover:bg-navy/5" disabled={convertPublicLead.isPending} onClick={() => handleConvertPublicLead(lead)}><Users className="mr-1.5 h-4 w-4" aria-hidden="true" />{convertPublicLead.isPending ? "Convertendo…" : "Converter em Discípulo"}</Button>}</div></div></article>; })}</div>}
       </section>
       <div className="relative">
         <Label htmlFor="soul-search" className="sr-only">Buscar nova alma</Label>
