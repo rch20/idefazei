@@ -2900,8 +2900,9 @@ const cellsRouter = router({
       await requireChurchPublicSitePublisher(ctx.user.id, input.churchId);
       const cell = await getCellById(input.cellId, input.churchId);
       if (!cell) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada nesta igreja." });
-      if (input.publicVisible && (input.latitude === null || input.longitude === null)) {
-        throw new TRPCError({ code: "BAD_REQUEST", message: "Defina a localização no mapa antes de publicar a Célula." });
+      const hasMeaningfulLocation = input.latitude !== null && input.longitude !== null && !(input.latitude === 0 && input.longitude === 0);
+      if (input.publicVisible && !hasMeaningfulLocation) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Defina uma localização válida no mapa antes de publicar a Célula. A coordenada 0,0 não representa uma localização de encontro." });
       }
       if (input.publicLeaderContact) {
         const leader = await getPersonById(cell.leaderId, input.churchId);
@@ -2917,8 +2918,8 @@ const cellsRouter = router({
         city: input.city || null,
         state: input.state === undefined ? cell.state : input.state?.trim().toUpperCase() || null,
         neighborhood: input.neighborhood || null,
-        latitude: input.latitude === null ? null : String(input.latitude),
-        longitude: input.longitude === null ? null : String(input.longitude),
+        latitude: hasMeaningfulLocation ? String(input.latitude) : null,
+        longitude: hasMeaningfulLocation ? String(input.longitude) : null,
         meetingDay: input.meetingDay,
         meetingTime: input.meetingTime,
         publicVisible: input.publicVisible,

@@ -2588,7 +2588,7 @@ export async function getPublicCellsByChurchId(churchId: number) {
         ? (row.leaderWhatsapp?.trim() || row.leaderPhone?.trim() || null)
         : null,
     };
-  });
+  }).filter((cell) => cell.latitude !== 0 || cell.longitude !== 0);
 }
 
 export async function getCellById(id: number, churchId: number) {

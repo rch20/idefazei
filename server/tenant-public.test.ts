@@ -240,6 +240,7 @@ describe("Células públicas por tenant", () => {
     expect(helper).toContain("Math.round(latitude * 100) / 100");
     expect(helper).toContain("address: exactLocation ? row.address : null");
     expect(helper).toContain("row.publicLeaderContact");
+    expect(helper).toContain("cell.latitude !== 0 || cell.longitude !== 0");
     expect(helper).not.toContain("supervisorId:");
     expect(helper).not.toContain("hostId:");
     expect(helper).not.toContain("pastoralNotes");
@@ -276,7 +277,7 @@ describe("Células públicas por tenant", () => {
     }));
   });
 
-  it("não publica célula sem coordenadas", async () => {
+  it("não publica célula sem coordenadas ou com o sentinela 0,0", async () => {
     vi.spyOn(db, "getChurchMemberByUserId").mockResolvedValue({ id: 1, userId: 10, churchId: 100, role: "pastor_local", active: true } as never);
     vi.spyOn(db, "getCellById").mockResolvedValue({ id: 7, churchId: 100, leaderId: 22 } as never);
     const update = vi.spyOn(db, "updateCell");
@@ -290,6 +291,22 @@ describe("Células públicas por tenant", () => {
       neighborhood: null,
       latitude: null,
       longitude: null,
+      meetingDay: null,
+      meetingTime: null,
+      publicVisible: true,
+      publicLocationMode: "approximate",
+      publicLeaderContact: false,
+    })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    expect(update).not.toHaveBeenCalled();
+
+    await expect(caller.cells.updatePublicSettings({
+      churchId: 100,
+      cellId: 7,
+      address: null,
+      city: null,
+      neighborhood: null,
+      latitude: 0,
+      longitude: 0,
       meetingDay: null,
       meetingTime: null,
       publicVisible: true,

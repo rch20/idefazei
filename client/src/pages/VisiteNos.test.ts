@@ -26,6 +26,7 @@ describe("Visite-nos público", () => {
 
   it("usa apenas células públicas retornadas pelo tenant e mantém a proximidade no navegador", () => {
     expect(pageSource).toContain("data?.publicCells");
+    expect(pageSource).toContain("!(latitude === 0 && longitude === 0)");
     expect(pageSource).toContain("navigator.geolocation.getCurrentPosition");
     expect(pageSource).toContain("distanceInKilometers(visitorLocation");
     expect(pageSource).not.toContain("visitorLocation:");
@@ -60,5 +61,6 @@ describe("Visite-nos público", () => {
     expect(dbSource).toContain("zipCode: cells.zipCode");
     expect(dbSource).toContain("address: exactLocation ? row.address : null");
     expect(dbSource).toContain("Math.round(latitude * 100) / 100");
+    expect(dbSource).toContain("cell.latitude !== 0 || cell.longitude !== 0");
   });
 });
