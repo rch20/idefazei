@@ -233,9 +233,16 @@ export default function Pessoas() {
   const utils = trpc.useUtils();
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId, search: search || undefined });
-  const routeParams = useMemo(() => new URLSearchParams(location.split("?")[1] ?? ""), [location]);
+  const routeParams = useMemo(() => {
+    const search = typeof window !== "undefined" ? window.location.search : location.split("?")[1] ?? "";
+    return new URLSearchParams(search);
+  }, [location]);
   const routePersonId = Number(routeParams.get("personId"));
   const routeSection = routeParams.get("section");
+  const validPersonSections = ["resumo", "jornada", "participacoes", "cuidado", "cobertura", "historico"] as const;
+  const requestedPersonSection = validPersonSections.includes(routeSection as (typeof validPersonSections)[number])
+    ? routeSection as (typeof validPersonSections)[number]
+    : "resumo";
   const linkedPersonQuery = trpc.people.getById.useQuery(
     { churchId, id: routePersonId },
     { enabled: Boolean(churchId && Number.isInteger(routePersonId) && routePersonId > 0) }
@@ -446,11 +453,13 @@ export default function Pessoas() {
   useEffect(() => {
     if (!routePersonId) return;
     const person = linkedPersonQuery.data ?? (people ?? []).find((candidate) => candidate.id === routePersonId);
-    if (person && selectedPerson?.id !== person.id) openPersonJourney(person);
-    if (routeSection && ["resumo", "jornada", "participacoes", "cuidado", "cobertura", "historico"].includes(routeSection)) {
-      setPersonSection(routeSection as typeof personSection);
+    if (!person) return;
+    if (selectedPerson?.id !== person.id) {
+      openPersonJourney(person, requestedPersonSection);
+    } else if (personSection !== requestedPersonSection) {
+      setPersonSection(requestedPersonSection);
     }
-  }, [linkedPersonQuery.data, people, routePersonId, routeSection, selectedPerson?.id]);
+  }, [linkedPersonQuery.data, people, routePersonId, requestedPersonSection, selectedPerson?.id]);
 
   const modernConsolidationTimeline = (consolidationHistoryQuery.data ?? []).flatMap(({ referral, assignments, followUps, visits }) => [
     {
@@ -524,11 +533,11 @@ export default function Pessoas() {
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     : [];
 
-  function openPersonJourney(person: any) {
+  function openPersonJourney(person: any, section: typeof personSection = "resumo") {
     setSelectedPerson(person);
+    setPersonSection(section);
     setJourneyNoteStage(null);
     setJourneyNote("");
-    setPersonSection("resumo");
     setCareForm({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
     setSelectedCellId("");
     setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "" });
