@@ -95,10 +95,13 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
   });
 
   it("busca a Pessoa pelo personId da URL e abre a ficha diretamente", () => {
+    expect(pageSource).toContain("const search = typeof window !== \"undefined\" ? window.location.search");
     expect(pageSource).toContain("const routePersonId = Number(routeParams.get(\"personId\"));");
     expect(pageSource).toContain("trpc.people.getById.useQuery");
     expect(pageSource).toContain("const person = linkedPersonQuery.data ?? (people ?? []).find((candidate) => candidate.id === routePersonId);");
-    expect(pageSource).toContain("if (person && selectedPerson?.id !== person.id) openPersonJourney(person);");
+    expect(pageSource).toContain("const requestedPersonSection");
+    expect(pageSource).toContain("openPersonJourney(person, requestedPersonSection);");
+    expect(pageSource).toContain("<Dialog open={Boolean(selectedPerson)}");
   });
 
   it("abre diretamente a Pessoa selecionada a partir das filas de cuidado", () => {
