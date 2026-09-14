@@ -26,12 +26,18 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('personSection === "historico"');
   });
 
-  it("exibe estados claros e ações não lineares para cada etapa", () => {
+  it("exibe estados claros, progresso e ações não lineares para cada etapa", () => {
     expect(pageSource).toContain("trpc.people.journey.useQuery");
     expect(pageSource).toContain("trpc.people.updateJourneyStage.useMutation");
     expect(pageSource).toContain('status === "concluida"');
     expect(pageSource).toContain('status === "pendente"');
     expect(pageSource).toContain('Não registrada');
+    expect(pageSource).toContain("JOURNEY_STATUS_CLASS");
+    expect(pageSource).toContain("JOURNEY_STAGE_DESCRIPTIONS");
+    expect(pageSource).toContain("journeyProgressPercent");
+    expect(pageSource).toContain('role="progressbar"');
+    expect(pageSource).toContain('isCurrent ? "border-gold/70');
+    expect(pageSource).toContain("Etapa atual");
     expect(pageSource).toContain("Concluir etapa");
     expect(pageSource).toContain("Tornar atual");
     expect(pageSource).toContain("Observação desta atualização");

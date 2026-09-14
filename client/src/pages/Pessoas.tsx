@@ -54,6 +54,30 @@ const STAGE_BADGE: Record<string, string> = {
   multiplicador: "badge-multiplicador",
 };
 
+const JOURNEY_STAGE_DESCRIPTIONS: Record<JourneyStage, string> = {
+  nova_alma: "Primeiro registro e acolhimento da pessoa.",
+  consolidacao: "Contato, cuidado inicial e acompanhamento próximo.",
+  fundamentos: "Formação básica da fé e dos fundamentos cristãos.",
+  celula: "Integração em uma Célula e vida em comunidade.",
+  batismo: "Preparação e acompanhamento para o Batismo.",
+  encontro_com_deus: "Participação e acompanhamento no Encontro com Deus.",
+  escola_de_lideres: "Formação para servir e desenvolver liderança.",
+  lideranca: "Exercício de liderança com responsabilidade e cuidado.",
+  multiplicador: "Formação de novos discípulos e multiplicação do cuidado.",
+};
+
+const JOURNEY_STATUS_CLASS: Record<JourneyStatus, string> = {
+  concluida: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  pendente: "border-rose-200 bg-rose-50 text-rose-900",
+  nao_registrada: "border-slate-200 bg-slate-50/80 text-slate-600",
+};
+
+const JOURNEY_STATUS_BADGE_CLASS: Record<JourneyStatus, string> = {
+  concluida: "border-emerald-200 bg-emerald-100 text-emerald-800",
+  pendente: "border-rose-200 bg-rose-100 text-rose-800",
+  nao_registrada: "border-slate-200 bg-white/80 text-slate-600",
+};
+
 const CARE_ROLE_LABELS: Record<string, string> = {
   quem_ganhou: "Quem ganhou",
   consolidador: "Consolidador",
@@ -387,6 +411,9 @@ export default function Pessoas() {
   const journeyProgressByStage = new Map(
     (journeyQuery.data?.progress ?? []).map((item) => [item.stage, item] as const)
   );
+  const journeyCompletedCount = JOURNEY_STAGES.filter((stage) => journeyProgressByStage.get(stage)?.status === "concluida").length;
+  const journeyPendingCount = JOURNEY_STAGES.filter((stage) => journeyProgressByStage.get(stage)?.status === "pendente").length;
+  const journeyProgressPercent = Math.round((journeyCompletedCount / JOURNEY_STAGES.length) * 100);
 
   useEffect(() => {
     const params = new URLSearchParams(location.split("?")[1] ?? "");
@@ -905,32 +932,45 @@ export default function Pessoas() {
           </div>
 
           {personSection === "jornada" && selectedPerson && (
-            <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h3 className="text-sm font-semibold text-navy">Jornada do discípulo</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">Marque cada etapa sem precisar avançar por uma sequência rígida. Pendente indica acompanhamento, não reprovação.</p>
+            <section className="rounded-xl border border-navy/10 bg-gradient-to-br from-navy/[0.03] via-background to-gold/[0.08] p-4 sm:p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-semibold text-navy">Jornada do discípulo</h3>
+                    <Badge variant="outline" className="border-navy/15 bg-background text-[10px] text-navy">{journeyProgressPercent}% concluída</Badge>
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Acompanhe o caminho de formação sem perder o histórico. A cor de cada cartão mostra o estado da etapa, e o destaque dourado indica onde a pessoa está agora.</p>
                 </div>
-                <Badge variant="outline" className="w-fit text-[10px]">Atual: {STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</Badge>
+                <div className="w-full shrink-0 sm:w-64">
+                  <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground"><span>Progresso da jornada</span><span>{journeyCompletedCount}/{JOURNEY_STAGES.length}</span></div>
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-200" aria-label={`${journeyProgressPercent}% da Jornada concluída`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={journeyProgressPercent}><div className="h-full rounded-full bg-gradient-to-r from-navy to-gold transition-all" style={{ width: `${journeyProgressPercent}%` }} /></div>
+                  <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground"><span>{journeyPendingCount} pendente{journeyPendingCount === 1 ? "" : "s"}</span><span>Atual: {STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</span></div>
+                </div>
               </div>
 
-              {journeyQuery.isLoading ? <div className="mt-4 space-y-2">{JOURNEY_STAGES.slice(0, 5).map((stage) => <div key={stage} className="h-12 animate-pulse rounded-lg bg-background/70" />)}</div> : (
-                <div className="mt-4 space-y-2">
+              {journeyQuery.isLoading ? <div className="mt-5 space-y-2">{JOURNEY_STAGES.slice(0, 5).map((stage) => <div key={stage} className="h-16 animate-pulse rounded-xl bg-background/70" />)}</div> : (
+                <div className="mt-5 space-y-3">
                   {JOURNEY_STAGES.map((stage: JourneyStage) => {
                     const progress = journeyProgressByStage.get(stage);
                     const status: JourneyStatus = progress?.status ?? "nao_registrada";
                     const isCurrent = selectedPerson.discipleshipStage === stage;
                     const statusLabel = status === "concluida" ? "Concluída" : status === "pendente" ? "Pendente" : "Não registrada";
-                    const statusClass = status === "concluida" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : status === "pendente" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-border bg-background/70 text-muted-foreground";
+                    const statusClass = `${JOURNEY_STATUS_CLASS[status]} ${isCurrent ? "border-gold/70 bg-gold/10 ring-2 ring-gold/35 shadow-sm" : ""}`;
                     const noteForUpdate = journeyNoteStage === stage ? journeyNote.trim() || undefined : progress?.notes ?? undefined;
                     return (
-                      <div key={stage} className={`rounded-lg border p-3 ${statusClass}`}>
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="flex min-w-0 items-center gap-3">
-                            {status === "concluida" ? <CheckCircle2 className="h-5 w-5 shrink-0" /> : status === "pendente" ? <AlertCircle className="h-5 w-5 shrink-0" /> : <Circle className="h-5 w-5 shrink-0" />}
+                      <div key={stage} className={`rounded-xl border p-3 transition-all ${statusClass}`}>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border ${isCurrent ? "border-gold bg-gold/20 text-navy" : JOURNEY_STATUS_BADGE_CLASS[status]}`} aria-hidden="true">
+                              <span className="text-sm font-bold">{JOURNEY_STAGES.indexOf(stage) + 1}</span>
+                            </div>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold">{STAGES_LABELS[stage]}</p>
-                              <p className="text-[11px] opacity-75">{isCurrent ? "Etapa atual · " : ""}{statusLabel}{progress?.notes ? ` · ${progress.notes}` : ""}</p>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="truncate text-sm font-semibold">{STAGES_LABELS[stage]}</p>
+                                {isCurrent && <Badge variant="outline" className="border-gold/40 bg-gold/15 text-[10px] text-navy">Etapa atual</Badge>}
+                              </div>
+                              <p className="mt-0.5 text-[11px] opacity-80">{statusLabel}{progress?.notes ? ` · ${progress.notes}` : ""}</p>
+                              <p className="mt-1 text-[11px] opacity-70">{JOURNEY_STAGE_DESCRIPTIONS[stage]}</p>
                             </div>
                           </div>
                           {canManageJourney && (
@@ -951,7 +991,7 @@ export default function Pessoas() {
                                 type="button"
                                 size="sm"
                                 variant="outline"
-                                className="h-8 bg-background/70 text-[11px]"
+                                className={`h-8 text-[11px] ${status === "concluida" ? "border-emerald-300 bg-emerald-100/70 text-emerald-900 hover:bg-emerald-100" : status === "pendente" ? "border-rose-300 bg-rose-100/70 text-rose-900 hover:bg-rose-100" : "border-slate-300 bg-white/80 text-slate-800 hover:bg-white"}`}
                                 disabled={updateJourneyStage.isPending}
                                 onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: status === "concluida" ? "pendente" : "concluida", notes: noteForUpdate })}
                               >
@@ -961,7 +1001,7 @@ export default function Pessoas() {
                                 type="button"
                                 size="sm"
                                 variant="outline"
-                                className="h-8 bg-background/70 text-[11px]"
+                                className="h-8 border-rose-300 bg-rose-100/70 text-[11px] text-rose-900 hover:bg-rose-100"
                                 disabled={updateJourneyStage.isPending}
                                 onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: "pendente", notes: noteForUpdate })}
                               >
@@ -981,7 +1021,7 @@ export default function Pessoas() {
                                 type="button"
                                 size="sm"
                                 variant="ghost"
-                                className="h-8 text-[11px] text-navy"
+                                className="h-8 border-gold/40 bg-gold/10 text-[11px] text-navy hover:bg-gold/20"
                                 disabled={updateJourneyStage.isPending}
                                 onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status, notes: noteForUpdate, setCurrentStage: true })}
                               >
