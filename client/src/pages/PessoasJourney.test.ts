@@ -39,7 +39,8 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('isCurrent ? "border-gold/70');
     expect(pageSource).toContain("Etapa atual");
     expect(pageSource).toContain("Concluir etapa");
-    expect(pageSource).toContain("Tornar atual");
+    expect(pageSource).toContain("A etapa principal é alterada em Acompanhamento da Jornada");
+    expect(pageSource).not.toContain("Tornar atual");
     expect(pageSource).toContain("Observação desta atualização");
   });
 
