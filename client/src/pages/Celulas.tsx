@@ -13,7 +13,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { trpc } from "@/lib/trpc";
-import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, MapPin, Phone, Plus, Send, Settings2, Users, UserRound } from "lucide-react";
+import { getWhatsAppLinkWithMessage } from "@/lib/whatsapp";
+import { useLocation } from "wouter";
+import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, MapPin, MessageCircle, Phone, Plus, Send, Settings2, Users, UserRound } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -78,6 +80,7 @@ type CelulasProps = { initialTab?: "lista" | "mapa" };
 
 export default function Celulas({ initialTab = "lista" }: CelulasProps) {
   const { churchId } = useChurch();
+  const [, navigate] = useLocation();
   const { user } = useChurchAuth();
   const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
@@ -620,13 +623,33 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                 <div className="p-6 text-center text-sm text-muted-foreground">Ainda não há Pessoas vinculadas a esta célula.</div>
               ) : (
                 <div className="divide-y divide-border">
-                  {(cellMembers.data ?? []).map((item) => (
-                    <button key={item.membership.id} type="button" onClick={() => { setSelectedMember(item); setMemberReferralReason(""); }} className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-cream/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold/70">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cream-dark text-navy"><UserRound className="h-4 w-4" /></div>
-                      <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-navy">{item.person.fullName}</p><p className="text-xs text-muted-foreground">{item.person.phone || item.person.email || "Sem contato informado"}</p></div>
-                      <span className="text-right text-[11px] text-muted-foreground">Cuidar<br />desde {new Date(item.membership.joinedAt).toLocaleDateString("pt-BR")}</span>
-                    </button>
-                  ))}
+                  {(cellMembers.data ?? []).map((item) => {
+                    const whatsappHref = getWhatsAppLinkWithMessage(
+                      item.person.whatsapp || item.person.phone,
+                      `Olá, ${item.person.fullName}! Aqui é da equipe da igreja. Gostaria de conversar com você sobre a Célula.`,
+                    );
+                    const openCare = () => { setSelectedMember(item); setMemberReferralReason(""); };
+                    return (
+                      <div key={item.membership.id} className="flex items-center gap-2 px-3 py-2.5 transition-colors hover:bg-cream/60">
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/app/pessoas?personId=${item.person.id}&section=resumo`)}
+                          className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+                          aria-label={`Abrir prontuário de ${item.person.fullName}`}
+                        >
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cream-dark text-navy"><UserRound className="h-4 w-4" /></div>
+                          <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-navy">{item.person.fullName}</p><p className="truncate text-xs text-muted-foreground">{item.person.phone || item.person.email || "Sem contato informado"}</p></div>
+                        </button>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {whatsappHref && <a href={whatsappHref} target="_blank" rel="noreferrer" aria-label={`Conversar com ${item.person.fullName} pelo WhatsApp`} title="Enviar mensagem pelo WhatsApp" className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"><MessageCircle className="h-4 w-4" /></a>}
+                          <button type="button" onClick={openCare} className="rounded-lg px-2 py-1.5 text-right text-[11px] text-muted-foreground transition hover:bg-background hover:text-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70" aria-label={`Abrir cuidado de ${item.person.fullName}`}>
+                            <span className="block font-medium">Cuidar</span>
+                            <span className="block">desde {new Date(item.membership.joinedAt).toLocaleDateString("pt-BR")}</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
