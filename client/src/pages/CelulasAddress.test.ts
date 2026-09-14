@@ -58,8 +58,11 @@ describe("Cadastro de Células com endereço por CEP", () => {
     expect(pageSource).toContain('latitudeValue === null || latitudeValue === undefined');
     expect(pageSource).toContain('latitude >= -90 && latitude <= 90');
     expect(pageSource).toContain('if (!hasPublicCellLocation(cell)) return [];');
-    expect(dialogSource).toContain('form.latitude.trim() === "" || form.longitude.trim() === ""');
-    expect(dialogSource).toContain('latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180');
+    expect(dialogSource).toContain('rawLatitude < -90 || rawLatitude > 90');
+    expect(dialogSource).toContain('rawLongitude < -180 || rawLongitude > 180');
+    expect(pageSource).toContain('!(latitude === 0 && longitude === 0)');
+    expect(dialogSource).toContain('!(latitudeNumber === 0 && longitudeNumber === 0)');
+    expect(routerSource).toContain('!(input.latitude === 0 && input.longitude === 0)');
   });
 
   it("explica o status público e leva o administrador para Visite-nos", () => {
@@ -69,7 +72,7 @@ describe("Cadastro de Células com endereço por CEP", () => {
     expect(pageSource).toContain('href="/visite-nos"');
     expect(dialogSource).toContain("trpc.tenantPublic.adminPreview.useQuery");
     expect(dialogSource).toContain("A Célula só aparecerá em “Visite-nos”");
-    expect(dialogSource).toContain("O CEP preenche o endereço, mas não substitui a localização do mapa.");
+    expect(dialogSource).toContain("O CEP preenche o endereço, mas não substitui a localização geográfica.");
   });
 
   it("usa migration nullable para preservar Células existentes", () => {

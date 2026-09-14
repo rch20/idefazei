@@ -78,7 +78,7 @@ function hasPublicCellLocation(cell: { latitude?: string | number | null; longit
   if (latitudeValue === "" || longitudeValue === "" || latitudeValue === null || latitudeValue === undefined || longitudeValue === null || longitudeValue === undefined) return false;
   const latitude = Number(latitudeValue);
   const longitude = Number(longitudeValue);
-  return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
+  return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180 && !(latitude === 0 && longitude === 0);
 }
 
 type CelulasProps = { initialTab?: "lista" | "mapa" };

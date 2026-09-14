@@ -93,7 +93,11 @@ export default function VisiteNos() {
   const [locationError, setLocationError] = useState("");
   const [locating, setLocating] = useState(false);
 
-  const cells = (data?.publicCells ?? []) as PublicCell[];
+  const cells = ((data?.publicCells ?? []) as PublicCell[]).filter((cell) => {
+    const latitude = Number(cell.latitude);
+    const longitude = Number(cell.longitude);
+    return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180 && !(latitude === 0 && longitude === 0);
+  });
   const cellsWithDistance = useMemo(() => {
     return cells
       .map((cell) => ({

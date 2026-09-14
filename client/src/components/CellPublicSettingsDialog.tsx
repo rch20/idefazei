@@ -54,6 +54,16 @@ function coordinateValue(value: string | number | null | undefined) {
   return Number.isFinite(parsed) ? String(parsed) : "";
 }
 
+function isMeaningfulCoordinatePair(latitude: string | number | null | undefined, longitude: string | number | null | undefined) {
+  if (latitude === null || latitude === undefined || latitude === "" || longitude === null || longitude === undefined || longitude === "") return false;
+  const latitudeNumber = Number(latitude);
+  const longitudeNumber = Number(longitude);
+  return Number.isFinite(latitudeNumber) && Number.isFinite(longitudeNumber)
+    && latitudeNumber >= -90 && latitudeNumber <= 90
+    && longitudeNumber >= -180 && longitudeNumber <= 180
+    && !(latitudeNumber === 0 && longitudeNumber === 0);
+}
+
 export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, onSaved }: CellPublicSettingsDialogProps) {
   const utils = trpc.useUtils();
   const [formError, setFormError] = useState<string | null>(null);
@@ -76,6 +86,7 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
 
   useEffect(() => {
     if (!cell || !open) return;
+    const hasLocation = isMeaningfulCoordinatePair(cell.latitude, cell.longitude);
     setForm({
       address: cell.address ?? "",
       addressNumber: cell.addressNumber ?? "",
@@ -84,8 +95,8 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
       city: cell.city ?? "",
       state: cell.state ?? "",
       neighborhood: cell.neighborhood ?? "",
-      latitude: coordinateValue(cell.latitude),
-      longitude: coordinateValue(cell.longitude),
+      latitude: hasLocation ? coordinateValue(cell.latitude) : "",
+      longitude: hasLocation ? coordinateValue(cell.longitude) : "",
       meetingDay: cell.meetingDay ?? "",
       meetingTime: cell.meetingTime ?? "",
       publicVisible: Boolean(cell.publicVisible),
@@ -95,10 +106,9 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
   }, [cell, open]);
 
   const marker = useMemo(() => {
-    if (!cell || form.latitude.trim() === "" || form.longitude.trim() === "") return [];
+    if (!cell || !isMeaningfulCoordinatePair(form.latitude, form.longitude)) return [];
     const latitude = Number(form.latitude);
     const longitude = Number(form.longitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return [];
     return [{ id: cell.id, title: cell.name, latitude, longitude }];
   }, [cell, form.latitude, form.longitude]);
 
@@ -124,15 +134,18 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
     event.preventDefault();
     setFormError(null);
     if (!cell) return;
-    const latitude = form.latitude.trim() === "" ? null : Number(form.latitude);
-    const longitude = form.longitude.trim() === "" ? null : Number(form.longitude);
-    if ((latitude !== null && !Number.isFinite(latitude)) || (longitude !== null && !Number.isFinite(longitude))) {
+    const rawLatitude = form.latitude.trim() === "" ? null : Number(form.latitude);
+    const rawLongitude = form.longitude.trim() === "" ? null : Number(form.longitude);
+    if ((rawLatitude !== null && (!Number.isFinite(rawLatitude) || rawLatitude < -90 || rawLatitude > 90)) || (rawLongitude !== null && (!Number.isFinite(rawLongitude) || rawLongitude < -180 || rawLongitude > 180))) {
       const message = "Informe coordenadas válidas ou escolha o ponto no mapa.";
       setFormError(message);
       toast.error(message);
       return;
     }
-    if (form.publicVisible && (latitude === null || longitude === null)) {
+    const hasCoordinates = isMeaningfulCoordinatePair(rawLatitude, rawLongitude);
+    const latitude = hasCoordinates ? rawLatitude : null;
+    const longitude = hasCoordinates ? rawLongitude : null;
+    if (form.publicVisible && !hasCoordinates) {
       const message = "Defina o ponto no mapa antes de publicar a Célula.";
       setFormError(message);
       toast.error(message);
@@ -191,7 +204,7 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
               <Switch id="cell-public-visible" checked={form.publicVisible} onCheckedChange={(publicVisible) => setForm((current) => ({ ...current, publicVisible }))} />
             </div>
           </section>
-          {form.publicVisible && (form.latitude.trim() === "" || form.longitude.trim() === "") && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">A publicação ainda não está pronta: marque o ponto da Célula no mapa ou informe latitude e longitude. O CEP preenche o endereço, mas não substitui a localização do mapa.</div>}
+          {form.publicVisible && !isMeaningfulCoordinatePair(form.latitude, form.longitude) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">A publicação ainda não está pronta: marque o ponto da Célula no mapa. O CEP preenche o endereço, mas não substitui a localização geográfica.</div>}
 
           <section className="space-y-4 rounded-xl border border-border p-4">
             <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-gold" /><h3 className="text-sm font-semibold text-navy">Local e encontro</h3></div>
