@@ -12,8 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { CalendarDays, Check, ChevronsUpDown, Flame, Plus, Search, Users, X, QrCode } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { currentCivilDateKey } from "@/lib/civilDate";
+import { deriveDiscipleshipDisplayState, getDiscipleshipStageLabel } from "@/lib/discipleshipState";
 
 const ORIGINS = [
   { value: "culto", label: "Culto" },
@@ -26,12 +28,6 @@ const ORIGINS = [
 ] as const;
 
 type Origin = (typeof ORIGINS)[number]["value"];
-
-const STATUS_MAP = {
-  nova_alma: { label: "Nova alma", class: "badge-nova-alma" },
-  em_consolidacao: { label: "Em consolidação", class: "badge-consolidacao" },
-  consolidado: { label: "Consolidado", class: "badge-celula" },
-} as const;
 
 const PUBLIC_LEAD_STATUS = {
   novo: { label: "Novo", className: "border-amber-200 bg-amber-50 text-amber-800" },
@@ -66,6 +62,7 @@ function createInitialForm() {
 
 export default function GanharAlmas() {
   const { churchId, accessSummary } = useChurch();
+  const [, navigate] = useLocation();
   const isLimitedMember = accessSummary ? !accessSummary.isPastoralWorker : true;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -221,11 +218,6 @@ export default function GanharAlmas() {
     });
   }
 
-  const stats = (["nova_alma", "em_consolidacao", "consolidado"] as const).map((status) => ({
-    status,
-    count: souls.filter((soul) => soul.status === status).length,
-    ...STATUS_MAP[status],
-  }));
 
   return (
     <section className="space-y-5 md:space-y-6" aria-labelledby="ganhar-almas-title">
@@ -240,17 +232,23 @@ export default function GanharAlmas() {
         </Button>
       </header>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4" aria-label="Resumo das novas almas">
-        {stats.map(({ status, count, label, class: className }) => (
-          <div key={status} className="metric-card flex min-h-12 items-center justify-between gap-2 px-3 py-2 sm:block sm:min-h-0 sm:p-5">
-            <p className="text-xl font-bold font-display text-navy sm:text-2xl">{count}</p>
-            <Badge variant="outline" className={`text-[11px] font-medium sm:text-xs ${className}`}>{label}</Badge>
-          </div>
-        ))}
-            </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4" aria-label="Resumo de novas almas e discípulos">
+        <div className="metric-card flex min-h-12 items-center justify-between gap-2 border-amber-200 bg-amber-50/40 px-3 py-2 sm:block sm:min-h-0 sm:p-5">
+          <p className="text-xl font-bold font-display text-navy sm:text-2xl">{souls.filter((soul) => !soul.personId).length}</p>
+          <Badge variant="outline" className="border-amber-200 bg-amber-50 text-[11px] font-medium text-amber-800 sm:text-xs">Novas almas pendentes</Badge>
+        </div>
+        <div className="metric-card flex min-h-12 items-center justify-between gap-2 border-emerald-200 bg-emerald-50/40 px-3 py-2 sm:block sm:min-h-0 sm:p-5">
+          <p className="text-xl font-bold font-display text-navy sm:text-2xl">{souls.filter((soul) => Boolean(soul.personId)).length}</p>
+          <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[11px] font-medium text-emerald-800 sm:text-xs">Discípulos com ficha</Badge>
+        </div>
+        <div className="metric-card flex min-h-12 items-center justify-between gap-2 border-blue-200 bg-blue-50/40 px-3 py-2 sm:block sm:min-h-0 sm:p-5">
+          <p className="text-xl font-bold font-display text-navy sm:text-2xl">{souls.filter((soul) => soul.discipleshipStage === "consolidacao").length}</p>
+          <Badge variant="outline" className="border-blue-200 bg-blue-50 text-[11px] font-medium text-blue-800 sm:text-xs">Na etapa Consolidação</Badge>
+        </div>
+      </div>
       <section className="card-sacred space-y-4 border border-navy/10 p-4 sm:p-5" aria-labelledby="public-registration-leads-title">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="flex items-center gap-2"><QrCode className="h-5 w-5 text-gold" aria-hidden="true" /><h2 id="public-registration-leads-title" className="font-display text-xl font-bold text-navy">Cadastros públicos recebidos</h2></div><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Registros enviados pelo QR Code, convites e links. Eles ainda não criam conta de acesso; acompanhe o contato antes de converter.</p></div>{publicLeadsQuery.isSuccess ? <Badge variant="outline" className="w-fit border-gold/30 bg-gold/5 text-gold">{publicLeadsQuery.data.length} recebidos</Badge> : <Badge variant="outline" className="w-fit border-slate-200 bg-slate-50 text-slate-600">Acesso protegido</Badge>}</div>
-        {publicLeadsQuery.isLoading ? <div className="h-20 animate-pulse rounded-xl bg-muted" /> : publicLeadsQuery.isError ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Os cadastros públicos aparecem somente para a liderança administrativa autorizada desta igreja.</p> : (publicLeadsQuery.data ?? []).length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-center"><p className="text-sm font-medium text-navy">Nenhum cadastro público recebido ainda.</p><p className="mt-1 text-xs text-muted-foreground">O próximo envio pelo QR Code aparecerá aqui.</p></div> : <div className="space-y-3">{(publicLeadsQuery.data ?? []).map((lead) => { const status = PUBLIC_LEAD_STATUS[lead.status]; return <article key={lead.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-navy">{lead.name}</p><Badge variant="outline" className={`text-[10px] ${status.className}`}>{status.label}</Badge></div><p className="mt-1 text-sm text-slate-700">WhatsApp: {lead.whatsapp}{lead.email ? ` · ${lead.email}` : ""}</p><p className="mt-1 text-xs text-muted-foreground">{PUBLIC_LEAD_SOURCE[lead.source]}{lead.campaign ? ` · ${lead.campaign}` : ""} · {new Date(lead.createdAt).toLocaleDateString("pt-BR")}{lead.city ? ` · ${lead.city}${lead.state ? `/${lead.state}` : ""}` : ""}</p></div><div className="flex flex-wrap items-center gap-2 sm:justify-end"><label className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">Status<select aria-label={`Status do cadastro de ${lead.name}`} value={lead.status} disabled={updatePublicLeadStatus.isPending || convertPublicLead.isPending} onChange={(event) => updatePublicLeadStatus.mutate({ churchId: churchId!, id: lead.id, status: event.target.value as keyof typeof PUBLIC_LEAD_STATUS })} className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground"><option value="novo">Novo</option><option value="em_atendimento">Em atendimento</option><option value="convertido">Convertido</option><option value="encerrado">Encerrado</option></select></label>{lead.personId ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800">Ficha em Discípulos</Badge> : <Button type="button" size="sm" variant="outline" className="border-navy/20 text-navy hover:bg-navy/5" disabled={convertPublicLead.isPending} onClick={() => handleConvertPublicLead(lead)}><Users className="mr-1.5 h-4 w-4" aria-hidden="true" />{convertPublicLead.isPending ? "Convertendo…" : "Converter em Discípulo"}</Button>}</div></div></article>; })}</div>}
+        {publicLeadsQuery.isLoading ? <div className="h-20 animate-pulse rounded-xl bg-muted" /> : publicLeadsQuery.isError ? <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Os cadastros públicos aparecem somente para a liderança administrativa autorizada desta igreja.</p> : (publicLeadsQuery.data ?? []).length === 0 ? <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-5 text-center"><p className="text-sm font-medium text-navy">Nenhum cadastro público recebido ainda.</p><p className="mt-1 text-xs text-muted-foreground">O próximo envio pelo QR Code aparecerá aqui.</p></div> : <div className="space-y-3">{(publicLeadsQuery.data ?? []).map((lead) => { const status = PUBLIC_LEAD_STATUS[lead.status]; const displayState = deriveDiscipleshipDisplayState({ personId: lead.personId, discipleshipStage: lead.discipleshipStage }); return <article key={lead.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-navy">{lead.name}</p><Badge variant="outline" className={`text-[10px] ${status.className}`}>Cadastro: {status.label}</Badge></div><p className="mt-1 text-sm font-medium text-navy">{displayState.label}</p><p className="mt-1 text-sm text-slate-700">WhatsApp: {lead.whatsapp}{lead.email ? ` · ${lead.email}` : ""}</p><p className="mt-1 text-xs text-muted-foreground">{PUBLIC_LEAD_SOURCE[lead.source]}{lead.campaign ? ` · ${lead.campaign}` : ""} · {new Date(lead.createdAt).toLocaleDateString("pt-BR")}{lead.city ? ` · ${lead.city}${lead.state ? `/${lead.state}` : ""}` : ""}</p></div><div className="flex flex-wrap items-center gap-2 sm:justify-end"><label className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">Status<select aria-label={`Status do cadastro de ${lead.name}`} value={lead.status} disabled={updatePublicLeadStatus.isPending || convertPublicLead.isPending} onChange={(event) => updatePublicLeadStatus.mutate({ churchId: churchId!, id: lead.id, status: event.target.value as keyof typeof PUBLIC_LEAD_STATUS })} className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground"><option value="novo">Novo</option><option value="em_atendimento">Em atendimento</option><option value="convertido">Convertido</option><option value="encerrado">Encerrado</option></select></label>{lead.personId ? <Button type="button" size="sm" variant="outline" className="border-emerald-200 text-emerald-800 hover:bg-emerald-50" onClick={() => navigate(`/app/pessoas?personId=${lead.personId}&section=jornada`)}><Users className="mr-1.5 h-4 w-4" aria-hidden="true" />Abrir ficha em Discípulos</Button> : <Button type="button" size="sm" variant="outline" className="border-navy/20 text-navy hover:bg-navy/5" disabled={convertPublicLead.isPending} onClick={() => handleConvertPublicLead(lead)}><Users className="mr-1.5 h-4 w-4" aria-hidden="true" />{convertPublicLead.isPending ? "Convertendo…" : "Converter em Discípulo"}</Button>}</div></div></article>; })}</div>}
       </section>
       <div className="relative">
         <Label htmlFor="soul-search" className="sr-only">Buscar nova alma</Label>
@@ -290,7 +288,7 @@ export default function GanharAlmas() {
       ) : (
         <div className="space-y-3 animate-stagger">
           {filteredSouls.map((soul) => {
-            const status = STATUS_MAP[soul.status];
+            const displayState = deriveDiscipleshipDisplayState({ personId: soul.personId, discipleshipStage: soul.discipleshipStage });
             const origin = ORIGINS.find((item) => item.value === soul.origin)?.label ?? soul.origin;
             return (
               <article key={soul.id} className="card-sacred flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4">
@@ -298,7 +296,7 @@ export default function GanharAlmas() {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate font-semibold text-navy">{soul.name}</p>
-                    {soul.personId && <Badge variant="outline" className="border-navy/15 bg-navy/5 text-[10px] text-navy">Ficha vinculada</Badge>}
+                    <Badge variant="outline" className={displayState.kind === "disciple" ? "border-emerald-200 bg-emerald-50 text-[10px] text-emerald-800" : "border-amber-200 bg-amber-50 text-[10px] text-amber-800"}>{displayState.kind === "disciple" ? "Discípulo" : "Nova Alma pendente"}</Badge>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     {soul.phone && <span>{soul.phone}</span>}
@@ -308,7 +306,7 @@ export default function GanharAlmas() {
                 </div>
                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                   {soul.acceptedJesus && <Badge className="border border-green-200 bg-green-50 text-green-700 hover:bg-green-50">Aceitou Jesus</Badge>}
-                  <Badge variant="outline" className={status.class}>{status.label}</Badge>
+                  <Badge variant="outline" className={displayState.kind === "disciple" ? "border-blue-200 bg-blue-50 text-blue-800" : "border-amber-200 bg-amber-50 text-amber-800"}>{displayState.kind === "disciple" ? `Etapa: ${getDiscipleshipStageLabel(displayState.stage)}` : "Cadastro pendente"}</Badge>
                 </div>
               </article>
             );
