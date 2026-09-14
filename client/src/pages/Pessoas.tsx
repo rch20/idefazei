@@ -992,82 +992,87 @@ export default function Pessoas() {
                     const statusClass = `${JOURNEY_STATUS_CLASS[status]} ${isCurrent ? "border-gold/70 bg-gold/10 ring-2 ring-gold/35 shadow-sm" : isParallelCurrent ? "border-gold/50 bg-gold/[0.04]" : ""}`;
                     const noteForUpdate = journeyNoteStage === stage ? journeyNote.trim() || undefined : progress?.notes ?? undefined;
                     return (
-                      <div key={stage} className={`rounded-xl border p-3 transition-all ${statusClass}`}>
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div key={stage} className={`rounded-2xl border p-4 shadow-sm transition-[border-color,box-shadow,transform] duration-200 hover:-translate-y-px hover:shadow-md ${statusClass}`}>
+                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.72fr)] lg:items-start">
                           <div className="flex min-w-0 items-start gap-3">
-                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border ${isCurrent ? "border-gold bg-gold/20 text-navy" : JOURNEY_STATUS_BADGE_CLASS[status]}`} aria-hidden="true">
+                            <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${isCurrent ? "border-gold bg-gold/20 text-navy" : JOURNEY_STATUS_BADGE_CLASS[status]}`} aria-hidden="true">
                               <span className="text-sm font-bold">{JOURNEY_STAGES.indexOf(stage) + 1}</span>
                             </div>
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
-                                <p className="truncate text-sm font-semibold">{STAGES_LABELS[stage]}</p>
+                                <p className="text-sm font-semibold leading-5 text-navy">{STAGES_LABELS[stage]}</p>
                                 {isCurrent && <Badge variant="outline" className="border-gold/40 bg-gold/15 text-[10px] text-navy">Etapa principal</Badge>}
                                 {isParallelCurrent && <Badge variant="outline" className="border-gold/40 bg-gold/15 text-[10px] text-navy">Frente atual</Badge>}
                               </div>
-                              <p className="mt-0.5 text-[11px] opacity-80">{statusLabel}{progress?.notes ? ` · ${progress.notes}` : ""}</p>
-                              <p className="mt-1 text-[11px] opacity-70">{JOURNEY_STAGE_DESCRIPTIONS[stage]}</p>
+                              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                                <span className="font-semibold text-foreground/80">{statusLabel}</span>
+                                {progress?.notes && <span className="text-muted-foreground">{progress.notes}</span>}
+                              </div>
+                              <p className="mt-2 max-w-2xl text-xs leading-relaxed text-muted-foreground">{JOURNEY_STAGE_DESCRIPTIONS[stage]}</p>
                             </div>
                           </div>
                           {canManageJourney && (
-                            <div className="flex shrink-0 flex-wrap gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 text-[11px] text-navy"
-                                onClick={() => {
-                                  setJourneyNoteStage(stage);
-                                  setJourneyNote(progress?.notes ?? "");
-                                }}
-                              >
-                                {journeyNoteStage === stage ? "Fechar nota" : "Observação"}
-                              </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className={`h-8 text-[11px] ${status === "concluida" ? "border-emerald-300 bg-emerald-100/70 text-emerald-900 hover:bg-emerald-100" : status === "pendente" ? "border-rose-300 bg-rose-100/70 text-rose-900 hover:bg-rose-100" : "border-slate-300 bg-white/80 text-slate-800 hover:bg-white"}`}
-                                disabled={updateJourneyStage.isPending}
-                                onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: status === "concluida" ? "pendente" : "concluida", notes: noteForUpdate })}
-                              >
-                                {status === "concluida" ? "Marcar pendente" : "Concluir etapa"}
-                              </Button>
-                              {status === "nao_registrada" && <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-8 border-rose-300 bg-rose-100/70 text-[11px] text-rose-900 hover:bg-rose-100"
-                                disabled={updateJourneyStage.isPending}
-                                onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: "pendente", notes: noteForUpdate })}
-                              >
-                                Marcar pendente
-                              </Button>}
-                              {status !== "nao_registrada" && <Button
-                                type="button"
-                                size="sm"
-                                variant="ghost"
-                                className="h-8 text-[11px] text-navy"
-                                disabled={updateJourneyStage.isPending}
-                                onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: "nao_registrada", notes: noteForUpdate })}
-                              >
-                                Não registrada
-                              </Button>}
-                              {isPastor && !isCurrent && <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="h-8 border-gold/40 bg-gold/10 text-[11px] text-navy hover:bg-gold/20"
-                                disabled={setParallelJourneyStage.isPending}
-                                onClick={() => setParallelJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, isCurrent: !isParallelCurrent })}
-                              >
-                                {isParallelCurrent ? "Remover frente atual" : "Tornar frente atual"}
-                              </Button>}
-
+                            <div className="rounded-xl border border-current/10 bg-background/55 p-2.5 lg:min-w-0">
+                              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Ações da etapa</p>
+                              <div className="flex flex-wrap gap-2 lg:justify-end">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-9 text-[11px] text-navy"
+                                  onClick={() => {
+                                    setJourneyNoteStage(stage);
+                                    setJourneyNote(progress?.notes ?? "");
+                                  }}
+                                >
+                                  {journeyNoteStage === stage ? "Fechar nota" : "Observação"}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className={`h-9 text-[11px] ${status === "concluida" ? "border-emerald-300 bg-emerald-100/70 text-emerald-900 hover:bg-emerald-100" : status === "pendente" ? "border-rose-300 bg-rose-100/70 text-rose-900 hover:bg-rose-100" : "border-slate-300 bg-white/80 text-slate-800 hover:bg-white"}`}
+                                  disabled={updateJourneyStage.isPending}
+                                  onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: status === "concluida" ? "pendente" : "concluida", notes: noteForUpdate })}
+                                >
+                                  {status === "concluida" ? "Marcar pendente" : "Concluir etapa"}
+                                </Button>
+                                {status === "nao_registrada" && <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-9 border-rose-300 bg-rose-100/70 text-[11px] text-rose-900 hover:bg-rose-100"
+                                  disabled={updateJourneyStage.isPending}
+                                  onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: "pendente", notes: noteForUpdate })}
+                                >
+                                  Marcar pendente
+                                </Button>}
+                                {status !== "nao_registrada" && <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-9 text-[11px] text-navy"
+                                  disabled={updateJourneyStage.isPending}
+                                  onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: "nao_registrada", notes: noteForUpdate })}
+                                >
+                                  Não registrada
+                                </Button>}
+                                {isPastor && !isCurrent && <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-9 border-gold/40 bg-gold/10 text-[11px] text-navy hover:bg-gold/20"
+                                  disabled={setParallelJourneyStage.isPending}
+                                  onClick={() => setParallelJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, isCurrent: !isParallelCurrent })}
+                                >
+                                  {isParallelCurrent ? "Remover frente atual" : "Tornar frente atual"}
+                                </Button>}
+                              </div>
                             </div>
                           )}
                         </div>
                         {canManageJourney && journeyNoteStage === stage && (
-                          <div className="mt-3 border-t border-current/10 pt-3">
+                          <div className="mt-4 border-t border-current/10 pt-4">
                             <Label htmlFor={`journey-note-${stage}`} className="text-[11px]">Observação desta atualização</Label>
                             <Textarea id={`journey-note-${stage}`} value={journeyNote} onChange={(event) => setJourneyNote(event.target.value)} maxLength={1000} rows={2} className="mt-1 bg-background text-xs" placeholder="Ex.: participou do encontro e pediu acompanhamento." />
                             <p className="mt-1 text-[10px] opacity-70">A observação fica no evento do histórico; limite de 1.000 caracteres.</p>

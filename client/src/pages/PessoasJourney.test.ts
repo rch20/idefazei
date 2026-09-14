@@ -26,6 +26,13 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('personSection === "historico"');
   });
 
+  it("organiza os cards da Jornada com conteúdo e ações separados no desktop", () => {
+    expect(pageSource).toContain("rounded-2xl border p-4 shadow-sm transition-[border-color,box-shadow,transform]");
+    expect(pageSource).toContain("lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.72fr)]");
+    expect(pageSource).toContain("Ações da etapa");
+    expect(pageSource).toContain("hover:-translate-y-px hover:shadow-md");
+  });
+
   it("exibe estados claros, progresso e ações não lineares para cada etapa", () => {
     expect(pageSource).toContain("trpc.people.journey.useQuery");
     expect(pageSource).toContain("trpc.people.updateJourneyStage.useMutation");
