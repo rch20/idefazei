@@ -88,10 +88,17 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
   it("abre a ficha na Jornada pelo App do Líder e limpa a URL ao fechar", () => {
     expect(leaderSource).toContain("section=jornada");
     expect(leaderSource).toContain(">\n                          Ficha\n");
-    expect(pageSource).toContain('params.get("section")');
+    expect(pageSource).toContain('const routeSection = routeParams.get("section");');
     expect(pageSource).toContain("function closePersonJourney()");
     expect(pageSource).toContain('params.delete("personId")');
     expect(pageSource).toContain('params.delete("section")');
+  });
+
+  it("busca a Pessoa pelo personId da URL e abre a ficha diretamente", () => {
+    expect(pageSource).toContain("const routePersonId = Number(routeParams.get(\"personId\"));");
+    expect(pageSource).toContain("trpc.people.getById.useQuery");
+    expect(pageSource).toContain("const person = linkedPersonQuery.data ?? (people ?? []).find((candidate) => candidate.id === routePersonId);");
+    expect(pageSource).toContain("if (person && selectedPerson?.id !== person.id) openPersonJourney(person);");
   });
 
   it("abre diretamente a Pessoa selecionada a partir das filas de cuidado", () => {
