@@ -233,6 +233,13 @@ export default function Pessoas() {
   const utils = trpc.useUtils();
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId, search: search || undefined });
+  const routeParams = useMemo(() => new URLSearchParams(location.split("?")[1] ?? ""), [location]);
+  const routePersonId = Number(routeParams.get("personId"));
+  const routeSection = routeParams.get("section");
+  const linkedPersonQuery = trpc.people.getById.useQuery(
+    { churchId, id: routePersonId },
+    { enabled: Boolean(churchId && Number.isInteger(routePersonId) && routePersonId > 0) }
+  );
   const birthdaysQuery = trpc.people.birthdays.useQuery(
     { churchId, month: birthdayMonthFilter, day: birthdayView === "today" ? birthdayDay : undefined },
     { enabled: birthdaysOpen }
@@ -437,15 +444,13 @@ export default function Pessoas() {
   }, [pastoralCoverageQuery.data?.coverage?.id, pastoralCoverageQuery.data?.coverage?.updatedAt, pastoralCoverageQuery.data?.isPastor, pastoralCoverageQuery.isLoading, selectedPerson?.id, isPastorPresident]);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.split("?")[1] ?? "");
-    const personId = Number(params.get("personId"));
-    const requestedSection = params.get("section");
-    const person = (people ?? []).find((candidate) => candidate.id === personId);
+    if (!routePersonId) return;
+    const person = linkedPersonQuery.data ?? (people ?? []).find((candidate) => candidate.id === routePersonId);
     if (person && selectedPerson?.id !== person.id) openPersonJourney(person);
-    if (requestedSection && ["resumo", "jornada", "participacoes", "cuidado", "cobertura", "historico"].includes(requestedSection)) {
-      setPersonSection(requestedSection as typeof personSection);
+    if (routeSection && ["resumo", "jornada", "participacoes", "cuidado", "cobertura", "historico"].includes(routeSection)) {
+      setPersonSection(routeSection as typeof personSection);
     }
-  }, [location, people, selectedPerson?.id]);
+  }, [linkedPersonQuery.data, people, routePersonId, routeSection, selectedPerson?.id]);
 
   const modernConsolidationTimeline = (consolidationHistoryQuery.data ?? []).flatMap(({ referral, assignments, followUps, visits }) => [
     {
