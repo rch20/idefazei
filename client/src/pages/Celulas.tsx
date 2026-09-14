@@ -73,7 +73,12 @@ function formatMeetingDate(value: Date | string) {
 }
 
 function hasPublicCellLocation(cell: { latitude?: string | number | null; longitude?: string | number | null }) {
-  return Number.isFinite(Number(cell.latitude)) && Number.isFinite(Number(cell.longitude));
+  const latitudeValue = typeof cell.latitude === "string" ? cell.latitude.trim() : cell.latitude;
+  const longitudeValue = typeof cell.longitude === "string" ? cell.longitude.trim() : cell.longitude;
+  if (latitudeValue === "" || longitudeValue === "" || latitudeValue === null || latitudeValue === undefined || longitudeValue === null || longitudeValue === undefined) return false;
+  const latitude = Number(latitudeValue);
+  const longitude = Number(longitudeValue);
+  return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
 }
 
 type CelulasProps = { initialTab?: "lista" | "mapa" };
@@ -183,11 +188,8 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
   const pageTitle = canPublishCells ? "Células" : "Minhas Células";
   const pageSubtitle = canPublishCells ? "Organize as Células e direcione cada Pessoa para a sua equipe." : "Consulte as Células do seu escopo e cuide da sua equipe.";
   const mappedCells = (cells ?? []).flatMap((cell) => {
-    const latitude = Number(cell.latitude);
-    const longitude = Number(cell.longitude);
-    return Number.isFinite(latitude) && Number.isFinite(longitude)
-      ? [{ id: cell.id, title: cell.name, latitude, longitude }]
-      : [];
+    if (!hasPublicCellLocation(cell)) return [];
+    return [{ id: cell.id, title: cell.name, latitude: Number(cell.latitude), longitude: Number(cell.longitude) }];
   });
 
   async function lookupCep(value: string) {

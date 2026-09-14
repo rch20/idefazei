@@ -52,6 +52,16 @@ describe("Cadastro de Células com endereço por CEP", () => {
     expect(routerSource).toContain("Toda liderança deve pertencer a esta igreja.");
   });
 
+  it("não desenha Células sem coordenadas válidas no ponto 0,0", () => {
+    const dialogSource = readFileSync(resolve(root, "client/src/components/CellPublicSettingsDialog.tsx"), "utf8");
+    expect(pageSource).toContain('latitudeValue === "" || longitudeValue === ""');
+    expect(pageSource).toContain('latitudeValue === null || latitudeValue === undefined');
+    expect(pageSource).toContain('latitude >= -90 && latitude <= 90');
+    expect(pageSource).toContain('if (!hasPublicCellLocation(cell)) return [];');
+    expect(dialogSource).toContain('form.latitude.trim() === "" || form.longitude.trim() === ""');
+    expect(dialogSource).toContain('latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180');
+  });
+
   it("explica o status público e leva o administrador para Visite-nos", () => {
     const dialogSource = readFileSync(resolve(root, "client/src/components/CellPublicSettingsDialog.tsx"), "utf8");
     expect(pageSource).toContain("Pública · sem localização");

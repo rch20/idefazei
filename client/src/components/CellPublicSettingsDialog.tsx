@@ -95,9 +95,10 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
   }, [cell, open]);
 
   const marker = useMemo(() => {
+    if (!cell || form.latitude.trim() === "" || form.longitude.trim() === "") return [];
     const latitude = Number(form.latitude);
     const longitude = Number(form.longitude);
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !cell) return [];
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return [];
     return [{ id: cell.id, title: cell.name, latitude, longitude }];
   }, [cell, form.latitude, form.longitude]);
 
