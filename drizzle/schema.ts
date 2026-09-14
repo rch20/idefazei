@@ -343,8 +343,10 @@ export const discipleshipStageProgress = mysqlTable("discipleship_stage_progress
     "lideranca",
     "multiplicador",
   ]).notNull(),
-  status: mysqlEnum("status", ["concluida", "pendente", "nao_registrada"]).notNull().default("nao_registrada"),
-  notes: text("notes"),
+    status: mysqlEnum("status", ["concluida", "pendente", "nao_registrada"]).notNull().default("nao_registrada"),
+    /** Indica uma frente paralela atualmente ativa, sem substituir a etapa principal em people.discipleshipStage. */
+    isCurrent: boolean("isCurrent").notNull().default(false),
+    notes: text("notes"),
   completedAt: timestamp("completedAt"),
   updatedByChurchUserId: int("updatedByChurchUserId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

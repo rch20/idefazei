@@ -348,6 +348,13 @@ export default function Pessoas() {
     },
     onError: (error) => toast.error(error.message || "Não foi possível atualizar a etapa."),
   });
+  const setParallelJourneyStage = trpc.people.setParallelJourneyStage.useMutation({
+    onSuccess: async (_, variables) => {
+      toast.success(variables.isCurrent ? "Frente paralela ativada." : "Frente paralela removida.");
+      await journeyQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar a frente paralela."),
+  });
   const savePastoralCoverage = trpc.people.savePastoralCoverage.useMutation({
     onSuccess: async () => {
       toast.success("Cobertura espiritual salva com histórico.");
@@ -405,6 +412,7 @@ export default function Pessoas() {
   const journeyCompletedCount = JOURNEY_STAGES.filter((stage) => journeyProgressByStage.get(stage)?.status === "concluida").length;
   const journeyPendingCount = JOURNEY_STAGES.filter((stage) => journeyProgressByStage.get(stage)?.status === "pendente").length;
   const journeyProgressPercent = Math.round((journeyCompletedCount / JOURNEY_STAGES.length) * 100);
+  const parallelJourneyStages = JOURNEY_STAGES.filter((stage) => journeyProgressByStage.get(stage)?.isCurrent && selectedPerson?.discipleshipStage !== stage);
 
   useEffect(() => {
     const params = new URLSearchParams(location.split("?")[1] ?? "");
@@ -938,6 +946,17 @@ export default function Pessoas() {
                   <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground"><span>{journeyPendingCount} pendente{journeyPendingCount === 1 ? "" : "s"}</span><span>Etapa principal: {STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</span></div>
                 </div>
               </div>
+              <div className="mt-4 rounded-lg border border-gold/25 bg-gold/5 px-3 py-2.5 text-xs text-navy">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">Frentes atuais</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">Participações formativas que acontecem em paralelo à etapa principal.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parallelJourneyStages.length > 0 ? parallelJourneyStages.map((stage) => <Badge key={stage} variant="outline" className="border-gold/40 bg-background text-[10px] text-navy">{STAGES_LABELS[stage]}</Badge>) : <span className="text-[11px] text-muted-foreground">Nenhuma frente paralela ativa</span>}
+                  </div>
+                </div>
+              </div>
 
               {journeyQuery.isLoading ? <div className="mt-5 space-y-2">{JOURNEY_STAGES.slice(0, 5).map((stage) => <div key={stage} className="h-16 animate-pulse rounded-xl bg-background/70" />)}</div> : (
                 <div className="mt-5 space-y-3">
@@ -946,7 +965,8 @@ export default function Pessoas() {
                     const status: JourneyStatus = progress?.status ?? "nao_registrada";
                     const isCurrent = selectedPerson.discipleshipStage === stage;
                     const statusLabel = status === "concluida" ? "Concluída" : status === "pendente" ? "Pendente" : "Não registrada";
-                    const statusClass = `${JOURNEY_STATUS_CLASS[status]} ${isCurrent ? "border-gold/70 bg-gold/10 ring-2 ring-gold/35 shadow-sm" : ""}`;
+                    const isParallelCurrent = Boolean(progress?.isCurrent) && !isCurrent;
+                    const statusClass = `${JOURNEY_STATUS_CLASS[status]} ${isCurrent ? "border-gold/70 bg-gold/10 ring-2 ring-gold/35 shadow-sm" : isParallelCurrent ? "border-gold/50 bg-gold/[0.04]" : ""}`;
                     const noteForUpdate = journeyNoteStage === stage ? journeyNote.trim() || undefined : progress?.notes ?? undefined;
                     return (
                       <div key={stage} className={`rounded-xl border p-3 transition-all ${statusClass}`}>
@@ -958,7 +978,8 @@ export default function Pessoas() {
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="truncate text-sm font-semibold">{STAGES_LABELS[stage]}</p>
-                                {isCurrent && <Badge variant="outline" className="border-gold/40 bg-gold/15 text-[10px] text-navy">Etapa atual</Badge>}
+                                {isCurrent && <Badge variant="outline" className="border-gold/40 bg-gold/15 text-[10px] text-navy">Etapa principal</Badge>}
+                                {isParallelCurrent && <Badge variant="outline" className="border-gold/40 bg-gold/15 text-[10px] text-navy">Frente atual</Badge>}
                               </div>
                               <p className="mt-0.5 text-[11px] opacity-80">{statusLabel}{progress?.notes ? ` · ${progress.notes}` : ""}</p>
                               <p className="mt-1 text-[11px] opacity-70">{JOURNEY_STAGE_DESCRIPTIONS[stage]}</p>
@@ -1007,6 +1028,16 @@ export default function Pessoas() {
                                 onClick={() => updateJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, status: "nao_registrada", notes: noteForUpdate })}
                               >
                                 Não registrada
+                              </Button>}
+                              {isPastor && !isCurrent && <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-8 border-gold/40 bg-gold/10 text-[11px] text-navy hover:bg-gold/20"
+                                disabled={setParallelJourneyStage.isPending}
+                                onClick={() => setParallelJourneyStage.mutate({ churchId, id: selectedPerson.id, stage, isCurrent: !isParallelCurrent })}
+                              >
+                                {isParallelCurrent ? "Remover frente atual" : "Tornar frente atual"}
                               </Button>}
 
                             </div>

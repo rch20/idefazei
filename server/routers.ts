@@ -90,6 +90,7 @@ import {
   setComplementaryRolesForChurchUser,
   canChurchUserManageJourney,
   getJourneyManagedPersonIds,
+  setParallelJourneyStage,
   getNotificationsForChurchUser,
   getUnreadNotificationCount,
   markNotificationRead,
@@ -1058,6 +1059,15 @@ async function requireJourneyStagePermission(userId: number, churchId: number, t
   return actor;
 }
 
+async function requireParallelJourneyPermission(userId: number, churchId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const actorRoles = await getEffectiveChurchRoles(userId, churchId, actor);
+  if (!actorRoles.some((role) => PASTOR_ROLES.has(role))) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor Presidente ou Pastor Local pode definir frentes paralelas da Jornada." });
+  }
+  return actor;
+}
+
 async function getCellMeetingAuthorization(userId: number, churchId: number, cellId: number) {
   const actor = await requireChurchMember(userId, churchId);
   const cell = await getCellById(cellId, churchId);
@@ -1451,6 +1461,34 @@ const peopleRouter = router({
         setCurrentStage: input.setCurrentStage,
       });
       return result;
+    }),
+
+  setParallelJourneyStage: protectedProcedure
+    .input(z.object({
+      id: z.number().int().positive(),
+      churchId: z.number().int().positive(),
+      stage: z.enum([
+        "nova_alma",
+        "consolidacao",
+        "fundamentos",
+        "celula",
+        "batismo",
+        "encontro_com_deus",
+        "escola_de_lideres",
+        "lideranca",
+        "multiplicador",
+      ]),
+      isCurrent: z.boolean(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireParallelJourneyPermission(ctx.user.id, input.churchId);
+      return setParallelJourneyStage({
+        churchId: input.churchId,
+        personId: input.id,
+        stage: input.stage,
+        isCurrent: input.isCurrent,
+        updatedByChurchUserId: actor.id,
+      });
     }),
 
   create: protectedProcedure

@@ -1393,7 +1393,7 @@ export async function upsertDiscipleshipStageProgress(input: {
   const completedAt = input.status === "concluida" ? new Date() : null;
   return db.transaction(async (tx) => {
     const existing = await tx
-      .select({ id: discipleshipStageProgress.id })
+      .select({ id: discipleshipStageProgress.id, isCurrent: discipleshipStageProgress.isCurrent })
       .from(discipleshipStageProgress)
       .where(
         and(
@@ -1404,14 +1404,18 @@ export async function upsertDiscipleshipStageProgress(input: {
       )
       .limit(1);
 
+    const isCurrent = input.status === "concluida" || input.status === "nao_registrada"
+      ? false
+      : existing[0]?.isCurrent ?? false;
     const data = {
       status: input.status,
+      isCurrent,
       notes: input.notes?.trim() || null,
       completedAt,
       updatedByChurchUserId: input.updatedByChurchUserId,
     };
 
-    let state: { id: number; churchId: number; personId: number; stage: typeof input.stage; status: typeof input.status; notes: string | null; completedAt: Date | null; updatedByChurchUserId: number };
+    let state: { id: number; churchId: number; personId: number; stage: typeof input.stage; status: typeof input.status; isCurrent: boolean; notes: string | null; completedAt: Date | null; updatedByChurchUserId: number };
     if (existing[0]) {
       await tx.update(discipleshipStageProgress).set(data).where(eq(discipleshipStageProgress.id, existing[0].id));
       state = { id: existing[0].id, churchId: input.churchId, personId: input.personId, stage: input.stage, ...data };
@@ -1441,6 +1445,67 @@ export async function upsertDiscipleshipStageProgress(input: {
         .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)));
     }
     return { ...state, eventId };
+  });
+}
+
+export async function setParallelJourneyStage(input: {
+  churchId: number;
+  personId: number;
+  stage: "nova_alma" | "consolidacao" | "fundamentos" | "celula" | "batismo" | "encontro_com_deus" | "escola_de_lideres" | "lideranca" | "multiplicador";
+  isCurrent: boolean;
+  updatedByChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const person = await tx
+      .select({ id: people.id, discipleshipStage: people.discipleshipStage })
+      .from(people)
+      .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)))
+      .limit(1);
+    if (!person[0]) throw new Error("Pessoa não encontrada nesta igreja.");
+    if (person[0].discipleshipStage === input.stage && input.isCurrent) {
+      throw new Error("A etapa principal não precisa ser adicionada como frente paralela.");
+    }
+
+    const existing = await tx
+      .select()
+      .from(discipleshipStageProgress)
+      .where(and(
+        eq(discipleshipStageProgress.churchId, input.churchId),
+        eq(discipleshipStageProgress.personId, input.personId),
+        eq(discipleshipStageProgress.stage, input.stage),
+      ))
+      .limit(1);
+
+    let state;
+    if (existing[0]) {
+      await tx.update(discipleshipStageProgress)
+        .set({ isCurrent: input.isCurrent, updatedByChurchUserId: input.updatedByChurchUserId })
+        .where(eq(discipleshipStageProgress.id, existing[0].id));
+      state = { ...existing[0], isCurrent: input.isCurrent, updatedByChurchUserId: input.updatedByChurchUserId };
+    } else {
+      const inserted = await tx.insert(discipleshipStageProgress).values({
+        churchId: input.churchId,
+        personId: input.personId,
+        stage: input.stage,
+        status: "pendente",
+        isCurrent: input.isCurrent,
+        updatedByChurchUserId: input.updatedByChurchUserId,
+      });
+      const id = Number((inserted[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      state = { id, churchId: input.churchId, personId: input.personId, stage: input.stage, status: "pendente" as const, isCurrent: input.isCurrent, notes: null, completedAt: null, updatedByChurchUserId: input.updatedByChurchUserId };
+    }
+
+    await tx.insert(discipleshipStageEvents).values({
+      churchId: input.churchId,
+      personId: input.personId,
+      stage: input.stage,
+      status: state.status,
+      notes: input.isCurrent ? "Frente paralela ativada pela liderança pastoral." : "Frente paralela desativada pela liderança pastoral.",
+      changedByChurchUserId: input.updatedByChurchUserId,
+    });
+    return state;
   });
 }
 
