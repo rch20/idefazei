@@ -2,12 +2,18 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { geocodeMapLocation, isSuspiciousCoordinatePair, MAPTILER_KEY, MAP_TILE_ATTRIBUTION, MAP_TILE_URL } from "@/lib/maptiler";
 
 export type OpenStreetMapMarker = {
   id: number;
   latitude: number;
   longitude: number;
   title: string;
+};
+
+export type OpenStreetMapLocationQuery = {
+  id: number;
+  query: string;
 };
 
 type OpenStreetMapProps = {
@@ -19,19 +25,10 @@ type OpenStreetMapProps = {
   onLocationSelect?: (location: { latitude: number; longitude: number }) => void;
   className?: string;
   ariaLabel?: string;
+  locationQueries?: OpenStreetMapLocationQuery[];
 };
 
 const DEFAULT_CENTER = { latitude: -15.7797, longitude: -47.9297 };
-const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY?.trim() ?? "";
-const MAP_TILE_URL =
-  import.meta.env.VITE_MAP_TILE_URL?.trim() ||
-  (MAPTILER_KEY
-    ? `https://api.maptiler.com/maps/streets-v4/256/{z}/{x}/{y}.png?key=${encodeURIComponent(MAPTILER_KEY)}`
-    : "");
-const MAP_TILE_ATTRIBUTION =
-  import.meta.env.VITE_MAP_TILE_ATTRIBUTION?.trim() ||
-  '<a href="https://www.maptiler.com/copyright/" target="_blank" rel="noreferrer">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">&copy; OpenStreetMap contributors</a>';
-
 
 function createMarkerIcon(selected: boolean) {
   return L.divIcon({
@@ -51,17 +48,55 @@ export function OpenStreetMap({
   onLocationSelect,
   className,
   ariaLabel = "Mapa de células",
+  locationQueries = [],
 }: OpenStreetMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerLayerRef = useRef<L.LayerGroup | null>(null);
   const onSelectRef = useRef(onSelect);
   const onLocationSelectRef = useRef(onLocationSelect);
+  const geocodeAttemptedRef = useRef(new Set<number>());
   const [ready, setReady] = useState(false);
   const [tileError, setTileError] = useState(!MAP_TILE_URL);
+  const [resolvedMarkers, setResolvedMarkers] = useState<Record<number, { latitude: number; longitude: number }>>({});
+  const [geocodeError, setGeocodeError] = useState(false);
 
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
   useEffect(() => { onLocationSelectRef.current = onLocationSelect; }, [onLocationSelect]);
+
+  useEffect(() => {
+    const queriesById = new Map(locationQueries.map((item) => [item.id, item.query]));
+    const targets = markers.filter((item) => isSuspiciousCoordinatePair(item.latitude, item.longitude) && queriesById.get(item.id) && !geocodeAttemptedRef.current.has(item.id));
+    if (!targets.length) return;
+    targets.forEach((item) => geocodeAttemptedRef.current.add(item.id));
+    let cancelled = false;
+    Promise.all(targets.map(async (item) => {
+      try {
+        const coordinates = await geocodeMapLocation(queriesById.get(item.id) ?? "");
+        return coordinates ? { id: item.id, coordinates } : null;
+      } catch {
+        return null;
+      }
+    })).then((results) => {
+      if (cancelled) return;
+      const validResults = results.filter((result): result is { id: number; coordinates: { latitude: number; longitude: number } } => Boolean(result));
+      if (validResults.length < targets.length) setGeocodeError(true);
+      if (validResults.length) {
+        setResolvedMarkers((current) => ({
+          ...current,
+          ...Object.fromEntries(validResults.map((result) => [result.id, result.coordinates])),
+        }));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [locationQueries, markers]);
+
+  const effectiveMarkers = markers.flatMap((item) => {
+    if (!isSuspiciousCoordinatePair(item.latitude, item.longitude)) return [item];
+    const resolved = resolvedMarkers[item.id];
+    return resolved ? [{ ...item, ...resolved }] : [];
+  });
+  const hasPendingGeocoding = markers.some((item) => isSuspiciousCoordinatePair(item.latitude, item.longitude) && !resolvedMarkers[item.id]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -109,7 +144,7 @@ export function OpenStreetMap({
     if (!ready || !map || !layer) return;
     layer.clearLayers();
     const bounds: L.LatLngTuple[] = [];
-    markers.forEach((item) => {
+    effectiveMarkers.forEach((item) => {
       const position: L.LatLngTuple = [item.latitude, item.longitude];
       bounds.push(position);
       const marker = L.marker(position, { icon: createMarkerIcon(item.id === selectedId), title: item.title });
@@ -119,14 +154,14 @@ export function OpenStreetMap({
       marker.on("click", () => onSelectRef.current?.(item.id));
       marker.addTo(layer);
     });
-    if (markers.length === 1) {
-      map.setView([markers[0].latitude, markers[0].longitude], Math.max(initialZoom, 14));
-    } else if (markers.length > 1) {
+    if (effectiveMarkers.length === 1) {
+      map.setView([effectiveMarkers[0].latitude, effectiveMarkers[0].longitude], Math.max(initialZoom, 14));
+    } else if (effectiveMarkers.length > 1) {
       map.fitBounds(bounds, { padding: [32, 32], maxZoom: 15 });
     } else {
       map.setView([initialCenter.latitude, initialCenter.longitude], initialZoom);
     }
-  }, [initialCenter.latitude, initialCenter.longitude, initialZoom, markers, ready, selectedId]);
+  }, [effectiveMarkers, initialCenter.latitude, initialCenter.longitude, initialZoom, ready, selectedId]);
 
   return (
     <div className={cn("relative overflow-hidden rounded-xl border border-border bg-muted/20", className)}>
@@ -134,6 +169,24 @@ export function OpenStreetMap({
       {onLocationSelect && (
         <p className="pointer-events-none absolute left-3 top-3 z-[500] rounded-md bg-background/90 px-2 py-1 text-xs text-foreground shadow-sm backdrop-blur">
           Clique no mapa para definir o ponto
+        </p>
+      )}
+      {hasPendingGeocoding && (
+        <p
+          className="pointer-events-none absolute bottom-3 left-3 z-[500] max-w-[min(92%,28rem)] rounded-md border border-blue-200 bg-background/95 px-3 py-2 text-xs text-foreground shadow-sm backdrop-blur"
+          role="status"
+          aria-live="polite"
+        >
+          Localizando a Célula pela região informada…
+        </p>
+      )}
+      {geocodeError && !hasPendingGeocoding && (
+        <p
+          className="pointer-events-none absolute bottom-3 left-3 z-[500] max-w-[min(92%,28rem)] rounded-md border border-amber-200 bg-background/95 px-3 py-2 text-xs text-foreground shadow-sm backdrop-blur"
+          role="status"
+          aria-live="polite"
+        >
+          Não foi possível localizar automaticamente a região. Escolha o ponto no mapa para maior precisão.
         </p>
       )}
       {tileError && (

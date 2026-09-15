@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { trpc } from "@/lib/trpc";
+import { buildMapLocationQuery } from "@/lib/maptiler";
 import { Eye, MapPin, MessageCircle, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -228,6 +229,7 @@ export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, o
               initialCenter={marker[0] ?? undefined}
               initialZoom={marker.length ? 15 : 5}
               onLocationSelect={({ latitude, longitude }) => setForm((current) => ({ ...current, latitude: latitude.toFixed(7), longitude: longitude.toFixed(7) }))}
+              locationQueries={cell ? [{ id: cell.id, query: buildMapLocationQuery({ address: form.address, addressNumber: form.addressNumber, addressComplement: form.addressComplement, zipCode: form.zipCode, city: form.city, state: form.state, neighborhood: form.neighborhood }) }] : []}
               ariaLabel="Mapa para escolher a localização pública da célula"
             />
             <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">

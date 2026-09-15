@@ -6,12 +6,13 @@ import { dirname, resolve } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../..");
 const source = readFileSync(resolve(root, "client/src/components/OpenStreetMap.tsx"), "utf8");
+const mapTilerSource = readFileSync(resolve(root, "client/src/lib/maptiler.ts"), "utf8");
 
 describe("configuração do provedor de tiles", () => {
   it("usa MapTiler configurável e não o endpoint público bloqueado do OSM", () => {
-    expect(source).toContain("VITE_MAPTILER_KEY");
-    expect(source).toContain("VITE_MAP_TILE_URL");
-    expect(source).toContain("api.maptiler.com/maps/streets-v4/256/{z}/{x}/{y}.png");
+    expect(mapTilerSource).toContain("VITE_MAPTILER_KEY");
+    expect(mapTilerSource).toContain("VITE_MAP_TILE_URL");
+    expect(mapTilerSource).toContain("api.maptiler.com/maps/streets-v4/256/{z}/{x}/{y}.png");
     expect(source).not.toContain("https://tile.openstreetmap.org/{z}/{x}/{y}.png");
   });
 
@@ -19,6 +20,14 @@ describe("configuração do provedor de tiles", () => {
     expect(source).toContain("tileerror");
     expect(source).toContain("Mapa de ruas temporariamente indisponível");
     expect(source).toContain('role="status"');
+  });
+
+  it("resolve coordenadas suspeitas pela consulta de endereço sem persistir o resultado", () => {
+    expect(source).toContain("locationQueries");
+    expect(source).toContain("isSuspiciousCoordinatePair");
+    expect(source).toContain("geocodeMapLocation");
+    expect(source).toContain("resolvedMarkers");
+    expect(source).toContain("Localizando a Célula pela região informada");
   });
 });
 
