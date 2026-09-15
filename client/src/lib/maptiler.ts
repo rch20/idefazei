@@ -23,12 +23,25 @@ export function isSuspiciousCoordinatePair(latitude: number, longitude: number) 
 }
 
 export function buildMapLocationQuery(input: MapLocationInput) {
-  const street = [input.address?.trim(), input.addressNumber?.trim()].filter(Boolean).join(", ");
+  const addressNumber = input.addressNumber?.trim() ?? "";
+  const addressComplement = input.addressComplement?.trim() ?? "";
+  const addressParts = (input.address?.trim() ?? "").split(",").map((part) => part.trim()).filter(Boolean);
+  const normalizedNumber = addressNumber.replace(/\D/g, "");
+  const street = [
+    ...addressParts.filter((part) => {
+      const normalizedPart = part.toLowerCase();
+      const partDigits = part.replace(/\D/g, "");
+      const isNumberSegment = Boolean(normalizedNumber) && partDigits === normalizedNumber && normalizedPart.replace(/\D/g, "") === normalizedNumber;
+      const isComplementSegment = Boolean(addressComplement) && normalizedPart === addressComplement.toLowerCase();
+      return !isNumberSegment && !isComplementSegment;
+    }),
+    addressNumber,
+  ].filter(Boolean).join(", ");
   const postalCode = input.zipCode?.replace(/\D/g, "") ?? "";
   const formattedPostalCode = postalCode.length === 8 ? `${postalCode.slice(0, 5)}-${postalCode.slice(5)}` : postalCode;
   return [
     street,
-    input.addressComplement?.trim(),
+    addressComplement,
     input.neighborhood?.trim(),
     input.city?.trim(),
     input.state?.trim(),
