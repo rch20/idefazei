@@ -22,6 +22,16 @@ type OpenStreetMapProps = {
 };
 
 const DEFAULT_CENTER = { latitude: -15.7797, longitude: -47.9297 };
+const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY?.trim() ?? "";
+const MAP_TILE_URL =
+  import.meta.env.VITE_MAP_TILE_URL?.trim() ||
+  (MAPTILER_KEY
+    ? `https://api.maptiler.com/maps/streets-v4/256/{z}/{x}/{y}.png?key=${encodeURIComponent(MAPTILER_KEY)}`
+    : "");
+const MAP_TILE_ATTRIBUTION =
+  import.meta.env.VITE_MAP_TILE_ATTRIBUTION?.trim() ||
+  '<a href="https://www.maptiler.com/copyright/" target="_blank" rel="noreferrer">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">&copy; OpenStreetMap contributors</a>';
+
 
 function createMarkerIcon(selected: boolean) {
   return L.divIcon({
@@ -48,6 +58,7 @@ export function OpenStreetMap({
   const onSelectRef = useRef(onSelect);
   const onLocationSelectRef = useRef(onLocationSelect);
   const [ready, setReady] = useState(false);
+  const [tileError, setTileError] = useState(!MAP_TILE_URL);
 
   useEffect(() => { onSelectRef.current = onSelect; }, [onSelect]);
   useEffect(() => { onLocationSelectRef.current = onLocationSelect; }, [onLocationSelect]);
@@ -60,10 +71,17 @@ export function OpenStreetMap({
       scrollWheelZoom: false,
       zoomControl: true,
     });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
-    }).addTo(map);
+    if (MAP_TILE_URL) {
+      L.tileLayer(MAP_TILE_URL, {
+        minZoom: 1,
+        maxZoom: 19,
+        attribution: MAP_TILE_ATTRIBUTION,
+        crossOrigin: true,
+      })
+        .on("tileerror", () => setTileError(true))
+        .on("load", () => setTileError(false))
+        .addTo(map);
+    }
     const markerLayer = L.layerGroup().addTo(map);
     markerLayerRef.current = markerLayer;
     map.on("click", (event) => {
@@ -116,6 +134,15 @@ export function OpenStreetMap({
       {onLocationSelect && (
         <p className="pointer-events-none absolute left-3 top-3 z-[500] rounded-md bg-background/90 px-2 py-1 text-xs text-foreground shadow-sm backdrop-blur">
           Clique no mapa para definir o ponto
+        </p>
+      )}
+      {tileError && (
+        <p
+          className="pointer-events-none absolute bottom-3 left-3 z-[500] max-w-[min(92%,28rem)] rounded-md border border-amber-200 bg-background/95 px-3 py-2 text-xs text-foreground shadow-sm backdrop-blur"
+          role="status"
+          aria-live="polite"
+        >
+          Mapa de ruas temporariamente indisponível. Os marcadores continuam disponíveis.
         </p>
       )}
     </div>
