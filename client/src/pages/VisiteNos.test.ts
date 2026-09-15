@@ -26,9 +26,13 @@ describe("Visite-nos público", () => {
 
   it("usa apenas células públicas retornadas pelo tenant e mantém a proximidade no navegador", () => {
     expect(pageSource).toContain("data?.publicCells");
-    expect(pageSource).toContain("!(latitude === 0 && longitude === 0)");
+    expect(pageSource).toContain("isSuspiciousCoordinatePair");
+    expect(pageSource).toContain("geocodeMapLocation");
+    expect(pageSource).toContain("resolvedLocations");
     expect(pageSource).toContain("navigator.geolocation.getCurrentPosition");
     expect(pageSource).toContain("distanceInKilometers(visitorLocation");
+    expect(pageSource).toContain("Localizando a região da Célula para calcular a proximidade");
+    expect(pageSource).toContain("buildMapLocationQuery");
     expect(pageSource).not.toContain("visitorLocation:");
   });
 

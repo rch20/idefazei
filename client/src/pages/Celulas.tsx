@@ -14,10 +14,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { trpc } from "@/lib/trpc";
 import { getWhatsAppLinkWithMessage } from "@/lib/whatsapp";
+import { buildMapLocationQuery } from "@/lib/maptiler";
 import { useLocation } from "wouter";
 import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, MapPin, MessageCircle, Phone, Plus, Send, Settings2, Users, UserRound } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { currentCivilDateKey } from "@/lib/civilDate";
 
@@ -191,6 +192,18 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
     if (!hasPublicCellLocation(cell)) return [];
     return [{ id: cell.id, title: cell.name, latitude: Number(cell.latitude), longitude: Number(cell.longitude) }];
   });
+  const mappedCellLocationQueries = useMemo(() => (cells ?? []).map((cell) => ({
+    id: cell.id,
+    query: buildMapLocationQuery({
+      address: cell.address,
+      addressNumber: cell.addressNumber,
+      addressComplement: cell.addressComplement,
+      zipCode: cell.zipCode,
+      city: cell.city,
+      state: cell.state,
+      neighborhood: cell.neighborhood,
+    }),
+  })), [cells]);
 
   async function lookupCep(value: string) {
     const cep = value.replace(/\D/g, "");
@@ -456,12 +469,13 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
               <MapPin className="w-4 h-4 text-gold" />
               <p className="text-sm font-semibold text-navy">Mapa de Células</p>
               <span className="text-xs text-muted-foreground ml-auto">
-                {(cells ?? []).filter((c) => c.latitude).length} células mapeadas
+                {mappedCells.length} células mapeadas
               </span>
             </div>
             <OpenStreetMap
               className="h-[450px]"
               markers={mappedCells}
+              locationQueries={mappedCellLocationQueries}
               selectedId={selectedCell?.id ?? null}
               initialZoom={5}
               onSelect={(id) => setSelectedCell((cells ?? []).find((cell) => cell.id === id) ?? null)}

@@ -5,10 +5,11 @@ import { distanceInKilometers, type Coordinates } from "@/lib/geo";
 import { trpc } from "@/lib/trpc";
 import { getWhatsAppLinkWithMessage } from "@/lib/whatsapp";
 import { ArrowLeft, CalendarDays, Clock3, LocateFixed, MapPin, MessageCircle, Navigation, ShieldCheck, UsersRound } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 import { TenantPublicFooter } from "@/components/TenantPublicFooter";
 import { getPublicHeroEyebrow } from "../../../shared/publicPage";
+import { buildMapLocationQuery, geocodeMapLocation, isSuspiciousCoordinatePair } from "@/lib/maptiler";
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type SectionContent = { title?: string; body?: string; services?: PublicService[] };
@@ -92,12 +93,63 @@ export default function VisiteNos() {
   const [visitorLocation, setVisitorLocation] = useState<Coordinates | null>(null);
   const [locationError, setLocationError] = useState("");
   const [locating, setLocating] = useState(false);
+  const [resolvedLocations, setResolvedLocations] = useState<Record<number, Coordinates>>({});
+  const [locationResolutionPending, setLocationResolutionPending] = useState(false);
+  const [locationResolutionError, setLocationResolutionError] = useState(false);
 
-  const cells = ((data?.publicCells ?? []) as PublicCell[]).filter((cell) => {
+  const rawCells = useMemo(() => ((data?.publicCells ?? []) as PublicCell[]).filter((cell) => {
     const latitude = Number(cell.latitude);
     const longitude = Number(cell.longitude);
-    return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180 && !(latitude === 0 && longitude === 0);
-  });
+    return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
+  }), [data?.publicCells]);
+
+  const locationQueries = useMemo(() => rawCells.map((cell) => ({
+    id: cell.id,
+    query: buildMapLocationQuery({
+      address: cell.address,
+      addressNumber: cell.addressNumber,
+      addressComplement: cell.addressComplement,
+      zipCode: cell.zipCode,
+      city: cell.city,
+      state: cell.state,
+      neighborhood: cell.neighborhood,
+    }),
+  })), [rawCells]);
+
+  useEffect(() => {
+    const targets = rawCells.filter((cell) => isSuspiciousCoordinatePair(Number(cell.latitude), Number(cell.longitude)) && locationQueries.find((item) => item.id === cell.id)?.query);
+    if (!targets.length) {
+      setLocationResolutionPending(false);
+      return;
+    }
+    let cancelled = false;
+    setLocationResolutionPending(true);
+    setLocationResolutionError(false);
+    Promise.all(targets.map(async (cell) => {
+      const query = locationQueries.find((item) => item.id === cell.id)?.query ?? "";
+      try {
+        const coordinates = await geocodeMapLocation(query);
+        return coordinates ? { id: cell.id, coordinates } : null;
+      } catch {
+        return null;
+      }
+    })).then((results) => {
+      if (cancelled) return;
+      const validResults = results.filter((result): result is { id: number; coordinates: Coordinates } => Boolean(result));
+      setLocationResolutionPending(false);
+      setLocationResolutionError(validResults.length < targets.length);
+      if (validResults.length) setResolvedLocations((current) => ({ ...current, ...Object.fromEntries(validResults.map((result) => [result.id, result.coordinates])) }));
+    });
+    return () => { cancelled = true; };
+  }, [locationQueries, rawCells]);
+
+  const cells = useMemo(() => rawCells.flatMap((cell) => {
+    const latitude = Number(cell.latitude);
+    const longitude = Number(cell.longitude);
+    const resolved = resolvedLocations[cell.id];
+    if (isSuspiciousCoordinatePair(latitude, longitude)) return resolved ? [{ ...cell, ...resolved }] : [];
+    return [{ ...cell, latitude, longitude }];
+  }), [rawCells, resolvedLocations]);
   const cellsWithDistance = useMemo(() => {
     return cells
       .map((cell) => ({
@@ -211,6 +263,8 @@ export default function VisiteNos() {
               <Button type="button" variant="outline" onClick={locateVisitor} disabled={locating || cells.length === 0} className="shrink-0"><LocateFixed className="mr-2 h-4 w-4" />{locating ? "Localizando…" : visitorLocation ? "Ordenadas por proximidade" : "Usar minha localização"}</Button>
             </div>
             {locationError && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">{locationError}</p>}
+            {locationResolutionPending && <p className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900" role="status">Localizando a região da Célula para calcular a proximidade…</p>}
+            {locationResolutionError && !locationResolutionPending && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">Não foi possível confirmar automaticamente a região de uma Célula. A rota pelo endereço continua disponível.</p>}
 
             {cellsWithDistance.length === 0 ? (
               <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white/70 p-8 text-center">
@@ -220,7 +274,7 @@ export default function VisiteNos() {
               <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,.55fr)]">
                 {showMapToggle && <div className="lg:col-span-2 lg:hidden"><Button type="button" variant="outline" className="w-full" onClick={() => setIsMapOpen((open) => !open)} aria-expanded={isMapOpen} aria-controls="tenant-public-cells-map"><MapPin className="mr-2 h-4 w-4" />{isMapOpen ? "Ocultar mapa" : "Ver mapa das Células"}</Button></div>}
                 <div id="tenant-public-cells-map" className={`${showMapToggle ? (isMapOpen ? "block" : "hidden") : "hidden"} lg:block lg:col-start-1 lg:row-start-1`}>
-                  <OpenStreetMap className="h-[min(60vh,480px)] min-h-[280px]" markers={markers} selectedId={selectedCell?.id ?? null} onSelect={setSelectedCellId} ariaLabel="Mapa público das células autorizadas" />
+                  <OpenStreetMap className="h-[min(60vh,480px)] min-h-[280px]" markers={markers} locationQueries={locationQueries} selectedId={selectedCell?.id ?? null} onSelect={setSelectedCellId} ariaLabel="Mapa público das células autorizadas" />
                 </div>
                 <div className="space-y-3 lg:col-start-2 lg:row-start-1">
                   {cellsWithDistance.map((cell) => {
