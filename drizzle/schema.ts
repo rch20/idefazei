@@ -2206,8 +2206,10 @@ export const financialAuditLogs = mysqlTable("financial_audit_logs", {
   id: int("id").autoincrement().primaryKey(),
   churchId: int("churchId").notNull(),
   transactionId: int("transactionId"),
+  reconciliationId: int("reconciliationId"),
+  attachmentId: int("attachmentId"),
   actorChurchUserId: int("actorChurchUserId").notNull(),
-  action: mysqlEnum("action", ["criado", "atualizado", "confirmado", "estornado", "periodo_fechado", "periodo_reaberto"])
+  action: mysqlEnum("action", ["criado", "atualizado", "confirmado", "estornado", "periodo_fechado", "periodo_reaberto", "reconciliacao_criada", "reconciliacao_atualizada", "comprovante_adicionado", "comprovante_desvinculado"])
     .notNull(),
   beforeData: json("beforeData"),
   afterData: json("afterData"),
