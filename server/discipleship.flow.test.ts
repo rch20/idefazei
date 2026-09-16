@@ -2230,7 +2230,7 @@ describe("Fluxo completo de discipulado", () => {
     it("remove somente o vínculo do comprovante dentro da conciliação e igreja autenticadas", async () => {
       const caller = appRouter.createCaller(createMemberContext());
       await expect(caller.treasury.removeReconciliationAttachment({ churchId: CHURCH_ID, reconciliationId: 4, attachmentId: 9 })).resolves.toEqual({ success: true });
-      expect(removeFinancialReconciliationAttachment).toHaveBeenCalledWith({ id: 9, reconciliationId: 4, churchId: CHURCH_ID });
+      expect(removeFinancialReconciliationAttachment).toHaveBeenCalledWith({ id: 9, reconciliationId: 4, churchId: CHURCH_ID, actorChurchUserId: 1 });
     });
 
     it("rejeita uma data inexistente no calendário", async () => {

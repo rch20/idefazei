@@ -6802,26 +6802,58 @@ export async function createFinancialReconciliationAttachment(data: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(financialReconciliationAttachments).values(data);
-  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
-  const rows = await db.select().from(financialReconciliationAttachments)
-    .where(and(eq(financialReconciliationAttachments.id, id), eq(financialReconciliationAttachments.churchId, data.churchId)))
-    .limit(1);
-  if (!rows[0]) throw new Error("Falha ao registrar comprovante bancário");
-  return rows[0];
+  return db.transaction(async (tx) => {
+    const result = await tx.insert(financialReconciliationAttachments).values(data);
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    const rows = await tx.select().from(financialReconciliationAttachments)
+      .where(and(eq(financialReconciliationAttachments.id, id), eq(financialReconciliationAttachments.churchId, data.churchId)))
+      .limit(1);
+    const attachment = rows[0];
+    if (!attachment) throw new Error("Falha ao registrar comprovante bancário");
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      reconciliationId: data.reconciliationId,
+      attachmentId: attachment.id,
+      actorChurchUserId: data.uploadedByChurchUserId,
+      action: "comprovante_adicionado",
+      afterData: attachment,
+    });
+    return attachment;
+  });
 }
 
-/** Remove apenas o vínculo no banco; o arquivo deixa de ser referenciado pela aplicação. */
-export async function removeFinancialReconciliationAttachment(data: { id: number; reconciliationId: number; churchId: number }) {
+/** Remove apenas o vínculo no banco; a política de exclusão física do storage é tratada separadamente. */
+export async function removeFinancialReconciliationAttachment(data: { id: number; reconciliationId: number; churchId: number; actorChurchUserId: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.delete(financialReconciliationAttachments)
-    .where(and(
-      eq(financialReconciliationAttachments.id, data.id),
-      eq(financialReconciliationAttachments.reconciliationId, data.reconciliationId),
-      eq(financialReconciliationAttachments.churchId, data.churchId),
-    ));
-  return Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) > 0;
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(financialReconciliationAttachments)
+      .where(and(
+        eq(financialReconciliationAttachments.id, data.id),
+        eq(financialReconciliationAttachments.reconciliationId, data.reconciliationId),
+        eq(financialReconciliationAttachments.churchId, data.churchId),
+      ))
+      .limit(1)
+      .for("update");
+    const attachment = rows[0];
+    if (!attachment) return false;
+    const result = await tx.delete(financialReconciliationAttachments)
+      .where(and(
+        eq(financialReconciliationAttachments.id, data.id),
+        eq(financialReconciliationAttachments.reconciliationId, data.reconciliationId),
+        eq(financialReconciliationAttachments.churchId, data.churchId),
+      ));
+    if (Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) return false;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      reconciliationId: data.reconciliationId,
+      attachmentId: attachment.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "comprovante_desvinculado",
+      beforeData: attachment,
+    });
+    return true;
+  });
 }
 
 export async function getBookBalanceAt(data: { churchId: number; accountId: number; endDate: string }) {
@@ -6839,20 +6871,46 @@ export async function saveFinancialReconciliation(data: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const existing = await getFinancialReconciliation(data);
-  if (existing) {
-    await db.update(financialReconciliations).set({
-      periodEnd: financialDate(data.periodEnd), bankClosingBalanceCents: data.bankClosingBalanceCents, bookBalanceCents: data.bookBalanceCents,
-      differenceCents: data.differenceCents, status: data.status, notes: data.notes ?? null, reconciledByChurchUserId: data.actorChurchUserId, reconciledAt: new Date(),
-    }).where(and(eq(financialReconciliations.id, existing.id), eq(financialReconciliations.churchId, data.churchId)));
-  } else {
-    await db.insert(financialReconciliations).values({
-      churchId: data.churchId, accountId: data.accountId, periodStart: financialDate(data.periodStart), periodEnd: financialDate(data.periodEnd),
-      bankClosingBalanceCents: data.bankClosingBalanceCents, bookBalanceCents: data.bookBalanceCents, differenceCents: data.differenceCents,
-      status: data.status, notes: data.notes ?? null, reconciledByChurchUserId: data.actorChurchUserId,
+  return db.transaction(async (tx) => {
+    const existingRows = await tx.select().from(financialReconciliations)
+      .where(and(
+        eq(financialReconciliations.churchId, data.churchId),
+        eq(financialReconciliations.accountId, data.accountId),
+        sql`DATE(${financialReconciliations.periodStart}) = DATE(${data.periodStart})`,
+      ))
+      .limit(1)
+      .for("update");
+    const existing = existingRows[0] ?? null;
+    let reconciliationId = existing?.id;
+    if (existing) {
+      await tx.update(financialReconciliations).set({
+        periodEnd: financialDate(data.periodEnd), bankClosingBalanceCents: data.bankClosingBalanceCents, bookBalanceCents: data.bookBalanceCents,
+        differenceCents: data.differenceCents, status: data.status, notes: data.notes ?? null, reconciledByChurchUserId: data.actorChurchUserId, reconciledAt: new Date(),
+      }).where(and(eq(financialReconciliations.id, existing.id), eq(financialReconciliations.churchId, data.churchId)));
+    } else {
+      const result = await tx.insert(financialReconciliations).values({
+        churchId: data.churchId, accountId: data.accountId, periodStart: financialDate(data.periodStart), periodEnd: financialDate(data.periodEnd),
+        bankClosingBalanceCents: data.bankClosingBalanceCents, bookBalanceCents: data.bookBalanceCents, differenceCents: data.differenceCents,
+        status: data.status, notes: data.notes ?? null, reconciledByChurchUserId: data.actorChurchUserId,
+      });
+      reconciliationId = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    }
+    if (!reconciliationId) throw new Error("Falha ao identificar a conciliação bancária");
+    const updatedRows = await tx.select().from(financialReconciliations)
+      .where(and(eq(financialReconciliations.id, reconciliationId), eq(financialReconciliations.churchId, data.churchId)))
+      .limit(1);
+    const reconciliation = updatedRows[0];
+    if (!reconciliation) throw new Error("Falha ao recuperar a conciliação bancária");
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      reconciliationId: reconciliation.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: existing ? "reconciliacao_atualizada" : "reconciliacao_criada",
+      beforeData: existing ?? undefined,
+      afterData: reconciliation,
     });
-  }
-  return getFinancialReconciliation(data);
+    return reconciliation;
+  });
 }
 
 export async function closeFinancialPeriod(data: { churchId: number; periodStart: string; periodEnd: string; actorChurchUserId: number }) {
