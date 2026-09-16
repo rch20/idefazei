@@ -6780,6 +6780,9 @@ const treasuryRouter = router({
       const sheet = await getTreasuryCountSheetById(input.countSheetId, input.churchId);
       if (!sheet) throw new TRPCError({ code: "NOT_FOUND", message: "Folha de contagem não encontrada nesta igreja." });
       if (sheet.status !== "fechada") throw new TRPCError({ code: "BAD_REQUEST", message: "Feche a folha de contagem antes de registrar o depósito." });
+      if (await isFinancialPeriodClosed(input.churchId, input.depositDate)) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Reabra o período financeiro antes de registrar este depósito." });
+      }
       if (input.amountCents > sheet.totalCents) throw new TRPCError({ code: "BAD_REQUEST", message: "O depósito não pode ser maior que o total contado." });
       const account = await getFinancialAccountById(input.accountId, input.churchId);
       if (!account || account.type !== "banco") throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma conta bancária desta igreja." });
