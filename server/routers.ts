@@ -649,6 +649,41 @@ async function requireTreasuryAccess(userId: number, churchId: number) {
   };
 }
 
+type TreasuryReportSignatureRole = "contador1" | "contador2" | "tesoureiro" | "pastor";
+
+async function requireTreasuryReportSignaturePermission(
+  userId: number,
+  churchId: number,
+  reportId: number,
+  requestedRole: TreasuryReportSignatureRole,
+) {
+  const access = await requireTreasuryAccess(userId, churchId);
+  const report = await getTreasuryReportById(reportId, churchId);
+  if (!report) throw new TRPCError({ code: "NOT_FOUND", message: "Relatório financeiro não encontrado nesta igreja." });
+  const countSheet = await getTreasuryCountSheetById(report.countSheetId, churchId);
+  if (!countSheet) throw new TRPCError({ code: "NOT_FOUND", message: "Folha de contagem do relatório não encontrada nesta igreja." });
+
+  const actorPersonId = access.actor.personId ?? null;
+  const isCounterOne = actorPersonId !== null && actorPersonId === countSheet.counterOnePersonId;
+  const isCounterTwo = actorPersonId !== null && actorPersonId === countSheet.counterTwoPersonId;
+  const isTreasurer = access.roles.includes("tesoureiro");
+  const isPastor = access.roles.some((role) => PASTOR_ROLES.has(role));
+  const allowed =
+    (requestedRole === "contador1" && isCounterOne) ||
+    (requestedRole === "contador2" && isCounterTwo) ||
+    (requestedRole === "tesoureiro" && isTreasurer) ||
+    (requestedRole === "pastor" && isPastor);
+
+  if (!allowed) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Você não pode assinar este relatório com o papel solicitado.",
+    });
+  }
+
+  return { access, report, countSheet, role: requestedRole };
+}
+
 async function requirePastoralAction(userId: number, churchId: number) {
   const actor = await requireChurchMember(userId, churchId);
   const roles = await getEffectiveChurchRoles(userId, churchId, actor);
@@ -6781,11 +6816,16 @@ const treasuryRouter = router({
   signReport: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive(), role: z.enum(["contador1", "contador2", "tesoureiro", "pastor"]) }))
     .mutation(async ({ input, ctx }) => {
-      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
-      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente a liderança financeira autorizada pode registrar a assinatura." });
-      const report = await signTreasuryReport(input);
-      if (!report) throw new TRPCError({ code: "NOT_FOUND", message: "Relatório financeiro não encontrado nesta igreja." });
-      return report;
+      const permission = await requireTreasuryReportSignaturePermission(ctx.user.id, input.churchId, input.id, input.role);
+      const result = await signTreasuryReport({
+        ...input,
+        churchId: permission.report.churchId,
+        signedByChurchUserId: permission.access.actor.id,
+        signedByPersonId: permission.access.actor.personId ?? null,
+      });
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Relatório financeiro não encontrado." });
+      if ("conflict" in result) throw new TRPCError({ code: "CONFLICT", message: "Este papel já assinou este relatório." });
+      return result.report;
     }),
 
   serviceTransactions: protectedProcedure
