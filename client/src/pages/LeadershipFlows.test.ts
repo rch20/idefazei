@@ -36,6 +36,9 @@ describe("Fluxos de liderança — contratos da interface", () => {
     expect(source).toContain("section=resumo");
     expect(source).toContain("Abrir prontuário de");
     expect(source).toContain("Conversar com");
+    expect(source).toContain("E-mail não cadastrado");
+    expect(source).toContain("mailto:");
+    expect(source).toContain("Enviar e-mail para");
     expect(source).toContain("Transferências entre Células continuam sob responsabilidade pastoral");
     expect(source).toContain("canCreateCell &&");
   });

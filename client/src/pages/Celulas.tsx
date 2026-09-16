@@ -16,7 +16,7 @@ import { trpc } from "@/lib/trpc";
 import { getWhatsAppLinkWithMessage } from "@/lib/whatsapp";
 import { buildMapLocationQuery } from "@/lib/maptiler";
 import { useLocation } from "wouter";
-import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, MapPin, MessageCircle, Phone, Plus, Send, Settings2, Users, UserRound } from "lucide-react";
+import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, Mail, MapPin, MessageCircle, Phone, Plus, Send, Settings2, Users, UserRound } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -644,6 +644,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                       item.person.whatsapp || item.person.phone,
                       `Olá, ${item.person.fullName}! Aqui é da equipe da igreja. Gostaria de conversar com você sobre a Célula.`,
                     );
+                    const emailHref = item.person.email ? `mailto:${encodeURIComponent(item.person.email)}` : null;
                     const openCare = () => { setSelectedMember(item); setMemberReferralReason(""); };
                     return (
                       <div key={item.membership.id} className="flex items-center gap-2 px-3 py-2.5 transition-colors hover:bg-cream/60">
@@ -654,10 +655,17 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                           aria-label={`Abrir prontuário de ${item.person.fullName}`}
                         >
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cream-dark text-navy"><UserRound className="h-4 w-4" /></div>
-                          <div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-navy">{item.person.fullName}</p><p className="truncate text-xs text-muted-foreground">{item.person.phone || item.person.email || "Sem contato informado"}</p></div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium text-navy">{item.person.fullName}</p>
+                            <div className="mt-0.5 flex min-w-0 flex-col gap-0.5 text-[11px] text-muted-foreground">
+                              {item.person.email ? <span className="truncate" title={item.person.email}>{item.person.email}</span> : <span>E-mail não cadastrado</span>}
+                              {item.person.phone && <span className="truncate">{item.person.phone}</span>}
+                            </div>
+                          </div>
                         </button>
                         <div className="flex shrink-0 items-center gap-1.5">
                           {whatsappHref && <a href={whatsappHref} target="_blank" rel="noreferrer" aria-label={`Conversar com ${item.person.fullName} pelo WhatsApp`} title="Enviar mensagem pelo WhatsApp" className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 transition hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"><MessageCircle className="h-4 w-4" /></a>}
+                          {emailHref && <a href={emailHref} aria-label={`Enviar e-mail para ${item.person.fullName}`} title={`Enviar e-mail para ${item.person.fullName}`} className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-50 text-indigo-700 transition hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"><Mail className="h-4 w-4" /></a>}
                           <button type="button" onClick={openCare} className="rounded-lg px-2 py-1.5 text-right text-[11px] text-muted-foreground transition hover:bg-background hover:text-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70" aria-label={`Abrir cuidado de ${item.person.fullName}`}>
                             <span className="block font-medium">Cuidar</span>
                             <span className="block">desde {new Date(item.membership.joinedAt).toLocaleDateString("pt-BR")}</span>
