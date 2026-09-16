@@ -64,6 +64,9 @@ import {
   treasuryCountSheets,
   treasuryDeposits,
   treasuryReports,
+  treasuryReportSignatures,
+  TreasuryReport,
+  TreasuryReportSignature,
   mediaAssets,
   InsertMediaAsset,
   InsertUser,
@@ -7216,14 +7219,49 @@ export async function issueTreasuryReport(data: { churchId: number; serviceId: n
   return id ? getTreasuryReportById(id, data.churchId) : null;
 }
 
-export async function signTreasuryReport(data: { id: number; churchId: number; role: "contador1" | "contador2" | "tesoureiro" | "pastor" }) {
+export type TreasuryReportSignatureResult =
+  | { report: TreasuryReport; signature: TreasuryReportSignature }
+  | { conflict: true }
+  | null;
+
+export async function signTreasuryReport(data: {
+  id: number;
+  churchId: number;
+  role: "contador1" | "contador2" | "tesoureiro" | "pastor";
+  signedByChurchUserId: number;
+  signedByPersonId: number | null;
+}): Promise<TreasuryReportSignatureResult> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const report = await getTreasuryReportById(data.id, data.churchId);
-  if (!report) return null;
   const field = data.role === "contador1" ? "signedByCounterOneAt" : data.role === "contador2" ? "signedByCounterTwoAt" : data.role === "tesoureiro" ? "signedByTreasurerAt" : "signedByPastorAt";
-  await db.update(treasuryReports).set({ [field]: new Date(), status: "assinado" }).where(and(eq(treasuryReports.id, data.id), eq(treasuryReports.churchId, data.churchId)));
-  return getTreasuryReportById(data.id, data.churchId);
+
+  try {
+    return await db.transaction(async (tx) => {
+      const reportRows = await tx.select().from(treasuryReports).where(and(eq(treasuryReports.id, data.id), eq(treasuryReports.churchId, data.churchId))).limit(1);
+      const report = reportRows[0];
+      if (!report) return null;
+      const existingSignature = await tx.select().from(treasuryReportSignatures).where(and(eq(treasuryReportSignatures.reportId, data.id), eq(treasuryReportSignatures.churchId, data.churchId), eq(treasuryReportSignatures.role, data.role))).limit(1);
+      if (existingSignature[0]) return { conflict: true };
+
+      const signedAt = new Date();
+      await tx.insert(treasuryReportSignatures).values({
+        churchId: data.churchId,
+        reportId: data.id,
+        role: data.role,
+        signedByChurchUserId: data.signedByChurchUserId,
+        signedByPersonId: data.signedByPersonId,
+        signedAt,
+      });
+      await tx.update(treasuryReports).set({ [field]: signedAt, status: "assinado" }).where(and(eq(treasuryReports.id, data.id), eq(treasuryReports.churchId, data.churchId)));
+      const updatedRows = await tx.select().from(treasuryReports).where(and(eq(treasuryReports.id, data.id), eq(treasuryReports.churchId, data.churchId))).limit(1);
+      const signatureRows = await tx.select().from(treasuryReportSignatures).where(and(eq(treasuryReportSignatures.reportId, data.id), eq(treasuryReportSignatures.churchId, data.churchId), eq(treasuryReportSignatures.role, data.role))).limit(1);
+      if (!updatedRows[0] || !signatureRows[0]) return null;
+      return { report: updatedRows[0], signature: signatureRows[0] };
+    });
+  } catch (error) {
+    if (isDuplicateTreasuryRecord(error)) return { conflict: true };
+    throw error;
+  }
 }
 
 export async function getFinancialTransactionsByService(churchId: number, serviceId: number) {

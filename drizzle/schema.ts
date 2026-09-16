@@ -2048,6 +2048,27 @@ export const treasuryReports = mysqlTable(
 
 export type TreasuryReport = typeof treasuryReports.$inferSelect;
 
+/** Assinaturas auditáveis vinculadas ao relatório, papel, igreja e usuário autenticado. */
+export const treasuryReportSignatures = mysqlTable(
+  "treasury_report_signatures",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    reportId: int("reportId").notNull(),
+    role: mysqlEnum("role", ["contador1", "contador2", "tesoureiro", "pastor"]).notNull(),
+    signedByChurchUserId: int("signedByChurchUserId").notNull(),
+    signedByPersonId: int("signedByPersonId"),
+    signedAt: timestamp("signedAt").defaultNow().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("treasury_report_signatures_church_report_role_unique").on(table.churchId, table.reportId, table.role),
+    index("treasury_report_signatures_church_report_idx").on(table.churchId, table.reportId),
+  ]
+);
+
+export type TreasuryReportSignature = typeof treasuryReportSignatures.$inferSelect;
+
 /** Contas operacionais da igreja, como Caixa e Banco principal. */
 export const financialAccounts = mysqlTable(
   "financial_accounts",
