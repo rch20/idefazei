@@ -7128,14 +7128,53 @@ export async function saveTreasuryCountSheet(data: {
 export async function closeTreasuryCountSheet(data: { id: number; churchId: number; actorChurchUserId: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const existing = await getTreasuryCountSheetById(data.id, data.churchId);
-  if (!existing) return null;
-  if (existing.status === "fechada") return existing;
-  const service = await getTreasuryServiceById(existing.serviceId, data.churchId);
-  if (!service || service.status === "cancelado") return null;
-  await db.update(treasuryCountSheets).set({ status: "fechada", confirmedAt: new Date(), confirmedByChurchUserId: data.actorChurchUserId }).where(and(eq(treasuryCountSheets.id, data.id), eq(treasuryCountSheets.churchId, data.churchId), ne(treasuryCountSheets.status, "fechada")));
-  await db.update(treasuryServices).set({ status: "fechado" }).where(and(eq(treasuryServices.id, service.id), eq(treasuryServices.churchId, data.churchId), eq(treasuryServices.status, "aberto")));
-  return getTreasuryCountSheetById(data.id, data.churchId);
+  return db.transaction(async (tx) => {
+    const sheetRows = await tx.select().from(treasuryCountSheets)
+      .where(and(eq(treasuryCountSheets.id, data.id), eq(treasuryCountSheets.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const existing = sheetRows[0];
+    if (!existing) return null;
+    if (existing.status === "fechada") return existing;
+
+    const serviceRows = await tx.select().from(treasuryServices)
+      .where(and(eq(treasuryServices.id, existing.serviceId), eq(treasuryServices.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const service = serviceRows[0];
+    if (!service || service.status === "cancelado") return null;
+
+    const sheetUpdate = await tx.update(treasuryCountSheets).set({
+      status: "fechada",
+      confirmedAt: new Date(),
+      confirmedByChurchUserId: data.actorChurchUserId,
+    }).where(and(
+      eq(treasuryCountSheets.id, data.id),
+      eq(treasuryCountSheets.churchId, data.churchId),
+      ne(treasuryCountSheets.status, "fechada"),
+    ));
+    if (Number((sheetUpdate[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) {
+      const currentRows = await tx.select().from(treasuryCountSheets)
+        .where(and(eq(treasuryCountSheets.id, data.id), eq(treasuryCountSheets.churchId, data.churchId)))
+        .limit(1);
+      return currentRows[0]?.status === "fechada" ? currentRows[0] : null;
+    }
+
+    const serviceUpdate = await tx.update(treasuryServices).set({ status: "fechado" }).where(and(
+      eq(treasuryServices.id, service.id),
+      eq(treasuryServices.churchId, data.churchId),
+      eq(treasuryServices.status, "aberto"),
+    ));
+    const serviceChanged = Number((serviceUpdate[0] as { affectedRows?: number })?.affectedRows ?? 0) === 1;
+    if (!serviceChanged && service.status !== "fechado") {
+      throw new Error("Falha ao fechar o culto vinculado à folha de contagem");
+    }
+
+    const updatedRows = await tx.select().from(treasuryCountSheets)
+      .where(and(eq(treasuryCountSheets.id, data.id), eq(treasuryCountSheets.churchId, data.churchId)))
+      .limit(1);
+    return updatedRows[0] ?? null;
+  });
 }
 
 export async function getTreasuryDepositsByChurch(churchId: number) {
