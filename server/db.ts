@@ -7291,29 +7291,64 @@ export async function getTreasuryReportById(id: number, churchId: number) {
 export async function issueTreasuryReport(data: { churchId: number; serviceId: number; countSheetId: number; actorChurchUserId: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const [service, countSheet, deposit, existingReports, transactions] = await Promise.all([
-    getTreasuryServiceById(data.serviceId, data.churchId),
-    getTreasuryCountSheetById(data.countSheetId, data.churchId),
-    getTreasuryDepositByCountSheet(data.countSheetId, data.churchId),
-    getTreasuryReportsByChurch(data.churchId),
-    db.select().from(financialTransactions).where(and(eq(financialTransactions.churchId, data.churchId), sql`${financialTransactions.status} <> 'rascunho'`, or(eq(financialTransactions.serviceId, data.serviceId), eq(financialTransactions.countSheetId, data.countSheetId)))).orderBy(financialTransactions.transactionDate, financialTransactions.id),
-  ]);
-  if (!service || !countSheet || countSheet.serviceId !== data.serviceId || countSheet.status !== "fechada") return null;
-  const peopleIds = [countSheet.counterOnePersonId, countSheet.counterTwoPersonId];
-  const namedPeople = await db.select({ id: people.id, fullName: people.fullName }).from(people).where(and(eq(people.churchId, data.churchId), or(eq(people.id, peopleIds[0]), eq(people.id, peopleIds[1]))));
-  const nameById = new Map(namedPeople.map((person) => [person.id, person.fullName]));
-  const snapshot: TreasuryReportSnapshot = {
-    service: service as unknown as Record<string, unknown>,
-    countSheet: countSheet as unknown as Record<string, unknown>,
-    counters: { one: nameById.get(peopleIds[0]) ?? "Não informado", two: nameById.get(peopleIds[1]) ?? "Não informado" },
-    deposit: deposit as unknown as Record<string, unknown> | null,
-    transactions: transactions as unknown as Array<Record<string, unknown>>,
-    issuedAt: new Date().toISOString(),
-  };
-  const version = existingReports.filter((report) => report.serviceId === data.serviceId).length + 1;
-  const result = await db.insert(treasuryReports).values({ churchId: data.churchId, serviceId: data.serviceId, countSheetId: data.countSheetId, reportType: "culto_diario", version, status: "emitido", snapshot, issuedByChurchUserId: data.actorChurchUserId });
-  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
-  return id ? getTreasuryReportById(id, data.churchId) : null;
+
+  return db.transaction(async (tx) => {
+    // Serializa emissões do mesmo culto sem bloquear outros tenants ou cultos.
+    const serviceRows = await tx
+      .select()
+      .from(treasuryServices)
+      .where(and(eq(treasuryServices.id, data.serviceId), eq(treasuryServices.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const service = serviceRows[0];
+    if (!service) return null;
+
+    const [countSheetRows, depositRows, transactionRows, latestVersionRows] = await Promise.all([
+      tx
+        .select()
+        .from(treasuryCountSheets)
+        .where(and(eq(treasuryCountSheets.id, data.countSheetId), eq(treasuryCountSheets.churchId, data.churchId)))
+        .limit(1),
+      tx
+        .select()
+        .from(treasuryDeposits)
+        .where(and(eq(treasuryDeposits.countSheetId, data.countSheetId), eq(treasuryDeposits.churchId, data.churchId)))
+        .limit(1),
+      tx
+        .select()
+        .from(financialTransactions)
+        .where(and(eq(financialTransactions.churchId, data.churchId), sql`${financialTransactions.status} <> 'rascunho'`, or(eq(financialTransactions.serviceId, data.serviceId), eq(financialTransactions.countSheetId, data.countSheetId))))
+        .orderBy(financialTransactions.transactionDate, financialTransactions.id),
+      tx
+        .select({ maxVersion: sql<number | null>`max(${treasuryReports.version})` })
+        .from(treasuryReports)
+        .where(and(eq(treasuryReports.churchId, data.churchId), eq(treasuryReports.serviceId, data.serviceId))),
+    ]);
+    const countSheet = countSheetRows[0];
+    const deposit = depositRows[0] ?? null;
+    if (!countSheet || countSheet.serviceId !== data.serviceId || countSheet.status !== "fechada") return null;
+
+    const peopleIds = [countSheet.counterOnePersonId, countSheet.counterTwoPersonId];
+    const namedPeople = await tx
+      .select({ id: people.id, fullName: people.fullName })
+      .from(people)
+      .where(and(eq(people.churchId, data.churchId), or(eq(people.id, peopleIds[0]), eq(people.id, peopleIds[1]))));
+    const nameById = new Map(namedPeople.map((person) => [person.id, person.fullName]));
+    const snapshot: TreasuryReportSnapshot = {
+      service: service as unknown as Record<string, unknown>,
+      countSheet: countSheet as unknown as Record<string, unknown>,
+      counters: { one: nameById.get(peopleIds[0]) ?? "Não informado", two: nameById.get(peopleIds[1]) ?? "Não informado" },
+      deposit: deposit as unknown as Record<string, unknown> | null,
+      transactions: transactionRows as unknown as Array<Record<string, unknown>>,
+      issuedAt: new Date().toISOString(),
+    };
+    const version = Number(latestVersionRows[0]?.maxVersion ?? 0) + 1;
+    const result = await tx.insert(treasuryReports).values({ churchId: data.churchId, serviceId: data.serviceId, countSheetId: data.countSheetId, reportType: "culto_diario", version, status: "emitido", snapshot, issuedByChurchUserId: data.actorChurchUserId });
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    if (!id) return null;
+    const reportRows = await tx.select().from(treasuryReports).where(and(eq(treasuryReports.id, id), eq(treasuryReports.churchId, data.churchId))).limit(1);
+    return reportRows[0] ?? null;
+  });
 }
 
 export type TreasuryReportSignatureResult =
