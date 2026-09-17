@@ -52,6 +52,17 @@ describe("Tesouraria — regressões de interface e lógica", () => {
     expect(pageSource).toContain("Resultado");
   });
 
+  it("leva Entradas e Saídas ao Livro-caixa sem criar uma consulta financeira nova", () => {
+    expect(pageSource).toContain('onClick={() => focusBookFilter("entrada")}');
+    expect(pageSource).toContain('onClick={() => focusBookFilter("saida")}');
+    expect(pageSource).toContain("const filteredTransactions");
+    expect(pageSource).toContain("scrollIntoView({ behavior: \"smooth\", block: \"start\" })");
+    expect(pageSource).toContain("Filtro: {bookFilterLabel}");
+    expect(pageSource).toContain("Limpar filtro");
+    expect(pageSource).toContain('role={interactive ? "button" : undefined}');
+    expect(pageSource).toContain("Ver no Livro-caixa");
+  });
+
   it("projeta somente id e nome do contribuinte no recibo", () => {
     expect(dbSource).toContain("db.select({ id: people.id, fullName: people.fullName })");
     expect(dbSource).not.toContain("transaction.contributorPersonId ? getPersonById(transaction.contributorPersonId, churchId)");
