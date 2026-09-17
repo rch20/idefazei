@@ -60,7 +60,7 @@ function printReport(report: { id: number; version: number; snapshot: unknown })
   if (!opened) toast.error("O navegador bloqueou a janela do relatório. Libere pop-ups e tente novamente.");
 }
 
-export function TreasuryServiceSection({ churchId, people, accounts }: { churchId: number; people: PersonOption[]; accounts: AccountOption[] }) {
+export function TreasuryServiceSection({ churchId, canManageStructure, people, accounts }: { churchId: number; canManageStructure: boolean; people: PersonOption[]; accounts: AccountOption[] }) {
   const utils = trpc.useUtils();
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [serviceOpen, setServiceOpen] = useState(false);
@@ -84,6 +84,13 @@ export function TreasuryServiceSection({ churchId, people, accounts }: { churchI
   const sheetsQuery = trpc.treasury.countSheets.useQuery({ churchId }, { enabled: Boolean(churchId) });
   const depositsQuery = trpc.treasury.deposits.useQuery({ churchId }, { enabled: Boolean(churchId) });
   const reportsQuery = trpc.treasury.reports.useQuery({ churchId }, { enabled: Boolean(churchId) });
+  const materializeOccurrences = trpc.treasury.materializeOccurrences.useMutation({
+    onSuccess: async (result) => {
+      await servicesQuery.refetch();
+      toast.success(result.created > 0 ? `${result.created} ocorrência(s) recorrente(s) atualizada(s).` : "Nenhuma nova ocorrência recorrente foi necessária.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
   const createRecurringSchedule = trpc.treasury.createRecurringSchedule.useMutation({ onSuccess: async () => { await Promise.all([schedulesQuery.refetch(), servicesQuery.refetch()]); setScheduleOpen(false); setScheduleForm({ name: "", weekday: "0", startTime: "", location: "", notes: "" }); setScheduleError(null); toast.success("Programação fixa salva. As ocorrências previstas foram atualizadas."); }, onError: (error) => { setScheduleError(error.message); toast.error(error.message); } });
   const setRecurringScheduleActive = trpc.treasury.setRecurringScheduleActive.useMutation({ onSuccess: async () => { await Promise.all([schedulesQuery.refetch(), servicesQuery.refetch()]); toast.success("Programação fixa atualizada."); }, onError: (error) => toast.error(error.message) });
   const updateRecurringSchedule = trpc.treasury.updateRecurringSchedule.useMutation({ onSuccess: async () => { await Promise.all([schedulesQuery.refetch(), servicesQuery.refetch()]); setScheduleOpen(false); setEditingScheduleId(null); setScheduleError(null); toast.success("Programação fixa atualizada. As novas ocorrências seguirão esta configuração; as já criadas permanecem iguais."); }, onError: (error) => { setScheduleError(error.message); toast.error(error.message); } });
@@ -129,7 +136,7 @@ export function TreasuryServiceSection({ churchId, people, accounts }: { churchI
 
   return <>
     <Card className="border-gold/30 bg-gold/5 shadow-sm">
-      <CardHeader className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="flex items-center gap-2 text-xl text-navy"><CalendarDays className="h-5 w-5 text-gold" /> Programação fixa</CardTitle><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Configure uma vez os cultos semanais. O Ide Fazei cria a ocorrência do dia automaticamente, sem duplicar cultos.</p></div><Button className="shrink-0 bg-navy hover:bg-navy/90" onClick={() => setScheduleOpen(true)}><Plus className="mr-2 h-4 w-4" /> Nova programação</Button></CardHeader>
+      <CardHeader className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-start sm:justify-between"><div><CardTitle className="flex items-center gap-2 text-xl text-navy"><CalendarDays className="h-5 w-5 text-gold" /> Programação fixa</CardTitle><p className="mt-1 max-w-2xl text-sm text-muted-foreground">Configure uma vez os cultos semanais. A criação das ocorrências é uma ação explícita e não acontece durante a consulta.</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" className="shrink-0" onClick={() => materializeOccurrences.mutate({ churchId })} disabled={!canManageStructure || materializeOccurrences.isPending}>{materializeOccurrences.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarDays className="mr-2 h-4 w-4" />} Atualizar ocorrências</Button><Button className="shrink-0 bg-navy hover:bg-navy/90" onClick={() => setScheduleOpen(true)}><Plus className="mr-2 h-4 w-4" /> Nova programação</Button></div></CardHeader>
       <CardContent className="space-y-3">
         {schedulesQuery.isLoading ? <div className="h-16 animate-pulse rounded-xl bg-white/70" /> : recurringSchedules.length === 0 ? <div className="rounded-xl border border-dashed border-gold/40 bg-white/50 p-4 text-sm text-muted-foreground">Nenhum culto fixo configurado. Cadastre, por exemplo, Domingo às 18h.</div> : recurringSchedules.map((schedule) => <div key={schedule.id} className="flex min-w-0 flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><p className="font-semibold text-navy">{schedule.name}</p><Badge variant="outline" className={schedule.active ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-100 text-slate-600"}>{schedule.active ? "Ativa" : "Pausada"}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{WEEKDAYS[schedule.weekday]} às {schedule.startTime}{schedule.location ? ` · ${schedule.location}` : ""}</p></div><div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => openSchedule(schedule)}><Edit3 className="mr-1 h-4 w-4" /> Editar</Button><Button size="sm" variant="outline" disabled={setRecurringScheduleActive.isPending} onClick={() => setRecurringScheduleActive.mutate({ churchId, id: schedule.id, active: !schedule.active })}>{schedule.active ? <><PauseCircle className="mr-1 h-4 w-4" /> Pausar</> : <><PlayCircle className="mr-1 h-4 w-4" /> Ativar</>}</Button></div></div>)}
       </CardContent>

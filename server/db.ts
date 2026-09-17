@@ -6473,6 +6473,8 @@ function financialDate(value: string) {
 export async function ensureTreasuryDefaults(churchId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  let accountsCreated = 0;
+  let categoriesCreated = 0;
 
   const [existingAccounts, existingCategories] = await Promise.all([
     db.select({ name: financialAccounts.name }).from(financialAccounts).where(eq(financialAccounts.churchId, churchId)),
@@ -6485,14 +6487,16 @@ export async function ensureTreasuryDefaults(churchId: number) {
 
   if (missingAccounts.length > 0) {
     await db.insert(financialAccounts).values(missingAccounts.map((account) => ({ churchId, ...account, openingBalanceCents: 0, active: true })));
+    accountsCreated = missingAccounts.length;
   }
   if (missingCategories.length > 0) {
     await db.insert(financialCategories).values(missingCategories.map((category) => ({ churchId, ...category, isSystem: true, active: true })));
+    categoriesCreated = missingCategories.length;
   }
+  return { accountsCreated, categoriesCreated };
 }
 
 export async function getFinancialAccountsByChurch(churchId: number) {
-  await ensureTreasuryDefaults(churchId);
   const db = await getDb();
   if (!db) return [];
   return db.select().from(financialAccounts).where(and(eq(financialAccounts.churchId, churchId), eq(financialAccounts.active, true))).orderBy(financialAccounts.name);
@@ -6533,7 +6537,6 @@ export async function createFinancialAccount(data: { churchId: number; name: str
 }
 
 export async function getFinancialCategoriesByChurch(churchId: number, type?: "entrada" | "saida") {
-  await ensureTreasuryDefaults(churchId);
   const db = await getDb();
   if (!db) return [];
   const filters = [eq(financialCategories.churchId, churchId), eq(financialCategories.active, true)];
@@ -6577,7 +6580,6 @@ export async function createFinancialCategory(data: { churchId: number; type: "e
 }
 
 export async function getFinancialCategoriesForManagement(churchId: number) {
-  await ensureTreasuryDefaults(churchId);
   const db = await getDb();
   if (!db) return [];
   return db.select().from(financialCategories).where(eq(financialCategories.churchId, churchId)).orderBy(financialCategories.type, financialCategories.name);
@@ -7104,12 +7106,9 @@ export function getTreasuryCountTotal(amounts: TreasuryCountAmounts) {
   return amounts.cashCents + amounts.pixCents + amounts.transferCents + amounts.cardCents + amounts.checkCents + amounts.otherCents;
 }
 
-export async function getTreasuryServices(churchId: number, includeCancelled = false, materializeActorChurchUserId?: number) {
+export async function getTreasuryServices(churchId: number, includeCancelled = false) {
   const db = await getDb();
   if (!db) return [];
-  if (materializeActorChurchUserId) {
-    await materializeTreasuryRecurringOccurrences({ churchId, actorChurchUserId: materializeActorChurchUserId });
-  }
   return db.select().from(treasuryServices)
     .where(includeCancelled ? eq(treasuryServices.churchId, churchId) : and(eq(treasuryServices.churchId, churchId), ne(treasuryServices.status, "cancelado")))
     .orderBy(desc(treasuryServices.serviceDate), desc(treasuryServices.id));
