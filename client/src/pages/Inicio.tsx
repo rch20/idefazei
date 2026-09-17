@@ -2,7 +2,7 @@ import { trpc } from "@/lib/trpc";
 import { useChurch } from "@/components/ChurchLayout";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { formatDatePtBr, formatEventTimeRange, getCivilDateParts, getTodayCivilDateInput } from "@/lib/treasury";
-import { ArrowRight, Bell, BookOpen, CalendarDays, CheckCircle2, ChevronRight, Clock3, Heart, MapPin, UsersRound } from "lucide-react";
+import { ArrowRight, Bell, BookOpen, CalendarDays, CheckCircle2, ChevronRight, Clock3, GraduationCap, Heart, MapPin, UsersRound, WalletCards } from "lucide-react";
 import { Link } from "wouter";
 
 type NextStep = {
@@ -22,6 +22,7 @@ type HomeAccess = {
   isVisitador?: boolean;
   canManageCells?: boolean;
   canManageMinistry?: boolean;
+  canAccessMinistry?: boolean;
   canAccessTreasury?: boolean;
 };
 
@@ -115,6 +116,40 @@ function getExcerpt(content: string, limit = 180) {
   return normalized.length > limit ? `${normalized.slice(0, limit).trimEnd()}…` : normalized;
 }
 
+type TodayAction = {
+  label: string;
+  description: string;
+  href: string;
+  icon: typeof UsersRound;
+  tone: "gold" | "navy" | "rose";
+};
+
+export function getTodayActions(accessSummary: HomeAccess | null): TodayAction[] {
+  const actions: TodayAction[] = [];
+  const roles = new Set(accessSummary?.roles ?? []);
+  const isExecutive = Boolean(accessSummary?.isExecutive || roles.has("pastor_presidente") || roles.has("pastor_local") || roles.has("secretario"));
+
+  if (accessSummary?.isConsolidator || accessSummary?.isVisitador || roles.has("consolidador") || roles.has("visitador")) {
+    actions.push({ label: "Continuar consolidação", description: "Acompanhe as pessoas sob sua responsabilidade.", href: "/app/consolidacao", icon: Heart, tone: "rose" });
+  }
+  if (accessSummary?.canManageCells || roles.has("lider") || roles.has("supervisor")) {
+    actions.push({ label: "Acompanhar células", description: "Veja equipes, encontros e próximos cuidados.", href: "/app/celulas", icon: UsersRound, tone: "navy" });
+  }
+  if (accessSummary?.canManageMinistry || accessSummary?.canAccessMinistry) {
+    actions.push({ label: "Ver meu ministério", description: "Acesse equipe, escalas e programação.", href: "/app/ministerios", icon: GraduationCap, tone: "gold" });
+  }
+  if (accessSummary?.canAccessTreasury) {
+    actions.push({ label: "Conferir tesouraria", description: "Continue os registros e acompanhamentos financeiros.", href: "/app/tesouraria", icon: WalletCards, tone: "gold" });
+  }
+  if (isExecutive) {
+    actions.push({ label: "Ver visão geral", description: "Acompanhe os indicadores e movimentos da igreja.", href: "/app/dashboard", icon: CheckCircle2, tone: "navy" });
+  }
+  if (actions.length === 0) {
+    actions.push({ label: "Abrir minha área", description: "Acompanhe perfil, jornada, eventos e oração.", href: "/app/membro", icon: UsersRound, tone: "navy" });
+  }
+  return actions.slice(0, 4);
+}
+
 type HomeEvent = {
   name: string;
   startDate: Date | string;
@@ -189,6 +224,8 @@ export default function Inicio() {
   const { data, isLoading, isError } = trpc.tenantPublic.current.useQuery(undefined, { staleTime: 60_000 });
   const effectiveAccess = accessSummary ?? { actorRole: user?.role, roles: user?.role ? [user.role] : [] };
   const nextStep = getNextStep(effectiveAccess);
+  const todayActions = getTodayActions(effectiveAccess);
+  const todayLabel = formatDatePtBr(getTodayCivilDateInput());
   const NextStepIcon = nextStep.icon;
   const initials = getChurchInitials(churchName);
   const orderedEvents = getUpcomingEventsInOrder(data?.upcomingEvents ?? []);
@@ -250,18 +287,36 @@ export default function Inicio() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-gold/20 bg-gold/5 p-5 sm:p-6" aria-labelledby="inicio-next-step-title">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/70 text-gold"><NextStepIcon className="h-5 w-5" aria-hidden="true" /></div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gold">Seu próximo passo</p>
-                <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-gold/75">{nextStep.eyebrow}</p>
-                <h2 id="inicio-next-step-title" className="mt-1 font-display text-xl font-semibold text-navy">{nextStep.title}</h2>
-                <p className="mt-1 text-sm leading-6 text-muted-foreground">{nextStep.description}</p>
+          <section className="rounded-2xl border border-gold/25 bg-gold/5 p-5 shadow-sm sm:p-6" aria-labelledby="today-panel-title">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-gold">Painel de hoje</p>
+                <h2 id="today-panel-title" className="mt-1 font-display text-2xl font-semibold text-navy">O que merece sua atenção</h2>
+                <p className="mt-1 text-sm text-muted-foreground">{todayLabel} · atalhos baseados no seu perfil e nas áreas já disponíveis.</p>
               </div>
-              <Link href={nextStep.href} aria-label={nextStep.title} className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-navy text-white transition-transform active:scale-[0.97]">
-                <ChevronRight className="h-5 w-5" aria-hidden="true" />
-              </Link>
+              <div className="flex w-fit items-center gap-2 rounded-full border border-gold/20 bg-white/75 px-3 py-1.5 text-xs font-semibold text-navy"><CheckCircle2 className="h-3.5 w-3.5 text-gold" aria-hidden="true" /> Seu próximo passo</div>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-white/80 bg-white/80 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold"><NextStepIcon className="h-5 w-5" aria-hidden="true" /></div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gold">{nextStep.eyebrow}</p>
+                  <h3 className="mt-1 font-display text-xl font-semibold text-navy">{nextStep.title}</h3>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{nextStep.description}</p>
+                </div>
+                <Link href={nextStep.href} aria-label={nextStep.title} className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-navy text-white transition-transform active:scale-[0.97]">
+                  <ChevronRight className="h-5 w-5" aria-hidden="true" />
+                </Link>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-2.5 sm:grid-cols-2" aria-label="Ações de hoje">
+              {todayActions.map((action) => {
+                const ActionIcon = action.icon;
+                const toneClass = action.tone === "rose" ? "border-rose-200/80 bg-rose-50/60" : action.tone === "gold" ? "border-gold/20 bg-white/70" : "border-navy/10 bg-white/70";
+                return <Link key={action.href} href={action.href} className={`group flex min-w-0 items-center gap-3 rounded-xl border p-3 transition-colors hover:border-gold/40 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy ${toneClass}`}><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-navy shadow-sm"><ActionIcon className="h-4 w-4" aria-hidden="true" /></div><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-navy">{action.label}</span><span className="mt-0.5 block truncate text-xs text-muted-foreground">{action.description}</span></span><ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" /></Link>;
+              })}
             </div>
           </section>
 

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { getUpcomingEventsInOrder } from "./Inicio";
+import { getTodayActions, getUpcomingEventsInOrder } from "./Inicio";
 
 describe("Home interna global", () => {
   it("exibe acolhimento, mensagem do dia, próximo passo e vida da igreja", () => {
@@ -45,5 +45,25 @@ describe("Home interna global", () => {
     expect(app).toContain('<Route path="/app/inicio">');
     expect(app).toContain('<AppPage title="Início">');
     expect(app).toContain('requiredAccess="isExecutive"');
+  });
+
+  it("apresenta o Painel de hoje sem criar uma segunda fonte de pendências", () => {
+    const source = readFileSync(resolve(process.cwd(), "client/src/pages/Inicio.tsx"), "utf8");
+    expect(source).toContain('aria-labelledby="today-panel-title"');
+    expect(source).toContain("Painel de hoje");
+    expect(source).toContain('aria-label="Ações de hoje"');
+    expect(source).toContain("const todayActions = getTodayActions(effectiveAccess)");
+    expect(source).toContain("getTodayCivilDateInput");
+    expect(source).not.toContain("trpc.dashboard");
+  });
+
+  it("monta ações contextuais a partir das permissões já resolvidas", () => {
+    const actions = getTodayActions({ actorRole: "tesoureiro", roles: ["tesoureiro"], canAccessTreasury: true });
+    expect(actions.map((action) => action.href)).toContain("/app/tesouraria");
+    expect(actions.map((action) => action.href)).not.toContain("/app/dashboard");
+
+    const executiveActions = getTodayActions({ actorRole: "pastor_presidente", roles: ["pastor_presidente"], isExecutive: true });
+    expect(executiveActions.map((action) => action.href)).toContain("/app/dashboard");
+    expect(executiveActions.length).toBeLessThanOrEqual(4);
   });
 });
