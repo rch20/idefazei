@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useChurch } from "@/components/ChurchLayout";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,7 +82,7 @@ function PaymentMethodIcon({ method }: { method: PaymentMethod }) {
 }
 
 const today = () => currentCivilDateKey();
-
+type BookFilter = "todos" | "entrada" | "saida";
 function monthBounds(month: string) {
   const [year, monthNumber] = month.split("-").map(Number);
   const last = new Date(year, monthNumber, 0).getDate();
@@ -142,6 +142,8 @@ export default function Tesouraria() {
   const [reportGenerating, setReportGenerating] = useState(false);
   const [reportMode, setReportMode] = useState<ReportMode>("summary");
   const [reportFileName, setReportFileName] = useState("");
+  const [bookFilter, setBookFilter] = useState<BookFilter>("todos");
+  const bookRef = useRef<HTMLDivElement | null>(null);
   const [form, setForm] = useState({
     type: "entrada" as TransactionType,
     accountId: "",
@@ -196,6 +198,12 @@ export default function Tesouraria() {
   const accountLabel = selectedAccountId ? selectedAccount?.name ?? "Conta selecionada" : "Todas as contas";
   const reportTitle = reportMode === "summary" ? "Resumo de Tesouraria" : "Relatório detalhado de Tesouraria";
   const overview = overviewQuery.data;
+  const bookFilterLabel = bookFilter === "entrada" ? "Entradas" : bookFilter === "saida" ? "Saídas" : "Todos os lançamentos";
+  const filteredTransactions = (overview?.transactions ?? []).filter(({ transaction }) => bookFilter === "todos" || transaction.type === bookFilter);
+  const focusBookFilter = (filter: Exclude<BookFilter, "todos">) => {
+    setBookFilter(filter);
+    requestAnimationFrame(() => bookRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
   const bankBalanceInput = parseBrlToCents(reconciliationForm.bankClosingBalance);
   const reconciliationDifference = bankBalanceInput === null ? null : bankBalanceInput - (reconciliationQuery.data?.bookBalanceCents ?? 0);
 
@@ -521,19 +529,19 @@ export default function Tesouraria() {
         <>
           <section className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
             <MetricCard icon={WalletCards} label="Saldo anterior" value={formatBrl(overview?.openingBalanceCents ?? 0)} tone="navy" helper={`Fechamento de ${previousPeriodLabel} · ${accountLabel}`} />
-            <MetricCard icon={ArrowDownCircle} label="Entradas" value={formatBrl(overview?.entriesCents ?? 0)} tone="green" helper={periodLabel} />
-            <MetricCard icon={ArrowUpCircle} label="Saídas" value={formatBrl(overview?.expensesCents ?? 0)} tone="rose" helper={periodLabel} />
+            <MetricCard icon={ArrowDownCircle} label="Entradas" value={formatBrl(overview?.entriesCents ?? 0)} tone="green" helper={periodLabel} onClick={() => focusBookFilter("entrada")} />
+            <MetricCard icon={ArrowUpCircle} label="Saídas" value={formatBrl(overview?.expensesCents ?? 0)} tone="rose" helper={periodLabel} onClick={() => focusBookFilter("saida")} />
             <MetricCard icon={CircleDollarSign} label="Saldo atual" value={formatBrl(overview?.balanceCents ?? 0)} tone="gold" helper={`Resultado ${formatBrl(overview?.resultCents ?? 0)} · Até ${formatDatePtBr(endDate)}`} />
           </section>
 
           <TreasuryServiceSection churchId={churchId} canManageStructure={canManageStructure} people={(peopleQuery.data ?? []).map((person) => ({ id: person.id, fullName: person.fullName }))} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name, type: account.type }))} />
 
           <section className="grid gap-5 lg:grid-cols-3">
-            <Card className="border-slate-200 shadow-sm lg:col-span-2">
-              <CardHeader className="flex-row items-center justify-between space-y-0 pb-3"><CardTitle className="font-display text-xl text-navy">Livro-caixa · <span className="capitalize">{periodLabel}</span></CardTitle><Badge variant="outline">{overview?.transactions.length ?? 0} lançamentos</Badge></CardHeader>
+            <Card ref={bookRef} className="scroll-mt-4 border-slate-200 shadow-sm lg:col-span-2">
+              <CardHeader className="space-y-3 pb-3"><div className="flex items-center justify-between gap-3"><CardTitle className="font-display text-xl text-navy">Livro-caixa · <span className="capitalize">{periodLabel}</span></CardTitle><Badge variant="outline">{filteredTransactions.length} lançamentos</Badge></div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={bookFilter === "entrada" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : bookFilter === "saida" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-slate-200 bg-slate-50 text-slate-700"}>Filtro: {bookFilterLabel}</Badge>{bookFilter !== "todos" && <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs text-navy" onClick={() => setBookFilter("todos")}>Limpar filtro</Button>}</div></CardHeader>
               <CardContent className="p-0">
-                {(overview?.transactions.length ?? 0) === 0 ? <EmptyTransactions /> : <div className="divide-y divide-border">
-                  {overview?.transactions.map(({ transaction, account, category }) => (
+                {filteredTransactions.length === 0 ? <EmptyTransactions filterLabel={bookFilter === "todos" ? undefined : bookFilterLabel.toLowerCase()} /> : <div className="divide-y divide-border">
+                  {filteredTransactions.map(({ transaction, account, category }) => (
                     <div key={transaction.id} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50/70">
                       <div className={`shrink-0 rounded-full p-2 ${transaction.type === "entrada" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{transaction.type === "entrada" ? <ArrowDownCircle className="h-4 w-4" /> : <ArrowUpCircle className="h-4 w-4" />}</div>
                       <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><p className="truncate text-sm font-semibold text-navy">{category.name}</p>{transaction.status === "rascunho" && <Badge variant="outline" className="text-[10px]">Rascunho</Badge>}{transaction.status === "estornado" && <Badge className="bg-slate-200 text-[10px] text-slate-700">Estornado</Badge>}</div><p className="truncate text-xs text-muted-foreground">{account.name} · {formatDatePtBr(transaction.transactionDate)}{transaction.description ? ` · ${transaction.description}` : ""}</p></div>
@@ -624,7 +632,7 @@ export default function Tesouraria() {
   );
 }
 
-function MetricCard({ icon: Icon, label, value, helper, tone }: { icon: typeof WalletCards; label: string; value: string; helper: string; tone: "navy" | "green" | "rose" | "gold" }) {
+function MetricCard({ icon: Icon, label, value, helper, tone, onClick }: { icon: typeof WalletCards; label: string; value: string; helper: string; tone: "navy" | "green" | "rose" | "gold"; onClick?: () => void }) {
   const tones = {
     navy: "border-l-navy bg-white text-navy",
     green: "border-l-emerald-500 bg-white text-emerald-800",
@@ -632,7 +640,8 @@ function MetricCard({ icon: Icon, label, value, helper, tone }: { icon: typeof W
     gold: "border-l-gold bg-white text-navy",
   };
   const icons = { navy: "bg-navy/8 text-navy", green: "bg-emerald-50 text-emerald-700", rose: "bg-rose-50 text-rose-700", gold: "bg-gold/12 text-gold" };
-  return <Card className={`border border-slate-200 border-l-4 shadow-sm ${tones[tone]}`}><CardContent className="p-3 sm:p-4"><div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${icons[tone]}`}><Icon className="h-4 w-4" /></div><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</p><p className="mt-0.5 font-display text-lg sm:text-xl">{value}</p><p className="mt-1 truncate text-[11px] text-slate-500">{helper}</p></CardContent></Card>;
+  const interactive = Boolean(onClick);
+  return <Card className={`border border-slate-200 border-l-4 shadow-sm ${tones[tone]} ${interactive ? "cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2" : ""}`} role={interactive ? "button" : undefined} tabIndex={interactive ? 0 : undefined} aria-label={interactive ? `Ver ${label.toLowerCase()} no Livro-caixa` : undefined} onClick={onClick} onKeyDown={(event) => { if (onClick && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); onClick(); } }}><CardContent className="p-3 sm:p-4"><div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${icons[tone]}`}><Icon className="h-4 w-4" /></div><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</p><p className="mt-0.5 font-display text-lg sm:text-xl">{value}</p><p className="mt-1 truncate text-[11px] text-slate-500">{helper}</p>{interactive && <p className="mt-2 text-[10px] font-medium text-navy/70">Ver no Livro-caixa</p>}</CardContent></Card>;
 }
 
 function InlineError({ message, compact = false }: { message: string; compact?: boolean }) {
@@ -643,8 +652,8 @@ function TreasurySkeleton() {
   return <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 4 }).map((_, index) => <Card key={index}><CardContent className="p-5"><div className="h-4 w-20 animate-pulse rounded bg-muted" /><div className="mt-5 h-8 w-28 animate-pulse rounded bg-muted" /></CardContent></Card>)}</div>;
 }
 
-function EmptyTransactions() {
-  return <div className="px-6 py-12 text-center"><FileText className="mx-auto mb-3 h-8 w-8 text-gold" /><p className="font-semibold text-navy">Nenhum lançamento neste período</p><p className="mt-1 text-sm text-muted-foreground">Registre uma entrada ou saída para começar o livro-caixa.</p></div>;
+function EmptyTransactions({ filterLabel }: { filterLabel?: string }) {
+  return <div className="px-6 py-12 text-center"><FileText className="mx-auto mb-3 h-8 w-8 text-gold" /><p className="font-semibold text-navy">{filterLabel ? `Nenhuma ${filterLabel} neste período` : "Nenhum lançamento neste período"}</p><p className="mt-1 text-sm text-muted-foreground">{filterLabel ? "Limpe o filtro ou registre um novo lançamento." : "Registre uma entrada ou saída para começar o livro-caixa."}</p></div>;
 }
 
 function AccessDenied() {
