@@ -42,7 +42,14 @@ describe("Tesouraria — regressões de interface e lógica", () => {
 
   it("calcula o saldo somente até o fim do período e restringe contas filtradas", () => {
     expect(dbSource).toContain("endDate: data.endDate, accountId: data.accountId");
+    expect(dbSource).toContain("const previousPeriodEndDate = previousFinancialDate(data.startDate);");
+    expect(dbSource).toContain("endDate: previousPeriodEndDate, accountId: data.accountId");
+    expect(dbSource).toContain("openingBalanceCents: openingBalances.reduce");
+    expect(dbSource).toContain("formatCivilDateValue(account.createdAt) <= previousPeriodEndDate");
     expect(dbSource).toContain("const accounts = data.accountId ? allAccounts.filter");
+    expect(pageSource).toContain('label="Saldo anterior"');
+    expect(pageSource).toContain('label="Saldo atual"');
+    expect(pageSource).toContain("Resultado");
   });
 
   it("projeta somente id e nome do contribuinte no recibo", () => {
