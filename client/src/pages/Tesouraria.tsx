@@ -510,14 +510,14 @@ export default function Tesouraria() {
       {overviewQuery.error && <InlineError message={overviewQuery.error.message} />}
       {overviewQuery.isLoading ? <TreasurySkeleton /> : (
         <>
-          <TreasuryServiceSection churchId={churchId} canManageStructure={canManageStructure} people={(peopleQuery.data ?? []).map((person) => ({ id: person.id, fullName: person.fullName }))} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name, type: account.type }))} />
-
-          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard icon={WalletCards} label={`Saldo até ${formatDatePtBr(endDate)}`} value={formatBrl(overview?.balanceCents ?? 0)} tone="navy" helper={accountLabel} />
-            <MetricCard icon={ArrowDownCircle} label="Entradas no período" value={formatBrl(overview?.entriesCents ?? 0)} tone="green" helper={periodLabel} />
-            <MetricCard icon={ArrowUpCircle} label="Saídas no período" value={formatBrl(overview?.expensesCents ?? 0)} tone="rose" helper={periodLabel} />
-            <MetricCard icon={CircleDollarSign} label="Resultado do período" value={formatBrl(overview?.resultCents ?? 0)} tone={(overview?.resultCents ?? 0) >= 0 ? "gold" : "rose"} helper="Entradas menos saídas" />
+          <section className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
+            <MetricCard icon={WalletCards} label="Saldo atual" value={formatBrl(overview?.balanceCents ?? 0)} tone="navy" helper={`Até ${formatDatePtBr(endDate)} · ${accountLabel}`} />
+            <MetricCard icon={ArrowDownCircle} label="Entradas" value={formatBrl(overview?.entriesCents ?? 0)} tone="green" helper={periodLabel} />
+            <MetricCard icon={ArrowUpCircle} label="Saídas" value={formatBrl(overview?.expensesCents ?? 0)} tone="rose" helper={periodLabel} />
+            <MetricCard icon={CircleDollarSign} label="Resultado" value={formatBrl(overview?.resultCents ?? 0)} tone={(overview?.resultCents ?? 0) >= 0 ? "gold" : "rose"} helper="Entradas − saídas" />
           </section>
+
+          <TreasuryServiceSection churchId={churchId} canManageStructure={canManageStructure} people={(peopleQuery.data ?? []).map((person) => ({ id: person.id, fullName: person.fullName }))} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name, type: account.type }))} />
 
           <section className="grid gap-5 lg:grid-cols-3">
             <Card className="border-slate-200 shadow-sm lg:col-span-2">

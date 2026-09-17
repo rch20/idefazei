@@ -77,7 +77,7 @@ describe("Fluxo estrutural de prestação por culto", () => {
     expect(pageSource).toContain("3. Conferência");
     expect(pageSource).toContain("4. Depósito");
     expect(pageSource).toContain("5. Relatório");
-    expect(sectionSource).toContain("Para cada culto, registre a contagem");
+    expect(sectionSource).toContain("A contagem começa somente depois dessa escolha.");
   });
 
   it("preserva a data de calendário e compacta ações no mobile", () => {
@@ -87,6 +87,18 @@ describe("Fluxo estrutural de prestação por culto", () => {
     expect(sectionSource).toContain("Detalhes");
     expect(sectionSource).toContain("DropdownMenuContent");
     expect(sectionSource).toContain("Ver detalhes da prestação");
+  });
+
+  it("prioriza a prestação de hoje e mantém o histórico em visão secundária", () => {
+    expect(pageSource).toContain('className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4"');
+    expect(pageSource).toContain('label="Saldo atual"');
+    expect(sectionSource).toContain("Prestação de hoje");
+    expect(sectionSource).toContain("Selecionar culto/evento");
+    expect(sectionSource).toContain("Nenhuma contagem é criada nesta seleção.");
+    expect(sectionSource).toContain("Ver prestações recentes");
+    expect(sectionSource).toContain("fromDate: todayKey, toDate: todayKey");
+    expect(sectionSource).toContain("getUTCDay()");
+    expect(sectionSource).toContain('service.status !== "cancelado"');
   });
 
   it("usa o Formulário Adaptativo nos cadastros operacionais extensos", () => {
