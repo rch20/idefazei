@@ -105,7 +105,7 @@ import {
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { getDerivedLogoIconUrls, getOptimizedMediaUrls } from "./media";
-import { currentCivilDateAsUtcNoon, formatCivilDateInput, parseCivilDateAsUtcNoon } from "./civilDate";
+import { currentCivilDateAsUtcNoon, formatCivilDateInput, formatCivilDateValue, parseCivilDateAsUtcNoon } from "./civilDate";
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 
@@ -6470,6 +6470,13 @@ function financialDate(value: string) {
   return new Date(`${value}T12:00:00.000Z`);
 }
 
+function previousFinancialDate(value: string) {
+  const date = parseCivilDateAsUtcNoon(value);
+  if (!date) throw new Error("Data financeira inválida");
+  date.setUTCDate(date.getUTCDate() - 1);
+  return formatCivilDateInput(date);
+}
+
 export async function ensureTreasuryDefaults(churchId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -6691,20 +6698,30 @@ export async function getFinancialTransactions(filters: FinancialTransactionFilt
 }
 
 export async function getTreasuryOverview(data: { churchId: number; startDate: string; endDate: string; accountId?: number }) {
-  const [allAccounts, periodRows, allRows] = await Promise.all([
+  const previousPeriodEndDate = previousFinancialDate(data.startDate);
+  const [allAccounts, periodRows, openingRows, allRows] = await Promise.all([
     getFinancialAccountsByChurch(data.churchId),
     getFinancialTransactions({ churchId: data.churchId, startDate: data.startDate, endDate: data.endDate, accountId: data.accountId, includeDrafts: true }),
+    getFinancialTransactions({ churchId: data.churchId, endDate: previousPeriodEndDate, accountId: data.accountId }),
     getFinancialTransactions({ churchId: data.churchId, endDate: data.endDate, accountId: data.accountId }),
   ]);
   const accounts = data.accountId ? allAccounts.filter((account) => account.id === data.accountId) : allAccounts;
   const confirmedPeriodRows = periodRows.filter((row) => row.transaction.status === "confirmado");
+  const confirmedOpeningRows = openingRows.filter((row) => row.transaction.status === "confirmado");
   const sumByType = (type: "entrada" | "saida", rows: typeof confirmedPeriodRows) => rows.filter((row) => row.transaction.type === type).reduce((total, row) => total + row.transaction.amountCents, 0);
   const entriesCents = sumByType("entrada", confirmedPeriodRows);
   const expensesCents = sumByType("saida", confirmedPeriodRows);
+  const openingBalances = accounts.map((account) => {
+    const movement = confirmedOpeningRows.filter((row) => row.transaction.accountId === account.id)
+      .reduce((total, row) => total + (row.transaction.type === "entrada" ? row.transaction.amountCents : -row.transaction.amountCents), 0);
+    const openingSeed = formatCivilDateValue(account.createdAt) <= previousPeriodEndDate ? account.openingBalanceCents : 0;
+    return { account, balanceCents: openingSeed + movement };
+  });
   const balances = accounts.map((account) => {
     const movement = allRows.filter((row) => row.transaction.status === "confirmado" && row.transaction.accountId === account.id)
       .reduce((total, row) => total + (row.transaction.type === "entrada" ? row.transaction.amountCents : -row.transaction.amountCents), 0);
-    return { account, balanceCents: account.openingBalanceCents + movement };
+    const openingSeed = formatCivilDateValue(account.createdAt) <= data.endDate ? account.openingBalanceCents : 0;
+    return { account, balanceCents: openingSeed + movement };
   });
   const categoryTotals = confirmedPeriodRows.reduce<Record<string, { categoryId: number; categoryName: string; type: "entrada" | "saida"; amountCents: number }>>((groups, row) => {
     const key = `${row.transaction.type}:${row.category.id}`;
@@ -6718,6 +6735,9 @@ export async function getTreasuryOverview(data: { churchId: number; startDate: s
     entriesCents,
     expensesCents,
     resultCents: entriesCents - expensesCents,
+    openingBalanceCents: openingBalances.reduce((total, item) => total + item.balanceCents, 0),
+    openingAccountBalances: openingBalances,
+    previousPeriodEndDate,
     balanceCents: balances.reduce((total, item) => total + item.balanceCents, 0),
     accountBalances: balances,
     categories: Object.values(categoryTotals).sort((a, b) => b.amountCents - a.amountCents),

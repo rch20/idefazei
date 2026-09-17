@@ -88,6 +88,13 @@ function monthBounds(month: string) {
   const last = new Date(year, monthNumber, 0).getDate();
   return { startDate: `${month}-01`, endDate: `${month}-${String(last).padStart(2, "0")}` };
 }
+function previousMonthKey(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) return month;
+  const previousYear = monthNumber === 1 ? year - 1 : year;
+  const previousMonth = monthNumber === 1 ? 12 : monthNumber - 1;
+  return `${previousYear}-${String(previousMonth).padStart(2, "0")}`;
+}
 
 function centsToInput(cents: number) {
   return (cents / 100).toFixed(2).replace(".", ",");
@@ -152,6 +159,7 @@ export default function Tesouraria() {
   });
 
   const { startDate, endDate } = useMemo(() => monthBounds(month), [month]);
+  const previousMonth = previousMonthKey(month);
   const selectedAccountId = accountFilter === "todas" ? undefined : Number(accountFilter);
   const overviewQuery = trpc.treasury.overview.useQuery({ churchId, startDate, endDate, accountId: selectedAccountId }, { enabled: Boolean(churchId) });
   const accountsQuery = trpc.treasury.accounts.useQuery({ churchId }, { enabled: Boolean(churchId) });
@@ -184,6 +192,7 @@ export default function Tesouraria() {
     ? (accountsQuery.data ?? []).find((account) => account.id === selectedAccountId)
     : (accountsQuery.data ?? [])[0];
   const periodLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const previousPeriodLabel = new Date(`${previousMonth}-01T12:00:00`).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   const accountLabel = selectedAccountId ? selectedAccount?.name ?? "Conta selecionada" : "Todas as contas";
   const reportTitle = reportMode === "summary" ? "Resumo de Tesouraria" : "Relatório detalhado de Tesouraria";
   const overview = overviewQuery.data;
@@ -511,10 +520,10 @@ export default function Tesouraria() {
       {overviewQuery.isLoading ? <TreasurySkeleton /> : (
         <>
           <section className="grid grid-cols-2 gap-2.5 sm:gap-3 xl:grid-cols-4">
-            <MetricCard icon={WalletCards} label="Saldo atual" value={formatBrl(overview?.balanceCents ?? 0)} tone="navy" helper={`Até ${formatDatePtBr(endDate)} · ${accountLabel}`} />
+            <MetricCard icon={WalletCards} label="Saldo anterior" value={formatBrl(overview?.openingBalanceCents ?? 0)} tone="navy" helper={`Fechamento de ${previousPeriodLabel} · ${accountLabel}`} />
             <MetricCard icon={ArrowDownCircle} label="Entradas" value={formatBrl(overview?.entriesCents ?? 0)} tone="green" helper={periodLabel} />
             <MetricCard icon={ArrowUpCircle} label="Saídas" value={formatBrl(overview?.expensesCents ?? 0)} tone="rose" helper={periodLabel} />
-            <MetricCard icon={CircleDollarSign} label="Resultado" value={formatBrl(overview?.resultCents ?? 0)} tone={(overview?.resultCents ?? 0) >= 0 ? "gold" : "rose"} helper="Entradas − saídas" />
+            <MetricCard icon={CircleDollarSign} label="Saldo atual" value={formatBrl(overview?.balanceCents ?? 0)} tone="gold" helper={`Resultado ${formatBrl(overview?.resultCents ?? 0)} · Até ${formatDatePtBr(endDate)}`} />
           </section>
 
           <TreasuryServiceSection churchId={churchId} canManageStructure={canManageStructure} people={(peopleQuery.data ?? []).map((person) => ({ id: person.id, fullName: person.fullName }))} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name, type: account.type }))} />

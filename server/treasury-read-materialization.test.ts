@@ -37,6 +37,15 @@ describe("Tesouraria: leitura sem materialização oculta", () => {
     expect(sectionSource).toContain("materializeOccurrences.mutate");
     expect(sectionSource).toContain("Atualizar ocorrências");
   });
+  it("leva o fechamento anterior para a abertura seguinte por derivação, sem saldo duplicado", () => {
+    const overview = functionBody(dbSource, "export async function getTreasuryOverview", "async function writeFinancialAuditLog");
+    expect(overview).toContain("const previousPeriodEndDate = previousFinancialDate(data.startDate);");
+    expect(overview).toContain("getFinancialTransactions({ churchId: data.churchId, endDate: previousPeriodEndDate");
+    expect(overview).toContain("openingBalanceCents: openingBalances.reduce");
+    expect(overview).toContain("previousPeriodEndDate,");
+    expect(overview).not.toContain("createFinancialTransaction");
+    expect(overview).not.toContain("financialPeriodClosures");
+  });
 });
 
 describe("Tesouraria: seeds continuam disponíveis no backend", () => {
