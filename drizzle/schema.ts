@@ -2208,13 +2208,24 @@ export const financialAuditLogs = mysqlTable("financial_audit_logs", {
   transactionId: int("transactionId"),
   reconciliationId: int("reconciliationId"),
   attachmentId: int("attachmentId"),
+  accountId: int("accountId"),
+  categoryId: int("categoryId"),
+  recurringScheduleId: int("recurringScheduleId"),
+  serviceId: int("serviceId"),
   actorChurchUserId: int("actorChurchUserId").notNull(),
-  action: mysqlEnum("action", ["criado", "atualizado", "confirmado", "estornado", "periodo_fechado", "periodo_reaberto", "reconciliacao_criada", "reconciliacao_atualizada", "comprovante_adicionado", "comprovante_desvinculado"])
+  action: mysqlEnum("action", ["criado", "atualizado", "confirmado", "estornado", "periodo_fechado", "periodo_reaberto", "reconciliacao_criada", "reconciliacao_atualizada", "comprovante_adicionado", "comprovante_desvinculado", "conta_criada", "conta_atualizada", "categoria_criada", "categoria_atualizada", "categoria_ativada", "programacao_criada", "programacao_atualizada", "programacao_ativada", "servico_criado", "servico_atualizado", "servico_cancelado"])
     .notNull(),
   beforeData: json("beforeData"),
   afterData: json("afterData"),
   note: text("note"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+},
+  (table) => [
+    index("financial_audit_logs_account_idx").on(table.churchId, table.accountId),
+    index("financial_audit_logs_category_idx").on(table.churchId, table.categoryId),
+    index("financial_audit_logs_schedule_idx").on(table.churchId, table.recurringScheduleId),
+    index("financial_audit_logs_service_idx").on(table.churchId, table.serviceId),
+  ]
+);
 
 export type FinancialAuditLog = typeof financialAuditLogs.$inferSelect;

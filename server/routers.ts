@@ -6688,7 +6688,7 @@ const treasuryRouter = router({
       if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem editar cultos fixos." });
       const existing = await getTreasuryRecurringScheduleById(input.id, input.churchId);
       if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Programação fixa não encontrada nesta igreja." });
-      const updated = await updateTreasuryRecurringSchedule(input);
+      const updated = await updateTreasuryRecurringSchedule({ ...input, actorChurchUserId: access.actor.id });
       if (!updated) throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível atualizar a programação fixa." });
       return updated;
     }),
@@ -6700,7 +6700,7 @@ const treasuryRouter = router({
       if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem ativar ou pausar cultos fixos." });
       const existing = await getTreasuryRecurringScheduleById(input.id, input.churchId);
       if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Programação fixa não encontrada nesta igreja." });
-      return setTreasuryRecurringScheduleActive(input);
+      return setTreasuryRecurringScheduleActive({ ...input, actorChurchUserId: access.actor.id });
     }),
 
   createService: protectedProcedure
@@ -6718,7 +6718,7 @@ const treasuryRouter = router({
       if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem editar cultos." });
       const existing = await getTreasuryServiceById(input.id, input.churchId);
       if (!existing) throw new TRPCError({ code: "NOT_FOUND", message: "Culto não encontrado nesta igreja." });
-      const updated = await updateTreasuryService(input);
+      const updated = await updateTreasuryService({ ...input, actorChurchUserId: access.actor.id });
       if (!updated) throw new TRPCError({ code: "BAD_REQUEST", message: "Somente ocorrências abertas podem ser editadas." });
       return updated;
     }),
@@ -6730,7 +6730,7 @@ const treasuryRouter = router({
       if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem cancelar cultos." });
       const service = await getTreasuryServiceById(input.id, input.churchId);
       if (!service) throw new TRPCError({ code: "NOT_FOUND", message: "Culto não encontrado nesta igreja." });
-      return cancelTreasuryService(input.id, input.churchId);
+      return cancelTreasuryService({ id: input.id, churchId: input.churchId, actorChurchUserId: access.actor.id });
     }),
 
   countSheets: protectedProcedure
@@ -6931,7 +6931,7 @@ const treasuryRouter = router({
       const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
       if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem criar contas financeiras." });
       try {
-        return await createFinancialAccount(input);
+        return await createFinancialAccount({ ...input, actorChurchUserId: access.actor.id });
       } catch (error) {
         if (isDuplicateFinancialRecord(error)) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma conta financeira com esse nome nesta igreja." });
         throw error;
@@ -6945,7 +6945,7 @@ const treasuryRouter = router({
       if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem criar categorias financeiras." });
       const key = `custom_${input.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "")}`;
       try {
-        return await createFinancialCategory({ ...input, key });
+        return await createFinancialCategory({ ...input, key, actorChurchUserId: access.actor.id });
       } catch (error) {
         if (isDuplicateFinancialRecord(error)) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma categoria equivalente para este tipo de lançamento." });
         throw error;
@@ -6964,7 +6964,7 @@ const treasuryRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Não é possível trocar o tipo de uma categoria que já possui lançamentos." });
       }
       try {
-        return await updateFinancialCategory(input);
+        return await updateFinancialCategory({ ...input, actorChurchUserId: access.actor.id });
       } catch (error) {
         if (isDuplicateFinancialRecord(error)) throw new TRPCError({ code: "CONFLICT", message: "Já existe uma categoria equivalente para este tipo de lançamento." });
         throw error;
@@ -6979,7 +6979,7 @@ const treasuryRouter = router({
       const category = await getFinancialCategoryForManagement(input.id, input.churchId);
       if (!category) throw new TRPCError({ code: "NOT_FOUND", message: "Categoria financeira não encontrada nesta igreja." });
       if (category.isSystem) throw new TRPCError({ code: "FORBIDDEN", message: "Categorias padrão do sistema não podem ser inativadas." });
-      return setFinancialCategoryActive(input);
+      return setFinancialCategoryActive({ ...input, actorChurchUserId: access.actor.id });
     }),
 
   createTransaction: protectedProcedure
