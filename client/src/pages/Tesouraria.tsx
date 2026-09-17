@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
 import { Input } from "@/components/ui/input";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getChurchToken, useChurchAuth } from "@/hooks/useChurchAuth";
@@ -36,6 +37,7 @@ import {
   Printer,
   QrCode,
   ReceiptText,
+  Search,
   RefreshCw,
   RotateCcw,
   ShieldCheck,
@@ -465,16 +467,25 @@ export default function Tesouraria() {
           <h1 className="mt-1 font-display text-3xl text-navy">Tesouraria</h1>
           <p className="mt-1 text-muted-foreground">Acompanhe o dinheiro da igreja por culto, conta e período, com histórico auditável.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => setReportChoiceOpen(true)} disabled={!overview || overviewQuery.isFetching || reportGenerating} className="gap-2">{reportGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />} {reportGenerating ? "Preparando PDF…" : "Gerar PDF"}</Button>
-          {canManageStructure && (accountsQuery.data?.length === 0 || categoriesQuery.data?.length === 0) && <Button variant="outline" onClick={() => initializeDefaults.mutate({ churchId })} disabled={initializeDefaults.isPending} className="gap-2">{initializeDefaults.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Inicializar padrões</Button>}
-          {bankAccounts.length > 0 && <Button variant="outline" onClick={openReconciliation} className="gap-2"><BookOpenCheck className="h-4 w-4" /> Conciliar banco</Button>}
-          <Button variant="outline" onClick={() => openTransaction("saida")} disabled={periodClosed || accountsQuery.isLoading || categoriesQuery.isLoading} title={periodClosed ? "Reabra o período para registrar uma saída." : undefined} className="gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"><ArrowUpCircle className="h-4 w-4" /> Registrar saída</Button>
-          <Button onClick={() => openTransaction("entrada")} disabled={periodClosed || accountsQuery.isLoading || categoriesQuery.isLoading} title={periodClosed ? "Reabra o período para registrar uma entrada." : undefined} className="gap-2 bg-navy hover:bg-navy/90"><ArrowDownCircle className="h-4 w-4" /> Registrar entrada</Button>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <Button variant="outline" onClick={() => openTransaction("saida")} disabled={periodClosed || accountsQuery.isLoading || categoriesQuery.isLoading} title={periodClosed ? "Reabra o período para registrar uma saída." : undefined} className="h-10 gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"><ArrowUpCircle className="h-4 w-4" /> Registrar saída</Button>
+          <Button onClick={() => openTransaction("entrada")} disabled={periodClosed || accountsQuery.isLoading || categoriesQuery.isLoading} title={periodClosed ? "Reabra o período para registrar uma entrada." : undefined} className="h-10 gap-2 bg-navy hover:bg-navy/90"><ArrowDownCircle className="h-4 w-4" /> Registrar entrada</Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="col-span-2 h-9 gap-2 sm:col-span-1 sm:h-10" aria-label="Mais ações da Tesouraria"><MoreHorizontal className="h-4 w-4" /> Mais ações</Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuLabel>Operações da Tesouraria</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled={!overview || overviewQuery.isFetching || reportGenerating} onSelect={() => setReportChoiceOpen(true)}><FileDown className="h-4 w-4" /> Gerar PDF</DropdownMenuItem>
+              {canManageStructure && (accountsQuery.data?.length === 0 || categoriesQuery.data?.length === 0) && <DropdownMenuItem disabled={initializeDefaults.isPending} onSelect={() => initializeDefaults.mutate({ churchId })}><RefreshCw className="h-4 w-4" /> Inicializar padrões</DropdownMenuItem>}
+              {bankAccounts.length > 0 && <DropdownMenuItem onSelect={openReconciliation}><BookOpenCheck className="h-4 w-4" /> Conciliar banco</DropdownMenuItem>}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
-      <section className="rounded-2xl border border-gold/30 bg-gold/5 p-4 shadow-sm sm:p-5" aria-label="Fluxo da Tesouraria">
+      <section className="rounded-2xl border border-gold/30 bg-gold/5 p-3 shadow-sm sm:p-5" aria-label="Fluxo da Tesouraria">
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-navy sm:justify-between">
           <span className="rounded-full bg-white px-3 py-1.5 shadow-sm">1. Culto</span>
           <span className="hidden text-muted-foreground sm:block">→</span>
@@ -489,7 +500,7 @@ export default function Tesouraria() {
         <p className="mt-3 text-xs text-muted-foreground">A contagem precisa de duas pessoas diferentes. Depois de fechada, ela pode receber o depósito e gerar uma prestação de contas reimprimível.</p>
       </section>
 
-      <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-end">
+      <section className="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-end sm:p-4">
         <label className="grid gap-1.5 text-sm font-medium text-navy">Período<Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} className="w-full sm:w-48" /></label>
         <label className="grid gap-1.5 text-sm font-medium text-navy">Conta<select value={accountFilter} onChange={(event) => setAccountFilter(event.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm sm:w-52"><option value="todas">Todas as contas</option>{(accountsQuery.data ?? []).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
           {canManageStructure && <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" onClick={() => { createCategory.reset(); updateCategory.reset(); setEditingCategory(null); setCategoryName(""); setCategoryType("entrada"); setStructureError(null); setCategoryOpen(true); }}><Plus className="mr-1 h-4 w-4" /> Categoria</Button><Button variant="outline" size="sm" onClick={() => { setCategoryManagerOpen(true); categoryManagementQuery.refetch(); }}><Pencil className="mr-1 h-4 w-4" /> Gerenciar categorias</Button><Button variant="outline" size="sm" onClick={() => { createAccount.reset(); setStructureError(null); setAccountOpen(true); }}><Landmark className="mr-1 h-4 w-4" /> Conta</Button></div>}
@@ -545,7 +556,7 @@ export default function Tesouraria() {
               <Button type="button" variant="outline" disabled={reportGenerating} onClick={() => void generateReport("summary")} className="h-auto items-start justify-start gap-3 whitespace-normal p-4 text-left"><FileText className="mt-0.5 h-5 w-5 shrink-0 text-gold" /><span><strong className="block text-navy">Resumo · 1 página</strong><span className="mt-1 block text-xs font-normal text-muted-foreground">Indicadores, contas, categorias, movimentação consolidada e assinaturas.</span></span></Button>
               <Button type="button" variant="outline" disabled={reportGenerating} onClick={() => void generateReport("detailed")} className="h-auto items-start justify-start gap-3 whitespace-normal p-4 text-left"><BookOpenCheck className="mt-0.5 h-5 w-5 shrink-0 text-gold" /><span><strong className="block text-navy">Relatório detalhado</strong><span className="mt-1 block text-xs font-normal text-muted-foreground">Resumo completo mais todas as linhas do livro-caixa, com paginação.</span></span></Button>
             </div>
-            {reportGenerating && <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Preparando o arquivo selecionado…</p>}
+            {reportGenerating && <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Preparando PDF…</p>}
           </TreasuryDialogBody>
         </DialogContent>
       </Dialog>
@@ -612,7 +623,7 @@ function MetricCard({ icon: Icon, label, value, helper, tone }: { icon: typeof W
     gold: "border-l-gold bg-white text-navy",
   };
   const icons = { navy: "bg-navy/8 text-navy", green: "bg-emerald-50 text-emerald-700", rose: "bg-rose-50 text-rose-700", gold: "bg-gold/12 text-gold" };
-  return <Card className={`border border-slate-200 border-l-4 shadow-sm ${tones[tone]}`}><CardContent className="p-4 sm:p-5"><div className={`mb-4 flex h-9 w-9 items-center justify-center rounded-xl ${icons[tone]}`}><Icon className="h-4 w-4" /></div><p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</p><p className="mt-1 font-display text-xl sm:text-2xl">{value}</p><p className="mt-2 truncate text-xs text-slate-500">{helper}</p></CardContent></Card>;
+  return <Card className={`border border-slate-200 border-l-4 shadow-sm ${tones[tone]}`}><CardContent className="p-3 sm:p-4"><div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${icons[tone]}`}><Icon className="h-4 w-4" /></div><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{label}</p><p className="mt-0.5 font-display text-lg sm:text-xl">{value}</p><p className="mt-1 truncate text-[11px] text-slate-500">{helper}</p></CardContent></Card>;
 }
 
 function InlineError({ message, compact = false }: { message: string; compact?: boolean }) {

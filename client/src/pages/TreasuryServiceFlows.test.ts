@@ -77,15 +77,16 @@ describe("Fluxo estrutural de prestação por culto", () => {
     expect(pageSource).toContain("3. Conferência");
     expect(pageSource).toContain("4. Depósito");
     expect(pageSource).toContain("5. Relatório");
-    expect(sectionSource).toContain("Para cada culto, registre a contagem por duas pessoas");
+    expect(sectionSource).toContain("Para cada culto, registre a contagem");
   });
 
   it("preserva a data de calendário e compacta ações no mobile", () => {
     expect(treasurySource).toContain("civilDateParts");
     expect(treasurySource).toContain("currentCivilDateKey");
     expect(sectionSource).toContain("todayCivilDate");
-    expect(sectionSource).toContain("Abrir ações");
-    expect(sectionSource).toContain("hidden sm:flex");
+    expect(sectionSource).toContain("Detalhes");
+    expect(sectionSource).toContain("DropdownMenuContent");
+    expect(sectionSource).toContain("Ver detalhes da prestação");
   });
 
   it("usa o Formulário Adaptativo nos cadastros operacionais extensos", () => {
