@@ -6916,36 +6916,103 @@ export async function saveFinancialReconciliation(data: {
 export async function closeFinancialPeriod(data: { churchId: number; periodStart: string; periodEnd: string; actorChurchUserId: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const existing = await getFinancialPeriodClosure(data.churchId, data.periodStart);
-  if (existing) {
-    await db.update(financialPeriodClosures).set({
-      periodEnd: financialDate(data.periodEnd),
-      status: "fechado",
-      closedByChurchUserId: data.actorChurchUserId,
-      closedAt: new Date(),
-    }).where(and(eq(financialPeriodClosures.id, existing.id), eq(financialPeriodClosures.churchId, data.churchId), eq(financialPeriodClosures.status, "reaberto")));
-    const closedAgain = await getFinancialPeriodClosure(data.churchId, data.periodStart);
-    if (!closedAgain || closedAgain.status !== "fechado") return null;
-    await writeFinancialAuditLog({ churchId: data.churchId, actorChurchUserId: data.actorChurchUserId, action: "periodo_fechado", beforeData: existing, afterData: closedAgain, note: "Período fechado novamente após reabertura." });
-    return closedAgain;
-  }
-  const result = await db.insert(financialPeriodClosures).values({ churchId: data.churchId, periodStart: financialDate(data.periodStart), periodEnd: financialDate(data.periodEnd), status: "fechado", closedByChurchUserId: data.actorChurchUserId });
-  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
-  await writeFinancialAuditLog({ churchId: data.churchId, actorChurchUserId: data.actorChurchUserId, action: "periodo_fechado", afterData: { periodStart: data.periodStart, periodEnd: data.periodEnd } });
-  const rows = await db.select().from(financialPeriodClosures).where(eq(financialPeriodClosures.id, id)).limit(1);
-  return rows[0] ?? null;
+  return db.transaction(async (tx) => {
+    const existingRows = await tx
+      .select()
+      .from(financialPeriodClosures)
+      .where(and(eq(financialPeriodClosures.churchId, data.churchId), sql`DATE(${financialPeriodClosures.periodStart}) = DATE(${data.periodStart})`))
+      .limit(1)
+      .for("update");
+    const existing = existingRows[0] ?? null;
+    if (existing?.status === "fechado") return existing;
+
+    if (existing) {
+      await tx.update(financialPeriodClosures).set({
+        periodEnd: financialDate(data.periodEnd),
+        status: "fechado",
+        closedByChurchUserId: data.actorChurchUserId,
+        closedAt: new Date(),
+      }).where(and(eq(financialPeriodClosures.id, existing.id), eq(financialPeriodClosures.churchId, data.churchId), eq(financialPeriodClosures.status, "reaberto")));
+      const closedAgainRows = await tx.select().from(financialPeriodClosures).where(and(eq(financialPeriodClosures.id, existing.id), eq(financialPeriodClosures.churchId, data.churchId))).limit(1);
+      const closedAgain = closedAgainRows[0];
+      if (!closedAgain || closedAgain.status !== "fechado") throw new Error("Falha ao fechar o período financeiro");
+      await tx.insert(financialAuditLogs).values({
+        churchId: data.churchId,
+        actorChurchUserId: data.actorChurchUserId,
+        action: "periodo_fechado",
+        beforeData: existing,
+        afterData: closedAgain,
+        note: "Período fechado novamente após reabertura.",
+      });
+      return closedAgain;
+    }
+
+    try {
+      const result = await tx.insert(financialPeriodClosures).values({
+        churchId: data.churchId,
+        periodStart: financialDate(data.periodStart),
+        periodEnd: financialDate(data.periodEnd),
+        status: "fechado",
+        closedByChurchUserId: data.actorChurchUserId,
+      });
+      const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+      if (!id) throw new Error("Falha ao identificar o período financeiro");
+      const createdRows = await tx.select().from(financialPeriodClosures).where(and(eq(financialPeriodClosures.id, id), eq(financialPeriodClosures.churchId, data.churchId))).limit(1);
+      const created = createdRows[0];
+      if (!created) throw new Error("Falha ao recuperar o período financeiro");
+      await tx.insert(financialAuditLogs).values({
+        churchId: data.churchId,
+        actorChurchUserId: data.actorChurchUserId,
+        action: "periodo_fechado",
+        beforeData: null,
+        afterData: created,
+      });
+      return created;
+    } catch (error) {
+      if (!isDuplicateTreasuryRecord(error)) throw error;
+      const concurrentRows = await tx
+        .select()
+        .from(financialPeriodClosures)
+        .where(and(eq(financialPeriodClosures.churchId, data.churchId), sql`DATE(${financialPeriodClosures.periodStart}) = DATE(${data.periodStart})`))
+        .limit(1);
+      return concurrentRows[0] ?? null;
+    }
+  });
 }
 
 export async function reopenFinancialPeriod(data: { churchId: number; periodStart: string; actorChurchUserId: number; reason: string }) {
-  const closure = await getFinancialPeriodClosure(data.churchId, data.periodStart);
-  if (!closure) return null;
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.update(financialPeriodClosures).set({ status: "reaberto", reopenedByChurchUserId: data.actorChurchUserId, reopenedAt: new Date(), reopeningReason: data.reason }).where(and(eq(financialPeriodClosures.id, closure.id), eq(financialPeriodClosures.churchId, data.churchId), eq(financialPeriodClosures.status, "fechado")));
-  const updated = await getFinancialPeriodClosure(data.churchId, data.periodStart);
-  if (!updated) return null;
-  await writeFinancialAuditLog({ churchId: data.churchId, actorChurchUserId: data.actorChurchUserId, action: "periodo_reaberto", beforeData: closure, afterData: updated, note: data.reason });
-  return updated;
+  return db.transaction(async (tx) => {
+    const closureRows = await tx
+      .select()
+      .from(financialPeriodClosures)
+      .where(and(eq(financialPeriodClosures.churchId, data.churchId), sql`DATE(${financialPeriodClosures.periodStart}) = DATE(${data.periodStart})`))
+      .limit(1)
+      .for("update");
+    const closure = closureRows[0];
+    if (!closure || closure.status === "reaberto") return closure ?? null;
+
+    const now = new Date();
+    await tx.update(financialPeriodClosures).set({
+      status: "reaberto",
+      reopenedByChurchUserId: data.actorChurchUserId,
+      reopenedAt: now,
+      reopeningReason: data.reason,
+    }).where(and(eq(financialPeriodClosures.id, closure.id), eq(financialPeriodClosures.churchId, data.churchId), eq(financialPeriodClosures.status, "fechado")));
+    const updatedRows = await tx.select().from(financialPeriodClosures).where(and(eq(financialPeriodClosures.id, closure.id), eq(financialPeriodClosures.churchId, data.churchId))).limit(1);
+    const updated = updatedRows[0];
+    if (!updated || updated.status !== "reaberto") throw new Error("Falha ao reabrir o período financeiro");
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "periodo_reaberto",
+      beforeData: closure,
+      afterData: updated,
+      note: data.reason,
+    });
+    return updated;
+  });
 }
 
 
