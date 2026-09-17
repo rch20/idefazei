@@ -214,6 +214,15 @@ export default function Tesouraria() {
     ]);
   };
 
+  const initializeDefaults = trpc.treasury.initializeDefaults.useMutation({
+    onSuccess: async (result) => {
+      await Promise.all([accountsQuery.refetch(), categoriesQuery.refetch(), categoryManagementQuery.refetch()]);
+      const created = result.accountsCreated + result.categoriesCreated;
+      toast.success(created > 0 ? `${created} itens padrão foram inicializados.` : "A estrutura padrão já estava inicializada.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
   const createTransaction = trpc.treasury.createTransaction.useMutation({
     onSuccess: async () => {
       await invalidateTreasury();
@@ -458,6 +467,7 @@ export default function Tesouraria() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={() => setReportChoiceOpen(true)} disabled={!overview || overviewQuery.isFetching || reportGenerating} className="gap-2">{reportGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />} {reportGenerating ? "Preparando PDF…" : "Gerar PDF"}</Button>
+          {canManageStructure && (accountsQuery.data?.length === 0 || categoriesQuery.data?.length === 0) && <Button variant="outline" onClick={() => initializeDefaults.mutate({ churchId })} disabled={initializeDefaults.isPending} className="gap-2">{initializeDefaults.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Inicializar padrões</Button>}
           {bankAccounts.length > 0 && <Button variant="outline" onClick={openReconciliation} className="gap-2"><BookOpenCheck className="h-4 w-4" /> Conciliar banco</Button>}
           <Button variant="outline" onClick={() => openTransaction("saida")} disabled={periodClosed || accountsQuery.isLoading || categoriesQuery.isLoading} title={periodClosed ? "Reabra o período para registrar uma saída." : undefined} className="gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"><ArrowUpCircle className="h-4 w-4" /> Registrar saída</Button>
           <Button onClick={() => openTransaction("entrada")} disabled={periodClosed || accountsQuery.isLoading || categoriesQuery.isLoading} title={periodClosed ? "Reabra o período para registrar uma entrada." : undefined} className="gap-2 bg-navy hover:bg-navy/90"><ArrowDownCircle className="h-4 w-4" /> Registrar entrada</Button>
@@ -489,7 +499,7 @@ export default function Tesouraria() {
       {overviewQuery.error && <InlineError message={overviewQuery.error.message} />}
       {overviewQuery.isLoading ? <TreasurySkeleton /> : (
         <>
-          <TreasuryServiceSection churchId={churchId} people={(peopleQuery.data ?? []).map((person) => ({ id: person.id, fullName: person.fullName }))} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name, type: account.type }))} />
+          <TreasuryServiceSection churchId={churchId} canManageStructure={canManageStructure} people={(peopleQuery.data ?? []).map((person) => ({ id: person.id, fullName: person.fullName }))} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name, type: account.type }))} />
 
           <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard icon={WalletCards} label={`Saldo até ${formatDatePtBr(endDate)}`} value={formatBrl(overview?.balanceCents ?? 0)} tone="navy" helper={accountLabel} />

@@ -120,6 +120,8 @@ import {
   setEventPaymentSettings,
   updateEventRegistrationPayment,
   createFinancialAccount,
+  ensureTreasuryDefaults,
+  materializeTreasuryRecurringOccurrences,
   createFinancialCategory,
   createFinancialTransaction,
   getFinancialAccountById,
@@ -6660,8 +6662,16 @@ const treasuryRouter = router({
   services: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), includeCancelled: z.boolean().optional() }))
     .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      return getTreasuryServices(input.churchId, input.includeCancelled ?? false);
+    }),
+
+  materializeOccurrences: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), fromDate: financialDateInput.optional(), toDate: financialDateInput.optional() }))
+    .mutation(async ({ input, ctx }) => {
       const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
-      return getTreasuryServices(input.churchId, input.includeCancelled ?? false, access.actor.id);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem materializar ocorrências recorrentes." });
+      return materializeTreasuryRecurringOccurrences({ churchId: input.churchId, actorChurchUserId: access.actor.id, fromDate: input.fromDate, toDate: input.toDate });
     }),
 
   recurringSchedules: protectedProcedure
@@ -6838,6 +6848,14 @@ const treasuryRouter = router({
       const service = await getTreasuryServiceById(input.serviceId, input.churchId);
       if (!service) throw new TRPCError({ code: "NOT_FOUND", message: "Culto não encontrado nesta igreja." });
       return getFinancialTransactionsByService(input.churchId, input.serviceId);
+    }),
+
+  initializeDefaults: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem inicializar a estrutura padrão da Tesouraria." });
+      return ensureTreasuryDefaults(input.churchId);
     }),
 
   accounts: protectedProcedure
