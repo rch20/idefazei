@@ -17,6 +17,7 @@ import { Baby, BookOpen, Calendar, ChevronDown, Clock, Edit3, Globe2, HandHeart,
 import type { LucideIcon } from "lucide-react";
 import { formatCivilDate } from "@/lib/civilDate";
 import { DEFAULT_MINISTRY_ICON_KEY, MINISTRY_ICON_OPTIONS, type MinistryIconKey } from "../../../shared/ministryIcons";
+import { MINISTRY_VICE_LEADER_LABEL, MINISTRY_VICE_LEADER_ROLE_KEY } from "../../../shared/ministryRoles";
 
 const OPERATIONAL_FUNCTION_KEYS = new Set(["membro_ministerio", "musico", "vocalista", "visitador"]);
 
@@ -214,6 +215,18 @@ export default function Ministerios() {
     assignFunction.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: Number(functionPersonId), roleKey: selectedRoleKey });
   };
 
+  const saveViceLeader = (value: string) => {
+    if (!selectedMinistry) return;
+    const currentAssignment = ministryMemberRows
+      .flatMap((item) => item.roles ?? [])
+      .find((role) => role.key === MINISTRY_VICE_LEADER_ROLE_KEY);
+    if (value === "none") {
+      if (currentAssignment) removeFunction.mutate({ churchId: churchId!, id: currentAssignment.id });
+      return;
+    }
+    assignFunction.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: Number(value), roleKey: MINISTRY_VICE_LEADER_ROLE_KEY });
+  };
+
   const addCustomFunction = () => {
     if (!selectedMinistry || !customRoleName.trim()) return toast.error("Informe o nome da função.");
     const key = customRoleName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
@@ -400,7 +413,7 @@ export default function Ministerios() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {filtered.map((ministry: { id: number; name: string; type?: string | null; iconKey?: string | null; description?: string | null; memberCount?: number; leaderId?: number | null; leaderName?: string | null }) => {
+            {filtered.map((ministry: { id: number; name: string; type?: string | null; iconKey?: string | null; description?: string | null; memberCount?: number; leaderId?: number | null; leaderName?: string | null; viceLeaderName?: string | null }) => {
               const iconKey = ministry.iconKey ?? DEFAULT_MINISTRY_ICON_KEY;
               return (
                 <div
@@ -423,6 +436,7 @@ export default function Ministerios() {
                     <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{ministry.description}</p>
                   )}
                   <p className="text-xs text-muted-foreground mb-2">Líder: <span className="font-medium text-navy">{ministry.leaderName ?? "Não definido"}</span></p>
+                  <p className="text-xs text-muted-foreground mb-2">Vice-líder: <span className="font-medium text-navy">{ministry.viceLeaderName ?? "Não definido"}</span></p>
                   <div className="flex items-center gap-2 mt-auto">
                     <Badge variant="outline" className="text-xs">
                       <Users className="w-3 h-3 mr-1" />
@@ -470,6 +484,17 @@ export default function Ministerios() {
                   {updateLeader.isPending && <span className="self-center text-xs text-muted-foreground">Atualizando…</span>}
                 </div>
               </div>}
+              {selectedMinistry?.canManageViceLeader && <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
+                <Label htmlFor="selected-ministry-vice-leader">{MINISTRY_VICE_LEADER_LABEL}</Label>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Apoia a rotina deste Ministério sem receber permissões administrativas gerais. A atribuição fica registrada com o responsável que a realizou.</p>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Select value={ministryMemberRows.find((item) => (item.roles ?? []).some((role) => role.key === MINISTRY_VICE_LEADER_ROLE_KEY))?.person.id.toString() ?? "none"} onValueChange={saveViceLeader}>
+                    <SelectTrigger id="selected-ministry-vice-leader" className="flex-1"><SelectValue placeholder="Sem vice-líder definido" /></SelectTrigger>
+                    <SelectContent><SelectItem value="none">Sem vice-líder definido</SelectItem>{ministryMemberRows.filter((item) => item.person.id !== selectedMinistry?.leaderId).map((item) => <SelectItem key={item.person.id} value={String(item.person.id)}>{item.person.fullName}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {(assignFunction.isPending || removeFunction.isPending) && <span className="self-center text-xs text-muted-foreground">Atualizando…</span>}
+                </div>
+              </div>}
               {selectedMinistry?.canManage ? <div className="flex flex-col gap-2 sm:flex-row">
                 <Select value={selectedPersonId} onValueChange={setSelectedPersonId}>
                   <SelectTrigger className="flex-1"><SelectValue placeholder="Selecione uma Pessoa" /></SelectTrigger>
@@ -508,7 +533,7 @@ export default function Ministerios() {
                     </Select>
                     <Select value={selectedRoleKey} onValueChange={setSelectedRoleKey}>
                       <SelectTrigger><SelectValue placeholder="Função permitida" /></SelectTrigger>
-                      <SelectContent>{(functionCatalog.data ?? []).filter((role) => canManageRoles || OPERATIONAL_FUNCTION_KEYS.has(role.key) || role.grants.length === 0).map((role) => <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>)}</SelectContent>
+                      <SelectContent>{(functionCatalog.data ?? []).filter((role) => role.key !== MINISTRY_VICE_LEADER_ROLE_KEY && (canManageRoles || OPERATIONAL_FUNCTION_KEYS.has(role.key) || role.grants.length === 0)).map((role) => <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>)}</SelectContent>
                     </Select>
                     <Button type="button" onClick={saveFunction} disabled={assignFunction.isPending}>{assignFunction.isPending ? "Salvando…" : "Atribuir"}</Button>
                   </div>

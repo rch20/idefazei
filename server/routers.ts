@@ -6,6 +6,7 @@ import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaL
 import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
 import { HERO_PRESET_IDS } from "../shared/publicHero";
 import { MINISTRY_ICON_KEYS, DEFAULT_MINISTRY_ICON_KEY } from "../shared/ministryIcons";
+import { MINISTRY_VICE_LEADER_LABEL, MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
 import { getOptimizedMediaUrls } from "./media";
 import { currentCivilDateAsUtcNoon, formatCivilDateValue, normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -438,7 +439,7 @@ const COUNSELING_ROLES = new Set(["pastor_presidente", "pastor_local", "supervis
 const PASTORAL_ACTION_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor", "lider", "consolidador"]);
 const TREASURY_ROLES = new Set(["pastor_presidente", "pastor_local", "tesoureiro"]);
 const VISIT_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor", "consolidador", "visitador"]);
-const MINISTRY_MANAGEMENT_ROLE_KEYS = new Set(["lider_louvor", "lider_consolidacao", "supervisor_consolidacao", "lider_visitas", "supervisor_visitas"]);
+const MINISTRY_MANAGEMENT_ROLE_KEYS = new Set(["lider_louvor", "lider_consolidacao", "supervisor_consolidacao", "lider_visitas", "supervisor_visitas", MINISTRY_VICE_LEADER_ROLE_KEY]);
 const MINISTRY_LEADERSHIP_ROLE_KEYS = new Set(["lider_celula", "supervisor_celulas", "lider_consolidacao", "supervisor_consolidacao", "lider_visitas", "supervisor_visitas", "lider_louvor"]);
 const OPERATIONAL_MINISTRY_ROLE_KEYS = new Set(["membro_ministerio", "musico", "vocalista", "visitador"]);
 const EXECUTIVE_READ_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario", "supervisor"]);
@@ -461,6 +462,7 @@ const MINISTRY_FUNCTION_CATALOG = [
   { key: "vocalista", label: "Vocalista", ministryTypes: ["louvor"], grants: [] },
   { key: "lider_louvor", label: "Líder de Louvor", ministryTypes: ["louvor"], grants: ["lider_louvor"] },
   { key: "membro_ministerio", label: "Membro de Ministério", ministryTypes: ["*"], grants: [] },
+  { key: MINISTRY_VICE_LEADER_ROLE_KEY, label: MINISTRY_VICE_LEADER_LABEL, ministryTypes: ["*"], grants: [] },
 ] as const;
 
 const MINISTRY_FUNCTION_GRANTS = new Map<string, readonly string[]>(MINISTRY_FUNCTION_CATALOG.map((item) => [item.key, item.grants]));
@@ -3408,11 +3410,18 @@ const ministriesRouter = router({
       if (!canManageAll && visibleRows.length === 0) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Você não possui um Ministério sob sua responsabilidade." });
       }
-      return visibleRows.map((m) => ({
-        ...m,
-        memberCount: countByMinistry.get(m.id) ?? 0,
-        leaderName: m.leaderId ? nameByPerson.get(m.leaderId) ?? null : null,
-        canManage: canManageAll || Boolean(actor.personId && m.leaderId === actor.personId) || managedByAssignment.has(m.id),
+      return Promise.all(visibleRows.map(async (m) => {
+        const viceAssignments = await getMinistryRoleAssignmentsByMinistry(m.id, input.churchId);
+        const viceLeader = viceAssignments.find(({ assignment }) => assignment.roleKey === MINISTRY_VICE_LEADER_ROLE_KEY);
+        const isNamedLeader = Boolean(actor.personId && m.leaderId === actor.personId);
+        return {
+          ...m,
+          memberCount: countByMinistry.get(m.id) ?? 0,
+          leaderName: m.leaderId ? nameByPerson.get(m.leaderId) ?? null : null,
+          viceLeaderName: viceLeader?.person.fullName ?? null,
+          canManage: canManageAll || isNamedLeader || managedByAssignment.has(m.id),
+          canManageViceLeader: canManageAll || isNamedLeader,
+        };
       }));
     }),
   members: protectedProcedure
@@ -3568,17 +3577,30 @@ const ministriesRouter = router({
       const member = await requireChurchMember(ctx.user.id, input.churchId);
       const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, member);
       const isPastor = roles.some((role) => PASTOR_ROLES.has(role));
-      if (!isPastor) await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
+      const isViceLeaderAssignment = input.roleKey === MINISTRY_VICE_LEADER_ROLE_KEY;
+      if (!isPastor && !isViceLeaderAssignment) await requireMinistryManagementPermission(ctx.user.id, input.churchId, input.ministryId);
       const [person, ministry] = await Promise.all([
         getPersonById(input.personId, input.churchId),
         getMinistriesByChurch(input.churchId).then((items) => items.find((item) => item.id === input.ministryId && item.active)),
       ]);
       if (!person || !ministry) throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou Ministério inválido para esta igreja." });
+      const isNamedLeader = Boolean(member.personId && ministry.leaderId === member.personId);
+      if (isViceLeaderAssignment) {
+        if (!isPastor && !isNamedLeader) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor ou o líder principal pode atribuir o vice-líder deste Ministério." });
+        }
+        if (ministry.leaderId === input.personId) {
+          throw new TRPCError({ code: "CONFLICT", message: "O líder principal não pode acumular a função de vice-líder do mesmo Ministério." });
+        }
+        if (!(await isActiveMinistryMember(input.ministryId, input.personId, input.churchId))) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "O vice-líder precisa participar ativamente deste Ministério." });
+        }
+      }
       const customDefinition = (await getMinistryRoleDefinitionsByChurch(input.churchId)).find((definition) => definition.key === input.roleKey && (!definition.ministryId || definition.ministryId === ministry.id) && definition.active);
       const allowed = getMinistryFunctionCatalogFor(ministry).some((item) => item.key === input.roleKey) || Boolean(customDefinition);
       if (!allowed) throw new TRPCError({ code: "BAD_REQUEST", message: "Essa função não é compatível com o Ministério selecionado." });
       const isCustomMemberRole = customDefinition?.permissionPackage === "member";
-      if (!isPastor && !OPERATIONAL_MINISTRY_ROLE_KEYS.has(input.roleKey) && !isCustomMemberRole) {
+      if (!isPastor && !isViceLeaderAssignment && !OPERATIONAL_MINISTRY_ROLE_KEYS.has(input.roleKey) && !isCustomMemberRole) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Líderes só podem atribuir funções operacionais da própria equipe." });
       }
       if (MINISTRY_LEADERSHIP_ROLE_KEYS.has(input.roleKey) && !isPastor) {
@@ -3600,8 +3622,14 @@ const ministriesRouter = router({
       const member = await requireChurchMember(ctx.user.id, input.churchId);
       const roles = await getEffectiveChurchRoles(ctx.user.id, input.churchId, member);
       const isPastor = roles.some((role) => PASTOR_ROLES.has(role));
+      const ministry = (await getMinistriesByChurch(input.churchId)).find((item) => item.id === assignment.ministryId && item.active);
+      if (!ministry) throw new TRPCError({ code: "NOT_FOUND", message: "Ministério não encontrado nesta igreja." });
+      const isNamedLeader = Boolean(member.personId && ministry.leaderId === member.personId);
+      if (assignment.roleKey === MINISTRY_VICE_LEADER_ROLE_KEY && !isPastor && !isNamedLeader) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor ou o líder principal pode remover o vice-líder deste Ministério." });
+      }
       const customDefinition = (await getMinistryRoleDefinitionsByChurch(input.churchId)).find((definition) => definition.key === assignment.roleKey && (!definition.ministryId || definition.ministryId === assignment.ministryId) && definition.active);
-      const canLeaderManageRole = OPERATIONAL_MINISTRY_ROLE_KEYS.has(assignment.roleKey) || customDefinition?.permissionPackage === "member";
+      const canLeaderManageRole = OPERATIONAL_MINISTRY_ROLE_KEYS.has(assignment.roleKey) || customDefinition?.permissionPackage === "member" || (assignment.roleKey === MINISTRY_VICE_LEADER_ROLE_KEY && isNamedLeader);
       if (!isPastor) {
         if (!canLeaderManageRole) throw new TRPCError({ code: "FORBIDDEN", message: "Somente o Pastor pode remover funções de liderança." });
         await requireMinistryManagementPermission(ctx.user.id, input.churchId, assignment.ministryId);

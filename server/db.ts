@@ -108,6 +108,7 @@ import { getDerivedLogoIconUrls, getOptimizedMediaUrls } from "./media";
 import { currentCivilDateAsUtcNoon, formatCivilDateInput, formatCivilDateValue, parseCivilDateAsUtcNoon } from "./civilDate";
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
+import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -4162,20 +4163,40 @@ export async function assignMinistryRole(data: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
-  const existing = await db
-    .select({ id: ministryRoleAssignments.id })
-    .from(ministryRoleAssignments)
-    .where(and(
-      eq(ministryRoleAssignments.churchId, data.churchId),
-      eq(ministryRoleAssignments.ministryId, data.ministryId),
-      eq(ministryRoleAssignments.personId, data.personId),
-      eq(ministryRoleAssignments.roleKey, data.roleKey),
-      eq(ministryRoleAssignments.active, true)
-    ))
-    .limit(1);
-  if (existing.length) return { id: existing[0].id, alreadyAssigned: true };
-  const result = await db.insert(ministryRoleAssignments).values({ ...data, active: true });
-  return { id: result[0].insertId, alreadyAssigned: false };
+  return db.transaction(async (tx) => {
+    if (data.roleKey === MINISTRY_VICE_LEADER_ROLE_KEY) {
+      const ministryRows = await tx
+        .select({ id: ministries.id })
+        .from(ministries)
+        .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId), eq(ministries.active, true)))
+        .limit(1)
+        .for("update");
+      if (ministryRows.length === 0) throw new Error("Ministério não encontrado nesta igreja.");
+      await tx.update(ministryRoleAssignments)
+        .set({ active: false, endedAt: new Date() })
+        .where(and(
+          eq(ministryRoleAssignments.churchId, data.churchId),
+          eq(ministryRoleAssignments.ministryId, data.ministryId),
+          eq(ministryRoleAssignments.roleKey, MINISTRY_VICE_LEADER_ROLE_KEY),
+          eq(ministryRoleAssignments.active, true),
+          ne(ministryRoleAssignments.personId, data.personId),
+        ));
+    }
+    const existing = await tx
+      .select({ id: ministryRoleAssignments.id })
+      .from(ministryRoleAssignments)
+      .where(and(
+        eq(ministryRoleAssignments.churchId, data.churchId),
+        eq(ministryRoleAssignments.ministryId, data.ministryId),
+        eq(ministryRoleAssignments.personId, data.personId),
+        eq(ministryRoleAssignments.roleKey, data.roleKey),
+        eq(ministryRoleAssignments.active, true)
+      ))
+      .limit(1);
+    if (existing.length) return { id: existing[0].id, alreadyAssigned: true };
+    const result = await tx.insert(ministryRoleAssignments).values({ ...data, active: true });
+    return { id: result[0].insertId, alreadyAssigned: false };
+  });
 }
 
 export async function deactivateMinistryRole(id: number, churchId: number, ministryId: number) {
