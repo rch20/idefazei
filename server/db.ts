@@ -1090,6 +1090,166 @@ export async function getPeopleByChurch(churchId: number, search?: string) {
     .limit(100);
 }
 
+export type PeopleDirectoryPerson = {
+  id: number;
+  photoUrl: string | null;
+  fullName: string;
+  phone: string | null;
+  whatsapp: string | null;
+  email: string | null;
+  city: string | null;
+  state: string | null;
+  discipleshipStage: string | null;
+};
+
+export type PeopleDirectoryEntry = {
+  person: PeopleDirectoryPerson;
+  care: {
+    status: "sem_responsavel" | "na_fila" | "atrasado" | "acompanhamento" | "em_dia";
+    priority: "alta" | "media" | "normal";
+    nextStep: string;
+    responsiblePersonId: number | null;
+    responsibleName: string | null;
+    role: string | null;
+    referralId: number | null;
+    referralStatus: string | null;
+    careDueAt: Date | null;
+  };
+  cell: { id: number; name: string } | null;
+};
+
+/**
+ * Diretório operacional em lote. O resumo é derivado somente de relações do
+ * mesmo tenant e não cria estado novo nem substitui a fila da Consolidação.
+ */
+export async function getPeopleDirectoryByChurch(
+  churchId: number,
+  search?: string,
+  allowedPersonIds?: number[] | null,
+) : Promise<PeopleDirectoryEntry[]> {
+  const db = await getDb();
+  if (!db || (allowedPersonIds && allowedPersonIds.length === 0)) return [];
+
+  const conditions = [eq(people.churchId, churchId), eq(people.active, true)];
+  if (allowedPersonIds) conditions.push(inArray(people.id, allowedPersonIds) as any);
+  if (search) {
+    conditions.push(
+      or(
+        sql`${people.fullName} LIKE ${`%${search}%`}`,
+        sql`${people.email} LIKE ${`%${search}%`}`,
+        sql`${people.phone} LIKE ${`%${search}%`}`,
+        sql`${people.whatsapp} LIKE ${`%${search}%`}`,
+      ) as any,
+    );
+  }
+
+  const persons = await db
+    .select({
+      id: people.id,
+      photoUrl: people.photoUrl,
+      fullName: people.fullName,
+      phone: people.phone,
+      whatsapp: people.whatsapp,
+      email: people.email,
+      city: people.city,
+      state: people.state,
+      discipleshipStage: people.discipleshipStage,
+    })
+    .from(people)
+    .where(and(...conditions))
+    .orderBy(people.fullName)
+    .limit(200);
+  if (persons.length === 0) return [];
+
+  const personIds = persons.map((person) => person.id);
+  const [assignments, memberships, referrals] = await Promise.all([
+    db
+      .select({ personId: careAssignments.personId, responsiblePersonId: careAssignments.responsiblePersonId, role: careAssignments.role })
+      .from(careAssignments)
+      .where(and(eq(careAssignments.churchId, churchId), eq(careAssignments.active, true), inArray(careAssignments.personId, personIds))),
+    db
+      .select({ personId: cellMembers.personId, cellId: cells.id, cellName: cells.name })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cells.churchId, churchId), eq(cells.active, true), eq(cellMembers.active, true), inArray(cellMembers.personId, personIds))),
+    db
+      .select({
+        id: consolidationReferrals.id,
+        personId: consolidationReferrals.personId,
+        status: consolidationReferrals.status,
+        assignedToPersonId: consolidationReferrals.assignedToPersonId,
+        acceptedByPersonId: consolidationReferrals.acceptedByPersonId,
+        acceptedByChurchUserId: consolidationReferrals.acceptedByChurchUserId,
+        careDueAt: consolidationReferrals.careDueAt,
+        updatedAt: consolidationReferrals.updatedAt,
+      })
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.churchId, churchId), inArray(consolidationReferrals.personId, personIds))),
+  ]);
+
+  const assignmentByPerson = new Map(assignments.map((item) => [item.personId, item]));
+  const cellByPerson = new Map(memberships.map((item) => [item.personId, { id: item.cellId, name: item.cellName }]));
+  const responsibleIds = Array.from(new Set([
+    ...assignments.map((item) => item.responsiblePersonId),
+    ...referrals.flatMap((item) => [item.assignedToPersonId, item.acceptedByPersonId]),
+  ].filter((id): id is number => id !== null)));
+  const responsiblePeople = responsibleIds.length === 0
+    ? []
+    : await db
+        .select({ id: people.id, fullName: people.fullName })
+        .from(people)
+        .where(and(eq(people.churchId, churchId), eq(people.active, true), inArray(people.id, responsibleIds)));
+  const responsibleById = new Map(responsiblePeople.map((item) => [item.id, item.fullName]));
+  const activeReferralByPerson = new Map<number, (typeof referrals)[number]>();
+  for (const referral of referrals
+    .filter((item) => !["encerrado", "cancelado"].includes(item.status))
+    .sort((a, b) => Number(new Date(b.updatedAt)) - Number(new Date(a.updatedAt)))) {
+    if (!activeReferralByPerson.has(referral.personId)) activeReferralByPerson.set(referral.personId, referral);
+  }
+
+  return persons.map((person) => {
+    const assignment = assignmentByPerson.get(person.id);
+    const referral = activeReferralByPerson.get(person.id);
+    const hasResponsible = Boolean(assignment || referral?.assignedToPersonId || referral?.acceptedByPersonId || referral?.acceptedByChurchUserId);
+    const isOverdue = Boolean(referral?.careDueAt && Number(new Date(referral.careDueAt)) < Date.now());
+    const status: PeopleDirectoryEntry["care"]["status"] = isOverdue
+      ? "atrasado"
+      : referral && !hasResponsible
+        ? "na_fila"
+        : assignment || referral
+          ? "acompanhamento"
+          : "sem_responsavel";
+    const priority: PeopleDirectoryEntry["care"]["priority"] = status === "atrasado" || status === "sem_responsavel"
+      ? "alta"
+      : status === "na_fila"
+        ? "media"
+        : "normal";
+    const nextStep = status === "atrasado"
+      ? "Registrar acompanhamento"
+      : status === "na_fila"
+        ? "Definir responsável"
+        : status === "sem_responsavel"
+          ? "Definir responsável"
+          : "Acompanhamento em dia";
+    const responsiblePersonId = assignment?.responsiblePersonId ?? referral?.assignedToPersonId ?? referral?.acceptedByPersonId ?? null;
+    return {
+      person,
+      care: {
+        status,
+        priority,
+        nextStep,
+        responsiblePersonId,
+        responsibleName: responsiblePersonId ? responsibleById.get(responsiblePersonId) ?? null : null,
+        role: assignment?.role ?? null,
+        referralId: referral?.id ?? null,
+        referralStatus: referral?.status ?? null,
+        careDueAt: referral?.careDueAt ?? null,
+      },
+      cell: cellByPerson.get(person.id) ?? null,
+    };
+  });
+}
+
 export async function getBirthdaysByChurch(churchId: number, month: number, day?: number) {
   const db = await getDb();
   if (!db) return [];
