@@ -12,7 +12,8 @@ describe("painel de Nova Alma e Discípulo", () => {
     expect(pageSource).toContain("Cadastro: {status.label}");
     expect(pageSource).toContain("Discípulos com ficha");
     expect(pageSource).toContain("Novas almas pendentes");
-    expect(pageSource).toContain("Na etapa Consolidação");
+    expect(pageSource).toContain("Etapa da Jornada: Consolidação");
+    expect(pageSource).toContain("Ela não cria nem confirma um caso na fila moderna de Consolidação");
     expect(pageSource).toContain("Abrir ficha em Discípulos");
     expect(pageSource).toContain("Etapa: ${getDiscipleshipStageLabel(displayState.stage)}");
   });

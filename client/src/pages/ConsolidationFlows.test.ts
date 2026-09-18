@@ -100,7 +100,8 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(dbSource).toContain("Cuidado transferido após integração");
     expect(consolidationSource).toContain("Próximo destino da Pessoa");
     expect(consolidationSource).toContain("Concluir e integrar");
-    expect(consolidationSource).toContain("Registros antigos de checklist");
+    expect(consolidationSource).toContain("Histórico legado de Consolidação");
+    expect(consolidationSource).toContain("A fila moderna de cuidado está na seção acima");
   });
 
   it("usa o histórico moderno para o primeiro acompanhamento e preserva o legado apenas como compatibilidade", () => {
@@ -120,6 +121,7 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(consolidationSource).toContain('value="cancelados"');
     expect(consolidationSource).toContain("Cancelar caso");
     expect(consolidationSource).toContain("Checklist histórico");
+    expect(consolidationSource).toContain("casos modernos de cuidado");
     expect(consolidationSource).not.toContain("toggleItem(c.id, item.key, checked)");
   });
 });

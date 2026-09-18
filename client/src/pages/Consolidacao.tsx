@@ -283,7 +283,7 @@ export default function Consolidacao() {
         <div>
           <h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {hasFullOverview ? "Acompanhe a jornada de cuidado das Pessoas da igreja" : "Acompanhe somente os casos sob sua responsabilidade"}
+            {hasFullOverview ? "Acompanhe os casos modernos de cuidado das Pessoas da igreja" : "Acompanhe somente os casos modernos sob sua responsabilidade"}
           </p>
         </div>
         <ReportButton
@@ -304,7 +304,7 @@ export default function Consolidacao() {
           <ChevronRight className="hidden h-4 w-4 text-muted-foreground sm:block" aria-hidden="true" />
           <span className="rounded-full bg-slate-100 px-3 py-1.5 text-slate-700">5. Encerramento ou integração</span>
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">A Pessoa continua com a mesma ficha; somente o estado do cuidado e o responsável mudam ao longo da jornada.</p>
+        <p className="mt-3 text-xs text-muted-foreground">A Pessoa continua com a mesma ficha. A etapa da Jornada e o caso moderno de cuidado são fontes independentes; esta tela acompanha somente o caso moderno.</p>
       </section>
 
       {canAccessVisits && <div className="inline-flex rounded-lg border border-border bg-background p-1"><Button size="sm" className="bg-navy text-white hover:bg-navy-light">Consolidação</Button><Button size="sm" variant="ghost" onClick={() => setActiveSection("visitas")}><MapPinned className="mr-2 h-4 w-4" />Visitas</Button></div>}
@@ -502,7 +502,7 @@ export default function Consolidacao() {
       </section>
 
       <details className="rounded-2xl border border-border bg-background p-4 sm:p-5">
-        <summary className="cursor-pointer list-none text-sm font-semibold text-navy outline-none focus-visible:ring-2 focus-visible:ring-gold/70">Registros antigos de checklist <span className="ml-1 text-xs font-normal text-muted-foreground">(mantidos apenas para histórico)</span></summary>
+        <summary className="cursor-pointer list-none text-sm font-semibold text-navy outline-none focus-visible:ring-2 focus-visible:ring-gold/70">Histórico legado de Consolidação <span className="ml-1 text-xs font-normal text-muted-foreground">(mantido apenas para consulta)</span></summary>
         <div className="mt-4">
       {isLoading ? (
         <div className="space-y-4">
@@ -515,9 +515,9 @@ export default function Consolidacao() {
           <div className="w-14 h-14 rounded-full bg-rose-50 flex items-center justify-center">
             <Heart className="w-7 h-7 text-rose-500" />
           </div>
-          <p className="font-semibold text-navy">Nenhuma consolidação em andamento</p>
+          <p className="font-semibold text-navy">Nenhum registro legado encontrado</p>
           <p className="text-sm text-muted-foreground">
-            {hasFullOverview ? "Atribua consolidadores às Novas Almas para começar" : "Quando uma Nova Alma for atribuída a você, ela aparecerá nesta fila."}
+            A fila moderna de cuidado está na seção acima; este bloco mostra somente registros antigos de checklist.
           </p>
         </div>
       ) : (
