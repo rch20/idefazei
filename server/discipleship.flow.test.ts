@@ -151,6 +151,7 @@ vi.mock("./db", () => ({
   getActiveDepartmentRoleKeysByPerson: vi.fn().mockResolvedValue([]),
   getMinistryRoleDefinitionsByChurch: vi.fn().mockResolvedValue([]),
   getMinistryRoleAssignmentsByPerson: vi.fn().mockResolvedValue([]),
+  getMinistryRoleAssignmentsByMinistry: vi.fn().mockResolvedValue([]),
   getMinistryRoleAssignmentById: vi.fn().mockResolvedValue({ id: 1, churchId: 100, ministryId: 7, personId: 10, roleKey: "membro_ministerio", active: true }),
   getMinistryMembershipsByPerson: vi.fn().mockResolvedValue([]),
   assignMinistryRole: vi.fn().mockResolvedValue({ id: 1, alreadyAssigned: false }),
@@ -2555,6 +2556,55 @@ describe("Governança transversal — escopo e acumulação de funções", () =>
     expect(db.assignMinistryRole).toHaveBeenCalledWith(expect.objectContaining({ ministryId: 7, personId: 11, roleKey: "membro_ministerio" }));
 
     await expect(caller.ministries.assignFunction({ churchId: CHURCH_ID, ministryId: 7, personId: 11, roleKey: "lider_louvor" })).rejects.toThrow("funções operacionais");
+  });
+
+  it("permite ao líder principal atribuir o vice-líder, sem elevar permissões gerais", async () => {
+    const db = await import("./db");
+    vi.mocked(db.getChurchMemberByUserId).mockResolvedValue({ id: 14, userId: 44, churchId: CHURCH_ID, personId: 10, role: "membro", active: true } as any);
+    vi.mocked(db.getMinistriesByChurch).mockResolvedValue([{ id: 7, churchId: CHURCH_ID, name: "Louvor", type: "louvor", leaderId: 10, active: true }] as any);
+    vi.mocked(db.getPersonById).mockResolvedValue({ id: 11, churchId: CHURCH_ID, fullName: "Vice Teste", active: true } as any);
+    vi.mocked(db.isActiveMinistryMember).mockResolvedValue(true);
+    const caller = appRouter.createCaller(createMemberContext(44));
+
+    await caller.ministries.assignFunction({ churchId: CHURCH_ID, ministryId: 7, personId: 11, roleKey: "vice_lider_ministerio" });
+
+    expect(db.assignMinistryRole).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, ministryId: 7, personId: 11, roleKey: "vice_lider_ministerio", assignedByChurchUserId: 14 }));
+  });
+
+  it("permite ao líder principal remover o vice-líder do próprio Ministério", async () => {
+    const db = await import("./db");
+    vi.mocked(db.getChurchMemberByUserId).mockResolvedValue({ id: 14, userId: 44, churchId: CHURCH_ID, personId: 10, role: "membro", active: true } as any);
+    vi.mocked(db.getMinistryRoleAssignmentById).mockResolvedValue({ id: 91, churchId: CHURCH_ID, ministryId: 7, personId: 11, roleKey: "vice_lider_ministerio", active: true } as any);
+    vi.mocked(db.getMinistriesByChurch).mockResolvedValue([{ id: 7, churchId: CHURCH_ID, name: "Louvor", type: "louvor", leaderId: 10, active: true }] as any);
+    const caller = appRouter.createCaller(createMemberContext(44));
+
+    await caller.ministries.removeFunction({ churchId: CHURCH_ID, id: 91 });
+
+    expect(db.deactivateMinistryRole).toHaveBeenCalledWith(91, CHURCH_ID, 7);
+  });
+
+  it("bloqueia pessoa que não é Pastor nem líder principal de atribuir o vice-líder", async () => {
+    const db = await import("./db");
+    vi.mocked(db.assignMinistryRole).mockClear();
+    vi.mocked(db.getChurchMemberByUserId).mockResolvedValue({ id: 15, userId: 45, churchId: CHURCH_ID, personId: 12, role: "membro", active: true } as any);
+    vi.mocked(db.getMinistriesByChurch).mockResolvedValue([{ id: 7, churchId: CHURCH_ID, name: "Louvor", type: "louvor", leaderId: 10, active: true }] as any);
+    vi.mocked(db.getPersonById).mockResolvedValue({ id: 11, churchId: CHURCH_ID, fullName: "Vice Teste", active: true } as any);
+    const caller = appRouter.createCaller(createMemberContext(45));
+
+    await expect(caller.ministries.assignFunction({ churchId: CHURCH_ID, ministryId: 7, personId: 11, roleKey: "vice_lider_ministerio" })).rejects.toThrow("líder principal");
+    expect(db.assignMinistryRole).not.toHaveBeenCalledWith(expect.objectContaining({ roleKey: "vice_lider_ministerio" }));
+  });
+
+  it("não permite que o líder principal acumule o cargo de vice-líder", async () => {
+    const db = await import("./db");
+    vi.mocked(db.assignMinistryRole).mockClear();
+    vi.mocked(db.getChurchMemberByUserId).mockResolvedValue({ id: 1, userId: 10, churchId: CHURCH_ID, personId: 10, role: "pastor_presidente", active: true } as any);
+    vi.mocked(db.getMinistriesByChurch).mockResolvedValue([{ id: 7, churchId: CHURCH_ID, name: "Louvor", type: "louvor", leaderId: 10, active: true }] as any);
+    vi.mocked(db.getPersonById).mockResolvedValue({ id: 10, churchId: CHURCH_ID, fullName: "Líder Teste", active: true } as any);
+    const caller = appRouter.createCaller(createMemberContext(10));
+
+    await expect(caller.ministries.assignFunction({ churchId: CHURCH_ID, ministryId: 7, personId: 10, roleKey: "vice_lider_ministerio" })).rejects.toThrow("não pode acumular");
+    expect(db.assignMinistryRole).not.toHaveBeenCalledWith(expect.objectContaining({ roleKey: "vice_lider_ministerio" }));
   });
 });
 
