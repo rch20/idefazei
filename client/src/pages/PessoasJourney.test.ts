@@ -203,4 +203,33 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(routerSource).toContain("whatsapp: whatsappInput,");
     expect(routerSource).toContain("Informe um WhatsApp válido com DDD.");
   });
+
+  it("organiza a lista em um diretório operacional com filtros acionáveis", () => {
+    expect(pageSource).toContain("trpc.people.directory.useQuery");
+    expect(pageSource).toContain('aria-label="Resumo operacional de Pessoas"');
+    expect(pageSource).toContain('type DirectoryFilter =');
+    expect(pageSource).toContain('"sem_responsavel"');
+    expect(pageSource).toContain('"atencao"');
+    expect(pageSource).toContain("aria-pressed={directoryFilter === filter}");
+    expect(pageSource).toContain('aria-label="Filtros de Jornada"');
+    expect(pageSource).toContain("DIRECTORY_CARE_LABELS[care.status]");
+  });
+
+  it("mantém o diretório limitado ao tenant e ao escopo server-side", () => {
+    expect(routerSource).toContain("directory: protectedProcedure");
+    expect(routerSource).toContain("getAccessiblePersonIds(ctx.user.id, input.churchId)");
+    expect(routerSource).toContain("getPeopleDirectoryByChurch(input.churchId, input.search");
+    expect(dbSource).toContain("export async function getPeopleDirectoryByChurch");
+    expect(dbSource).toContain("eq(people.churchId, churchId)");
+    expect(dbSource).toContain("eq(careAssignments.churchId, churchId)");
+    expect(dbSource).toContain("eq(consolidationReferrals.churchId, churchId)");
+    expect(dbSource).toContain("eq(cells.churchId, churchId)");
+    expect(dbSource).toContain('"Acompanhamento em dia"');
+  });
+
+  it("não transforma a lista de Pessoas em uma segunda Consolidação", () => {
+    expect(pageSource).toContain("Uma Pessoa, várias participações e um histórico único de cuidado.");
+    expect(pageSource).toContain("Abrir Consolidação");
+    expect(pageSource).not.toContain("createReferral.mutate({ churchId, personId: person.id");
+  });
 });

@@ -217,6 +217,7 @@ import {
   getMinistryRoleDefinitionsByChurch,
   createMinistryRoleDefinition,
   getPeopleByChurch,
+  getPeopleDirectoryByChurch,
   getBirthdaysByChurch,
   getPersonById,
   getPrayerRequestsByChurch,
@@ -1339,6 +1340,12 @@ const peopleRouter = router({
       const accessibleIds = await getAccessiblePersonIds(ctx.user.id, input.churchId);
       const people = await getPeopleByChurch(input.churchId, input.search);
       return accessibleIds === null ? people : people.filter((person) => accessibleIds.has(person.id));
+    }),
+  directory: protectedProcedure
+    .input(z.object({ churchId: z.number(), search: z.string().optional() }))
+    .query(async ({ input, ctx }) => {
+      const accessibleIds = await getAccessiblePersonIds(ctx.user.id, input.churchId);
+      return getPeopleDirectoryByChurch(input.churchId, input.search, accessibleIds === null ? null : Array.from(accessibleIds));
     }),
   birthdays: protectedProcedure
     .input(z.object({

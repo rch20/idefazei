@@ -32,6 +32,7 @@ const JOURNEY_STAGES = [
 
 type JourneyStage = typeof JOURNEY_STAGES[number];
 type JourneyStatus = "concluida" | "pendente" | "nao_registrada";
+type DirectoryFilter = "todas" | JourneyStage | "sem_responsavel" | "atencao";
 
 const STAGE_BADGE: Record<string, string> = {
   nova_alma: "badge-nova-alma",
@@ -43,6 +44,14 @@ const STAGE_BADGE: Record<string, string> = {
   escola_de_lideres: "badge-escola",
   lideranca: "badge-lideranca",
   multiplicador: "badge-multiplicador",
+};
+
+const DIRECTORY_CARE_LABELS: Record<string, string> = {
+  sem_responsavel: "Sem responsável",
+  na_fila: "Na fila de cuidado",
+  atrasado: "Cuidado atrasado",
+  acompanhamento: "Em acompanhamento",
+  em_dia: "Acompanhamento em dia",
 };
 
 const JOURNEY_STAGE_DESCRIPTIONS: Record<JourneyStage, string> = {
@@ -214,6 +223,7 @@ export default function Pessoas() {
   const [open, setOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [directoryFilter, setDirectoryFilter] = useState<DirectoryFilter>("todas");
   const [form, setForm] = useState(defaultForm);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
   const consumedPersonDeepLinkRef = useRef<string | null>(null);
@@ -234,6 +244,7 @@ export default function Pessoas() {
   const utils = trpc.useUtils();
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId, search: search || undefined });
+  const directoryQuery = trpc.people.directory.useQuery({ churchId, search: search || undefined });
   const routeParams = useMemo(() => {
     const search = typeof window !== "undefined" ? window.location.search : location.split("?")[1] ?? "";
     return new URLSearchParams(search);
@@ -255,7 +266,6 @@ export default function Pessoas() {
     { churchId, month: birthdayMonthFilter, day: birthdayView === "today" ? birthdayDay : undefined },
     { enabled: birthdaysOpen }
   );
-  const careAttention = trpc.dashboard.careAttention.useQuery({ churchId });
   const currentCare = trpc.care.getCurrent.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id) }
@@ -269,6 +279,12 @@ export default function Pessoas() {
   const effectiveRoles = effectiveRolesQuery.data ?? [];
   const isPastorPresident = effectiveRoles.includes("pastor_presidente");
   const isPastor = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+  const canReadExecutiveAttention = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local", "secretario"].includes(role));
+  const careAttention = trpc.dashboard.careAttention.useQuery(
+    { churchId },
+    { enabled: canReadExecutiveAttention },
+  );
+  const refreshCareAttention = () => canReadExecutiveAttention ? careAttention.refetch() : Promise.resolve();
   const canManageJourney = isPastor || effectiveRoles.some((role) => ["lider", "supervisor", "consolidador"].includes(role));
   const canManageCellParticipation = isPastor || effectiveRoles.some((role) => ["lider", "supervisor"].includes(role));
   const canCreateReferral = canManageJourney;
@@ -313,12 +329,12 @@ export default function Pessoas() {
   );
   const consolidatorsQuery = trpc.consolidation.consolidators.useQuery({ churchId }, { enabled: canCreateReferral });
   const createPerson = trpc.people.create.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success("Pessoa cadastrada com sucesso!");
       setOpen(false);
       setForm(defaultForm);
       setFormError(null);
-      refetch();
+      await Promise.all([refetch(), directoryQuery.refetch()]);
     },
     onError: (error) => {
       const message = error.message || "Erro ao cadastrar pessoa";
@@ -330,7 +346,7 @@ export default function Pessoas() {
     onSuccess: async (result) => {
       toast.success(result?.accessReleased ? "Responsável atualizado e acesso liberado." : "Responsável pelo cuidado atualizado.");
       setCareForm((current) => ({ ...current, notes: "" }));
-      await Promise.all([currentCare.refetch(), careHistory.refetch(), careAttention.refetch()]);
+      await Promise.all([currentCare.refetch(), careHistory.refetch(), refreshCareAttention(), directoryQuery.refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível atualizar o responsável."),
   });
@@ -340,7 +356,8 @@ export default function Pessoas() {
       await Promise.all([
         currentCare.refetch(),
         careHistory.refetch(),
-        careAttention.refetch(),
+        refreshCareAttention(),
+        directoryQuery.refetch(),
         utils.souls.list.invalidate({ churchId }),
       ]);
     },
@@ -350,14 +367,14 @@ export default function Pessoas() {
     onSuccess: async () => {
       toast.success("Encaminhamento enviado para a fila de Consolidação.");
       setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "" });
-      await utils.consolidation.referrals.invalidate({ churchId });
+      await Promise.all([utils.consolidation.referrals.invalidate({ churchId }), directoryQuery.refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível enviar o encaminhamento."),
   });
   const updateJourneyStage = trpc.people.updateJourneyStage.useMutation({
     onSuccess: async (_, variables) => {
       toast.success(variables.status === "concluida" ? "Etapa marcada como concluída." : variables.status === "pendente" ? "Etapa marcada como pendente." : "Etapa redefinida como não registrada.");
-      await Promise.all([journeyQuery.refetch(), refetch()]);
+      await Promise.all([journeyQuery.refetch(), refetch(), directoryQuery.refetch()]);
       setJourneyNoteStage(null);
       setJourneyNote("");
       if (variables.setCurrentStage) {
@@ -391,7 +408,7 @@ export default function Pessoas() {
     onSuccess: async (result) => {
       toast.success(result.transferred ? "Pessoa transferida de célula com histórico preservado." : "Pessoa integrada à célula.");
       setSelectedCellId("");
-      await Promise.all([currentCell.refetch(), cellHistory.refetch(), currentCare.refetch(), careAttention.refetch(), refetch()]);
+      await Promise.all([currentCell.refetch(), cellHistory.refetch(), currentCare.refetch(), refreshCareAttention(), refetch(), directoryQuery.refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível integrar a pessoa à célula."),
   });
@@ -409,6 +426,22 @@ export default function Pessoas() {
   const selectedAttention = (careAttention.data ?? []).find((item) => item.person.id === selectedPerson?.id);
   const currentResponsible = (people ?? []).find((person) => person.id === currentCare.data?.responsiblePersonId);
   const participationCount = (currentCell.data ? 1 : 0) + (personMembershipsQuery.data?.length ?? 0);
+  const directory = directoryQuery.data ?? [];
+  const filteredDirectory = directory.filter(({ person, care }) => {
+    if (JOURNEY_STAGES.includes(directoryFilter as JourneyStage)) {
+      return person.discipleshipStage === directoryFilter || (directoryFilter === "consolidacao" && Boolean(care.referralId));
+    }
+    if (directoryFilter === "sem_responsavel") return care.status === "sem_responsavel" || care.status === "na_fila";
+    if (directoryFilter === "atencao") return care.priority === "alta" || care.priority === "media";
+    return true;
+  });
+  const directoryCounts = {
+    total: directory.length,
+    newSouls: directory.filter(({ person }) => person.discipleshipStage === "nova_alma").length,
+    consolidation: directory.filter(({ person, care }) => person.discipleshipStage === "consolidacao" || Boolean(care.referralId)).length,
+    withoutResponsible: directory.filter(({ care }) => care.status === "sem_responsavel" || care.status === "na_fila").length,
+    attention: directory.filter(({ care }) => care.priority === "alta" || care.priority === "media").length,
+  };
   const accessSummaryText = personAccessQuery.data?.accountLinked ? `${personAccessQuery.data.roles.length} acesso(s) efetivo(s)` : "Sem login vinculado";
   const nextStepLabel = selectedAttention?.nextStep === "Registrar primeiro contato"
     ? "Abrir Consolidação"
@@ -692,49 +725,71 @@ export default function Pessoas() {
         </DialogContent>
       </Dialog>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-        {Object.entries(STAGES_LABELS).slice(0, 5).map(([key, label]) => {
-          const count = (people ?? []).filter((p) => p.discipleshipStage === key).length;
-          return (
-            <div key={key} className="card-sacred p-3 text-center">
-              <p className="text-xl font-bold font-display text-navy">{count}</p>
-              <p className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium mt-1 ${STAGE_BADGE[key]}`}>
-                {label}
-              </p>
-            </div>
-          );
-        })}
+      {/* Resumo operacional */}
+      <section aria-label="Resumo operacional de Pessoas" className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-3">
+        {([
+          ["todas", directoryCounts.total, "Pessoas", "border-navy/15 bg-navy/[0.03]"],
+          ["nova_alma", directoryCounts.newSouls, "Novas Almas", "border-amber-200 bg-amber-50/60"],
+          ["consolidacao", directoryCounts.consolidation, "Consolidação", "border-indigo-200 bg-indigo-50/60"],
+          ["sem_responsavel", directoryCounts.withoutResponsible, "Sem responsável", "border-rose-200 bg-rose-50/60"],
+          ["atencao", directoryCounts.attention, "Com atenção", "border-gold/30 bg-gold/10"],
+        ] as const).map(([filter, count, label, tone]) => (
+          <button
+            key={filter}
+            type="button"
+            onClick={() => setDirectoryFilter(filter)}
+            aria-pressed={directoryFilter === filter}
+            className={`rounded-xl border p-3 text-left transition hover:-translate-y-px hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 ${tone} ${directoryFilter === filter ? "ring-2 ring-navy/20 shadow-sm" : ""}`}
+          >
+            <p className="text-xl font-bold font-display text-navy">{count}</p>
+            <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+          </button>
+        ))}
+      </section>
+
+      <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1" aria-label="Filtros de Jornada">
+        {(Object.entries(STAGES_LABELS) as Array<[JourneyStage, string]>).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setDirectoryFilter(key)}
+            className={`shrink-0 rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${directoryFilter === key ? `${STAGE_BADGE[key]} ring-1 ring-navy/10` : "border-border bg-background text-muted-foreground hover:border-gold/40 hover:text-navy"}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* List */}
-      {isLoading ? (
+      {isLoading || directoryQuery.isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-16 bg-muted rounded-xl animate-pulse" />
           ))}
         </div>
-      ) : (people ?? []).length === 0 ? (
+      ) : filteredDirectory.length === 0 ? (
         <div className="card-sacred flex flex-col items-center gap-3 p-10 text-center sm:p-12">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-navy/10">
             <Users className="h-7 w-7 text-navy" />
           </div>
-          <p className="font-semibold text-navy">{search ? "Nenhuma Pessoa encontrada" : "Nenhuma Pessoa cadastrada"}</p>
-          <p className="max-w-sm text-sm text-muted-foreground">{search ? "Tente outro nome, e-mail ou telefone, ou limpe a busca." : "Comece pela recepção: cadastre a primeira Pessoa da sua igreja."}</p>
+          <p className="font-semibold text-navy">{search ? "Nenhuma Pessoa encontrada" : directoryFilter !== "todas" ? "Nenhuma Pessoa neste filtro" : "Nenhuma Pessoa cadastrada"}</p>
+          <p className="max-w-sm text-sm text-muted-foreground">{search || directoryFilter !== "todas" ? "Ajuste a busca ou limpe o filtro para consultar outras Pessoas." : "Comece pela recepção: cadastre a primeira Pessoa da sua igreja."}</p>
           {search ? (
             <Button type="button" variant="outline" onClick={() => setSearch("")}>Limpar busca</Button>
+          ) : directoryFilter !== "todas" ? (
+            <Button type="button" variant="outline" onClick={() => setDirectoryFilter("todas")}>Limpar filtro</Button>
           ) : (
             <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={() => { setFormError(null); setOpen(true); }}><Plus className="mr-2 h-4 w-4" />Cadastrar primeira Pessoa</Button>
           )}
         </div>
       ) : (
         <div className="space-y-2 animate-stagger">
-          {(people ?? []).map((person) => (
+          {filteredDirectory.map(({ person, care, cell }) => (
             <button
               key={person.id}
               type="button"
               onClick={() => openPersonJourney(person)}
-              className="card-sacred flex w-full items-center gap-4 p-4 text-left transition-colors hover:border-gold/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+              className="card-sacred flex w-full items-start gap-3 p-3 text-left transition-colors hover:border-gold/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 sm:items-center sm:gap-4 sm:p-4"
               aria-label={`Abrir jornada de cuidado de ${person.fullName}`}
             >
               <div className="w-10 h-10 rounded-full bg-cream-dark flex items-center justify-center flex-shrink-0">
@@ -744,17 +799,18 @@ export default function Pessoas() {
                   <span className="text-sm font-bold text-navy">{person.fullName.charAt(0)}</span>
                 )}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-navy">{person.fullName}</p>
-                <div className="flex items-center gap-3 mt-0.5">
-                  {person.phone && <span className="text-xs text-muted-foreground">{person.phone}</span>}
-                  {person.email && <span className="text-xs text-muted-foreground hidden sm:block">{person.email}</span>}
-                  {person.city && <span className="text-xs text-muted-foreground hidden md:block">{person.city}/{person.state}</span>}
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <p className="truncate font-semibold text-navy">{person.fullName}</p>
+                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${STAGE_BADGE[person.discipleshipStage ?? "nova_alma"]}`}>{STAGES_LABELS[person.discipleshipStage ?? "nova_alma"]}</span>
+                </div>
+                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+                  {cell && <span className="truncate">Célula: {cell.name}</span>}
+                  <span className={`rounded-full border px-2 py-0.5 ${care.priority === "alta" ? "border-rose-200 bg-rose-50 text-rose-700" : care.priority === "media" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{DIRECTORY_CARE_LABELS[care.status]}</span>
+                  {care.responsibleName && <span className="hidden truncate sm:inline">Responsável: {care.responsibleName}</span>}
                 </div>
               </div>
-              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium flex-shrink-0 ${STAGE_BADGE[person.discipleshipStage ?? "nova_alma"]}`}>
-                Discípulo · Jornada: {STAGES_LABELS[person.discipleshipStage ?? "nova_alma"]}
-              </span>
+              <ArrowRight className="mt-2 h-4 w-4 shrink-0 text-muted-foreground sm:mt-0" />
             </button>
           ))}
         </div>
