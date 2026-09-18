@@ -60,9 +60,9 @@ function normalizePastoralSupportInput(value: string): string | null {
 
 function publicRegistrationUrl(slug: string) {
   if (typeof window !== "undefined" && window.location.hostname.startsWith(`${slug}.`) && window.location.hostname.endsWith(".idefazei.com.br")) {
-    return `${window.location.origin}/cadastro-publico`;
+    return `${window.location.origin}/cadastro`;
   }
-  return `https://${slug}.idefazei.com.br/cadastro-publico`;
+  return `https://${slug}.idefazei.com.br/cadastro`;
 }
 
 function publicRegistrationShareMessage(churchName: string, title: string, message: string, link: string) {
@@ -71,8 +71,8 @@ function publicRegistrationShareMessage(churchName: string, title: string, messa
 
 function publicRegistrationQrUrl(slug: string, source: "qrcode" | "convite" | "evento" | "link", campaign: string) {
   const base = typeof window !== "undefined" && window.location.hostname.startsWith(`${slug}.`) && window.location.hostname.endsWith(".idefazei.com.br")
-    ? `${window.location.origin}/cadastro-publico`
-    : `https://${slug}.idefazei.com.br/cadastro-publico`;
+    ? `${window.location.origin}/cadastro`
+    : `https://${slug}.idefazei.com.br/cadastro`;
   const params = new URLSearchParams({ origem: source });
   if (campaign.trim()) params.set("campanha", campaign.trim().slice(0, 120));
   return `${base}?${params.toString()}`;

@@ -128,6 +128,15 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(cadastroPublicoSource).toContain("não cria uma conta de acesso automaticamente");
     expect(cadastroPublicoSource).toContain("website");
     expect(cadastroPublicoSource).not.toContain("password");
+    expect(settingsSource).toContain("https://${slug}.idefazei.com.br/cadastro");
+    expect(settingsSource).not.toContain("https://${slug}.idefazei.com.br/cadastro-publico");
+  });
+
+  it("mantém links antigos do QR Code no cadastro completo com senha", () => {
+    const appSource = readFileSync(resolve(root, "client/src/App.tsx"), "utf8");
+    expect(appSource).toContain('<Route path="/cadastro" component={CadastroDiscipulo} />');
+    expect(appSource).toContain('<Route path="/cadastro-publico" component={CadastroDiscipulo} />');
+    expect(appSource).toContain('<Route path="/cadastro-interesse" component={CadastroPublico} />');
   });
 
   it("oferece configuração de redes sociais oficiais por tenant", () => {

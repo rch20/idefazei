@@ -664,7 +664,7 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
         enabled: church.publicRegistrationEnabled,
         title: church.publicRegistrationTitle,
         message: church.publicRegistrationMessage,
-        path: "/cadastro-publico",
+        path: "/cadastro",
       },
     },
     site,

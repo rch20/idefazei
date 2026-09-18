@@ -129,7 +129,9 @@ function Router() {
       <Route path="/login" component={LoginIgreja} />
       <Route path="/redefinir-senha" component={RedefinirSenha} />
       <Route path="/cadastro" component={CadastroDiscipulo} />
-      <Route path="/cadastro-publico" component={CadastroPublico} />
+      {/* Links antigos de QR Code continuam abrindo o cadastro completo com senha. */}
+      <Route path="/cadastro-publico" component={CadastroDiscipulo} />
+      <Route path="/cadastro-interesse" component={CadastroPublico} />
       <Route path="/devocional" component={DevocionalDiario} />
       <Route path="/encontro/ficha/:token" component={EncontroFichaPublica} />
       <Route path="/evento/inscricao/:token" component={EventoInscricaoPublica} />
