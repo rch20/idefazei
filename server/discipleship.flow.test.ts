@@ -74,6 +74,7 @@ vi.mock("./db", () => ({
   createConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "pendente" }),
   createConsolidationReferralCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, status: "pendente" }, assignment: null }),
   updateConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "aceito" }),
+  finalizeConsolidationReferral: vi.fn().mockResolvedValue({ id: 51, churchId: 100, status: "encerrado" }),
   assignConsolidationCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, assignedToPersonId: 10 }, assignment: { id: 1, action: "atribuido" } }),
   acceptConsolidationCase: vi.fn().mockResolvedValue({ referral: { id: 51, churchId: 100, acceptedByPersonId: 10, status: "aceito" }, assignment: { id: 2, action: "aceito" } }),
   assumeConsolidationCaseByChurchUser: vi.fn().mockImplementation(async (data: { churchUserId: number }) => ({ id: 51, churchId: 100, acceptedByChurchUserId: data.churchUserId, status: "aceito" })),
@@ -1694,7 +1695,7 @@ describe("Fluxo completo de discipulado", () => {
     });
 
     it("preserva o resultado ao encerrar o acompanhamento assumido", async () => {
-      const { getConsolidationReferralById, getConsolidationFollowUpsByReferral, updateConsolidationReferral } = await import("./db");
+      const { finalizeConsolidationReferral, getConsolidationReferralById, getConsolidationFollowUpsByReferral } = await import("./db");
       (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "consolidador", active: true });
       vi.mocked(getConsolidationFollowUpsByReferral).mockResolvedValueOnce([{ id: 701, referralId: 51, notes: "Contato realizado." }] as any);
       vi.mocked(getConsolidationReferralById).mockResolvedValueOnce({
@@ -1707,10 +1708,12 @@ describe("Fluxo completo de discipulado", () => {
 
       await caller.consolidation.closeReferral({ churchId: CHURCH_ID, id: 51, closeNotes: "Contato retomado e retorno combinado com o Líder." });
 
-      expect(updateConsolidationReferral).toHaveBeenCalledWith(51, CHURCH_ID, expect.objectContaining({
+      expect(finalizeConsolidationReferral).toHaveBeenCalledWith({
+        churchId: CHURCH_ID,
+        referralId: 51,
         status: "encerrado",
         closeNotes: "Contato retomado e retorno combinado com o Líder.",
-      }));
+      });
     });
 
     it("bloqueia encerramento sem histórico de acompanhamento", async () => {

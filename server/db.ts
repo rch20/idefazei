@@ -109,6 +109,7 @@ import { currentCivilDateAsUtcNoon, formatCivilDateInput, formatCivilDateValue, 
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
+import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus } from "../shared/consolidation";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -122,6 +123,10 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+function activeConsolidationReferralCondition() {
+  return inArray(consolidationReferrals.status, [...ACTIVE_CONSOLIDATION_REFERRAL_STATUSES]);
 }
 
 export async function createMediaAsset(data: InsertMediaAsset) {
@@ -1202,7 +1207,7 @@ export async function getPeopleDirectoryByChurch(
   const responsibleById = new Map(responsiblePeople.map((item) => [item.id, item.fullName]));
   const activeReferralByPerson = new Map<number, (typeof referrals)[number]>();
   for (const referral of referrals
-    .filter((item) => !["encerrado", "cancelado"].includes(item.status))
+    .filter((item) => isActiveConsolidationReferralStatus(item.status))
     .sort((a, b) => Number(new Date(b.updatedAt)) - Number(new Date(a.updatedAt)))) {
     if (!activeReferralByPerson.has(referral.personId)) activeReferralByPerson.set(referral.personId, referral);
   }
@@ -1210,7 +1215,7 @@ export async function getPeopleDirectoryByChurch(
   return persons.map((person) => {
     const assignment = assignmentByPerson.get(person.id);
     const referral = activeReferralByPerson.get(person.id);
-    const hasResponsible = Boolean(assignment || referral?.assignedToPersonId || referral?.acceptedByPersonId || referral?.acceptedByChurchUserId);
+    const hasResponsible = Boolean(assignment || (referral && hasConsolidationResponsible(referral)));
     const isOverdue = Boolean(referral?.careDueAt && Number(new Date(referral.careDueAt)) < Date.now());
     const status: PeopleDirectoryEntry["care"]["status"] = isOverdue
       ? "atrasado"
@@ -1957,7 +1962,7 @@ export async function getSpiritualRadarByChurch(churchId: number) {
   const referralById = new Map(referrals.map((item) => [item.id, item]));
   const activeReferralByPerson = new Map<number, (typeof referrals)[number]>();
   referrals
-    .filter((item) => !["encerrado", "cancelado"].includes(item.status))
+    .filter((item) => isActiveConsolidationReferralStatus(item.status))
     .sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)))
     .forEach((item) => { if (!activeReferralByPerson.has(item.personId)) activeReferralByPerson.set(item.personId, item); });
   const openVisitByPerson = new Map<number, (typeof visits)[number]>();
@@ -2356,12 +2361,7 @@ export async function getActiveConsolidationReferralByPerson(personId: number, c
     .where(and(
       eq(consolidationReferrals.personId, personId),
       eq(consolidationReferrals.churchId, churchId),
-      or(
-        eq(consolidationReferrals.status, "pendente"),
-        eq(consolidationReferrals.status, "aprovado"),
-        eq(consolidationReferrals.status, "aceito"),
-        eq(consolidationReferrals.status, "em_acompanhamento"),
-      ),
+      activeConsolidationReferralCondition(),
     ))
     .orderBy(desc(consolidationReferrals.referredAt))
     .limit(1);
@@ -2381,7 +2381,7 @@ export async function createConsolidationReferralCase(data: typeof consolidation
   return db.transaction(async (tx) => {
     const target = await tx.select({ id: people.id }).from(people).where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true))).limit(1).for("update");
     if (target.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
-    const active = await tx.select({ id: consolidationReferrals.id }).from(consolidationReferrals).where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.personId, data.personId), or(eq(consolidationReferrals.status, "pendente"), eq(consolidationReferrals.status, "aprovado"), eq(consolidationReferrals.status, "aceito"), eq(consolidationReferrals.status, "em_acompanhamento")))).limit(1);
+    const active = await tx.select({ id: consolidationReferrals.id }).from(consolidationReferrals).where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.personId, data.personId), activeConsolidationReferralCondition())).limit(1);
     if (active.length > 0) throw new Error("Esta Pessoa já possui um caso ativo na Consolidação.");
     const result = await tx.insert(consolidationReferrals).values(data);
     const referralId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
@@ -2408,7 +2408,21 @@ export async function assignConsolidationCase(data: { churchId: number; referral
     }
     const fromPersonId = referral.assignedToPersonId ?? referral.acceptedByPersonId ?? null;
     const action = data.toPersonId ? (fromPersonId ? "reatribuido" : "atribuido") : "devolvido_fila";
-    await tx.update(consolidationReferrals).set({ assignedToPersonId: data.toPersonId, assignedByChurchUserId: data.toPersonId ? data.performedByChurchUserId : null, assignedAt: data.toPersonId ? new Date() : null, acceptedByPersonId: data.toPersonId === referral.acceptedByPersonId ? referral.acceptedByPersonId : null, acceptedByChurchUserId: data.toPersonId === null && referral.acceptedByChurchUserId ? referral.acceptedByChurchUserId : null, acceptedAt: data.toPersonId === referral.acceptedByPersonId || (data.toPersonId === null && referral.acceptedByChurchUserId) ? referral.acceptedAt : null, status: data.toPersonId === referral.acceptedByPersonId || (data.toPersonId === null && referral.acceptedByChurchUserId) ? referral.status : referral.status === "aprovado" ? "aprovado" : "pendente" }).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
+    const keepsAcceptedPerson = data.toPersonId !== null && data.toPersonId === referral.acceptedByPersonId;
+    const keepsCurrentResponsibility = keepsAcceptedPerson;
+    const now = new Date();
+    await tx.update(consolidationReferrals).set({
+      assignedToPersonId: data.toPersonId,
+      assignedByChurchUserId: data.toPersonId ? data.performedByChurchUserId : null,
+      assignedAt: data.toPersonId ? referral.assignedAt ?? now : null,
+      acceptedByPersonId: keepsAcceptedPerson ? referral.acceptedByPersonId : null,
+      acceptedByChurchUserId: null,
+      acceptedAt: keepsCurrentResponsibility ? referral.acceptedAt : null,
+      status: keepsCurrentResponsibility ? referral.status : referral.status === "aprovado" ? "aprovado" : "pendente",
+    }).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
+    if (!keepsCurrentResponsibility) {
+      await tx.update(careAssignments).set({ active: false, endedAt: now }).where(and(eq(careAssignments.personId, referral.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.active, true)));
+    }
     await tx.insert(consolidationCaseAssignments).values({ churchId: data.churchId, referralId: data.referralId, action, fromPersonId, toPersonId: data.toPersonId, performedByChurchUserId: data.performedByChurchUserId, notes: data.notes ?? null });
     const updated = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1);
     return updated[0] ?? null;
@@ -2507,6 +2521,35 @@ export async function updateConsolidationReferral(
     .set(data)
     .where(and(eq(consolidationReferrals.id, id), eq(consolidationReferrals.churchId, churchId)));
   return getConsolidationReferralById(id, churchId);
+}
+
+export async function finalizeConsolidationReferral(data: {
+  churchId: number;
+  referralId: number;
+  status: "encerrado" | "cancelado";
+  closeNotes: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const referral = rows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (referral.status === data.status) return referral;
+    if (["encerrado", "cancelado"].includes(referral.status)) throw new Error("Este caso já foi finalizado.");
+
+    const now = new Date();
+    await tx.update(consolidationReferrals).set({ status: data.status, closedAt: now, closeNotes: data.closeNotes }).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
+    await tx.update(careAssignments).set({ active: false, endedAt: now }).where(and(eq(careAssignments.personId, referral.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.active, true)));
+
+    const updated = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1);
+    return updated[0] ?? null;
+  });
 }
 
 export async function getConsolidationFollowUpsByReferral(referralId: number, churchId: number) {
