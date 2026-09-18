@@ -7,6 +7,7 @@ import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../
 import { HERO_PRESET_IDS } from "../shared/publicHero";
 import { MINISTRY_ICON_KEYS, DEFAULT_MINISTRY_ICON_KEY } from "../shared/ministryIcons";
 import { MINISTRY_VICE_LEADER_LABEL, MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
+import { getConsolidationResponsiblePersonId, hasConsolidationResponsible } from "../shared/consolidation";
 import { getOptimizedMediaUrls } from "./media";
 import { currentCivilDateAsUtcNoon, formatCivilDateValue, normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -235,6 +236,7 @@ import {
   recordModernFirstContact,
   getOpenCareVisitsByReferral,
   updateConsolidationReferral,
+  finalizeConsolidationReferral,
   linkSoulToPerson,
   setCurrentCareAssignment,
   updatePerson,
@@ -1925,7 +1927,7 @@ const consolidationRouter = router({
           canAssign: canViewAll,
           canApprove: Boolean(context.capabilities.canManageConsolidation && referral.status === "pendente"),
           canAssumeAsPastor: Boolean(isPastor && ["pendente", "aprovado"].includes(referral.status) && !referral.acceptedByPersonId && !referral.acceptedByChurchUserId),
-          canAccept: Boolean(context.roles.includes("consolidador") && actor.personId && ["pendente", "aprovado"].includes(referral.status) && (!referral.assignedToPersonId || referral.assignedToPersonId === actor.personId) && (!referral.preferredConsolidatorId || referral.preferredConsolidatorId === actor.personId)),
+          canAccept: Boolean(context.roles.includes("consolidador") && actor.personId && ["pendente", "aprovado"].includes(referral.status) && (!referral.assignedToPersonId || referral.assignedToPersonId === actor.personId)),
           canCancel: Boolean((context.capabilities.canManageConsolidation || referral.acceptedByPersonId === actor.personId || referral.acceptedByChurchUserId === (ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id)) && !["encerrado", "cancelado"].includes(referral.status)),
           canIntegrate: Boolean(isPastor && referral.status === "em_acompanhamento"),
         };
@@ -2030,7 +2032,8 @@ const consolidationRouter = router({
       const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
       const referral = await getConsolidationReferralById(input.referralId, input.churchId);
       if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Caso de Consolidação não encontrado." });
-      const canView = context.capabilities.canManageConsolidation || referral.assignedToPersonId === context.actor.personId || referral.acceptedByPersonId === context.actor.personId;
+      const executorChurchUserId = ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id;
+      const canView = context.capabilities.canManageConsolidation || referral.assignedToPersonId === context.actor.personId || referral.acceptedByPersonId === context.actor.personId || referral.acceptedByChurchUserId === executorChurchUserId;
       if (!canView) throw new TRPCError({ code: "FORBIDDEN", message: "Você não possui acesso ao histórico deste caso." });
       const [events, people] = await Promise.all([getConsolidationCaseAssignments(input.referralId, input.churchId), getPeopleByChurch(input.churchId)]);
       const names = new Map(people.map((person) => [person.id, person.fullName]));
@@ -2082,7 +2085,7 @@ const consolidationRouter = router({
       if (!actor.personId || !context.roles.includes("consolidador")) throw new TRPCError({ code: "FORBIDDEN", message: "Somente uma Pessoa com função ativa de Consolidador pode assumir este caso." });
       const referral = await getConsolidationReferralById(input.id, input.churchId);
       if (!referral || !["pendente", "aprovado"].includes(referral.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "Este caso não está disponível para aceite." });
-      if ((referral.assignedToPersonId || referral.preferredConsolidatorId) && (referral.assignedToPersonId ?? referral.preferredConsolidatorId) !== actor.personId) {
+      if (referral.assignedToPersonId && referral.assignedToPersonId !== actor.personId) {
         throw new TRPCError({ code: "FORBIDDEN", message: "Este caso está atribuído a outro Consolidador." });
       }
       try {
@@ -2140,7 +2143,8 @@ const consolidationRouter = router({
       const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
       const referral = await getConsolidationReferralById(input.referralId, input.churchId);
       if (!referral) throw new TRPCError({ code: "NOT_FOUND", message: "Caso de Consolidação não encontrado." });
-      const isResponsible = referral.acceptedByPersonId === context.actor.personId;
+      const executorChurchUserId = ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id;
+      const isResponsible = referral.acceptedByPersonId === context.actor.personId || referral.acceptedByChurchUserId === executorChurchUserId;
       const isReferrer = referral.referredByPersonId === context.actor.personId;
       if (!context.capabilities.canManageConsolidation && !isResponsible && !isReferrer) throw new TRPCError({ code: "FORBIDDEN", message: "Você não possui acesso ao histórico deste caso." });
       const [followUps, churchPeople] = await Promise.all([
@@ -2301,11 +2305,7 @@ const consolidationRouter = router({
       if (openVisits.length > 0) {
         throw new TRPCError({ code: "CONFLICT", message: "Conclua ou cancele as visitas abertas antes de encerrar este acompanhamento." });
       }
-      return updateConsolidationReferral(input.id, input.churchId, {
-        status: "encerrado",
-        closedAt: new Date(),
-        closeNotes: input.closeNotes,
-      });
+      return finalizeConsolidationReferral({ churchId: input.churchId, referralId: input.id, status: "encerrado", closeNotes: input.closeNotes });
     }),
 
   cancelReferral: protectedProcedure
@@ -2323,11 +2323,7 @@ const consolidationRouter = router({
       if (openVisits.length > 0) {
         throw new TRPCError({ code: "CONFLICT", message: "Conclua ou cancele as visitas abertas antes de cancelar este caso." });
       }
-      return updateConsolidationReferral(input.id, input.churchId, {
-        status: "cancelado",
-        closedAt: new Date(),
-        closeNotes: input.cancelReason,
-      });
+      return finalizeConsolidationReferral({ churchId: input.churchId, referralId: input.id, status: "cancelado", closeNotes: input.cancelReason });
     }),
 
   integrateReferralIntoCell: protectedProcedure
@@ -5185,9 +5181,9 @@ const reportsRouter = router({
       const [referrals, visits, people] = await Promise.all([getConsolidationReferralsByChurch(input.churchId), getCareVisitsByChurch(input.churchId), getPeopleByChurch(input.churchId)]);
       const peopleById = new Map(people.map((person) => [person.id, person.fullName]));
       const currentTime = Date.now();
-      const activeCases = referrals.filter((referral) => referral.status !== "encerrado");
+      const activeCases = referrals.filter((referral) => !["encerrado", "cancelado"].includes(referral.status));
       const overdueCases = activeCases.filter((referral) => referral.careDueAt && new Date(referral.careDueAt).getTime() < currentTime);
-      const unassignedCases = activeCases.filter((referral) => !referral.assignedToPersonId && !referral.acceptedByPersonId);
+      const unassignedCases = activeCases.filter((referral) => !hasConsolidationResponsible(referral));
       const pendingVisits = visits.filter((visit) => !["realizada", "cancelada"].includes(visit.status));
       const completedVisits = visits.filter((visit) => visit.status === "realizada");
       const now = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
@@ -5216,7 +5212,7 @@ const reportsRouter = router({
               peopleById.get(referral.personId) ?? `Pessoa #${referral.personId}`,
               referral.sourceType.replace(/_/g, " "),
               referral.priority,
-              peopleById.get(referral.assignedToPersonId ?? referral.acceptedByPersonId ?? 0) ?? "Fila",
+              referral.acceptedByChurchUserId ? "Pastor responsável" : peopleById.get(getConsolidationResponsiblePersonId(referral) ?? 0) ?? "Fila",
               referral.status.replace(/_/g, " "),
               referral.careDueAt ? new Date(referral.careDueAt).toLocaleDateString("pt-BR") : "-",
             ]),
