@@ -391,7 +391,7 @@ export default function Consolidacao() {
                       <p className="mt-2 line-clamp-2 text-sm text-foreground"><span className="font-medium text-navy">Motivo:</span> {referral.reason}</p>
                     </div>
                     <div className="flex w-full shrink-0 flex-col gap-2 md:w-48">
-                      {primaryAction === "integrate" && <Button size="sm" className="bg-green-600 text-white hover:bg-green-700" onClick={() => toggleReferralDetails(referral.id)}><Church className="mr-2 h-4 w-4" />Concluir integração</Button>}
+                      {primaryAction === "integrate" && <Button size="sm" className="bg-green-600 text-white hover:bg-green-700" onClick={() => toggleReferralDetails(referral.id)}><Church className="mr-2 h-4 w-4" />Integrar em Célula</Button>}
                       {primaryAction === "approve" && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={approveReferral.isPending} onClick={() => approveReferral.mutate({ churchId, id: referral.id })}><CheckCircle2 className="mr-2 h-4 w-4" />Aprovar encaminhamento</Button>}
                       {primaryAction === "assume" && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={assumeAsPastor.isPending} onClick={() => assumeAsPastor.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir como Pastor</Button>}
                       {primaryAction === "accept" && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
