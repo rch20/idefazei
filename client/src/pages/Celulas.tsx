@@ -668,7 +668,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                           type="button"
                           onClick={() => navigate(`/app/pessoas?personId=${item.person.id}&section=resumo`)}
                           className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-1 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
-                          aria-label={`Abrir prontuário de ${item.person.fullName}`}
+                          aria-label={`Abrir ficha de ${item.person.fullName}`}
                         >
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-cream-dark text-navy"><UserRound className="h-4 w-4" /></div>
                           <div className="min-w-0 flex-1">

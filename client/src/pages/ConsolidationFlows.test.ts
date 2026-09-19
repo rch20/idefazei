@@ -95,6 +95,14 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(consolidationSource).toContain("id={`referral-details-${referral.id}`}");
   });
 
+  it("deixa claro quando a ação principal apenas abre a escolha de Célula", () => {
+    expect(consolidationSource).toContain("Escolher Célula");
+    expect(consolidationSource).toContain("aria-expanded={isExpanded}");
+    expect(consolidationSource).toContain("getReferralQueueEmptyMessage(caseFilter)");
+    expect(consolidationSource).toContain("Não há casos aguardando responsável neste momento.");
+    expect(consolidationSource).toContain("Não há casos com prazo vencido neste momento.");
+  });
+
   it("usa prioridade tipada no App do Líder e Visitas reais na Central de Cuidado", () => {
     expect(leaderSource).toContain('priority: "normal" | "alta" | "urgente"');
     expect(leaderSource).toContain('priority: referralByCell[myCell.id].priority ?? "normal"');

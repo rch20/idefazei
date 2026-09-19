@@ -34,7 +34,7 @@ describe("Fluxos de liderança — contratos da interface", () => {
     expect(source).toContain("Adicionar à Célula");
     expect(source).toContain("getWhatsAppLinkWithMessage");
     expect(source).toContain("section=resumo");
-    expect(source).toContain("Abrir prontuário de");
+    expect(source).toContain("Abrir ficha de");
     expect(source).toContain("Conversar com");
     expect(source).toContain("E-mail não cadastrado");
     expect(source).toContain("mailto:");

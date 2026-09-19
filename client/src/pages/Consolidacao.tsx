@@ -94,6 +94,17 @@ function getCareDueLabel(referral: { careDueStatus: string; hoursUntilCareDue: n
   return `Prazo: ${new Date(referral.careDueAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}`;
 }
 
+function getReferralQueueEmptyMessage(filter: "ativos" | "fila" | "atrasados" | "encerrados" | "cancelados" | "todos") {
+  switch (filter) {
+    case "fila": return "Não há casos aguardando responsável neste momento.";
+    case "atrasados": return "Não há casos com prazo vencido neste momento.";
+    case "encerrados": return "Não há casos encerrados para este filtro.";
+    case "cancelados": return "Não há casos cancelados para este filtro.";
+    case "todos": return "Não há casos registrados na fila de Consolidação.";
+    default: return "Não há casos ativos na sua fila neste momento.";
+  }
+}
+
 export default function Consolidacao() {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
@@ -366,7 +377,7 @@ export default function Consolidacao() {
             <p className="mt-1 text-xs text-muted-foreground">Pessoas encaminhadas porque precisam de acompanhamento. Um Consolidador oficialmente atribuído pode assumir diretamente; a liderança acompanha e atua nos casos excepcionais.</p>
           </div></div><Select value={caseFilter} onValueChange={(value) => setCaseFilter(value as typeof caseFilter)}><SelectTrigger className="w-full bg-background sm:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ativos">Casos ativos</SelectItem><SelectItem value="fila">Sem responsável</SelectItem><SelectItem value="atrasados">Atrasados</SelectItem><SelectItem value="encerrados">Encerrados</SelectItem><SelectItem value="cancelados">Cancelados</SelectItem><SelectItem value="todos">Todos os casos</SelectItem></SelectContent></Select></div>
         {filteredReferrals.length === 0 ? (
-          <p className="mt-4 rounded-lg border border-dashed border-rose-200 bg-background/70 p-3 text-sm text-muted-foreground">Não há encaminhamentos de resgate na sua fila neste momento.</p>
+          <p className="mt-4 rounded-lg border border-dashed border-rose-200 bg-background/70 p-3 text-sm text-muted-foreground">{getReferralQueueEmptyMessage(caseFilter)}</p>
         ) : (
           <div className="mt-4 space-y-3">
             {filteredReferrals.map((referral) => {
@@ -391,7 +402,7 @@ export default function Consolidacao() {
                       <p className="mt-2 line-clamp-2 text-sm text-foreground"><span className="font-medium text-navy">Motivo:</span> {referral.reason}</p>
                     </div>
                     <div className="flex w-full shrink-0 flex-col gap-2 md:w-48">
-                      {primaryAction === "integrate" && <Button size="sm" className="bg-green-600 text-white hover:bg-green-700" onClick={() => toggleReferralDetails(referral.id)}><Church className="mr-2 h-4 w-4" />Integrar em Célula</Button>}
+                      {primaryAction === "integrate" && <Button size="sm" className="bg-green-600 text-white hover:bg-green-700" aria-expanded={isExpanded} aria-controls={`referral-details-${referral.id}`} onClick={() => toggleReferralDetails(referral.id)}><Church className="mr-2 h-4 w-4" />Escolher Célula</Button>}
                       {primaryAction === "approve" && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={approveReferral.isPending} onClick={() => approveReferral.mutate({ churchId, id: referral.id })}><CheckCircle2 className="mr-2 h-4 w-4" />Aprovar encaminhamento</Button>}
                       {primaryAction === "assume" && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={assumeAsPastor.isPending} onClick={() => assumeAsPastor.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir como Pastor</Button>}
                       {primaryAction === "accept" && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
