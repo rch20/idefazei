@@ -139,6 +139,16 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("Participação em Célula");
     expect(pageSource).toContain("const canManageCellParticipation");
     expect(pageSource).toContain("A integração e a transferência de Célula são feitas pelo Pastor ou pela liderança responsável.");
+    expect(pageSource).toContain("trpc.cells.personParticipation.useQuery");
+    expect(pageSource).toContain('status === "integrada"');
+    expect(pageSource).toContain("Célula atual: Sem Célula");
+    expect(pageSource).toContain("Sair da Célula");
+    expect(pageSource).toContain("A Jornada principal foi preservada");
+    expect(routerSource).toContain("personParticipation: protectedProcedure");
+    expect(routerSource).toContain("removePerson: protectedProcedure");
+    expect(dbSource).toContain("export async function removePersonFromCell");
+    expect(dbSource).toContain("leftAt: now");
+    expect(routerSource).not.toContain('updatePerson(person.id, input.churchId, { discipleshipStage: "celula" });');
   });
 
   it("mantém atuações ministeriais como consulta e direciona a edição para o Ministério", () => {

@@ -3022,7 +3022,7 @@ export async function getCellMembershipHistory(personId: number, churchId: numbe
     .orderBy(desc(cellMembers.joinedAt));
 }
 
-/** Encerra qualquer vínculo ativo antes de inserir a nova Célula da Pessoa. */
+/** Encerra qualquer vínculo ativo antes de inserir a nova Célula da Pessoa. A Jornada principal não é alterada aqui. */
 export async function assignPersonToCell(data: { churchId: number; personId: number; cellId: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -3051,6 +3051,43 @@ export async function assignPersonToCell(data: { churchId: number; personId: num
     if (!membershipId) throw new Error("Failed to assign person to cell");
     const rows = await tx.select().from(cellMembers).where(eq(cellMembers.id, membershipId)).limit(1);
     return rows[0] ?? null;
+  });
+}
+
+/** Encerra o vínculo atual sem apagar o histórico e sem retroceder a Jornada. */
+export async function removePersonFromCell(data: { churchId: number; personId: number; cellId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const personRows = await tx
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1)
+      .for("update");
+    if (personRows.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
+
+    const membershipRows = await tx
+      .select({ membershipId: cellMembers.id })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(
+        eq(cellMembers.personId, data.personId),
+        eq(cellMembers.cellId, data.cellId),
+        eq(cellMembers.active, true),
+        eq(cells.churchId, data.churchId),
+      ))
+      .limit(1);
+    const membership = membershipRows[0];
+    if (!membership) return null;
+
+    const now = new Date();
+    await tx
+      .update(cellMembers)
+      .set({ active: false, leftAt: now })
+      .where(eq(cellMembers.id, membership.membershipId));
+    const updatedRows = await tx.select().from(cellMembers).where(eq(cellMembers.id, membership.membershipId)).limit(1);
+    return updatedRows[0] ?? null;
   });
 }
 
