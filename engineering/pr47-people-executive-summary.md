@@ -61,7 +61,7 @@ A página continuará responsável por queries, autorização, navegação e mut
 
 ## Responsividade e acessibilidade
 
-No mobile, o resumo usará uma coluna, botões com altura mínima de toque e uma única ação principal em largura total. Os indicadores poderão formar uma grade de duas colunas para evitar cartões excessivamente altos.
+No mobile, o resumo usará uma coluna, botões com altura mínima de toque e uma única ação principal em largura total. Os indicadores usarão duas colunas: Jornada e Célula atual ficarão lado a lado, enquanto o responsável pelo cuidado ocupará a largura restante.
 
 No desktop, a ação principal e os indicadores usarão o espaço horizontal disponível sem criar uma grade densa. Os detalhes complementares permanecerão visualmente subordinados.
 

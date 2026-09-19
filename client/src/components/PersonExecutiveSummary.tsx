@@ -103,7 +103,7 @@ export function PersonExecutiveSummary({
         </div>
       </section>
 
-      <div className="grid gap-2 sm:grid-cols-3" aria-label="Indicadores principais da Pessoa">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Indicadores principais da Pessoa">
         <article className="min-w-0 rounded-lg border border-border bg-muted/30 p-3">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Jornada</p>
           <p className="mt-1 truncate text-sm font-semibold text-navy" title={stageLabel}>{stageLabel}</p>
@@ -117,7 +117,7 @@ export function PersonExecutiveSummary({
           <p className="mt-1 truncate text-sm font-semibold text-navy" title={cellLabel}>{cellLabel}</p>
           <p className="mt-1 text-[11px] text-muted-foreground">{isCellIntegrated ? "Participação integrada" : "Participação pendente"}</p>
         </article>
-        <article className="min-w-0 rounded-lg border border-border bg-muted/30 p-3">
+        <article className="col-span-2 min-w-0 rounded-lg border border-border bg-muted/30 p-3 sm:col-span-1">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Acompanhado por</p>
           <p className="mt-1 truncate text-sm font-semibold text-navy" title={responsibleName ?? "Não definido"}>{responsibleName ?? "Não definido"}</p>
           <p className="mt-1 text-[11px] text-muted-foreground">Responsável pelo cuidado</p>

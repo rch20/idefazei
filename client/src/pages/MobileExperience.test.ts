@@ -25,7 +25,8 @@ describe("Experiência mobile e estados vazios", () => {
 
   it("mantém o resumo executivo compacto e progressivo no celular", () => {
     expect(peopleSource).toContain("<PersonExecutiveSummary");
-    expect(summarySource).toContain("sm:grid-cols-3");
+    expect(summarySource).toContain("grid grid-cols-2 gap-2 sm:grid-cols-3");
+    expect(summarySource).toContain("col-span-2");
     expect(summarySource).toContain("min-h-11 w-full");
     expect(summarySource).toContain("Collapsible");
     expect(summarySource).toContain("aria-controls={contextId}");
