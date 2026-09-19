@@ -29,6 +29,7 @@ import {
   createCell,
   updateCell,
   assignPersonToCell,
+  removePersonFromCell,
   integrateConsolidationReferralIntoCell,
   createChurch,
   createConsolidationReferral,
@@ -2812,13 +2813,22 @@ const cellsRouter = router({
       return getPeopleWithoutActiveCell(input.churchId);
     }),
 
-  personMembership: protectedProcedure
+  personParticipation: protectedProcedure
     .input(z.object({ churchId: z.number(), personId: z.number() }))
     .query(async ({ input, ctx }) => {
       await requireScopedPersonRead(ctx.user.id, input.churchId, input.personId);
       const person = await getPersonById(input.personId, input.churchId);
-      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
-      return getActiveCellMembership(input.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada nesta igreja." });
+      const [current, history] = await Promise.all([
+        getActiveCellMembership(input.personId, input.churchId),
+        getCellMembershipHistory(input.personId, input.churchId),
+      ]);
+      return {
+        status: current ? "integrada" as const : "pendente" as const,
+        current,
+        hasHistory: history.length > 0,
+        previousCount: history.filter((membership) => !membership.active).length,
+      };
     }),
 
   membershipHistory: protectedProcedure
@@ -2849,7 +2859,6 @@ const cellsRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Transferências entre Células devem ser realizadas por um Pastor ou Supervisor." });
       }
       const membership = await assignPersonToCell(input);
-      await updatePerson(person.id, input.churchId, { discipleshipStage: "celula" });
       await setCurrentCareAssignment({
         churchId: input.churchId,
         personId: person.id,
@@ -2858,6 +2867,25 @@ const cellsRouter = router({
         notes: previousMembership ? `Transferida de ${previousMembership.cellName} para ${cell.name}.` : `Integrada à célula ${cell.name}.`,
       });
       return { membership, transferred: Boolean(previousMembership) };
+    }),
+
+  removePerson: protectedProcedure
+    .input(z.object({ churchId: z.number(), personId: z.number().int().positive(), cellId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const authorization = await requireCellManagementPermission(ctx.user.id, input.churchId, input.cellId);
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person || !person.active) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa inválida para esta igreja." });
+      }
+      const membership = await removePersonFromCell(input);
+      if (!membership) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A Pessoa não possui vínculo ativo com esta Célula." });
+      }
+      return {
+        membership,
+        cellId: authorization.cell.id,
+        removed: true as const,
+      };
     }),
 
   create: protectedProcedure

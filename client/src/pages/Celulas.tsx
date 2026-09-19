@@ -16,7 +16,7 @@ import { trpc } from "@/lib/trpc";
 import { getWhatsAppLinkWithMessage } from "@/lib/whatsapp";
 import { buildMapLocationQuery } from "@/lib/maptiler";
 import { useLocation } from "wouter";
-import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, Mail, MapPin, MessageCircle, Phone, Plus, Send, Settings2, Users, UserRound } from "lucide-react";
+import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, Mail, MapPin, MessageCircle, Phone, Plus, Send, Settings2, UserMinus, Users, UserRound } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -160,6 +160,13 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
       await Promise.all([cellMembers.refetch(), assignmentCandidates.refetch(), memberCounts.refetch(), refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível integrar a Pessoa à Célula."),
+  });
+  const removePerson = trpc.cells.removePerson.useMutation({
+    onSuccess: async () => {
+      toast.success("Pessoa retirada da Célula. O histórico foi preservado.");
+      await Promise.all([cellMembers.refetch(), assignmentCandidates.refetch(), memberCounts.refetch(), refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível retirar a Pessoa da Célula."),
   });
   const recordMeeting = trpc.cells.recordMeeting.useMutation({
     onSuccess: async () => {
@@ -646,6 +653,11 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                     );
                     const emailHref = item.person.email ? `mailto:${encodeURIComponent(item.person.email)}` : null;
                     const openCare = () => { setSelectedMember(item); setMemberReferralReason(""); };
+                    const leaveCell = () => {
+                      if (!selectedCell) return;
+                      if (!window.confirm(`Retirar ${item.person.fullName} da Célula ${selectedCell.name}? O histórico será preservado e a Jornada não será alterada.`)) return;
+                      removePerson.mutate({ churchId, personId: item.person.id, cellId: selectedCell.id });
+                    };
                     return (
                       <div key={item.membership.id} className="flex items-center gap-2 px-3 py-2.5 transition-colors hover:bg-cream/60">
                         <button
@@ -670,6 +682,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                             <span className="block font-medium">Cuidar</span>
                             <span className="block">desde {new Date(item.membership.joinedAt).toLocaleDateString("pt-BR")}</span>
                           </button>
+                          {selectedCell?.canManage && <button type="button" onClick={leaveCell} disabled={removePerson.isPending} className="flex h-9 w-9 items-center justify-center rounded-full text-rose-600 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 disabled:opacity-50" aria-label={`Retirar ${item.person.fullName} da Célula`} title="Retirar da Célula"><UserMinus className="h-4 w-4" /></button>}
                         </div>
                       </div>
                     );

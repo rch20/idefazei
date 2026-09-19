@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { AlertCircle, ArrowRight, BriefcaseBusiness, Cake, CheckCircle2, Circle, Clock3, HeartHandshake, MessageCircle, Plus, Search, Send, ShieldCheck, User, Users } from "lucide-react";
+import { AlertCircle, ArrowRight, BriefcaseBusiness, Cake, CheckCircle2, Circle, Clock3, HeartHandshake, MessageCircle, Plus, Search, Send, ShieldCheck, User, UserMinus, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -311,7 +311,7 @@ export default function Pessoas() {
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
   );
-  const currentCell = trpc.cells.personMembership.useQuery(
+  const cellParticipationQuery = trpc.cells.personParticipation.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id) }
   );
@@ -408,9 +408,16 @@ export default function Pessoas() {
     onSuccess: async (result) => {
       toast.success(result.transferred ? "Pessoa transferida de célula com histórico preservado." : "Pessoa integrada à célula.");
       setSelectedCellId("");
-      await Promise.all([currentCell.refetch(), cellHistory.refetch(), currentCare.refetch(), refreshCareAttention(), refetch(), directoryQuery.refetch()]);
+      await Promise.all([cellParticipationQuery.refetch(), cellHistory.refetch(), currentCare.refetch(), refreshCareAttention(), refetch(), directoryQuery.refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível integrar a pessoa à célula."),
+  });
+  const removeCell = trpc.cells.removePerson.useMutation({
+    onSuccess: async () => {
+      toast.success("Pessoa retirada da Célula. A Jornada principal foi preservada.");
+      await Promise.all([cellParticipationQuery.refetch(), cellHistory.refetch(), currentCare.refetch(), refreshCareAttention(), refetch(), directoryQuery.refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível retirar a pessoa da Célula."),
   });
 
   function handleSubmit(e: React.FormEvent) {
@@ -425,7 +432,8 @@ export default function Pessoas() {
 
   const selectedAttention = (careAttention.data ?? []).find((item) => item.person.id === selectedPerson?.id);
   const currentResponsible = (people ?? []).find((person) => person.id === currentCare.data?.responsiblePersonId);
-  const participationCount = (currentCell.data ? 1 : 0) + (personMembershipsQuery.data?.length ?? 0);
+  const currentCell = cellParticipationQuery.data?.current ?? null;
+  const participationCount = (currentCell ? 1 : 0) + (personMembershipsQuery.data?.length ?? 0);
   const directory = directoryQuery.data ?? [];
   const filteredDirectory = directory.filter(({ person, care }) => {
     if (JOURNEY_STAGES.includes(directoryFilter as JourneyStage)) {
@@ -633,6 +641,12 @@ export default function Pessoas() {
       return;
     }
     assignCell.mutate({ churchId, personId: selectedPerson.id, cellId: Number(selectedCellId) });
+  }
+
+  function handleCellRemoval() {
+    if (!selectedPerson || !currentCell) return;
+    if (!window.confirm(`Retirar ${selectedPerson.fullName} da Célula ${currentCell.cellName}? O histórico será preservado e a Jornada não será alterada.`)) return;
+    removeCell.mutate({ churchId, personId: selectedPerson.id, cellId: currentCell.cellId });
   }
 
   function handleCreateReferral() {
@@ -1035,6 +1049,22 @@ export default function Pessoas() {
                     {parallelJourneyStages.length > 0 ? parallelJourneyStages.map((stage) => <Badge key={stage} variant="outline" className="border-gold/40 bg-background text-[10px] text-navy">{STAGES_LABELS[stage]}</Badge>) : <span className="text-[11px] text-muted-foreground">Nenhuma frente paralela ativa</span>}
                   </div>
                 </div>
+              </div>
+              <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50/45 px-3 py-2.5 text-xs text-navy">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-semibold">Participação em Célula</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">Independente da etapa principal da Jornada.</p>
+                  </div>
+                  <Badge variant="outline" className={cellParticipationQuery.data?.status === "integrada" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}>
+                    {cellParticipationQuery.isLoading ? "Carregando…" : cellParticipationQuery.data?.status === "integrada" ? "Integrada" : "Pendente"}
+                  </Badge>
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <p><span className="font-medium">Célula atual:</span> {currentCell?.cellName ?? "Sem Célula"}</p>
+                  <p className="text-muted-foreground">{cellParticipationQuery.data?.hasHistory ? `${cellParticipationQuery.data.previousCount} participação(ões) anterior(es) no histórico.` : "Nenhuma participação anterior registrada."}</p>
+                </div>
+                <p className="mt-2 text-[11px] text-muted-foreground">Pendente significa apenas que não há vínculo ativo no momento; não altera nem retrocede a Jornada.</p>
               </div>
 
               {journeyQuery.isLoading ? <div className="mt-5 space-y-2">{JOURNEY_STAGES.slice(0, 5).map((stage) => <div key={stage} className="h-16 animate-pulse rounded-xl bg-background/70" />)}</div> : (
@@ -1484,16 +1514,34 @@ export default function Pessoas() {
 
           {personSection === "participacoes" && (
             <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
-              <h3 className="text-sm font-semibold text-navy">Participação em Célula</h3>
-            {currentCell.isLoading ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-navy">Participação em Célula</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">A participação comunitária é independente da etapa principal da Jornada.</p>
+                </div>
+                <Badge variant="outline" className={cellParticipationQuery.data?.status === "integrada" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}>
+                  {cellParticipationQuery.isLoading ? "Carregando…" : cellParticipationQuery.data?.status === "integrada" ? "Integrada" : "Pendente"}
+                </Badge>
+              </div>
+            {cellParticipationQuery.isLoading ? (
               <p className="mt-2 text-sm text-muted-foreground">Carregando vínculo de célula…</p>
-            ) : currentCell.data ? (
+            ) : currentCell ? (
               <div className="mt-2 rounded-lg border border-indigo-100 bg-background/80 p-3">
-                <p className="text-sm font-medium text-navy">Célula ativa: {currentCell.data.cellName}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Desde {new Date(currentCell.data.joinedAt).toLocaleDateString("pt-BR")}. Escolher outra célula fará uma transferência, sem apagar o histórico.</p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-navy">Célula atual: {currentCell.cellName}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Desde {new Date(currentCell.joinedAt).toLocaleDateString("pt-BR")}. Escolher outra célula fará uma transferência, sem apagar o histórico.</p>
+                  </div>
+                  {canManageCellParticipation && <Button type="button" size="sm" variant="outline" className="shrink-0 border-rose-200 bg-background text-rose-700 hover:bg-rose-50" onClick={handleCellRemoval} disabled={removeCell.isPending}>
+                    <UserMinus className="mr-1.5 h-4 w-4" />{removeCell.isPending ? "Retirando…" : "Sair da Célula"}
+                  </Button>}
+                </div>
               </div>
             ) : (
-              <p className="mt-2 text-sm text-amber-800">Esta pessoa ainda não possui uma célula ativa.</p>
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+                <p className="text-sm font-medium text-amber-900">Célula atual: Sem Célula</p>
+                <p className="mt-1 text-xs text-amber-800">Participação: Pendente. Isso é válido para quem nunca participou ou para quem saiu de uma Célula.</p>
+              </div>
             )}
             {canManageCellParticipation ? (
               <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
@@ -1505,11 +1553,13 @@ export default function Pessoas() {
                   </Select>
                 </div>
                 <Button type="button" variant="outline" onClick={handleCellAssignment} disabled={assignCell.isPending || (cellsQuery.data ?? []).length === 0}>
-                  {assignCell.isPending ? "Atualizando…" : currentCell.data ? "Transferir" : "Integrar à Célula"}
+                  {assignCell.isPending ? "Atualizando…" : currentCell ? "Transferir" : "Integrar à Célula"}
                 </Button>
               </div>
             ) : <p className="mt-3 text-xs text-muted-foreground">A integração e a transferência de Célula são feitas pelo Pastor ou pela liderança responsável.</p>}
-              {cellHistory.data && cellHistory.data.length > 1 && <p className="mt-3 text-xs text-muted-foreground">{cellHistory.data.length - 1} vínculo(s) anterior(es) preservado(s) no histórico.</p>}
+              <div className="mt-3 rounded-lg border border-indigo-100 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
+                {cellHistory.isLoading ? "Carregando histórico…" : cellHistory.data && cellHistory.data.length > 0 ? `${cellHistory.data.filter((membership) => !membership.active).length} participação(ões) anterior(es) preservada(s) no histórico.` : "Nenhuma participação anterior registrada."}
+              </div>
             </section>
           )}
           </AdaptiveFormDialogBody>
