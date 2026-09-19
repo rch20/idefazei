@@ -83,6 +83,18 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(ministryPanelSource).not.toContain("<Dialog");
   });
 
+  it("mantém os cards modernos minimalistas com uma ação principal e detalhes progressivos", () => {
+    expect(consolidationSource).toContain("expandedReferralId");
+    expect(consolidationSource).toContain("getPrimaryReferralAction");
+    expect(consolidationSource).toContain("const primaryAction =");
+    expect(consolidationSource).toContain('const canRecordFollowUp = referral.status === "aceito" || referral.status === "em_acompanhamento";');
+    expect(consolidationSource).toContain('return "details";');
+    expect(consolidationSource).toContain("Registrar acompanhamento");
+    expect(consolidationSource).toContain("Ver detalhes");
+    expect(consolidationSource).toContain("Ações secundárias, histórico e próximos passos");
+    expect(consolidationSource).toContain("id={`referral-details-${referral.id}`}");
+  });
+
   it("usa prioridade tipada no App do Líder e Visitas reais na Central de Cuidado", () => {
     expect(leaderSource).toContain('priority: "normal" | "alta" | "urgente"');
     expect(leaderSource).toContain('priority: referralByCell[myCell.id].priority ?? "normal"');
