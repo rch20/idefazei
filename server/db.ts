@@ -2250,6 +2250,7 @@ export async function updateConsolidation(id: number, churchId: number, data: Pa
 export async function recordModernFirstContact(data: {
   churchId: number;
   personId: number;
+  idempotencyKey: string;
   recordedByPersonId: number | null;
   recordedByChurchUserId: number | null;
   notes: string;
@@ -2278,10 +2279,22 @@ export async function recordModernFirstContact(data: {
     if (!referral.acceptedByPersonId && !referral.acceptedByChurchUserId) {
       throw new Error("O caso precisa ser assumido antes do primeiro acompanhamento.");
     }
+    const existingFollowUp = await tx
+      .select({ id: consolidationFollowUps.id })
+      .from(consolidationFollowUps)
+      .where(and(
+        eq(consolidationFollowUps.churchId, data.churchId),
+        eq(consolidationFollowUps.referralId, referral.id),
+        eq(consolidationFollowUps.idempotencyKey, data.idempotencyKey),
+      ))
+      .limit(1)
+      .for("update");
+    if (existingFollowUp[0]) return { referralId: referral.id, followUpId: existingFollowUp[0].id };
     const now = new Date();
     const followUpResult = await tx.insert(consolidationFollowUps).values({
       churchId: data.churchId,
       referralId: referral.id,
+      idempotencyKey: data.idempotencyKey,
       recordedByPersonId: data.recordedByPersonId,
       recordedByChurchUserId: data.recordedByChurchUserId,
       contactChannel: "ligacao",
@@ -2381,6 +2394,10 @@ export async function createConsolidationReferralCase(data: typeof consolidation
   return db.transaction(async (tx) => {
     const target = await tx.select({ id: people.id }).from(people).where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true))).limit(1).for("update");
     if (target.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
+    if (data.idempotencyKey) {
+      const existing = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.idempotencyKey, data.idempotencyKey))).limit(1).for("update");
+      if (existing[0]) return existing[0];
+    }
     const active = await tx.select({ id: consolidationReferrals.id }).from(consolidationReferrals).where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.personId, data.personId), activeConsolidationReferralCondition())).limit(1);
     if (active.length > 0) throw new Error("Esta Pessoa já possui um caso ativo na Consolidação.");
     const result = await tx.insert(consolidationReferrals).values(data);
@@ -2601,6 +2618,136 @@ export async function createConsolidationFollowUp(data: typeof consolidationFoll
   return result[0];
 }
 
+export async function recordConsolidationFollowUp(data: {
+  churchId: number;
+  referralId: number;
+  idempotencyKey: string;
+  recordedByPersonId: number | null;
+  recordedByChurchUserId: number | null;
+  contactChannel: typeof consolidationFollowUps.$inferInsert.contactChannel;
+  outcome: typeof consolidationFollowUps.$inferInsert.outcome;
+  notes: string;
+  nextAction: string | null;
+  nextActionAt: Date | null;
+  visitStatus: typeof consolidationFollowUps.$inferInsert.visitStatus;
+  visitAssigneePersonId: number | null;
+  visitScheduledAt: Date | null;
+  visit: {
+    departmentId: number | null;
+    requestedByPersonId: number | null;
+    requestedByChurchUserId: number | null;
+    assignedToPersonId: number | null;
+    assignedByChurchUserId: number | null;
+    reason: string;
+    priority: typeof careVisits.$inferInsert.priority;
+    performedByChurchUserId: number | null;
+  } | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async (tx) => {
+    const referralRows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const referral = referralRows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (["encerrado", "cancelado"].includes(referral.status)) throw new Error("Este caso já foi encerrado e não aceita novos acompanhamentos.");
+
+    const existingFollowUp = await tx
+      .select()
+      .from(consolidationFollowUps)
+      .where(and(
+        eq(consolidationFollowUps.churchId, data.churchId),
+        eq(consolidationFollowUps.referralId, data.referralId),
+        eq(consolidationFollowUps.idempotencyKey, data.idempotencyKey),
+      ))
+      .limit(1)
+      .for("update");
+    if (existingFollowUp[0]) {
+      const existingVisits = await tx
+        .select()
+        .from(careVisits)
+        .where(and(eq(careVisits.churchId, data.churchId), eq(careVisits.sourceFollowUpId, existingFollowUp[0].id)))
+        .limit(1);
+      return { followUp: existingFollowUp[0], visit: existingVisits[0] ?? null };
+    }
+
+    const now = new Date();
+    const followUpResult = await tx.insert(consolidationFollowUps).values({
+      churchId: data.churchId,
+      referralId: data.referralId,
+      idempotencyKey: data.idempotencyKey,
+      recordedByPersonId: data.recordedByPersonId,
+      recordedByChurchUserId: data.recordedByChurchUserId,
+      contactChannel: data.contactChannel,
+      outcome: data.outcome,
+      notes: data.notes,
+      nextAction: data.nextAction,
+      nextActionAt: data.nextActionAt,
+      visitStatus: data.visitStatus,
+      visitAssigneePersonId: data.visitAssigneePersonId,
+      visitScheduledAt: data.visitScheduledAt,
+    });
+    const followUpId = Number((followUpResult[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!followUpId) throw new Error("Não foi possível registrar o acompanhamento.");
+
+    let visit = null;
+    if (data.visit) {
+      const visitResult = await tx.insert(careVisits).values({
+        churchId: data.churchId,
+        referralId: data.referralId,
+        sourceFollowUpId: followUpId,
+        departmentId: data.visit.departmentId,
+        requestedByPersonId: data.visit.requestedByPersonId,
+        requestedByChurchUserId: data.visit.requestedByChurchUserId,
+        assignedToPersonId: data.visit.assignedToPersonId,
+        assignedByChurchUserId: data.visit.assignedByChurchUserId,
+        assignedAt: data.visit.assignedToPersonId ? now : null,
+        priority: data.visit.priority,
+        status: data.visitScheduledAt ? "agendada" : "solicitada",
+        reason: data.visit.reason,
+        address: null,
+        scheduledAt: data.visitScheduledAt,
+      });
+      const visitId = Number((visitResult[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      if (!visitId) throw new Error("Não foi possível criar a Visita.");
+      await tx.insert(careVisitEvents).values({
+        churchId: data.churchId,
+        visitId,
+        action: "criada",
+        toPersonId: data.visit.assignedToPersonId,
+        performedByChurchUserId: data.visit.performedByChurchUserId,
+        notes: data.visit.reason,
+      });
+      if (data.visit.assignedToPersonId) await tx.insert(careVisitEvents).values({
+        churchId: data.churchId,
+        visitId,
+        action: "atribuida",
+        toPersonId: data.visit.assignedToPersonId,
+        performedByChurchUserId: data.visit.performedByChurchUserId,
+      });
+      if (data.visitScheduledAt) await tx.insert(careVisitEvents).values({
+        churchId: data.churchId,
+        visitId,
+        action: "agendada",
+        toPersonId: data.visit.assignedToPersonId,
+        performedByChurchUserId: data.visit.performedByChurchUserId,
+      });
+      const visitRows = await tx.select().from(careVisits).where(and(eq(careVisits.id, visitId), eq(careVisits.churchId, data.churchId))).limit(1);
+      visit = visitRows[0] ?? null;
+    }
+
+    await tx.update(consolidationReferrals)
+      .set({ status: "em_acompanhamento", firstContactAt: referral.firstContactAt ?? now })
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
+    const followUpRows = await tx.select().from(consolidationFollowUps).where(and(eq(consolidationFollowUps.id, followUpId), eq(consolidationFollowUps.churchId, data.churchId))).limit(1);
+    return { followUp: followUpRows[0] ?? null, visit };
+  });
+}
+
 export async function getCareVisitsByChurch(churchId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -2627,7 +2774,7 @@ export async function createCareVisit(data: typeof careVisits.$inferInsert & { p
     const referral = await tx.select({ id: consolidationReferrals.id, status: consolidationReferrals.status }).from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1).for("update");
     if (referral.length === 0 || ["encerrado", "cancelado"].includes(referral[0].status)) throw new Error("Caso de Consolidação inválido para solicitar Visita.");
     const status = data.scheduledAt ? "agendada" : "solicitada";
-    const result = await tx.insert(careVisits).values({ churchId: data.churchId, referralId: data.referralId, departmentId: data.departmentId ?? null, requestedByPersonId: data.requestedByPersonId ?? null, requestedByChurchUserId: data.requestedByChurchUserId ?? null, assignedToPersonId: data.assignedToPersonId ?? null, assignedByChurchUserId: data.assignedByChurchUserId ?? null, priority: data.priority ?? "normal", status, reason: data.reason, address: data.address ?? null, scheduledAt: data.scheduledAt ?? null, assignedAt: data.assignedToPersonId ? new Date() : null });
+    const result = await tx.insert(careVisits).values({ sourceFollowUpId: data.sourceFollowUpId ?? null, churchId: data.churchId, referralId: data.referralId, departmentId: data.departmentId ?? null, requestedByPersonId: data.requestedByPersonId ?? null, requestedByChurchUserId: data.requestedByChurchUserId ?? null, assignedToPersonId: data.assignedToPersonId ?? null, assignedByChurchUserId: data.assignedByChurchUserId ?? null, priority: data.priority ?? "normal", status, reason: data.reason, address: data.address ?? null, scheduledAt: data.scheduledAt ?? null, assignedAt: data.assignedToPersonId ? new Date() : null });
     const visitId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
     if (!visitId) throw new Error("Não foi possível criar a Visita.");
     await tx.insert(careVisitEvents).values({ churchId: data.churchId, visitId, action: "criada", toPersonId: data.assignedToPersonId ?? null, performedByChurchUserId: data.performedByChurchUserId ?? null, notes: data.reason });

@@ -1207,6 +1207,7 @@ export const consolidationReferrals = mysqlTable("consolidation_referrals", {
   id: int("id").autoincrement().primaryKey(),
   churchId: int("churchId").notNull(),
   personId: int("personId").notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 64 }),
   referredByPersonId: int("referredByPersonId").notNull(),
   preferredConsolidatorId: int("preferredConsolidatorId"),
   assignedToPersonId: int("assignedToPersonId"),
@@ -1240,6 +1241,7 @@ export const consolidationReferrals = mysqlTable("consolidation_referrals", {
   index("consolidation_referral_assignee_idx").on(table.churchId, table.assignedToPersonId, table.status),
   index("consolidation_referral_department_idx").on(table.churchId, table.departmentId, table.status),
   index("consolidation_referral_person_idx").on(table.churchId, table.personId, table.status),
+  uniqueIndex("consolidation_referral_idempotency_unique").on(table.churchId, table.idempotencyKey),
 ]);
 
 export type ConsolidationReferral = typeof consolidationReferrals.$inferSelect;
@@ -1264,6 +1266,7 @@ export const consolidationFollowUps = mysqlTable("consolidation_follow_ups", {
   id: int("id").autoincrement().primaryKey(),
   churchId: int("churchId").notNull(),
   referralId: int("referralId").notNull(),
+  idempotencyKey: varchar("idempotencyKey", { length: 64 }),
   recordedByPersonId: int("recordedByPersonId"),
   recordedByChurchUserId: int("recordedByChurchUserId"),
   contactChannel: mysqlEnum("contactChannel", ["whatsapp", "ligacao", "mensagem", "visita", "presencial", "outro"]).notNull(),
@@ -1275,7 +1278,9 @@ export const consolidationFollowUps = mysqlTable("consolidation_follow_ups", {
   visitAssigneePersonId: int("visitAssigneePersonId"),
   visitScheduledAt: timestamp("visitScheduledAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("consolidation_follow_up_idempotency_unique").on(table.churchId, table.referralId, table.idempotencyKey),
+]);
 
 export type ConsolidationFollowUp = typeof consolidationFollowUps.$inferSelect;
 
@@ -1286,6 +1291,7 @@ export const careVisits = mysqlTable("care_visits", {
   id: int("id").autoincrement().primaryKey(),
   churchId: int("churchId").notNull(),
   referralId: int("referralId").notNull(),
+  sourceFollowUpId: int("sourceFollowUpId"),
   departmentId: int("departmentId"),
   requestedByPersonId: int("requestedByPersonId"),
   requestedByChurchUserId: int("requestedByChurchUserId"),
@@ -1309,6 +1315,7 @@ export const careVisits = mysqlTable("care_visits", {
   index("care_visit_assignee_idx").on(table.churchId, table.assignedToPersonId, table.status),
   index("care_visit_referral_idx").on(table.churchId, table.referralId),
   index("care_visit_department_idx").on(table.churchId, table.departmentId, table.status),
+  uniqueIndex("care_visit_source_follow_up_unique").on(table.churchId, table.sourceFollowUpId),
 ]);
 
 export type CareVisit = typeof careVisits.$inferSelect;
