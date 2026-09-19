@@ -14,6 +14,7 @@ import { trpc } from "@/lib/trpc";
 import { AlertTriangle, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Circle, ClipboardCheck, Clock3, Heart, MapPinned, Phone, MessageCircle, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { toast } from "sonner";
+import { createIdempotencyKey } from "@/lib/idempotency";
 
 const CHECKLIST_ITEMS = [
   { key: "callMade", label: "Ligação realizada", icon: Phone },
@@ -32,16 +33,19 @@ function getWhatsAppLink(contact: string, personName: string) {
   return `https://wa.me/${internationalNumber}?text=${message}`;
 }
 
-const initialFollowUpForm = {
-  contactChannel: "whatsapp" as const,
-  outcome: "conversou" as const,
-  notes: "",
-  nextAction: "",
-  nextActionAt: "",
-  visitStatus: "nao_necessaria" as const,
-  visitAssigneePersonId: "",
-  visitScheduledAt: "",
-};
+function createInitialFollowUpForm() {
+  return {
+    contactChannel: "whatsapp" as const,
+    outcome: "conversou" as const,
+    notes: "",
+    nextAction: "",
+    nextActionAt: "",
+    visitStatus: "nao_necessaria" as const,
+    visitAssigneePersonId: "",
+    visitScheduledAt: "",
+    idempotencyKey: createIdempotencyKey(),
+  };
+}
 
 function getMonthDays(month: Date) {
   const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
@@ -96,9 +100,10 @@ export default function Consolidacao() {
   const [cancellingReferralId, setCancellingReferralId] = useState<number | null>(null);
   const [cancelReferralReason, setCancelReferralReason] = useState("");
   const [trackingReferralId, setTrackingReferralId] = useState<number | null>(null);
-  const [followUpForm, setFollowUpForm] = useState(initialFollowUpForm);
+  const [followUpForm, setFollowUpForm] = useState(createInitialFollowUpForm);
   const [activeSection, setActiveSection] = useState<"consolidacao" | "visitas">("consolidacao");
   const [visitNotesById, setVisitNotesById] = useState<Record<number, string>>({});
+  const [visitCompletionKeys, setVisitCompletionKeys] = useState<Record<number, string>>({});
   const [careDueInputByReferral, setCareDueInputByReferral] = useState<Record<number, string>>({});
   const [visitCalendarMonth, setVisitCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 
@@ -135,7 +140,7 @@ export default function Consolidacao() {
   const recordFollowUp = trpc.consolidation.recordFollowUp.useMutation({
     onSuccess: async () => {
       toast.success("Acompanhamento registrado no histórico do caso.");
-      setFollowUpForm(initialFollowUpForm);
+      setFollowUpForm(createInitialFollowUpForm());
       await Promise.all([followUpsQuery.refetch(), referralsQuery.refetch()]);
     },
     onError: (error: { message: string }) => toast.error(error.message || "Não foi possível registrar o acompanhamento."),
@@ -178,8 +183,13 @@ export default function Consolidacao() {
     onError: (error: { message: string }) => toast.error(error.message || "Não foi possível aceitar a visita."),
   });
   const completeVisit = trpc.consolidation.completeVisit.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (_result, variables) => {
       toast.success("Visita registrada no histórico do caso.");
+      setVisitCompletionKeys((current) => {
+        const next = { ...current };
+        delete next[variables.visitId];
+        return next;
+      });
       setVisitNotesById({});
       await Promise.all([visitsQuery.refetch(), referralsQuery.refetch()]);
     },
@@ -205,7 +215,7 @@ export default function Consolidacao() {
 
   function openTracking(referralId: number) {
     setTrackingReferralId((current) => current === referralId ? null : referralId);
-    setFollowUpForm(initialFollowUpForm);
+    setFollowUpForm(createInitialFollowUpForm());
   }
 
   function submitFollowUp(referralId: number) {
@@ -216,6 +226,7 @@ export default function Consolidacao() {
     recordFollowUp.mutate({
       churchId,
       referralId,
+      idempotencyKey: followUpForm.idempotencyKey,
       contactChannel: followUpForm.contactChannel,
       outcome: followUpForm.outcome,
       notes: followUpForm.notes.trim(),
@@ -269,7 +280,7 @@ export default function Consolidacao() {
             {visit.address && <p className="mt-2 flex items-start gap-2 text-sm text-muted-foreground"><MapPinned className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />{visit.address}</p>}
             {visit.canAccept && <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/60 p-3"><p className="text-sm text-blue-950">Esta visita está disponível para a equipe. Ao aceitar, ela ficará sob sua responsabilidade.</p><Button type="button" className="mt-2 w-full bg-navy text-white hover:bg-navy-light sm:w-auto" disabled={acceptVisit.isPending} onClick={() => acceptVisit.mutate({ churchId, visitId: visit.id })}><UserCheck className="mr-2 h-4 w-4" />{acceptVisit.isPending ? "Aceitando…" : "Aceitar visita"}</Button></div>}
             {visit.canAssign && <VisitAssignmentControl churchId={churchId} visit={{ id: visit.id, assignedToPersonId: visit.assignedToPersonId, scheduledAt: visit.scheduledAt, status: visit.status }} visitors={visitorsQuery.data ?? []} onSaved={async () => { await visitsQuery.refetch(); }} />}
-            {visit.canComplete && <div className="mt-4 border-t border-border pt-3"><Label htmlFor={`visit-notes-${visit.id}`}>Registro da visita *</Label><Textarea id={`visit-notes-${visit.id}`} rows={3} className="mt-1" value={visitNotesById[visit.id] ?? ""} onChange={(event) => setVisitNotesById((current) => ({ ...current, [visit.id]: event.target.value }))} placeholder="Como foi a visita, necessidades identificadas e próximos cuidados." /><div className="mt-2 flex justify-end"><Button type="button" className="bg-green-600 text-white hover:bg-green-700" disabled={completeVisit.isPending || (visitNotesById[visit.id]?.trim().length ?? 0) < 3} onClick={() => completeVisit.mutate({ churchId, visitId: visit.id, notes: visitNotesById[visit.id].trim() })}><CheckCircle2 className="mr-2 h-4 w-4" />Registrar visita realizada</Button></div></div>}
+ {visit.canComplete && <div className="mt-4 border-t border-border pt-3"><Label htmlFor={`visit-notes-${visit.id}`}>Registro da visita *</Label><Textarea id={`visit-notes-${visit.id}`} rows={3} className="mt-1" value={visitNotesById[visit.id] ?? ""} onChange={(event) => setVisitNotesById((current) => ({ ...current, [visit.id]: event.target.value }))} placeholder="Como foi a visita, necessidades identificadas e próximos cuidados." /><div className="mt-2 flex justify-end"><Button type="button" className="bg-green-600 text-white hover:bg-green-700" disabled={completeVisit.isPending || (visitNotesById[visit.id]?.trim().length ?? 0) < 3} onClick={() => { const idempotencyKey = visitCompletionKeys[visit.id] ?? createIdempotencyKey(); setVisitCompletionKeys((current) => ({ ...current, [visit.id]: idempotencyKey })); completeVisit.mutate({ churchId, visitId: visit.id, idempotencyKey, notes: visitNotesById[visit.id].trim() }); }}><CheckCircle2 className="mr-2 h-4 w-4" />Registrar visita realizada</Button></div></div>}
           </article>
         ))}</div>
         </>}

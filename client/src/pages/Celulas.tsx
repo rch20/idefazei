@@ -21,6 +21,7 @@ import { ReportButton } from "@/components/ReportButton";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { currentCivilDateKey } from "@/lib/civilDate";
+import { createIdempotencyKey } from "@/lib/idempotency";
 
 const DAYS = [
   { value: "segunda", label: "Segunda-feira" },
@@ -92,6 +93,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
   const [open, setOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState<any>(null);
   const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [memberReferralIdempotencyKey, setMemberReferralIdempotencyKey] = useState(createIdempotencyKey);
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -174,6 +176,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
       toast.success("Discípulo encaminhado para a fila de Consolidação.");
       setMemberReferralReason("");
       setSelectedMember(null);
+      setMemberReferralIdempotencyKey(createIdempotencyKey());
       await utils.consolidation.referrals.invalidate({ churchId });
     },
     onError: (error) => toast.error(error.message || "Não foi possível encaminhar o discípulo."),
@@ -338,6 +341,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
     createReferral.mutate({
       churchId,
       personId: selectedMember.person.id,
+      idempotencyKey: memberReferralIdempotencyKey,
       reason: memberReferralReason.trim(),
     });
   }
@@ -645,7 +649,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                       `Olá, ${item.person.fullName}! Aqui é da equipe da igreja. Gostaria de conversar com você sobre a Célula.`,
                     );
                     const emailHref = item.person.email ? `mailto:${encodeURIComponent(item.person.email)}` : null;
-                    const openCare = () => { setSelectedMember(item); setMemberReferralReason(""); };
+                    const openCare = () => { setSelectedMember(item); setMemberReferralReason(""); setMemberReferralIdempotencyKey(createIdempotencyKey()); };
                     return (
                       <div key={item.membership.id} className="flex items-center gap-2 px-3 py-2.5 transition-colors hover:bg-cream/60">
                         <button

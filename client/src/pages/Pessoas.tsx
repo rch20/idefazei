@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { civilDateParts, currentCivilDateKey, currentCivilDateParts } from "@/lib/civilDate";
 import { DISCIPLESHIP_STAGE_LABELS } from "@/lib/discipleshipState";
+import { createIdempotencyKey } from "@/lib/idempotency";
 
 const STAGES_LABELS: Record<string, string> = DISCIPLESHIP_STAGE_LABELS;
 
@@ -239,7 +240,7 @@ export default function Pessoas() {
   const [birthdayMonthFilter, setBirthdayMonthFilter] = useState(birthdayMonth);
   const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
   const [selectedCellId, setSelectedCellId] = useState("");
-  const [referralForm, setReferralForm] = useState({ reason: "", notes: "", preferredConsolidatorId: "" });
+  const [referralForm, setReferralForm] = useState({ reason: "", notes: "", preferredConsolidatorId: "", idempotencyKey: createIdempotencyKey() });
   const [coverageForm, setCoverageForm] = useState(defaultCoverageForm);
   const utils = trpc.useUtils();
 
@@ -366,7 +367,7 @@ export default function Pessoas() {
   const createReferral = trpc.consolidation.createReferral.useMutation({
     onSuccess: async () => {
       toast.success("Encaminhamento enviado para a fila de Consolidação.");
-      setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "" });
+      setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "", idempotencyKey: createIdempotencyKey() });
       await Promise.all([utils.consolidation.referrals.invalidate({ churchId }), directoryQuery.refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível enviar o encaminhamento."),
@@ -582,7 +583,7 @@ export default function Pessoas() {
     setJourneyNote("");
     setCareForm({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
     setSelectedCellId("");
-    setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "" });
+    setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "", idempotencyKey: createIdempotencyKey() });
     setCoverageForm(defaultCoverageForm);
   }
 
@@ -643,6 +644,7 @@ export default function Pessoas() {
     createReferral.mutate({
       churchId,
       personId: selectedPerson.id,
+      idempotencyKey: referralForm.idempotencyKey,
       reason: referralForm.reason.trim(),
       notes: referralForm.notes.trim() || undefined,
       preferredConsolidatorId: referralForm.preferredConsolidatorId ? Number(referralForm.preferredConsolidatorId) : undefined,

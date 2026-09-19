@@ -20,7 +20,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
-import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, createConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, createEvent, createManualEventRegistration, getEventAttendanceReport, updateEventRegistrationPayment, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, setParallelJourneyStage, getDiscipleshipStageEvents, getDiscipleshipStageProgress, upsertDiscipleshipStageProgress, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
+import { assignDepartmentRole, assignMinistryRole, assignPersonToCell, assignPersonToDepartment, canChurchUserManageJourney, closeFinancialPeriod, createDepartment, createCellMeetingWithAttendance, recordConsolidationFollowUp, createFinancialAccount, createFinancialCategory, createFinancialTransaction, createMinistry, findPossiblePeopleByIdentity, getChurchUserByEmail, getActiveChurchUserById, getActiveMembersByCell, getActiveMinistryRoleKeysByPerson, isActiveConsolidationMinistryMember, isActiveVisitsMinistryMember, getMinistryRoleDefinitionsByChurch, getCareAttentionByChurch, getCellMembersCount, getCellMeetingByDate, getCellMeetingSummaries, getCellsByChurch, getChurchMemberByUserId, getComplementaryRolesByChurchUser, getConsolidationsByChurch, getConsolidationFollowUpsByChurch, getConsolidationFollowUpsByReferral, getConsolidationReferralById, getConsolidationReferralsByChurch, getCounselingSessionById, getBookBalanceAt, createEvent, createManualEventRegistration, getEventAttendanceReport, updateEventRegistrationPayment, getFinancialAccountById, getFinancialCategoryById, getFinancialPeriodClosure, getFinancialReceiptData, getFinancialReconciliationAttachments, getFinancialReconciliationById, getJourneyManagedPersonIds, setParallelJourneyStage, getDiscipleshipStageEvents, getDiscipleshipStageProgress, upsertDiscipleshipStageProgress, getDepartmentById, getDepartmentCandidates, getDepartmentMembers, getDepartmentRoleAssignments, getDepartmentsByChurch, getDepartmentsByMinistry, getMinistriesByChurch, getPeopleByChurch, getPeopleWithoutActiveCell, getPendingChurchUsers, getPersonById, getSoulsByChurch, getTreasuryOverview, isActiveDepartmentMember, isActiveMinistryMember, removePersonFromDepartment, removeFinancialReconciliationAttachment, resolveChurchUserRegistration, saveFinancialReconciliation, setComplementaryRolesForChurchUser, setCurrentCareAssignment, startConsolidationWorkflow, setDepartmentLeader, setMinistryLeader, updateChurchUserAssignment, updateConsolidation, updateConsolidationReferral, updatePerson } from "./db";
 
 // ─── MOCKS ────────────────────────────────────────────────────────────────────
 
@@ -82,7 +82,7 @@ vi.mock("./db", () => ({
   getConsolidationCaseAssignments: vi.fn().mockResolvedValue([]),
   getConsolidationFollowUpsByReferral: vi.fn().mockResolvedValue([]),
   getConsolidationFollowUpsByChurch: vi.fn().mockResolvedValue([]),
-  createConsolidationFollowUp: vi.fn().mockResolvedValue({ id: 91, churchId: 100, referralId: 51 }),
+  recordConsolidationFollowUp: vi.fn().mockResolvedValue({ followUp: { id: 91, churchId: 100, referralId: 51 }, visit: null }),
   getCareVisitsByChurch: vi.fn().mockResolvedValue([]),
   getOpenCareVisitsByReferral: vi.fn().mockResolvedValue([]),
   getCareVisitById: vi.fn().mockResolvedValue({ id: 401, churchId: 100, referralId: 51, personId: 1, status: "solicitada", assignedToPersonId: null }),
@@ -703,12 +703,13 @@ describe("Fluxo completo de discipulado", () => {
     });
 
     it("permite ao Pastor sem Pessoa registrar acompanhamento do caso assumido", async () => {
-      const { getActiveChurchUserById, getConsolidationReferralById, createConsolidationFollowUp } = await import("./db");
+      const { getActiveChurchUserById, getConsolidationReferralById, recordConsolidationFollowUp } = await import("./db");
       (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 78, userId: 78, churchId: CHURCH_ID, personId: null, role: "pastor_presidente", active: true });
       (getConsolidationReferralById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 51, churchId: CHURCH_ID, personId: 1, status: "aceito", acceptedByPersonId: null, acceptedByChurchUserId: 78, priority: "normal" });
       const caller = appRouter.createCaller(createMemberContext(-78));
 
       await expect(caller.consolidation.recordFollowUp({
+        idempotencyKey: "test-follow-up-key",
         churchId: CHURCH_ID,
         referralId: 51,
         contactChannel: "ligacao",
@@ -716,7 +717,7 @@ describe("Fluxo completo de discipulado", () => {
         notes: "Conversa realizada pelo Pastor.",
         visitStatus: "nao_necessaria",
       })).resolves.toMatchObject({ followUp: { referralId: 51 } });
-      expect(createConsolidationFollowUp).toHaveBeenCalledWith(expect.objectContaining({ recordedByPersonId: null, recordedByChurchUserId: 78 }));
+      expect(recordConsolidationFollowUp).toHaveBeenCalledWith(expect.objectContaining({ recordedByPersonId: null, recordedByChurchUserId: 78 }));
     });
 
     it("atualiza o checklist de consolidação marcando visita e entrega de bíblia", async () => {
@@ -1575,6 +1576,7 @@ describe("Fluxo completo de discipulado", () => {
       const caller = appRouter.createCaller(createMemberContext(-2));
 
       await caller.consolidation.createReferral({
+        idempotencyKey: "test-referral-key",
         churchId: CHURCH_ID,
         personId: 1,
         reason: "Faltou às últimas reuniões e não responde",
@@ -1584,6 +1586,7 @@ describe("Fluxo completo de discipulado", () => {
       expect(createConsolidationReferralCase).toHaveBeenCalledWith(expect.objectContaining({
         churchId: CHURCH_ID,
         personId: 1,
+        idempotencyKey: "test-referral-key",
         referredByPersonId: 10,
         status: "pendente",
         careDueAt: expect.any(Date),
@@ -1759,6 +1762,7 @@ describe("Fluxo completo de discipulado", () => {
       const caller = appRouter.createCaller(createMemberContext(-2));
 
       await caller.consolidation.recordFollowUp({
+        idempotencyKey: "test-follow-up-key",
         churchId: CHURCH_ID,
         referralId: 51,
         contactChannel: "whatsapp",
@@ -1769,14 +1773,14 @@ describe("Fluxo completo de discipulado", () => {
         visitStatus: "solicitada",
       });
 
-      expect(createConsolidationFollowUp).toHaveBeenCalledWith(expect.objectContaining({
+      expect(recordConsolidationFollowUp).toHaveBeenCalledWith(expect.objectContaining({
         churchId: CHURCH_ID,
         referralId: 51,
         recordedByPersonId: 10,
         contactChannel: "whatsapp",
         visitStatus: "solicitada",
       }));
-      expect(updateConsolidationReferral).toHaveBeenCalledWith(51, CHURCH_ID, expect.objectContaining({
+      expect(updateConsolidationReferral).not.toHaveBeenCalledWith(51, CHURCH_ID, expect.objectContaining({
         status: "em_acompanhamento",
       }));
     });
@@ -1787,6 +1791,7 @@ describe("Fluxo completo de discipulado", () => {
       const caller = appRouter.createCaller(createMemberContext(-2));
 
       await expect(caller.consolidation.recordFollowUp({
+        idempotencyKey: "test-follow-up-key",
         churchId: CHURCH_ID,
         referralId: 51,
         contactChannel: "ligacao",
@@ -1843,9 +1848,9 @@ describe("Fluxo completo de discipulado", () => {
       vi.mocked(recordModernFirstContact).mockResolvedValueOnce({ referralId: 51, followUpId: 701 });
 
       const caller = appRouter.createCaller(createMemberContext(-2));
-      await caller.care.registerFirstContact({ churchId: CHURCH_ID, personId: 10 });
+      await caller.care.registerFirstContact({ churchId: CHURCH_ID, personId: 10, idempotencyKey: "test-first-contact-key" });
 
-      expect(recordModernFirstContact).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, personId: 10, notes: expect.stringContaining("Central de Cuidado") }));
+      expect(recordModernFirstContact).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, personId: 10, idempotencyKey: "test-first-contact-key", notes: expect.stringContaining("Central de Cuidado") }));
       expect(updateConsolidation).not.toHaveBeenCalledWith(31, CHURCH_ID, expect.anything());
     });
 
@@ -2442,7 +2447,7 @@ describe("Fluxo completo de discipulado", () => {
       vi.mocked(getDepartmentsByChurch).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
       const caller = appRouter.createCaller(createMemberContext(-2));
 
-      await caller.consolidation.createReferral({ churchId: CHURCH_ID, personId: 1, reason: "Ausência recorrente na Célula", priority: "urgente" });
+      await caller.consolidation.createReferral({ idempotencyKey: "test-referral-key", churchId: CHURCH_ID, personId: 1, reason: "Ausência recorrente na Célula", priority: "urgente" });
 
       expect(createConsolidationReferralCase).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, personId: 1, referredByPersonId: 10, sourceType: "celula", sourceCellId: 2, priority: "urgente", reason: "Ausência recorrente na Célula" }));
     });
@@ -2456,7 +2461,7 @@ describe("Fluxo completo de discipulado", () => {
       vi.mocked(getDepartmentsByChurch).mockResolvedValueOnce([]);
       const caller = appRouter.createCaller(createMemberContext(-2));
 
-      await expect(caller.consolidation.createReferral({ churchId: CHURCH_ID, personId: 1, reason: "Precisa de acompanhamento" })).rejects.toThrow("só pode indicar Pessoas vinculadas");
+      await expect(caller.consolidation.createReferral({ idempotencyKey: "test-referral-key", churchId: CHURCH_ID, personId: 1, reason: "Precisa de acompanhamento" })).rejects.toThrow("só pode indicar Pessoas vinculadas");
       expect(createConsolidationReferralCase).not.toHaveBeenCalled();
     });
 
@@ -2465,7 +2470,7 @@ describe("Fluxo completo de discipulado", () => {
       vi.mocked(createConsolidationReferralCase).mockRejectedValueOnce(new Error("Esta Pessoa já possui um caso ativo"));
       const caller = appRouter.createCaller(createMemberContext(-2));
 
-      await expect(caller.consolidation.createReferral({ churchId: CHURCH_ID, personId: 1, reason: "Novo pedido de cuidado" })).rejects.toThrow("já possui um caso ativo");
+      await expect(caller.consolidation.createReferral({ idempotencyKey: "test-referral-key", churchId: CHURCH_ID, personId: 1, reason: "Novo pedido de cuidado" })).rejects.toThrow("já possui um caso ativo");
     });
 
     it("permite ao Líder de Consolidação atribuir e devolver um caso à fila com histórico", async () => {
@@ -2497,16 +2502,16 @@ describe("Fluxo completo de discipulado", () => {
     });
 
     it("permite somente ao Visitador atribuído concluir a Visita e preserva o histórico do caso", async () => {
-      const { getActiveChurchUserById, getActiveMinistryRoleKeysByPerson, getCareVisitById, completeCareVisit, createConsolidationFollowUp } = await import("./db");
+      const { getActiveChurchUserById, getActiveMinistryRoleKeysByPerson, getCareVisitById, completeCareVisit, recordConsolidationFollowUp } = await import("./db");
       vi.mocked(getActiveChurchUserById).mockResolvedValueOnce({ id: 2, churchId: CHURCH_ID, personId: 10, role: "membro", active: true } as any);
       vi.mocked(getActiveMinistryRoleKeysByPerson).mockResolvedValueOnce(["visitador"]);
       vi.mocked(getCareVisitById).mockResolvedValueOnce({ id: 401, churchId: CHURCH_ID, referralId: 51, assignedToPersonId: 10, status: "agendada" } as any);
       const caller = appRouter.createCaller(createMemberContext(-2));
 
-      await caller.consolidation.completeVisit({ churchId: CHURCH_ID, visitId: 401, notes: "Família acolhida e retorno combinado." });
+      await caller.consolidation.completeVisit({ idempotencyKey: "test-visit-completion-key", churchId: CHURCH_ID, visitId: 401, notes: "Família acolhida e retorno combinado." });
 
       expect(completeCareVisit).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, visitId: 401, performedByChurchUserId: 2 }));
-      expect(createConsolidationFollowUp).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, referralId: 51, recordedByPersonId: 10, visitStatus: "realizada" }));
+      expect(recordConsolidationFollowUp).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_ID, referralId: 51, recordedByPersonId: 10, visitStatus: "realizada" }));
     });
 
     it("bloqueia outro Visitador de concluir uma Visita que não lhe foi atribuída", async () => {
@@ -2516,7 +2521,7 @@ describe("Fluxo completo de discipulado", () => {
       vi.mocked(getCareVisitById).mockResolvedValueOnce({ id: 401, churchId: CHURCH_ID, referralId: 51, assignedToPersonId: 99, status: "agendada" } as any);
       const caller = appRouter.createCaller(createMemberContext(-2));
 
-      await expect(caller.consolidation.completeVisit({ churchId: CHURCH_ID, visitId: 401, notes: "Tentativa indevida de conclusão." })).rejects.toThrow("não está atribuída à sua função");
+      await expect(caller.consolidation.completeVisit({ idempotencyKey: "test-visit-completion-key", churchId: CHURCH_ID, visitId: 401, notes: "Tentativa indevida de conclusão." })).rejects.toThrow("não está atribuída à sua função");
       expect(completeCareVisit).not.toHaveBeenCalled();
     });
   });

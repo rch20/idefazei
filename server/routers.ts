@@ -39,8 +39,7 @@ import {
   approveConsolidationCase,
   getConsolidationCaseAssignments,
   startConsolidationWorkflow,
-  createConsolidationFollowUp,
-  createCareVisit,
+  recordConsolidationFollowUp,
   assignCareVisit,
   acceptCareVisit,
   completeCareVisit,
@@ -1974,6 +1973,7 @@ const consolidationRouter = router({
     .input(z.object({
       churchId: z.number(),
       personId: z.number(),
+      idempotencyKey: z.string().trim().min(8).max(64).regex(/^[a-zA-Z0-9-]+$/),
       reason: z.string().trim().min(3).max(255),
       notes: z.string().trim().max(2000).optional(),
       priority: z.enum(["baixa", "normal", "alta", "urgente"]).default("normal"),
@@ -1989,6 +1989,7 @@ const consolidationRouter = router({
         return await createConsolidationReferralCase({
           churchId: input.churchId,
           personId: input.personId,
+          idempotencyKey: input.idempotencyKey,
           referredByPersonId: source.actor.personId!,
           preferredConsolidatorId: input.preferredConsolidatorId ?? null,
           assignedToPersonId: input.preferredConsolidatorId ?? null,
@@ -2163,6 +2164,7 @@ const consolidationRouter = router({
     .input(z.object({
       churchId: z.number(),
       referralId: z.number(),
+      idempotencyKey: z.string().trim().min(8).max(64).regex(/^[a-zA-Z0-9-]+$/),
       contactChannel: z.enum(["whatsapp", "ligacao", "mensagem", "visita", "presencial", "outro"]),
       outcome: z.enum(["conversou", "sem_resposta", "retornar", "agendou_visita", "visitou", "recusou_contato", "outro"]),
       notes: z.string().trim().min(3).max(3000),
@@ -2185,41 +2187,37 @@ const consolidationRouter = router({
       if (["encerrado", "cancelado"].includes(referral.status)) throw new TRPCError({ code: "BAD_REQUEST", message: "Este caso já foi encerrado e não aceita novos acompanhamentos." });
       if (referral.status !== "aceito" && referral.status !== "em_acompanhamento") throw new TRPCError({ code: "BAD_REQUEST", message: "O caso precisa estar pronto para acompanhamento." });
       if (input.visitAssigneePersonId) await requireVisitorPerson(input.visitAssigneePersonId, input.churchId);
-      const followUp = await createConsolidationFollowUp({
-        churchId: input.churchId,
-        referralId: input.referralId,
-        recordedByPersonId: actor.personId ?? null,
-        recordedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id,
-        contactChannel: input.contactChannel,
-        outcome: input.outcome,
-        notes: input.notes,
-        nextAction: input.nextAction || null,
-        nextActionAt: input.nextActionAt ? new Date(input.nextActionAt) : null,
-        visitStatus: input.visitStatus,
-        visitAssigneePersonId: input.visitAssigneePersonId ?? null,
-        visitScheduledAt: input.visitScheduledAt ? new Date(input.visitScheduledAt) : null,
-      });
-      let visit = null;
-      if (["solicitada", "agendada"].includes(input.visitStatus)) {
-        visit = await createCareVisit({
+      try {
+        return await recordConsolidationFollowUp({
           churchId: input.churchId,
           referralId: input.referralId,
-          departmentId: context.visitsDepartment?.id ?? null,
-          requestedByPersonId: actor.personId ?? referral.acceptedByPersonId ?? null,
-          requestedByChurchUserId: actor.personId ? null : (ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id),
-          assignedToPersonId: input.visitAssigneePersonId ?? null,
-          assignedByChurchUserId: input.visitAssigneePersonId ? (ctx.user.id < 0 ? Math.abs(ctx.user.id) : null) : null,
-          assignedAt: input.visitAssigneePersonId ? new Date() : null,
-          reason: (input.nextAction || "Visita solicitada pela Consolidação").slice(0, 255),
-          address: null,
-          priority: referral.priority,
-          status: input.visitScheduledAt ? "agendada" : "solicitada",
-          scheduledAt: input.visitScheduledAt ? new Date(input.visitScheduledAt) : null,
-          performedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null,
+          idempotencyKey: input.idempotencyKey,
+          recordedByPersonId: actor.personId ?? null,
+          recordedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id,
+          contactChannel: input.contactChannel,
+          outcome: input.outcome,
+          notes: input.notes,
+          nextAction: input.nextAction || null,
+          nextActionAt: input.nextActionAt ? new Date(input.nextActionAt) : null,
+          visitStatus: input.visitStatus,
+          visitAssigneePersonId: input.visitAssigneePersonId ?? null,
+          visitScheduledAt: input.visitScheduledAt ? new Date(input.visitScheduledAt) : null,
+          visit: ["solicitada", "agendada"].includes(input.visitStatus) ? {
+            departmentId: context.visitsDepartment?.id ?? null,
+            requestedByPersonId: actor.personId ?? referral.acceptedByPersonId ?? null,
+            requestedByChurchUserId: actor.personId ? null : (ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id),
+            assignedToPersonId: input.visitAssigneePersonId ?? null,
+            assignedByChurchUserId: input.visitAssigneePersonId ? (ctx.user.id < 0 ? Math.abs(ctx.user.id) : null) : null,
+            reason: (input.nextAction || "Visita solicitada pela Consolidação").slice(0, 255),
+            priority: referral.priority,
+            performedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null,
+          } : null,
         });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("Duplicate entry") || message.includes("duplicate key")) throw new TRPCError({ code: "CONFLICT", message: "Este acompanhamento já foi processado. Atualize o histórico do caso." });
+        throw error;
       }
-      await updateConsolidationReferral(input.referralId, input.churchId, { status: "em_acompanhamento", firstContactAt: referral.firstContactAt ?? new Date() });
-      return { followUp, visit };
     }),
   assignVisit: protectedProcedure
     .input(z.object({ churchId: z.number(), visitId: z.number(), visitorId: z.number().nullable(), scheduledAt: z.string().datetime().nullable().optional(), notes: z.string().trim().max(1000).optional() }))
@@ -2251,7 +2249,7 @@ const consolidationRouter = router({
     }),
 
   completeVisit: protectedProcedure
-    .input(z.object({ churchId: z.number(), visitId: z.number(), notes: z.string().trim().min(3).max(3000) }))
+    .input(z.object({ churchId: z.number(), visitId: z.number(), idempotencyKey: z.string().trim().min(8).max(64).regex(/^[a-zA-Z0-9-]+$/), notes: z.string().trim().min(3).max(3000) }))
     .mutation(async ({ input, ctx }) => {
       const context = await getConsolidationMinistryContext(ctx.user.id, input.churchId);
       const visit = await getCareVisitById(input.visitId, input.churchId);
@@ -2259,7 +2257,22 @@ const consolidationRouter = router({
       if (!context.capabilities.canManageVisits && visit.assignedToPersonId !== context.actor.personId) throw new TRPCError({ code: "FORBIDDEN", message: "Esta Visita não está atribuída à sua função." });
       const completed = await completeCareVisit({ churchId: input.churchId, visitId: input.visitId, performedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null, notes: input.notes });
       if (context.actor.personId) {
-        await createConsolidationFollowUp({ churchId: input.churchId, referralId: visit.referralId, recordedByPersonId: context.actor.personId, contactChannel: "visita", outcome: "visitou", notes: input.notes, visitStatus: "realizada", visitAssigneePersonId: visit.assignedToPersonId });
+        await recordConsolidationFollowUp({
+          churchId: input.churchId,
+          referralId: visit.referralId,
+          idempotencyKey: input.idempotencyKey,
+          recordedByPersonId: context.actor.personId,
+          recordedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id,
+          contactChannel: "visita",
+          outcome: "visitou",
+          notes: input.notes,
+          nextAction: null,
+          nextActionAt: null,
+          visitStatus: "realizada",
+          visitAssigneePersonId: visit.assignedToPersonId,
+          visitScheduledAt: null,
+          visit: null,
+        });
       }
       const referral = await getConsolidationReferralById(visit.referralId, input.churchId);
       if (referral) await updateConsolidationReferral(referral.id, input.churchId, { status: "em_acompanhamento", firstContactAt: referral.firstContactAt ?? new Date() });
@@ -2610,7 +2623,7 @@ const careRouter = router({
     }),
 
   registerFirstContact: protectedProcedure
-    .input(z.object({ churchId: z.number(), personId: z.number() }))
+    .input(z.object({ churchId: z.number(), personId: z.number(), idempotencyKey: z.string().trim().min(8).max(64).regex(/^[a-zA-Z0-9-]+$/) }))
     .mutation(async ({ input, ctx }) => {
       await requireJourneyStagePermission(ctx.user.id, input.churchId, input.personId);
       const actor = await requireChurchMember(ctx.user.id, input.churchId);
@@ -2623,6 +2636,7 @@ const careRouter = router({
         return await recordModernFirstContact({
           churchId: input.churchId,
           personId: input.personId,
+          idempotencyKey: input.idempotencyKey,
           recordedByPersonId: actor.personId ?? null,
           recordedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : ctx.user.id,
           notes: "Primeiro contato registrado pela Central de Cuidado.",
