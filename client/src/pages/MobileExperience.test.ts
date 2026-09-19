@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const root = resolve(__dirname, "../../..");
 const dialogSource = readFileSync(resolve(root, "client/src/components/ui/dialog.tsx"), "utf8");
 const peopleSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
+const summarySource = readFileSync(resolve(root, "client/src/components/PersonExecutiveSummary.tsx"), "utf8");
 const cellsSource = readFileSync(resolve(root, "client/src/pages/Celulas.tsx"), "utf8");
 const ministriesSource = readFileSync(resolve(root, "client/src/pages/Ministerios.tsx"), "utf8");
 
@@ -20,6 +21,16 @@ describe("Experiência mobile e estados vazios", () => {
     expect(peopleSource).toContain("Nenhuma Pessoa encontrada");
     expect(peopleSource).toContain("Limpar busca");
     expect(peopleSource).toContain("Cadastrar primeira Pessoa");
+  });
+
+  it("mantém o resumo executivo compacto e progressivo no celular", () => {
+    expect(peopleSource).toContain("<PersonExecutiveSummary");
+    expect(summarySource).toContain("grid grid-cols-2 gap-2 sm:grid-cols-3");
+    expect(summarySource).toContain("col-span-2");
+    expect(summarySource).toContain("min-h-11 w-full");
+    expect(summarySource).toContain("Collapsible");
+    expect(summarySource).toContain("aria-controls={contextId}");
+    expect(summarySource).toContain("Contexto do cuidado e da Célula");
   });
 
   it("mostra o primeiro passo de Células apenas para a governança pastoral", () => {

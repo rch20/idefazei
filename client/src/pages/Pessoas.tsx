@@ -9,13 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { AlertCircle, ArrowRight, BriefcaseBusiness, Cake, CheckCircle2, Circle, Clock3, HeartHandshake, MessageCircle, Plus, Search, Send, ShieldCheck, User, UserMinus, Users } from "lucide-react";
+import { AlertCircle, ArrowRight, BriefcaseBusiness, Cake, Clock3, HeartHandshake, MessageCircle, Plus, Search, Send, ShieldCheck, User, UserMinus, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { civilDateParts, currentCivilDateKey, currentCivilDateParts } from "@/lib/civilDate";
 import { DISCIPLESHIP_STAGE_LABELS } from "@/lib/discipleshipState";
 import { createIdempotencyKey } from "@/lib/idempotency";
+import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
 
 const STAGES_LABELS: Record<string, string> = DISCIPLESHIP_STAGE_LABELS;
 
@@ -435,7 +436,6 @@ export default function Pessoas() {
   const selectedAttention = (careAttention.data ?? []).find((item) => item.person.id === selectedPerson?.id);
   const currentResponsible = (people ?? []).find((person) => person.id === currentCare.data?.responsiblePersonId);
   const currentCell = cellParticipationQuery.data?.current ?? null;
-  const participationCount = (currentCell ? 1 : 0) + (personMembershipsQuery.data?.length ?? 0);
   const directory = directoryQuery.data ?? [];
   const filteredDirectory = directory.filter(({ person, care }) => {
     if (JOURNEY_STAGES.includes(directoryFilter as JourneyStage)) {
@@ -1196,45 +1196,27 @@ export default function Pessoas() {
           )}
 
           {personSection === "resumo" && selectedPerson && (
-            <section className={`rounded-xl border p-4 ${selectedAttention?.priority === "alta" ? "border-rose-200 bg-rose-50/60" : selectedAttention?.priority === "media" ? "border-amber-200 bg-amber-50/60" : selectedAttention?.priority === "normal" ? "border-green-200 bg-green-50/60" : "border-border bg-muted/20"}`}>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex min-w-0 items-start gap-3">
-                  <ArrowRight className={`mt-0.5 h-5 w-5 shrink-0 ${selectedAttention?.priority === "alta" ? "text-rose-600" : selectedAttention?.priority === "media" ? "text-amber-600" : "text-navy"}`} />
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Próximo passo</p>
-                    <p className="mt-1 text-sm font-semibold text-navy">{selectedAttention?.nextStep ?? "Nenhum próximo passo definido"}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{selectedAttention ? (selectedAttention.reasons.length > 0 ? selectedAttention.reasons.join(" · ") : "Não há pendências críticas no momento.") : "A ficha ainda não possui uma pendência de cuidado registrada."}</p>
-                  </div>
-                </div>
-                {canActOnNextStep && nextStepLabel && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full shrink-0 gap-2 sm:w-auto"
-                    onClick={() => {
-                      if (!selectedAttention) return;
-                      if (selectedAttention.nextStep === "Registrar primeiro contato") {
-                        navigate("/app/consolidacao");
-                      } else if (selectedAttention.nextStep === "Enviar para célula") {
-                        selectPersonSection("participacoes");
-                      } else {
-                        selectPersonSection("cuidado");
-                      }
-                    }}
-                  >
-                    {nextStepLabel} <ArrowRight className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </section>
+            <PersonExecutiveSummary
+              stageLabel={STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}
+              currentCellName={currentCell?.cellName}
+              cellStatus={cellParticipationQuery.data?.status}
+              hasCellHistory={Boolean(cellParticipationQuery.data?.hasHistory)}
+              responsibleName={currentResponsible?.fullName}
+              attention={selectedAttention}
+              canActOnNextStep={canActOnNextStep}
+              nextStepLabel={nextStepLabel}
+              onPrimaryAction={() => {
+                if (!selectedAttention) return;
+                if (selectedAttention.nextStep === "Registrar primeiro contato") {
+                  navigate("/app/consolidacao");
+                } else if (selectedAttention.nextStep === "Enviar para célula") {
+                  selectPersonSection("participacoes");
+                } else {
+                  selectPersonSection("cuidado");
+                }
+              }}
+            />
           )}
-
-          {personSection === "resumo" && selectedPerson && <div className="grid gap-2 sm:grid-cols-4">
-            <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Jornada</p><p className="mt-1 text-sm font-semibold text-navy">{STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</p></div>
-            <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Participações</p><p className="mt-1 text-sm font-semibold text-navy">{participationCount} ativa(s)</p></div>
-            <div className="rounded-lg border border-border bg-muted/30 p-3"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Acompanhado por</p><p className="mt-1 truncate text-sm font-semibold text-navy">{currentResponsible?.fullName ?? "Não definido"}</p></div>
-
-          </div>}
 
           {personSection === "resumo" && canManagePastoralCoverage && (
             <button type="button" onClick={() => selectPersonSection("cobertura")} className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/35 p-4 text-left transition hover:bg-indigo-50">
