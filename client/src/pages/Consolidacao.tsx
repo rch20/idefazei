@@ -16,6 +16,29 @@ import { ReportButton } from "@/components/ReportButton";
 import { toast } from "sonner";
 import { createIdempotencyKey } from "@/lib/idempotency";
 
+type ReferralPrimaryAction = "integrate" | "approve" | "assume" | "accept" | "followUp" | "details";
+
+type ReferralActionInput = {
+  status: string;
+  canIntegrate?: boolean;
+  canApprove?: boolean;
+  canAssumeAsPastor?: boolean;
+  canAccept?: boolean;
+};
+
+export function getPrimaryReferralAction(referral: ReferralActionInput): ReferralPrimaryAction {
+  const isPending = referral.status === "pendente";
+  const isApproved = referral.status === "aprovado";
+  const canRecordFollowUp = referral.status === "aceito" || referral.status === "em_acompanhamento";
+
+  if (referral.canIntegrate) return "integrate";
+  if (isPending && referral.canApprove) return "approve";
+  if ((isPending || isApproved) && referral.canAssumeAsPastor) return "assume";
+  if ((isPending || isApproved) && referral.canAccept) return "accept";
+  if (canRecordFollowUp) return "followUp";
+  return "details";
+}
+
 const CHECKLIST_ITEMS = [
   { key: "callMade", label: "Ligação realizada", icon: Phone },
   { key: "messageSent", label: "Mensagem enviada", icon: MessageSquare },
@@ -100,6 +123,7 @@ export default function Consolidacao() {
   const [cancellingReferralId, setCancellingReferralId] = useState<number | null>(null);
   const [cancelReferralReason, setCancelReferralReason] = useState("");
   const [trackingReferralId, setTrackingReferralId] = useState<number | null>(null);
+  const [expandedReferralId, setExpandedReferralId] = useState<number | null>(null);
   const [followUpForm, setFollowUpForm] = useState(createInitialFollowUpForm);
   const [activeSection, setActiveSection] = useState<"consolidacao" | "visitas">("consolidacao");
   const [visitNotesById, setVisitNotesById] = useState<Record<number, string>>({});
@@ -215,7 +239,13 @@ export default function Consolidacao() {
 
   function openTracking(referralId: number) {
     setTrackingReferralId((current) => current === referralId ? null : referralId);
+    setExpandedReferralId(referralId);
     setFollowUpForm(createInitialFollowUpForm());
+  }
+
+  function toggleReferralDetails(referralId: number) {
+    setExpandedReferralId((current) => current === referralId ? null : referralId);
+    if (trackingReferralId === referralId) setTrackingReferralId(null);
   }
 
   function submitFollowUp(referralId: number) {
@@ -346,67 +376,56 @@ export default function Consolidacao() {
               const isClosed = referral.status === "encerrado";
               const isCancelled = referral.status === "cancelado";
               const statusLabel = isPending ? (referral.preferredConsolidatorName ? `Disponível para ${referral.preferredConsolidatorName}` : "Aguardando assunção") : isApproved ? "Aprovado, aguardando responsável" : referral.status === "aceito" ? (referral.acceptedByChurchUserId ? "Assumido pelo Pastor" : "Assumido pelo Consolidador") : isInFollowUp ? "Em acompanhamento" : isClosed ? "Encerrado" : isCancelled ? "Cancelado" : referral.status;
+              const primaryAction = getPrimaryReferralAction(referral);
+              const isExpanded = expandedReferralId === referral.id;
               return (
-                <article key={referral.id} className="rounded-xl border border-rose-100 bg-background p-4 shadow-sm">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
+                <article key={referral.id} className="rounded-xl border border-rose-100 bg-background p-4 shadow-sm transition-shadow hover:shadow-md">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-navy">{referral.personName}</p>
                         <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${isClosed ? "border-green-200 bg-green-50 text-green-700" : isCancelled ? "border-slate-200 bg-slate-100 text-slate-600" : isInFollowUp ? "border-blue-200 bg-blue-50 text-blue-700" : isApproved ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}>{statusLabel}</span>
                         {!isClosed && !isCancelled && <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${referral.careDueStatus === "atrasado" ? "border-rose-200 bg-rose-50 text-rose-700" : referral.careDueStatus === "proximo" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-600"}`}><Clock3 className="h-3 w-3" />{getCareDueLabel(referral)}</span>}
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">Indicado por {referral.referredByName} · origem: {referral.sourceName} · {new Date(referral.referredAt).toLocaleDateString("pt-BR")}{referral.preferredConsolidatorName ? ` · Preferência: ${referral.preferredConsolidatorName}` : ""}</p>
-                      <p className="mt-3 text-sm font-medium text-navy">Motivo: <span className="font-normal text-foreground">{referral.reason}</span></p>
-                      {referral.notes && <p className="mt-1 text-sm text-muted-foreground">{referral.notes}</p>}
+                      <p className="mt-2 line-clamp-2 text-sm text-foreground"><span className="font-medium text-navy">Motivo:</span> {referral.reason}</p>
                     </div>
-                    <div className="flex shrink-0 flex-col gap-2 sm:w-44">
-                      {referral.canAssign && <ConsolidationAssignmentControl churchId={churchId} referral={referral} candidates={consolidatorsQuery.data ?? []} canAssign={Boolean(referral.canAssign)} onSaved={async () => { await referralsQuery.refetch(); }} />}
-                      {isPending && referral.canApprove && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={approveReferral.isPending} onClick={() => approveReferral.mutate({ churchId, id: referral.id })}><CheckCircle2 className="mr-2 h-4 w-4" />Aprovar encaminhamento</Button>}
-                      {(isPending || isApproved) && referral.canAssumeAsPastor && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={assumeAsPastor.isPending} onClick={() => assumeAsPastor.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir como Pastor</Button>}
-                      {(isPending || isApproved) && referral.canAccept && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
-                      {!isPending && !isClosed && !isCancelled && <Button size="sm" variant="outline" onClick={() => openTracking(referral.id)}><ClipboardCheck className="mr-2 h-4 w-4" />{trackingReferralId === referral.id ? "Fechar painel" : "Acompanhar caso"}</Button>}
-                      {isInFollowUp && <Button size="sm" variant="outline" onClick={() => setClosingReferralId(referral.id)}>Encerrar acompanhamento</Button>}
-                      {referral.canCancel && <Button size="sm" variant="ghost" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => setCancellingReferralId(referral.id)}>{isCancelled ? "Caso cancelado" : "Cancelar caso"}</Button>}
-                      {referral.acceptedByName && <p className="text-center text-[11px] text-muted-foreground">Responsável: {referral.acceptedByName}</p>}
+                    <div className="flex w-full shrink-0 flex-col gap-2 md:w-48">
+                      {primaryAction === "integrate" && <Button size="sm" className="bg-green-600 text-white hover:bg-green-700" onClick={() => toggleReferralDetails(referral.id)}><Church className="mr-2 h-4 w-4" />Concluir integração</Button>}
+                      {primaryAction === "approve" && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={approveReferral.isPending} onClick={() => approveReferral.mutate({ churchId, id: referral.id })}><CheckCircle2 className="mr-2 h-4 w-4" />Aprovar encaminhamento</Button>}
+                      {primaryAction === "assume" && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={assumeAsPastor.isPending} onClick={() => assumeAsPastor.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir como Pastor</Button>}
+                      {primaryAction === "accept" && <Button size="sm" className="bg-navy text-white hover:bg-navy-light" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
+                      {primaryAction === "followUp" && <Button size="sm" variant="outline" onClick={() => openTracking(referral.id)}><ClipboardCheck className="mr-2 h-4 w-4" />{trackingReferralId === referral.id ? "Fechar acompanhamento" : "Registrar acompanhamento"}</Button>}
+                      <Button size="sm" variant="ghost" aria-expanded={isExpanded} aria-controls={`referral-details-${referral.id}`} onClick={() => toggleReferralDetails(referral.id)}>{isExpanded ? "Fechar detalhes" : "Ver detalhes"}</Button>
                     </div>
                   </div>
-                  {referral.canIntegrate && (
-                    <div className="mt-4 rounded-lg border border-green-200 bg-green-50/70 p-3">
-                      <p className="text-sm font-semibold text-green-900">Próximo destino da Pessoa</p>
-                      <p className="mt-1 text-xs text-green-800">O cuidado já teve acompanhamento. O Pastor pode concluir esta etapa integrando a Pessoa em uma Célula ativa.</p>
-                      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                        <label className="sr-only" htmlFor={`referral-cell-${referral.id}`}>Célula de destino</label>
-                        <select
-                          id={`referral-cell-${referral.id}`}
-                          value={selectedCellByReferral[referral.id] ?? ""}
-                          onChange={(event) => setSelectedCellByReferral((current) => ({ ...current, [referral.id]: event.target.value }))}
-                          className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500/70"
-                        >
-                          <option value="">Selecione a Célula de destino</option>
-                          {cells.filter((cell) => Boolean(cell.leaderId)).map((cell) => <option key={cell.id} value={cell.id}>{cell.name}</option>)}
-                        </select>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="bg-green-600 text-white hover:bg-green-700"
-                          disabled={!selectedCellByReferral[referral.id] || integrateReferralIntoCell.isPending}
-                          onClick={() => integrateReferralIntoCell.mutate({ churchId, referralId: referral.id, cellId: Number(selectedCellByReferral[referral.id]) })}
-                        >
-                          {integrateReferralIntoCell.isPending ? "Concluindo…" : "Concluir e integrar"}
-                        </Button>
+                  {isExpanded && <div id={`referral-details-${referral.id}`} className="mt-4 space-y-4 border-t border-rose-100 pt-4">
+                    <div className="flex items-start gap-2"><ClipboardCheck className="mt-0.5 h-4 w-4 shrink-0 text-navy" /><div><h3 className="text-sm font-semibold text-navy">Detalhes do caso</h3><p className="mt-0.5 text-xs text-muted-foreground">Ações secundárias, histórico e próximos passos ficam aqui para manter a fila objetiva.</p></div></div>
+                    {referral.notes && <p className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">{referral.notes}</p>}
+                    {referral.acceptedByName && <p className="text-xs text-muted-foreground">Responsável atual: <strong className="text-navy">{referral.acceptedByName}</strong></p>}
+                    {referral.canAssign && <ConsolidationAssignmentControl churchId={churchId} referral={referral} candidates={consolidatorsQuery.data ?? []} canAssign={Boolean(referral.canAssign)} onSaved={async () => { await referralsQuery.refetch(); }} />}
+                    <div className="flex flex-wrap gap-2">
+                      {primaryAction !== "approve" && isPending && referral.canApprove && <Button size="sm" variant="outline" disabled={approveReferral.isPending} onClick={() => approveReferral.mutate({ churchId, id: referral.id })}><CheckCircle2 className="mr-2 h-4 w-4" />Aprovar encaminhamento</Button>}
+                      {primaryAction !== "assume" && (isPending || isApproved) && referral.canAssumeAsPastor && <Button size="sm" variant="outline" disabled={assumeAsPastor.isPending} onClick={() => assumeAsPastor.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir como Pastor</Button>}
+                      {primaryAction !== "accept" && (isPending || isApproved) && referral.canAccept && <Button size="sm" variant="outline" disabled={acceptReferral.isPending} onClick={() => acceptReferral.mutate({ churchId, id: referral.id })}><UserCheck className="mr-2 h-4 w-4" />Assumir cuidado</Button>}
+                      {primaryAction !== "followUp" && !isPending && !isClosed && !isCancelled && <Button size="sm" variant="outline" onClick={() => openTracking(referral.id)}><ClipboardCheck className="mr-2 h-4 w-4" />Registrar acompanhamento</Button>}
+                      {isInFollowUp && <Button size="sm" variant="outline" onClick={() => setClosingReferralId(referral.id)}>Encerrar acompanhamento</Button>}
+                      {referral.canCancel && <Button size="sm" variant="ghost" className="text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => setCancellingReferralId(referral.id)}>{isCancelled ? "Caso cancelado" : "Cancelar caso"}</Button>}
+                    </div>
+                    {referral.canIntegrate && (
+                      <div className="rounded-lg border border-green-200 bg-green-50/70 p-3">
+                        <p className="text-sm font-semibold text-green-900">Próximo destino da Pessoa</p>
+                        <p className="mt-1 text-xs text-green-800">O cuidado já teve acompanhamento. O Pastor pode concluir esta etapa integrando a Pessoa em uma Célula ativa.</p>
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                          <label className="sr-only" htmlFor={`referral-cell-${referral.id}`}>Célula de destino</label>
+                          <select id={`referral-cell-${referral.id}`} value={selectedCellByReferral[referral.id] ?? ""} onChange={(event) => setSelectedCellByReferral((current) => ({ ...current, [referral.id]: event.target.value }))} className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500/70"><option value="">Selecione a Célula de destino</option>{cells.filter((cell) => Boolean(cell.leaderId)).map((cell) => <option key={cell.id} value={cell.id}>{cell.name}</option>)}</select>
+                          <Button type="button" size="sm" className="bg-green-600 text-white hover:bg-green-700" disabled={!selectedCellByReferral[referral.id] || integrateReferralIntoCell.isPending} onClick={() => integrateReferralIntoCell.mutate({ churchId, referralId: referral.id, cellId: Number(selectedCellByReferral[referral.id]) })}>{integrateReferralIntoCell.isPending ? "Concluindo…" : "Concluir e integrar"}</Button>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                  {referral.contactNumber && (
-                    <div className="mt-3 flex flex-col gap-2 rounded-lg border border-green-200 bg-green-50/60 p-3 sm:flex-row sm:items-center sm:justify-between">
-                      <p className="flex items-center gap-2 text-sm text-green-800"><Phone className="h-4 w-4" />{referral.contactNumber}</p>
-                      <a href={getWhatsAppLink(referral.contactNumber, referral.personName)} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center rounded-md bg-[#25D366] px-3 text-sm font-medium text-white transition-colors hover:bg-[#1fb65a]">
-                        <MessageCircle className="mr-2 h-4 w-4" />Conversar no WhatsApp
-                      </a>
-                    </div>
-                  )}
+                    )}
+                    {referral.contactNumber && <div className="flex flex-col gap-2 rounded-lg border border-green-200 bg-green-50/60 p-3 sm:flex-row sm:items-center sm:justify-between"><p className="flex items-center gap-2 text-sm text-green-800"><Phone className="h-4 w-4" />{referral.contactNumber}</p><a href={getWhatsAppLink(referral.contactNumber, referral.personName)} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center justify-center rounded-md bg-[#25D366] px-3 text-sm font-medium text-white transition-colors hover:bg-[#1fb65a]"><MessageCircle className="mr-2 h-4 w-4" />Conversar no WhatsApp</a></div>}
                   {trackingReferralId === referral.id && (
-                    <div className="mt-4 rounded-xl border border-navy/15 bg-navy/[0.025] p-4">
+                    <div className="rounded-xl border border-navy/15 bg-navy/[0.025] p-4">
                       <div className="flex items-start gap-3">
                         <ClipboardCheck className="mt-0.5 h-5 w-5 shrink-0 text-navy" />
                         <div>
@@ -485,6 +504,7 @@ export default function Consolidacao() {
                       </div>
                     </div>
                   )}
+                  </div>}
                   {closingReferralId === referral.id && (
                     <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
                       <label htmlFor={`close-referral-${referral.id}`} className="text-xs font-medium text-navy">Como o acompanhamento terminou? *</label>
