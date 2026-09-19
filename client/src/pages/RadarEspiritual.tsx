@@ -6,6 +6,7 @@ import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, CircleAlert, Clock3,
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
+import { createIdempotencyKey } from "@/lib/idempotency";
 
 const priorityConfig = {
   alta: { label: "Prioridade alta", short: "Alta", card: "border-rose-200 bg-rose-50/60", badge: "border-rose-200 bg-rose-100 text-rose-700", icon: "text-rose-700" },
@@ -48,9 +49,15 @@ export default function RadarEspiritual() {
   const radar = trpc.radar.list.useQuery({ churchId });
   const [signalFilter, setSignalFilter] = useState<SignalFilter>("todos");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("todas");
+  const [firstContactKeys, setFirstContactKeys] = useState<Record<number, string>>({});
   const registerFirstContact = trpc.care.registerFirstContact.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (_result, variables) => {
       toast.success("Primeiro contato registrado.");
+      setFirstContactKeys((current) => {
+        const next = { ...current };
+        delete next[variables.personId];
+        return next;
+      });
       await Promise.all([
         utils.radar.list.invalidate({ churchId }),
         utils.care.myQueue.invalidate({ churchId }),
@@ -169,7 +176,7 @@ export default function RadarEspiritual() {
                   </div>
                   <div className="flex w-full flex-col gap-2 lg:w-48 lg:shrink-0">
                     <div className="rounded-xl border border-white/70 bg-white/70 p-3"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Próximo passo</p><p className="mt-1 text-sm font-semibold text-navy">{item.nextAction}</p></div>
-                    {item.signals.some((signal) => signal.key === "primeiro_contato_pendente") && <Button className="gap-2 bg-navy text-white hover:bg-navy-light" onClick={() => registerFirstContact.mutate({ churchId, personId: item.person.id })} disabled={registerFirstContact.isPending}><PhoneCall className="h-4 w-4" />{registerFirstContact.isPending ? "Registrando…" : "Registrar contato"}</Button>}
+                    {item.signals.some((signal) => signal.key === "primeiro_contato_pendente") && <Button className="gap-2 bg-navy text-white hover:bg-navy-light" onClick={() => { const idempotencyKey = firstContactKeys[item.person.id] ?? createIdempotencyKey(); setFirstContactKeys((current) => ({ ...current, [item.person.id]: idempotencyKey })); registerFirstContact.mutate({ churchId, personId: item.person.id, idempotencyKey }); }} disabled={registerFirstContact.isPending}><PhoneCall className="h-4 w-4" />{registerFirstContact.isPending ? "Registrando…" : "Registrar contato"}</Button>}
                     <Button variant="outline" className="gap-2" onClick={() => openAction(item)}>Abrir ação <ArrowRight className="h-4 w-4" /></Button>
                     <Button variant="ghost" className="gap-2" onClick={() => openPerson(item.person.id)}>Abrir ficha <ArrowRight className="h-4 w-4" /></Button>
                   </div>

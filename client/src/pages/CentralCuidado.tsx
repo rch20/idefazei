@@ -5,6 +5,8 @@ import { trpc } from "@/lib/trpc";
 import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, HeartHandshake, MapPinned, PhoneCall, Users } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
+import { useRef } from "react";
+import { createIdempotencyKey } from "@/lib/idempotency";
 
 const priorityConfig = {
   alta: { label: "Prioridade alta", card: "border-rose-200 bg-rose-50/60", badge: "border-rose-200 bg-rose-100 text-rose-700" },
@@ -16,12 +18,14 @@ export default function CentralCuidado() {
   const { churchId } = useChurch();
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
+  const firstContactKeys = useRef(new Map<number, string>());
   const queue = trpc.care.myQueue.useQuery({ churchId });
   const visits = trpc.care.visits.useQuery({ churchId });
   const scope = trpc.people.journeyScope.useQuery({ churchId });
   const registerFirstContact = trpc.care.registerFirstContact.useMutation({
-    onSuccess: async () => {
+    onSuccess: async (_result, variables) => {
       toast.success("Primeiro acompanhamento registrado no histórico da Consolidação.");
+      firstContactKeys.current.delete(variables.personId);
       await Promise.all([
         utils.care.myQueue.invalidate({ churchId }),
         utils.dashboard.careAttention.invalidate({ churchId }),
@@ -38,6 +42,12 @@ export default function CentralCuidado() {
 
   function openPerson(personId: number) {
     navigate(`/app/pessoas?personId=${personId}&section=cuidado`);
+  }
+
+  function registerContact(personId: number) {
+    const idempotencyKey = firstContactKeys.current.get(personId) ?? createIdempotencyKey();
+    firstContactKeys.current.set(personId, idempotencyKey);
+    registerFirstContact.mutate({ churchId, personId, idempotencyKey });
   }
 
   return (
@@ -189,7 +199,7 @@ export default function CentralCuidado() {
                     {canRegisterContact && (
                       <Button
                         className="gap-2 bg-navy text-white hover:bg-navy-light"
-                        onClick={() => registerFirstContact.mutate({ churchId, personId: item.person.id })}
+                        onClick={() => registerContact(item.person.id)}
                         disabled={registerFirstContact.isPending}
                       >
                         <PhoneCall className="h-4 w-4" />

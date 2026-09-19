@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { createIdempotencyKey } from "@/lib/idempotency";
 
 type ReferralCandidate = { id: number; fullName: string };
 
@@ -20,12 +21,14 @@ export function ConsolidationReferralBox({ churchId, candidates, sourceLabel }: 
   const [personId, setPersonId] = useState("");
   const [reason, setReason] = useState("");
   const [priority, setPriority] = useState<"normal" | "alta" | "urgente">("normal");
+  const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
   const createReferral = trpc.consolidation.createReferral.useMutation({
     onSuccess: async () => {
       toast.success("Indicação enviada para a fila de Consolidação.");
       setPersonId("");
       setReason("");
       setPriority("normal");
+      setIdempotencyKey(createIdempotencyKey());
       await utils.consolidation.referrals.invalidate({ churchId });
     },
     onError: (error) => toast.error(error.message || "Não foi possível enviar a indicação."),
@@ -36,7 +39,7 @@ export function ConsolidationReferralBox({ churchId, candidates, sourceLabel }: 
   const submit = () => {
     if (!personId) return toast.error("Selecione a Pessoa que precisa de Consolidação.");
     if (reason.trim().length < 3) return toast.error("Informe o motivo da indicação.");
-    createReferral.mutate({ churchId, personId: Number(personId), reason: reason.trim(), priority });
+    createReferral.mutate({ churchId, personId: Number(personId), idempotencyKey, reason: reason.trim(), priority });
   };
 
   return (
