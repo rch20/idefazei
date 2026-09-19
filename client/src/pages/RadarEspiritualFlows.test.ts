@@ -31,6 +31,10 @@ describe("Fluxo estrutural do Radar Espiritual", () => {
     expect(pageSource).toContain("Central de Cuidado");
   });
 
+  it("abre a ficha central no Resumo quando o Radar não exige outra seção", () => {
+    expect(pageSource).toContain("navigate(`/app/pessoas?personId=${personId}&section=resumo`)");
+  });
+
   it("deixa explícito que sinais não são diagnóstico e protege a privacidade", () => {
     expect(pageSource).toContain("não diagnostica a vida espiritual");
     expect(pageSource).toContain("respeitam a responsabilidade pastoral");

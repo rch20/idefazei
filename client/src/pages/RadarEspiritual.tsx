@@ -75,7 +75,7 @@ export default function RadarEspiritual() {
   }), [radar.data?.items, priorityFilter, signalFilter]);
 
   function openPerson(personId: number) {
-    navigate(`/app/pessoas?personId=${personId}`);
+    navigate(`/app/pessoas?personId=${personId}&section=resumo`);
   }
 
   function openAction(item: (typeof items)[number]) {
