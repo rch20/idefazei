@@ -34,6 +34,8 @@ const JOURNEY_STAGES = [
 type JourneyStage = typeof JOURNEY_STAGES[number];
 type JourneyStatus = "concluida" | "pendente" | "nao_registrada";
 type DirectoryFilter = "todas" | JourneyStage | "sem_responsavel" | "atencao";
+const PERSON_SECTIONS = ["resumo", "jornada", "participacoes", "cuidado", "cobertura", "historico"] as const;
+type PersonSection = typeof PERSON_SECTIONS[number];
 
 const STAGE_BADGE: Record<string, string> = {
   nova_alma: "badge-nova-alma",
@@ -230,7 +232,7 @@ export default function Pessoas() {
   const consumedPersonDeepLinkRef = useRef<string | null>(null);
   const [journeyNoteStage, setJourneyNoteStage] = useState<JourneyStage | null>(null);
   const [journeyNote, setJourneyNote] = useState("");
-  const [personSection, setPersonSection] = useState<"resumo" | "jornada" | "participacoes" | "cuidado" | "cobertura" | "historico">("resumo");
+  const [personSection, setPersonSection] = useState<PersonSection>("resumo");
   const [birthdaysOpen, setBirthdaysOpen] = useState(false);
   const [birthdayView, setBirthdayView] = useState<"today" | "month">("today");
   const currentCivilParts = useMemo(() => currentCivilDateParts(), []);
@@ -252,9 +254,8 @@ export default function Pessoas() {
   }, [location]);
   const routePersonId = Number(routeParams.get("personId"));
   const routeSection = routeParams.get("section");
-  const validPersonSections = ["resumo", "jornada", "participacoes", "cuidado", "cobertura", "historico"] as const;
-  const requestedPersonSection = validPersonSections.includes(routeSection as (typeof validPersonSections)[number])
-    ? routeSection as (typeof validPersonSections)[number]
+  const requestedPersonSection = PERSON_SECTIONS.includes(routeSection as PersonSection)
+    ? routeSection as PersonSection
     : "resumo";
   const personDeepLinkKey = Number.isInteger(routePersonId) && routePersonId > 0
     ? `${routePersonId}:${requestedPersonSection}`
@@ -584,7 +585,23 @@ export default function Pessoas() {
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     : [];
 
-  function openPersonJourney(person: any, section: typeof personSection = "resumo") {
+  function getPersonHref(personId: number, section: PersonSection) {
+    const [path, queryString] = location.split("?");
+    const params = new URLSearchParams(queryString ?? "");
+    params.set("personId", String(personId));
+    params.set("section", section);
+    return `${path}?${params.toString()}`;
+  }
+
+  function selectPersonSection(section: PersonSection) {
+    setPersonSection(section);
+    if (selectedPerson?.id) {
+      const nextLocation = getPersonHref(selectedPerson.id, section);
+      if (location !== nextLocation) navigate(nextLocation);
+    }
+  }
+
+  function openPersonJourney(person: any, section: PersonSection = "resumo") {
     setSelectedPerson(person);
     setPersonSection(section);
     setJourneyNoteStage(null);
@@ -593,6 +610,8 @@ export default function Pessoas() {
     setSelectedCellId("");
     setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "", idempotencyKey: createIdempotencyKey() });
     setCoverageForm(defaultCoverageForm);
+    const nextLocation = getPersonHref(person.id, section);
+    if (location !== nextLocation) navigate(nextLocation);
   }
 
   function closePersonJourney() {
@@ -806,7 +825,7 @@ export default function Pessoas() {
               type="button"
               onClick={() => openPersonJourney(person)}
               className="card-sacred flex w-full items-start gap-3 p-3 text-left transition-colors hover:border-gold/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 sm:items-center sm:gap-4 sm:p-4"
-              aria-label={`Abrir jornada de cuidado de ${person.fullName}`}
+              aria-label={`Abrir ficha de ${person.fullName}`}
             >
               <div className="w-10 h-10 rounded-full bg-cream-dark flex items-center justify-center flex-shrink-0">
                 {person.photoUrl ? (
@@ -826,7 +845,8 @@ export default function Pessoas() {
                   {care.responsibleName && <span className="hidden truncate sm:inline">Responsável: {care.responsibleName}</span>}
                 </div>
               </div>
-              <ArrowRight className="mt-2 h-4 w-4 shrink-0 text-muted-foreground sm:mt-0" />
+              <span className="hidden shrink-0 text-xs font-semibold text-navy sm:inline">Abrir ficha</span>
+              <ArrowRight className="mt-2 h-4 w-4 shrink-0 text-muted-foreground sm:mt-0" aria-hidden="true" />
             </button>
           ))}
         </div>
@@ -996,7 +1016,7 @@ export default function Pessoas() {
       </Dialog>
 
       <Dialog open={Boolean(selectedPerson)} onOpenChange={(nextOpen) => !nextOpen && closePersonJourney()}>
-        <AdaptiveFormDialogContent className="sm:max-w-2xl">
+        <AdaptiveFormDialogContent className="sm:max-w-4xl lg:max-w-5xl">
           <div className={adaptiveFormDialogHeaderClassName}>
             <DialogTitle className="flex items-center gap-2 font-display text-navy"><HeartHandshake className="h-5 w-5 text-rose-600" />{selectedPerson?.fullName}</DialogTitle>
             <p className="mt-1 text-sm text-muted-foreground">Uma Pessoa, várias participações e um histórico único de cuidado.</p>
@@ -1017,7 +1037,7 @@ export default function Pessoas() {
                 type="button"
                 role="tab"
                 aria-selected={personSection === value}
-                onClick={() => setPersonSection(value as typeof personSection)}
+                onClick={() => selectPersonSection(value as PersonSection)}
                 className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${personSection === value ? "bg-background text-navy shadow-sm" : "text-muted-foreground hover:bg-background/70 hover:text-navy"}`}
               >
                 {label}
@@ -1196,9 +1216,9 @@ export default function Pessoas() {
                       if (selectedAttention.nextStep === "Registrar primeiro contato") {
                         navigate("/app/consolidacao");
                       } else if (selectedAttention.nextStep === "Enviar para célula") {
-                        setPersonSection("participacoes");
+                        selectPersonSection("participacoes");
                       } else {
-                        setPersonSection("cuidado");
+                        selectPersonSection("cuidado");
                       }
                     }}
                   >
@@ -1217,7 +1237,7 @@ export default function Pessoas() {
           </div>}
 
           {personSection === "resumo" && canManagePastoralCoverage && (
-            <button type="button" onClick={() => setPersonSection("cobertura")} className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/35 p-4 text-left transition hover:bg-indigo-50">
+            <button type="button" onClick={() => selectPersonSection("cobertura")} className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/35 p-4 text-left transition hover:bg-indigo-50">
               <span className="flex min-w-0 items-center gap-3"><ShieldCheck className="h-5 w-5 shrink-0 text-indigo-700" /><span><span className="block text-sm font-semibold text-navy">Cobertura espiritual</span><span className="mt-0.5 block text-xs text-muted-foreground">{selectedPersonIsPastor ? "Gerencie quem oferece cobertura a este Pastor." : "Confira o vínculo pastoral para liberar esta configuração."}</span></span></span><ArrowRight className="h-4 w-4 shrink-0 text-indigo-700" />
             </button>
           )}

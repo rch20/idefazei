@@ -111,6 +111,17 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("<Dialog open={Boolean(selectedPerson)}");
   });
 
+  it("trata a ficha como destino central e sincroniza abertura e seção com a URL", () => {
+    expect(pageSource).toContain("const PERSON_SECTIONS =");
+    expect(pageSource).toContain("function getPersonHref(personId: number, section: PersonSection)");
+    expect(pageSource).toContain("function selectPersonSection(section: PersonSection)");
+    expect(pageSource).toContain("const nextLocation = getPersonHref(person.id, section);");
+    expect(pageSource).toContain("if (location !== nextLocation) navigate(nextLocation);");
+    expect(pageSource).toContain("aria-label={`Abrir ficha de ${person.fullName}`}");
+    expect(pageSource).toContain("<span className=\"hidden shrink-0 text-xs font-semibold text-navy sm:inline\">Abrir ficha</span>");
+    expect(pageSource).toContain("sm:max-w-4xl lg:max-w-5xl");
+  });
+
   it("consome o deep link uma única vez e não reabre a ficha após o fechamento", () => {
     expect(pageSource).toContain('import { useEffect, useMemo, useRef, useState } from "react";');
     expect(pageSource).toContain("const consumedPersonDeepLinkRef = useRef<string | null>(null);");
@@ -172,8 +183,8 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('"Abrir Participações"');
     expect(pageSource).toContain('"Abrir Cuidado"');
     expect(pageSource).toContain('navigate("/app/consolidacao")');
-    expect(pageSource).toContain('setPersonSection("participacoes")');
-    expect(pageSource).toContain('setPersonSection("cuidado")');
+    expect(pageSource).toContain('selectPersonSection("participacoes")');
+    expect(pageSource).toContain('selectPersonSection("cuidado")');
   });
 
   it("protege a leitura de cuidado pelo escopo acessível da Pessoa", () => {
