@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 
 const root = resolve(__dirname, "../../..");
 const pageSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
+const summarySource = readFileSync(resolve(root, "client/src/components/PersonExecutiveSummary.tsx"), "utf8");
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 const leaderSource = readFileSync(resolve(root, "client/src/pages/AppLider.tsx"), "utf8");
@@ -170,11 +171,25 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
   });
 
   it("prioriza cuidado no resumo e retira dados técnicos de acesso", () => {
-    expect(pageSource).toContain('>Próximo passo</p>');
-    expect(pageSource).toContain('>Acompanhado por</p>');
-    expect(pageSource).not.toContain('>Responsabilidade</p>');
-    expect(pageSource).not.toContain('>Acesso</p>');
-    expect(pageSource).toContain('Nenhum próximo passo definido');
+    expect(summarySource).toContain('>Próximo passo</p>');
+    expect(summarySource).toContain('>Acompanhado por</p>');
+    expect(summarySource).not.toContain('>Responsabilidade</p>');
+    expect(summarySource).not.toContain('>Acesso</p>');
+    expect(summarySource).toContain('Nenhum próximo passo definido');
+  });
+
+  it("usa um resumo executivo único para Jornada, Célula e cuidado", () => {
+    expect(pageSource).toContain('import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";');
+    expect(pageSource).toContain("<PersonExecutiveSummary");
+    expect(pageSource).toContain('stageLabel={STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}');
+    expect(pageSource).toContain("currentCellName={currentCell?.cellName}");
+    expect(pageSource).toContain("hasCellHistory={Boolean(cellParticipationQuery.data?.hasHistory)}");
+    expect(pageSource).not.toContain("participationCount");
+    expect(summarySource).toContain('aria-label="Resumo executivo da ficha da Pessoa"');
+    expect(summarySource).toContain('aria-label="Próximo passo da Pessoa"');
+    expect(summarySource).toContain("Célula atual");
+    expect(summarySource).toContain("Pendente significa apenas");
+    expect(summarySource).not.toContain("Acessos efetivos");
   });
 
   it("mostra um próximo passo único e leva cada pendência ao contexto correto", () => {
