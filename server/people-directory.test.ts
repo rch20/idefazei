@@ -44,9 +44,9 @@ describe("Diretório operacional de Pessoas", () => {
 
   it("deixa a lista compacta e as ações de leitura separadas da ficha única", () => {
     expect(pageSource).toContain("filteredDirectory.map(({ person, care, cell })");
-    expect(pageSource).toContain("aria-label={`Abrir jornada de cuidado de ${person.fullName}`}");
+    expect(pageSource).toContain("aria-label={`Abrir ficha de ${person.fullName}`}");
     expect(pageSource).toContain("DIRECTORY_CARE_LABELS[care.status]");
-    expect(pageSource).toContain("setPersonSection(\"cuidado\")");
+    expect(pageSource).toContain("selectPersonSection(\"cuidado\")");
     expect(pageSource).toContain("Uma Pessoa, várias participações e um histórico único de cuidado.");
   });
 });
