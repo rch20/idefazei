@@ -708,6 +708,22 @@ export default function Pessoas() {
     removePastoralCoverage.mutate({ churchId, pastorPersonId: selectedPerson.id });
   }
 
+  function handleSummaryPrimaryAction() {
+    if (!selectedAttention || !selectedPerson) return;
+    if (selectedAttention.nextStep === "Registrar primeiro contato") {
+      toast.info("Abrindo o caso de Consolidação desta Pessoa.");
+      navigate(`/app/consolidacao?personId=${selectedPerson.id}&from=pessoas&returnSection=${personSection}`);
+      return;
+    }
+    if (selectedAttention.nextStep === "Enviar para célula") {
+      toast.info("Abrindo Participações para integrar a Pessoa em uma Célula.");
+      selectPersonSection("participacoes");
+      return;
+    }
+    toast.info("Abrindo Cuidado para atualizar o próximo passo.");
+    selectPersonSection("cuidado");
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -1205,16 +1221,7 @@ export default function Pessoas() {
               attention={selectedAttention}
               canActOnNextStep={canActOnNextStep}
               nextStepLabel={nextStepLabel}
-              onPrimaryAction={() => {
-                if (!selectedAttention) return;
-                if (selectedAttention.nextStep === "Registrar primeiro contato") {
-                  navigate("/app/consolidacao");
-                } else if (selectedAttention.nextStep === "Enviar para célula") {
-                  selectPersonSection("participacoes");
-                } else {
-                  selectPersonSection("cuidado");
-                }
-              }}
+              onPrimaryAction={handleSummaryPrimaryAction}
             />
           )}
 

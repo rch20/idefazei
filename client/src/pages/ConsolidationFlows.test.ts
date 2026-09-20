@@ -95,6 +95,20 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(consolidationSource).toContain("id={`referral-details-${referral.id}`}");
   });
 
+  it("preserva o contexto vindo da ficha e oferece retorno direto para a Pessoa", () => {
+    expect(consolidationSource).toContain('const [location, navigate] = useLocation();');
+    expect(consolidationSource).toContain('const focusPersonId = Number(routeParams.get("personId"));');
+    expect(consolidationSource).toContain('const fromPeople = routeParams.get("from") === "pessoas"');
+    expect(consolidationSource).toContain("const focusedReferral = fromPeople ? allReferrals.find((referral) => referral.personId === focusPersonId)");
+    expect(consolidationSource).toContain("const focusedLegacy = fromPeople ? (consolidations ?? []).find");
+    expect(consolidationSource).toContain("setExpandedReferralId(focusedReferral.id)");
+    expect(consolidationSource).toContain("setLegacyHistoryOpen(true)");
+    expect(consolidationSource).toContain("consolidation-referral-${focusedReferral.id}");
+    expect(consolidationSource).toContain("legacy-consolidation-${focusedLegacy.id}");
+    expect(consolidationSource).toContain("Voltar à ficha");
+    expect(consolidationSource).toContain("O registro relacionado foi destacado");
+  });
+
   it("deixa claro quando a ação principal apenas abre a escolha de Célula", () => {
     expect(consolidationSource).toContain("Escolher Célula");
     expect(consolidationSource).toContain("aria-expanded={isExpanded}");

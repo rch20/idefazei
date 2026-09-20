@@ -197,7 +197,10 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('"Abrir Consolidação"');
     expect(pageSource).toContain('"Abrir Participações"');
     expect(pageSource).toContain('"Abrir Cuidado"');
-    expect(pageSource).toContain('navigate("/app/consolidacao")');
+    expect(pageSource).toContain('navigate(`/app/consolidacao?personId=${selectedPerson.id}&from=pessoas&returnSection=${personSection}`)');
+    expect(pageSource).toContain("Abrindo o caso de Consolidação desta Pessoa.");
+    expect(pageSource).toContain('toast.info("Abrindo Participações para integrar a Pessoa em uma Célula.")');
+    expect(pageSource).toContain('toast.info("Abrindo Cuidado para atualizar o próximo passo.")');
     expect(pageSource).toContain('selectPersonSection("participacoes")');
     expect(pageSource).toContain('selectPersonSection("cuidado")');
   });

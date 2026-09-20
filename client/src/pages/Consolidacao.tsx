@@ -3,7 +3,8 @@ import { ConsolidationMinistryPanel } from "@/components/ConsolidationMinistryPa
 import { ConsolidationAssignmentControl } from "@/components/ConsolidationAssignmentControl";
 import { VisitAssignmentControl } from "@/components/VisitAssignmentControl";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Circle, ClipboardCheck, Clock3, Heart, MapPinned, Phone, MessageCircle, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CalendarClock, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Circle, ClipboardCheck, Clock3, Heart, MapPinned, Phone, MessageCircle, MessageSquare, Home, BookOpen, Users, HandHeart, Church, Send, UserCheck } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
 import { toast } from "sonner";
 import { createIdempotencyKey } from "@/lib/idempotency";
@@ -108,6 +109,7 @@ function getReferralQueueEmptyMessage(filter: "ativos" | "fila" | "atrasados" | 
 export default function Consolidacao() {
   const { churchId } = useChurch();
   const { user } = useChurchAuth();
+  const [location, navigate] = useLocation();
   const utils = trpc.useUtils();
   const [caseFilter, setCaseFilter] = useState<"ativos" | "fila" | "atrasados" | "encerrados" | "cancelados" | "todos">("ativos");
   const [visitFilter, setVisitFilter] = useState<"pendentes" | "agendadas" | "realizadas" | "todas">("pendentes");
@@ -141,6 +143,14 @@ export default function Consolidacao() {
   const [visitCompletionKeys, setVisitCompletionKeys] = useState<Record<number, string>>({});
   const [careDueInputByReferral, setCareDueInputByReferral] = useState<Record<number, string>>({});
   const [visitCalendarMonth, setVisitCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [legacyHistoryOpen, setLegacyHistoryOpen] = useState(false);
+
+  const routeParams = useMemo(() => new URLSearchParams(location.split("?")[1] ?? ""), [location]);
+  const focusPersonId = Number(routeParams.get("personId"));
+  const fromPeople = routeParams.get("from") === "pessoas" && Number.isInteger(focusPersonId) && focusPersonId > 0;
+  const returnSection = ["resumo", "jornada", "participacoes", "cuidado", "cobertura", "historico"].includes(routeParams.get("returnSection") ?? "")
+    ? routeParams.get("returnSection")
+    : "resumo";
 
   useEffect(() => {
     if (isVisitOnly) setActiveSection("visitas");
@@ -247,6 +257,27 @@ export default function Consolidacao() {
   const filteredReferrals = allReferrals.filter((referral) => caseFilter === "todos" || (caseFilter === "ativos" && !["encerrado", "cancelado"].includes(referral.status)) || (caseFilter === "fila" && !["encerrado", "cancelado"].includes(referral.status) && !referral.assignedToPersonId && !referral.acceptedByPersonId && !referral.acceptedByChurchUserId) || (caseFilter === "atrasados" && referral.careDueStatus === "atrasado") || (caseFilter === "encerrados" && referral.status === "encerrado") || (caseFilter === "cancelados" && referral.status === "cancelado"));
   const allVisits = visitsQuery.data ?? [];
   const filteredVisits = allVisits.filter((visit) => visitFilter === "todas" || (visitFilter === "pendentes" && !["realizada", "cancelada"].includes(visit.status)) || (visitFilter === "agendadas" && visit.status === "agendada") || (visitFilter === "realizadas" && visit.status === "realizada"));
+  const focusedReferral = fromPeople ? allReferrals.find((referral) => referral.personId === focusPersonId) ?? null : null;
+  const focusedLegacy = fromPeople ? (consolidations ?? []).find((consolidation) => soulsMap.get(consolidation.soulId)?.personId === focusPersonId) ?? null : null;
+  const focusedSoul = focusedLegacy ? soulsMap.get(focusedLegacy.soulId) : null;
+  const focusedPersonName = focusedReferral?.personName ?? focusedSoul?.name ?? "Pessoa selecionada";
+  const returnToPersonHref = fromPeople ? `/app/pessoas?personId=${focusPersonId}&section=${returnSection}` : null;
+
+  useEffect(() => {
+    if (!fromPeople) return;
+    if (focusedReferral) {
+      setCaseFilter("todos");
+      setExpandedReferralId(focusedReferral.id);
+      setTrackingReferralId(null);
+      const frame = window.requestAnimationFrame(() => document.getElementById(`consolidation-referral-${focusedReferral.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+      return () => window.cancelAnimationFrame(frame);
+    }
+    if (focusedLegacy) {
+      setLegacyHistoryOpen(true);
+      const frame = window.requestAnimationFrame(() => document.getElementById(`legacy-consolidation-${focusedLegacy.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+      return () => window.cancelAnimationFrame(frame);
+    }
+  }, [focusedLegacy?.id, focusedReferral?.id, fromPeople]);
 
   function openTracking(referralId: number) {
     setTrackingReferralId((current) => current === referralId ? null : referralId);
@@ -331,6 +362,15 @@ export default function Consolidacao() {
 
   return (
     <div className="space-y-6">
+      {fromPeople && (
+        <section role="status" aria-live="polite" className="flex flex-col gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-3 text-indigo-950 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">Você veio da ficha de {focusedPersonName}.</p>
+            <p className="mt-1 text-xs text-indigo-900/75">{focusedReferral || focusedLegacy ? "O registro relacionado foi destacado para você continuar o cuidado." : "Não localizamos um caso correspondente nesta fila, mas a ficha continua disponível para retorno."}</p>
+          </div>
+          {returnToPersonHref && <Button type="button" variant="outline" className="w-full shrink-0 gap-2 border-indigo-300 bg-background text-indigo-900 hover:bg-indigo-100 sm:w-auto" onClick={() => navigate(returnToPersonHref)}><ArrowLeft className="h-4 w-4" />Voltar à ficha</Button>}
+        </section>
+      )}
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold font-display text-navy">Consolidação</h1>
@@ -390,7 +430,7 @@ export default function Consolidacao() {
               const primaryAction = getPrimaryReferralAction(referral);
               const isExpanded = expandedReferralId === referral.id;
               return (
-                <article key={referral.id} className="rounded-xl border border-rose-100 bg-background p-4 shadow-sm transition-shadow hover:shadow-md">
+                <article id={`consolidation-referral-${referral.id}`} key={referral.id} className={`rounded-xl border bg-background p-4 shadow-sm transition-shadow hover:shadow-md ${focusedReferral?.id === referral.id ? "border-indigo-400 ring-2 ring-indigo-300/70" : "border-rose-100"}`}>
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -543,7 +583,7 @@ export default function Consolidacao() {
         )}
       </section>
 
-      <details className="rounded-2xl border border-border bg-background p-4 sm:p-5">
+      <details id="legacy-consolidation-history" open={legacyHistoryOpen} onToggle={(event) => setLegacyHistoryOpen(event.currentTarget.open)} className="rounded-2xl border border-border bg-background p-4 sm:p-5">
         <summary className="cursor-pointer list-none text-sm font-semibold text-navy outline-none focus-visible:ring-2 focus-visible:ring-gold/70">Histórico legado de Consolidação <span className="ml-1 text-xs font-normal text-muted-foreground">(mantido apenas para consulta)</span></summary>
         <div className="mt-4">
       {isLoading ? (
@@ -569,7 +609,7 @@ export default function Consolidacao() {
             const isComplete = c.status === "consolidado";
 
             return (
-              <div key={c.id} className={`card-sacred p-5 ${isComplete ? "opacity-75" : ""}`}>
+              <div id={`legacy-consolidation-${c.id}`} key={c.id} className={`card-sacred p-5 ${isComplete ? "opacity-75" : ""} ${focusedLegacy?.id === c.id ? "border-indigo-400 ring-2 ring-indigo-300/70" : ""}`}>
                 {/* Header */}
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
