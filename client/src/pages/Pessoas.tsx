@@ -19,6 +19,7 @@ import { createIdempotencyKey } from "@/lib/idempotency";
 import { PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";
 import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
 import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";
+import { PersonSectionState, resolvePersonSectionState } from "@/components/PersonSectionState";
 
 const STAGES_LABELS: Record<string, string> = DISCIPLESHIP_STAGE_LABELS;
 
@@ -451,6 +452,85 @@ export default function Pessoas() {
   const selectedAttention = (careAttention.data ?? []).find((item) => item.person.id === selectedPerson?.id);
   const currentResponsible = (people ?? []).find((person) => person.id === currentCare.data?.responsiblePersonId);
   const currentCell = cellParticipationQuery.data?.current ?? null;
+  const attentionState = effectiveRolesQuery.isLoading
+    ? "loading"
+    : resolvePersonSectionState({
+        enabled: canReadExecutiveAttention,
+        isLoading: careAttention.isLoading,
+        isError: careAttention.isError,
+        isFetching: careAttention.isFetching,
+        hasData: Array.isArray(careAttention.data),
+        isEmpty: Array.isArray(careAttention.data) && careAttention.data.length === 0,
+      });
+  const cellParticipationState = resolvePersonSectionState({
+    enabled: Boolean(selectedPerson?.id),
+    isLoading: cellParticipationQuery.isLoading,
+    isError: cellParticipationQuery.isError,
+    isFetching: cellParticipationQuery.isFetching,
+    hasData: cellParticipationQuery.data !== undefined,
+    isEmpty: cellParticipationQuery.data !== undefined && !cellParticipationQuery.data?.current,
+  });
+  const cellHistoryState = resolvePersonSectionState({
+    enabled: Boolean(selectedPerson?.id),
+    isLoading: cellHistory.isLoading,
+    isError: cellHistory.isError,
+    isFetching: cellHistory.isFetching,
+    hasData: Array.isArray(cellHistory.data),
+    isEmpty: Array.isArray(cellHistory.data) && cellHistory.data.length === 0,
+  });
+  const currentCareState = resolvePersonSectionState({
+    enabled: Boolean(selectedPerson?.id),
+    isLoading: currentCare.isLoading,
+    isError: currentCare.isError,
+    isFetching: currentCare.isFetching,
+    hasData: currentCare.data !== undefined,
+    isEmpty: currentCare.data !== undefined && !currentCare.data,
+  });
+  const careHistoryState = resolvePersonSectionState({
+    enabled: Boolean(selectedPerson?.id),
+    isLoading: careHistory.isLoading,
+    isError: careHistory.isError,
+    isFetching: careHistory.isFetching,
+    hasData: Array.isArray(careHistory.data),
+    isEmpty: Array.isArray(careHistory.data) && careHistory.data.length === 0,
+  });
+  const journeyState = resolvePersonSectionState({
+    enabled: Boolean(selectedPerson?.id),
+    isLoading: journeyQuery.isLoading,
+    isError: journeyQuery.isError,
+    isFetching: journeyQuery.isFetching,
+    hasData: journeyQuery.data !== undefined,
+  });
+  const personMembershipsState = resolvePersonSectionState({
+    enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions),
+    isLoading: personMembershipsQuery.isLoading,
+    isError: personMembershipsQuery.isError,
+    isFetching: personMembershipsQuery.isFetching,
+    hasData: Array.isArray(personMembershipsQuery.data),
+    isEmpty: Array.isArray(personMembershipsQuery.data) && personMembershipsQuery.data.length === 0,
+  });
+  const personFunctionsState = resolvePersonSectionState({
+    enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions),
+    isLoading: personFunctionsQuery.isLoading,
+    isError: personFunctionsQuery.isError,
+    isFetching: personFunctionsQuery.isFetching,
+    hasData: Array.isArray(personFunctionsQuery.data),
+    isEmpty: Array.isArray(personFunctionsQuery.data) && personFunctionsQuery.data.length === 0,
+  });
+  const personAccessState = resolvePersonSectionState({
+    enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions),
+    isLoading: personAccessQuery.isLoading,
+    isError: personAccessQuery.isError,
+    isFetching: personAccessQuery.isFetching,
+    hasData: personAccessQuery.data !== undefined,
+  });
+  const pastoralCoverageState = resolvePersonSectionState({
+    enabled: Boolean(selectedPerson?.id && isPastorPresident),
+    isLoading: pastoralCoverageQuery.isLoading,
+    isError: pastoralCoverageQuery.isError,
+    isFetching: pastoralCoverageQuery.isFetching,
+    hasData: pastoralCoverageQuery.data !== undefined,
+  });
   const directory = directoryQuery.data ?? [];
   const filteredDirectory = directory.filter(({ person, care }) => {
     if (JOURNEY_STAGES.includes(directoryFilter as JourneyStage)) {
@@ -631,6 +711,19 @@ export default function Pessoas() {
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .map((item, index) => ({ ...item, isLatest: index === 0 }))
     : [];
+  const historyQueries = [careHistory, journeyQuery, cellHistory, ...(canManageJourney ? [consolidationHistoryQuery] : [])];
+  const historyHasError = historyQueries.some((query) => query.isError);
+  const historyIsLoading = historyQueries.some((query) => query.isLoading);
+  const historyIsFetching = historyQueries.some((query) => query.isFetching);
+  const historyState = resolvePersonSectionState({
+    enabled: Boolean(selectedPerson?.id),
+    isLoading: historyIsLoading,
+    isError: historyHasError,
+    isFetching: historyIsFetching,
+    hasData: historyTimeline.length > 0,
+    isEmpty: !historyIsLoading && !historyHasError && historyTimeline.length === 0,
+  });
+  const refreshHistory = () => Promise.all(historyQueries.map((query) => query.refetch()));
 
   function getPersonHref(personId: number, section: PersonSection) {
     const [path, queryString] = location.split("?");
@@ -1159,18 +1252,29 @@ export default function Pessoas() {
                     <p className="font-semibold">Participação em Célula</p>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">Independente da etapa principal da Jornada.</p>
                   </div>
-                  <Badge variant="outline" className={cellParticipationQuery.data?.status === "integrada" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}>
-                    {cellParticipationQuery.isLoading ? "Carregando…" : cellParticipationQuery.data?.status === "integrada" ? "Integrada" : "Pendente"}
+                  <Badge variant="outline" className={(cellParticipationState === "ready" || cellParticipationState === "refreshing") && cellParticipationQuery.data?.status === "integrada" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}>
+                    {cellParticipationState === "loading" ? "Carregando…" : cellParticipationState === "error" ? "Não disponível" : cellParticipationState === "unavailable" ? "Indisponível" : cellParticipationQuery.data?.status === "integrada" ? "Integrada" : "Pendente"}
                   </Badge>
                 </div>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <p><span className="font-medium">Célula atual:</span> {currentCell?.cellName ?? "Sem Célula"}</p>
-                  <p className="text-muted-foreground">{cellParticipationQuery.data?.hasHistory ? `${cellParticipationQuery.data.previousCount} participação(ões) anterior(es) no histórico.` : "Nenhuma participação anterior registrada."}</p>
-                </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">Pendente significa apenas que não há vínculo ativo no momento; não altera nem retrocede a Jornada.</p>
+                {cellParticipationState === "loading" ? <PersonSectionState kind="loading" title="Carregando vínculo de Célula…" className="mt-3 border-0 bg-transparent p-0" /> : cellParticipationState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar a participação em Célula" onRetry={cellParticipationQuery.refetch} retrying={cellParticipationQuery.isFetching} className="mt-3" /> : cellParticipationState === "unavailable" ? <PersonSectionState kind="unavailable" title="Participação em Célula indisponível" className="mt-3" /> : (
+                  <>
+                    {cellParticipationState === "refreshing" && <PersonSectionState kind="refreshing" title="Atualizando participação…" description="O vínculo atual continua visível." className="mt-3 border-0 bg-transparent p-0" />}
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <p><span className="font-medium">Célula atual:</span> {currentCell?.cellName ?? "Sem Célula"}</p>
+                      <p className="text-muted-foreground">{cellParticipationQuery.data?.hasHistory ? `${cellParticipationQuery.data.previousCount} participação(ões) anterior(es) no histórico.` : "Nenhuma participação anterior registrada."}</p>
+                    </div>
+                    <p className="mt-2 text-[11px] text-muted-foreground">Pendente significa apenas que não há vínculo ativo no momento; não altera nem retrocede a Jornada.</p>
+                  </>
+                )}
               </div>
 
-              {journeyQuery.isLoading ? <div className="mt-5 space-y-2">{JOURNEY_STAGES.slice(0, 5).map((stage) => <div key={stage} className="h-16 animate-pulse rounded-xl bg-background/70" />)}</div> : (
+              {journeyState === "loading" ? <div className="mt-5 space-y-2">{JOURNEY_STAGES.slice(0, 5).map((stage) => <div key={stage} className="h-16 animate-pulse rounded-xl bg-background/70" />)}</div> : journeyState === "error" ? (
+                <div className="mt-5"><PersonSectionState kind="error" title="Não foi possível carregar a Jornada" onRetry={journeyQuery.refetch} retrying={journeyQuery.isFetching} /></div>
+              ) : journeyState === "unavailable" ? (
+                <div className="mt-5"><PersonSectionState kind="unavailable" title="Jornada indisponível" /></div>
+              ) : (
+                <>
+                {journeyState === "refreshing" && <PersonSectionState kind="refreshing" title="Atualizando Jornada…" description="O progresso atual continua visível." className="mt-5" />}
                 <div className="mt-5 space-y-3">
                   {JOURNEY_STAGES.map((stage: JourneyStage) => {
                     const progress = journeyProgressByStage.get(stage);
@@ -1271,6 +1375,7 @@ export default function Pessoas() {
                     );
                   })}
                 </div>
+                </>
               )}
               {!canManageJourney && <p className="mt-3 text-xs text-muted-foreground">Você pode consultar esta jornada, mas a atualização é feita pela liderança responsável.</p>}
             </section>
@@ -1284,6 +1389,9 @@ export default function Pessoas() {
               hasCellHistory={Boolean(cellParticipationQuery.data?.hasHistory)}
               responsibleName={currentResponsible?.fullName}
               attention={selectedAttention}
+              attentionState={attentionState}
+              onAttentionRetry={canReadExecutiveAttention ? careAttention.refetch : undefined}
+              attentionRetrying={careAttention.isFetching}
               canActOnNextStep={canActOnNextStep}
               nextStepLabel={nextStepLabel}
               onPrimaryAction={handleSummaryPrimaryAction}
@@ -1306,15 +1414,21 @@ export default function Pessoas() {
                 </div>
               </div>
 
-              {pastoralCoverageQuery.isLoading ? (
-                <div className="mt-4 h-20 animate-pulse rounded-lg bg-background/70" />
+              {pastoralCoverageState === "loading" ? (
+                <PersonSectionState kind="loading" title="Carregando cobertura espiritual…" className="mt-4 border-0 bg-transparent p-0" />
+              ) : pastoralCoverageState === "error" ? (
+                <PersonSectionState kind="error" title="Não foi possível carregar a cobertura espiritual" onRetry={pastoralCoverageQuery.refetch} retrying={pastoralCoverageQuery.isFetching} className="mt-4" />
+              ) : pastoralCoverageState === "unavailable" ? (
+                <PersonSectionState kind="unavailable" title="Cobertura espiritual indisponível" className="mt-4" />
               ) : !selectedPersonIsPastor ? (
                 <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                   <p className="font-semibold">Cargo pastoral não reconhecido nesta Pessoa</p>
                   <p className="mt-1 text-xs leading-relaxed">Para cadastrar a cobertura espiritual, o Administrador Presidente precisa vincular esta ficha a uma conta em <strong>Configurações → Pessoas e acessos</strong> e atribuir o cargo Pastor Presidente ou Pastor Local. Depois, reabra a ficha e esta tela exibirá os campos para cadastrar ou atualizar a cobertura.</p>
                 </div>
-              ) : personAccessQuery.isLoading ? (
-                <div className="mt-4 h-20 animate-pulse rounded-lg bg-background/70" />
+              ) : personAccessState === "loading" ? (
+                <PersonSectionState kind="loading" title="Carregando acesso da Pessoa…" className="mt-4 border-0 bg-transparent p-0" />
+              ) : personAccessState === "error" ? (
+                <PersonSectionState kind="error" title="Não foi possível carregar o acesso da Pessoa" onRetry={personAccessQuery.refetch} retrying={personAccessQuery.isFetching} className="mt-4" />
               ) : (
                 <>
                   {pastoralCoverageQuery.data?.coverage ? (
@@ -1410,20 +1524,32 @@ export default function Pessoas() {
           {effectivePersonSection === "cuidado" && <div className="grid gap-4 md:grid-cols-2">
             <section className="rounded-xl border border-border p-4">
               <h3 className="text-sm font-semibold text-navy">Responsável atual</h3>
-              {currentCare.isLoading ? <p className="mt-2 text-sm text-muted-foreground">Carregando…</p> : currentCare.data ? (
+              {currentCareState === "loading" ? <PersonSectionState kind="loading" title="Carregando responsável…" className="mt-3 border-0 bg-transparent p-0" /> : currentCareState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar o responsável" onRetry={currentCare.refetch} retrying={currentCare.isFetching} className="mt-3" /> : currentCareState === "unavailable" ? <PersonSectionState kind="unavailable" title="Responsável indisponível" className="mt-3" /> : currentCare.data ? (
                 <div className="mt-3 space-y-1">
                   <p className="font-medium text-navy">{currentResponsible?.fullName ?? "Pessoa vinculada"}</p>
                   <Badge variant="outline" className="text-xs">{CARE_ROLE_LABELS[currentCare.data.role] ?? currentCare.data.role}</Badge>
                 </div>
-              ) : <p className="mt-2 text-sm text-rose-700">Nenhum responsável definido.</p>}
+              ) : <PersonSectionState kind="empty" title="Nenhum responsável definido" description="A ausência de responsável é válida e pode ser atualizada pela liderança." className="mt-3" />}
             </section>
             <section className="rounded-xl border border-border p-4">
               <h3 className="text-sm font-semibold text-navy">Histórico de cuidado</h3>
-              <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground"><Clock3 className="h-4 w-4" />{careHistory.data?.length ?? 0} atribuição(ões) registrada(s)</p>
+              {careHistoryState === "loading" ? <PersonSectionState kind="loading" title="Carregando histórico de cuidado…" className="mt-3 border-0 bg-transparent p-0" /> : careHistoryState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar o histórico de cuidado" onRetry={careHistory.refetch} retrying={careHistory.isFetching} className="mt-3" /> : careHistoryState === "unavailable" ? <PersonSectionState kind="unavailable" title="Histórico de cuidado indisponível" className="mt-3" /> : careHistoryState === "empty" ? <PersonSectionState kind="empty" title="Nenhuma atribuição registrada" description="O histórico ficará disponível quando houver uma atribuição de cuidado." className="mt-3" /> : (
+                <>
+                  {careHistoryState === "refreshing" && <PersonSectionState kind="refreshing" title="Atualizando histórico…" className="mt-3 border-0 bg-transparent p-0" />}
+                  <p className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground"><Clock3 className="h-4 w-4" />{careHistory.data?.length ?? 0} atribuição(ões) registrada(s)</p>
+                </>
+              )}
             </section>
           </div>}
 
-          {effectivePersonSection === "historico" && <PersonHistoryTimeline events={historyTimeline} />}
+          {effectivePersonSection === "historico" && (
+            historyState === "loading" ? <PersonSectionState kind="loading" title="Carregando histórico…" /> : historyState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar o histórico" onRetry={refreshHistory} retrying={historyIsFetching} /> : historyState === "unavailable" ? <PersonSectionState kind="unavailable" title="Histórico indisponível" /> : historyState === "empty" ? <PersonSectionState kind="empty" title="Ainda não há atividades históricas registradas" description="A situação atual da Pessoa continua disponível no Resumo, na Jornada e em Participações." /> : (
+              <div className="space-y-3">
+                {(historyState === "refreshing" || historyHasError) && <PersonSectionState kind={historyHasError ? "error" : "refreshing"} title={historyHasError ? "Atualização parcial do histórico" : "Atualizando histórico…"} description={historyHasError ? "Algumas fontes não responderam. Os eventos já carregados continuam visíveis." : "Os eventos atuais continuam visíveis."} onRetry={historyHasError ? refreshHistory : undefined} retrying={historyIsFetching} />}
+                <PersonHistoryTimeline events={historyTimeline} />
+              </div>
+            )
+          )}
 
           {effectivePersonSection === "cuidado" && canManageJourney && (
             <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
@@ -1481,8 +1607,8 @@ export default function Pessoas() {
               <div className="mt-4 grid gap-3 md:grid-cols-3">
                 <div className="rounded-lg border border-indigo-100 bg-background/80 p-3">
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Ministérios da pessoa</h4>
-                  {personMembershipsQuery.isLoading ? <p className="mt-2 text-xs text-muted-foreground">Carregando…</p> : (personMembershipsQuery.data ?? []).length === 0 ? (
-                    <p className="mt-2 text-xs text-muted-foreground">Nenhum Ministério ativo.</p>
+                  {personMembershipsState === "loading" ? <PersonSectionState kind="loading" title="Carregando Ministérios…" className="mt-2 border-0 bg-transparent p-0 text-xs" /> : personMembershipsState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar Ministérios" onRetry={personMembershipsQuery.refetch} retrying={personMembershipsQuery.isFetching} className="mt-2" /> : personMembershipsState === "unavailable" ? <PersonSectionState kind="unavailable" title="Ministérios indisponíveis" className="mt-2" /> : personMembershipsState === "empty" ? (
+                    <PersonSectionState kind="empty" title="Nenhum Ministério ativo" className="mt-2" />
                   ) : (
                     <div className="mt-2 space-y-2">
                       {(personMembershipsQuery.data ?? []).map((membership) => (
@@ -1500,8 +1626,8 @@ export default function Pessoas() {
 
                 <div className="rounded-lg border border-indigo-100 bg-background/80 p-3">
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Atuações na equipe</h4>
-                  {(personFunctionsQuery.data ?? []).length === 0 ? (
-                    <p className="mt-2 text-xs text-muted-foreground">Nenhuma função manual atribuída.</p>
+                  {personFunctionsState === "loading" ? <PersonSectionState kind="loading" title="Carregando atuações…" className="mt-2 border-0 bg-transparent p-0 text-xs" /> : personFunctionsState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar atuações" onRetry={personFunctionsQuery.refetch} retrying={personFunctionsQuery.isFetching} className="mt-2" /> : personFunctionsState === "unavailable" ? <PersonSectionState kind="unavailable" title="Atuações indisponíveis" className="mt-2" /> : personFunctionsState === "empty" ? (
+                    <PersonSectionState kind="empty" title="Nenhuma função manual atribuída" className="mt-2" />
                   ) : (
                     <div className="mt-2 space-y-2">
                       {(personFunctionsQuery.data ?? []).map((assignment) => (
@@ -1518,7 +1644,7 @@ export default function Pessoas() {
 
                 <div className="rounded-lg border border-indigo-100 bg-background/80 p-3">
                   <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Acessos efetivos</h4>
-                  {!personAccessQuery.data?.accountLinked ? (
+                  {personAccessState === "loading" ? <PersonSectionState kind="loading" title="Carregando acessos…" className="mt-2 border-0 bg-transparent p-0 text-xs" /> : personAccessState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar acessos" onRetry={personAccessQuery.refetch} retrying={personAccessQuery.isFetching} className="mt-2" /> : personAccessState === "unavailable" ? <PersonSectionState kind="unavailable" title="Acessos indisponíveis" className="mt-2" /> : !personAccessQuery.data?.accountLinked ? (
                     <p className="mt-2 text-xs text-amber-800">Sem login ativo vinculado. A membresia e as funções ficam registradas, mas não há acesso para entrar no sistema.</p>
                   ) : (personAccessQuery.data.roles ?? []).length === 0 ? (
                     <p className="mt-2 text-xs text-muted-foreground">Login vinculado, mas nenhum acesso ministerial efetivo.</p>
@@ -1579,12 +1705,26 @@ export default function Pessoas() {
                   <h3 className="text-sm font-semibold text-navy">Participação em Célula</h3>
                   <p className="mt-1 text-xs text-muted-foreground">A participação comunitária é independente da etapa principal da Jornada.</p>
                 </div>
-                <Badge variant="outline" className={cellParticipationQuery.data?.status === "integrada" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}>
-                  {cellParticipationQuery.isLoading ? "Carregando…" : cellParticipationQuery.data?.status === "integrada" ? "Integrada" : "Pendente"}
+                <Badge variant="outline" className={cellParticipationState === "ready" && cellParticipationQuery.data?.status === "integrada" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}>
+                  {cellParticipationState === "loading" ? "Carregando…" : cellParticipationState === "error" ? "Não disponível" : cellParticipationState === "unavailable" ? "Indisponível" : cellParticipationQuery.data?.status === "integrada" ? "Integrada" : "Pendente"}
                 </Badge>
               </div>
-            {cellParticipationQuery.isLoading ? (
-              <p className="mt-2 text-sm text-muted-foreground">Carregando vínculo de célula…</p>
+            {cellParticipationState === "loading" ? (
+              <PersonSectionState kind="loading" title="Carregando vínculo de Célula…" className="mt-3 border-0 bg-transparent p-0" />
+            ) : cellParticipationState === "error" ? (
+              <PersonSectionState kind="error" title="Não foi possível carregar a participação em Célula" onRetry={cellParticipationQuery.refetch} retrying={cellParticipationQuery.isFetching} className="mt-3" />
+            ) : cellParticipationState === "unavailable" ? (
+              <PersonSectionState kind="unavailable" title="Participação em Célula indisponível" className="mt-3" />
+            ) : cellParticipationState === "refreshing" ? (
+              <>
+                <PersonSectionState kind="refreshing" title="Atualizando participação…" description="O vínculo atual continua visível." className="mt-3 border-0 bg-transparent p-0" />
+                {currentCell ? (
+                  <div className="mt-2 rounded-lg border border-indigo-100 bg-background/80 p-3">
+                    <p className="text-sm font-medium text-navy">Célula atual: {currentCell.cellName}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">O vínculo atual permanece visível enquanto a atualização termina.</p>
+                  </div>
+                ) : <PersonSectionState kind="empty" title="Sem Célula" description="A participação anterior continua preservada no histórico." className="mt-2" />}
+              </>
             ) : currentCell ? (
               <div className="mt-2 rounded-lg border border-indigo-100 bg-background/80 p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1618,7 +1758,9 @@ export default function Pessoas() {
               </div>
             ) : <p className="mt-3 text-xs text-muted-foreground">A integração e a transferência de Célula são feitas pelo Pastor ou pela liderança responsável.</p>}
               <div className="mt-3 rounded-lg border border-indigo-100 bg-background/70 px-3 py-2 text-xs text-muted-foreground">
-                {cellHistory.isLoading ? "Carregando histórico…" : cellHistory.data && cellHistory.data.length > 0 ? `${cellHistory.data.filter((membership) => !membership.active).length} participação(ões) anterior(es) preservada(s) no histórico.` : "Nenhuma participação anterior registrada."}
+                {cellHistoryState === "loading" ? <PersonSectionState kind="loading" title="Carregando histórico de Célula…" className="border-0 bg-transparent p-0" /> : cellHistoryState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar o histórico de Célula" onRetry={cellHistory.refetch} retrying={cellHistory.isFetching} className="border-0 bg-transparent p-0" /> : cellHistoryState === "unavailable" ? <PersonSectionState kind="unavailable" title="Histórico de Célula indisponível" className="border-0 bg-transparent p-0" /> : cellHistoryState === "empty" ? <PersonSectionState kind="empty" title="Nenhuma participação anterior registrada" className="border-0 bg-transparent p-0" /> : (
+                  <>{cellHistoryState === "refreshing" && <PersonSectionState kind="refreshing" title="Atualizando histórico…" className="mb-2 border-0 bg-transparent p-0" />}{cellHistory.data && cellHistory.data.length > 0 ? `${cellHistory.data.filter((membership) => !membership.active).length} participação(ões) anterior(es) preservada(s) no histórico.` : "Nenhuma participação anterior registrada."}</>
+                )}
               </div>
             </section>
           )}

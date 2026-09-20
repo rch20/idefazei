@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
+import { PersonSectionState, type PersonSectionStateKind } from "@/components/PersonSectionState";
 import { ArrowRight, ChevronDown, CircleCheck, CircleHelp, UsersRound } from "lucide-react";
 import { useId, useState } from "react";
 
@@ -17,6 +18,9 @@ export type PersonExecutiveSummaryProps = {
   hasCellHistory?: boolean;
   responsibleName?: string | null;
   attention?: PersonExecutiveSummaryAttention | null;
+  attentionState?: PersonSectionStateKind | "ready";
+  onAttentionRetry?: () => void;
+  attentionRetrying?: boolean;
   canActOnNextStep: boolean;
   nextStepLabel?: string | null;
   onPrimaryAction?: () => void;
@@ -58,49 +62,75 @@ export function PersonExecutiveSummary({
   hasCellHistory = false,
   responsibleName,
   attention,
+  attentionState,
+  onAttentionRetry,
+  attentionRetrying = false,
   canActOnNextStep,
   nextStepLabel,
   onPrimaryAction,
 }: PersonExecutiveSummaryProps) {
   const [contextOpen, setContextOpen] = useState(false);
   const contextId = useId();
-  const tone = getAttentionTone(attention?.priority);
-  const nextStep = attention?.nextStep ?? "Nenhum próximo passo definido";
-  const reasons = attention?.reasons ?? [];
-  const reasonText = attention
+  const isBlockingAttentionState = attentionState === "loading" || attentionState === "error" || attentionState === "unavailable";
+  const displayAttention = attention ?? (attentionState === "empty" ? { nextStep: "Acompanhamento em dia", reasons: [] } : null);
+  const tone = getAttentionTone(displayAttention?.priority);
+  const nextStep = displayAttention?.nextStep ?? "Acompanhamento em dia";
+  const reasons = displayAttention?.reasons ?? [];
+  const reasonText = displayAttention
     ? reasons.length > 0
       ? reasons.join(" · ")
       : "Não há pendências críticas no momento."
-    : "A ficha ainda não possui uma pendência de cuidado registrada.";
+    : "O próximo passo será exibido quando a leitura estiver disponível.";
   const isCellIntegrated = cellStatus === "integrada" || Boolean(currentCellName);
   const cellLabel = currentCellName ?? "Sem Célula";
 
   return (
     <section aria-label="Resumo executivo da ficha da Pessoa" className="space-y-3">
       <section className={`rounded-xl border p-3.5 sm:p-4 ${tone.section}`} aria-label="Próximo passo da Pessoa">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            {attention?.nextStep && attention.nextStep !== "Acompanhamento em dia" ? (
-              <ArrowRight className={`mt-0.5 h-5 w-5 shrink-0 ${tone.icon}`} aria-hidden="true" />
-            ) : (
-              <CircleCheck className={`mt-0.5 h-5 w-5 shrink-0 ${tone.icon}`} aria-hidden="true" />
+        {isBlockingAttentionState ? (
+          <PersonSectionState
+            kind={attentionState}
+            title={attentionState === "loading" ? "Carregando próximo passo…" : undefined}
+            description={attentionState === "unavailable" ? "O acompanhamento desta Pessoa não está disponível para o seu perfil." : undefined}
+            onRetry={onAttentionRetry}
+            retrying={attentionRetrying}
+            className="border-0 bg-transparent p-0"
+          />
+        ) : (
+          <>
+            {attentionState === "refreshing" && (
+              <PersonSectionState
+                kind="refreshing"
+                title="Atualizando próximo passo…"
+                description="O último conteúdo válido continua visível."
+                className="mb-3 border-0 bg-transparent p-0"
+              />
             )}
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Próximo passo</p>
-                {attention?.priority && <Badge variant="outline" className={`text-[10px] ${tone.badge}`}>{attention.priority === "alta" ? "Atenção alta" : attention.priority === "media" ? "Atenção" : "Em dia"}</Badge>}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                {displayAttention?.nextStep && displayAttention.nextStep !== "Acompanhamento em dia" ? (
+                  <ArrowRight className={`mt-0.5 h-5 w-5 shrink-0 ${tone.icon}`} aria-hidden="true" />
+                ) : (
+                  <CircleCheck className={`mt-0.5 h-5 w-5 shrink-0 ${tone.icon}`} aria-hidden="true" />
+                )}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Próximo passo</p>
+                    {displayAttention?.priority && <Badge variant="outline" className={`text-[10px] ${tone.badge}`}>{displayAttention.priority === "alta" ? "Atenção alta" : displayAttention.priority === "media" ? "Atenção" : "Em dia"}</Badge>}
+                  </div>
+                  <p className="mt-1 text-sm font-semibold text-navy">{nextStep}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{reasonText}</p>
+                </div>
               </div>
-              <p className="mt-1 text-sm font-semibold text-navy">{nextStep}</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{reasonText}</p>
+              {attentionState !== "empty" && canActOnNextStep && nextStepLabel && onPrimaryAction && (
+                <Button type="button" variant="outline" className="min-h-11 w-full shrink-0 gap-2 sm:min-h-10 sm:w-auto" onClick={onPrimaryAction}>
+                  {nextStepLabel}
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              )}
             </div>
-          </div>
-          {canActOnNextStep && nextStepLabel && onPrimaryAction && (
-            <Button type="button" variant="outline" className="min-h-11 w-full shrink-0 gap-2 sm:min-h-10 sm:w-auto" onClick={onPrimaryAction}>
-              {nextStepLabel}
-              <ArrowRight className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          )}
-        </div>
+          </>
+        )}
       </section>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Indicadores principais da Pessoa">

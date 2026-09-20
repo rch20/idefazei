@@ -7,6 +7,7 @@ const dialogSource = readFileSync(resolve(root, "client/src/components/ui/dialog
 const peopleSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
 const summarySource = readFileSync(resolve(root, "client/src/components/PersonExecutiveSummary.tsx"), "utf8");
 const historySource = readFileSync(resolve(root, "client/src/components/PersonHistoryTimeline.tsx"), "utf8");
+const sectionStateSource = readFileSync(resolve(root, "client/src/components/PersonSectionState.tsx"), "utf8");
 const cellsSource = readFileSync(resolve(root, "client/src/pages/Celulas.tsx"), "utf8");
 const ministriesSource = readFileSync(resolve(root, "client/src/pages/Ministerios.tsx"), "utf8");
 
@@ -32,6 +33,18 @@ describe("Experiência mobile e estados vazios", () => {
     expect(summarySource).toContain("Collapsible");
     expect(summarySource).toContain("aria-controls={contextId}");
     expect(summarySource).toContain("Contexto do cuidado e da Célula");
+  });
+
+  it("mantém estados da ficha compactos, acessíveis e acionáveis no celular", () => {
+    expect(sectionStateSource).toContain('role={role}');
+    expect(sectionStateSource).toContain('aria-live={kind === "error" ? "assertive" : "polite"}');
+    expect(sectionStateSource).toContain('aria-busy={isBusy}');
+    expect(sectionStateSource).toContain("min-h-11");
+    expect(sectionStateSource).toContain('kind === "error" && onRetry');
+    expect(sectionStateSource).toContain("focus-visible");
+    expect(peopleSource).toContain("resolvePersonSectionState");
+    expect(peopleSource).toContain("Atualizando participação");
+    expect(sectionStateSource).not.toContain("overflow-x-");
   });
 
   it("usa um seletor compacto para trocar a única seção aberta da ficha no celular", () => {

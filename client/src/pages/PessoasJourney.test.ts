@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { resolvePersonSection } from "../lib/personSection";
+import { resolvePersonSectionState } from "../components/PersonSectionState";
 
 const root = resolve(__dirname, "../../..");
 const pageSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
@@ -19,6 +20,15 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(resolvePersonSection("cobertura", { canManagePastoralCoverage: false, accessPending: false })).toBe("resumo");
     expect(resolvePersonSection("cobertura", { canManagePastoralCoverage: false, accessPending: true })).toBeNull();
     expect(resolvePersonSection("jornada", { canManagePastoralCoverage: false, accessPending: true })).toBe("jornada");
+  });
+
+  it("deriva estados de leitura sem confundir erro, vazio e indisponibilidade", () => {
+    expect(resolvePersonSectionState({ isLoading: true })).toBe("loading");
+    expect(resolvePersonSectionState({ isError: true })).toBe("error");
+    expect(resolvePersonSectionState({ enabled: false })).toBe("unavailable");
+    expect(resolvePersonSectionState({ hasData: true, isEmpty: true })).toBe("empty");
+    expect(resolvePersonSectionState({ hasData: true, isFetching: true })).toBe("refreshing");
+    expect(resolvePersonSectionState({ hasData: true })).toBe("ready");
   });
 
   it("separa a ficha em resumo, jornada, participações, cuidado e histórico", () => {
@@ -209,7 +219,22 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(summarySource).toContain('>Acompanhado por</p>');
     expect(summarySource).not.toContain('>Responsabilidade</p>');
     expect(summarySource).not.toContain('>Acesso</p>');
-    expect(summarySource).toContain('Nenhum próximo passo definido');
+    expect(summarySource).toContain('Acompanhamento em dia');
+    expect(summarySource).toContain('attentionState?: PersonSectionStateKind | "ready"');
+    expect(summarySource).toContain("onAttentionRetry");
+    expect(summarySource).toContain("isBlockingAttentionState");
+  });
+
+  it("não apresenta valores finais durante loading ou erro das consultas da ficha", () => {
+    expect(pageSource).toContain("const attentionState = effectiveRolesQuery.isLoading");
+    expect(pageSource).toContain("const cellParticipationState = resolvePersonSectionState");
+    expect(pageSource).toContain("const currentCareState = resolvePersonSectionState");
+    expect(pageSource).toContain("const personMembershipsState = resolvePersonSectionState");
+    expect(pageSource).toContain("const pastoralCoverageState = resolvePersonSectionState");
+    expect(pageSource).toContain('title="Não foi possível carregar a participação em Célula"');
+    expect(pageSource).toContain('title="Nenhum responsável definido"');
+    expect(pageSource).toContain("Atualização parcial do histórico");
+    expect(pageSource).not.toContain('currentCare.isLoading ? <p className="mt-2 text-sm text-muted-foreground">Carregando…</p>');
   });
 
   it("usa um resumo executivo único para Jornada, Célula e cuidado", () => {
