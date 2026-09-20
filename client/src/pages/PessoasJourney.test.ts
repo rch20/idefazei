@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { resolvePersonSection } from "../lib/personSection";
 
 const root = resolve(__dirname, "../../..");
 const pageSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
@@ -13,6 +14,13 @@ const centralCareSource = readFileSync(resolve(root, "client/src/pages/CentralCu
 const dashboardSource = readFileSync(resolve(root, "client/src/pages/Dashboard.tsx"), "utf8");
 
 describe("Ficha da Pessoa — jornada e escopo", () => {
+  it("resolve deep links pastorais sem substituir a autorização server-side", () => {
+    expect(resolvePersonSection("cobertura", { canManagePastoralCoverage: true, accessPending: false })).toBe("cobertura");
+    expect(resolvePersonSection("cobertura", { canManagePastoralCoverage: false, accessPending: false })).toBe("resumo");
+    expect(resolvePersonSection("cobertura", { canManagePastoralCoverage: false, accessPending: true })).toBeNull();
+    expect(resolvePersonSection("jornada", { canManagePastoralCoverage: false, accessPending: true })).toBe("jornada");
+  });
+
   it("separa a ficha em resumo, jornada, participações, cuidado e histórico", () => {
     expect(pageSource).toContain('aria-label="Seções da ficha da Pessoa"');
     expect(pageSource).toContain('{ value: "resumo", label: "Resumo"');
@@ -21,15 +29,16 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('{ value: "cuidado", label: "Cuidado"');
     expect(pageSource).toContain('{ value: "cobertura", label: "Cobertura espiritual"');
     expect(pageSource).toContain('{ value: "historico", label: "Histórico"');
-    expect(pageSource).toContain('personSection === "resumo"');
-    expect(pageSource).toContain('personSection === "jornada"');
-    expect(pageSource).toContain('personSection === "cuidado"');
-    expect(pageSource).toContain('personSection === "cobertura"');
-    expect(pageSource).toContain('personSection === "historico"');
+    expect(pageSource).toContain('effectivePersonSection === "resumo"');
+    expect(pageSource).toContain('effectivePersonSection === "jornada"');
+    expect(pageSource).toContain('effectivePersonSection === "cuidado"');
+    expect(pageSource).toContain('effectivePersonSection === "cobertura"');
+    expect(pageSource).toContain('effectivePersonSection === "historico"');
   });
 
   it("mantém uma navegação única com apresentação compacta no mobile", () => {
     expect(pageSource).toContain("const PERSON_SECTION_OPTIONS");
+    expect(pageSource).toContain('import { PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";');
     expect(pageSource).toContain('aria-label="Navegação da ficha no celular"');
     expect(pageSource).toContain('id="person-section-mobile"');
     expect(pageSource).toContain('onValueChange={(value) => selectPersonSection(value as PersonSection)}');
@@ -38,6 +47,18 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('aria-controls="person-section-content"');
     expect(pageSource).toContain('!option.pastoralOnly || canManagePastoralCoverage');
     expect(pageSource).toContain("const nextLocation = getPersonHref(selectedPerson.id, section);");
+  });
+
+  it("normaliza a seção pastoral e preserva o contexto da Pessoa", () => {
+    expect(pageSource).toContain("const pastoralCoverageAccessPending = effectiveRolesQuery.isLoading || pastoralCoverageQuery.isLoading;");
+    expect(pageSource).toContain("const resolvedRequestedSection = resolvePersonSection(requestedPersonSection");
+    expect(pageSource).toContain('const effectivePersonSection = resolvedRequestedSection ?? "resumo";');
+    expect(pageSource).toContain('if (requestedPersonSection !== "cobertura" || !selectedPerson?.id || resolvedRequestedSection !== "resumo") return;');
+    expect(pageSource).toContain('navigate(nextLocation, { replace: true });');
+    expect(pageSource).toContain("effectivePersonSection === \"resumo\"");
+    expect(pageSource).toContain("effectivePersonSection === \"cobertura\" && canManagePastoralCoverage");
+    expect(pageSource).toContain("returnSection=${effectivePersonSection}");
+    expect(routerSource).toContain("async function requirePastorPresident");
   });
 
   it("organiza os cards da Jornada com conteúdo e ações separados no desktop", () => {
@@ -156,8 +177,8 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
 
   it("não expõe ações pastorais ministeriais para perfis não pastorais", () => {
     expect(pageSource).toContain("const canManageMinistryFunctions = isPastor;");
-    expect(pageSource).toContain('personSection === "participacoes" && canManageMinistryFunctions');
-    expect(pageSource).toContain('personSection === "cuidado" && canManageJourney');
+    expect(pageSource).toContain('effectivePersonSection === "participacoes" && canManageMinistryFunctions');
+    expect(pageSource).toContain('effectivePersonSection === "cuidado" && canManageJourney');
   });
 
   it("mantém participação em Célula como consulta ou ação contextual", () => {
@@ -210,7 +231,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('"Abrir Consolidação"');
     expect(pageSource).toContain('"Abrir Participações"');
     expect(pageSource).toContain('"Abrir Cuidado"');
-    expect(pageSource).toContain('navigate(`/app/consolidacao?personId=${selectedPerson.id}&from=pessoas&returnSection=${personSection}`)');
+    expect(pageSource).toContain('navigate(`/app/consolidacao?personId=${selectedPerson.id}&from=pessoas&returnSection=${effectivePersonSection}`)');
     expect(pageSource).toContain("Abrindo o caso de Consolidação desta Pessoa.");
     expect(pageSource).toContain('toast.info("Abrindo Participações para integrar a Pessoa em uma Célula.")');
     expect(pageSource).toContain('toast.info("Abrindo Cuidado para atualizar o próximo passo.")');
