@@ -15,17 +15,29 @@ const dashboardSource = readFileSync(resolve(root, "client/src/pages/Dashboard.t
 describe("Ficha da Pessoa — jornada e escopo", () => {
   it("separa a ficha em resumo, jornada, participações, cuidado e histórico", () => {
     expect(pageSource).toContain('aria-label="Seções da ficha da Pessoa"');
-    expect(pageSource).toContain('["resumo", "Resumo"]');
-    expect(pageSource).toContain('["jornada", "Jornada"]');
-    expect(pageSource).toContain('["participacoes", "Participações"]');
-    expect(pageSource).toContain('["cuidado", "Cuidado"]');
-    expect(pageSource).toContain('["cobertura", "Cobertura espiritual"]');
-    expect(pageSource).toContain('["historico", "Histórico"]');
+    expect(pageSource).toContain('{ value: "resumo", label: "Resumo"');
+    expect(pageSource).toContain('{ value: "jornada", label: "Jornada"');
+    expect(pageSource).toContain('{ value: "participacoes", label: "Participações"');
+    expect(pageSource).toContain('{ value: "cuidado", label: "Cuidado"');
+    expect(pageSource).toContain('{ value: "cobertura", label: "Cobertura espiritual"');
+    expect(pageSource).toContain('{ value: "historico", label: "Histórico"');
     expect(pageSource).toContain('personSection === "resumo"');
     expect(pageSource).toContain('personSection === "jornada"');
     expect(pageSource).toContain('personSection === "cuidado"');
     expect(pageSource).toContain('personSection === "cobertura"');
     expect(pageSource).toContain('personSection === "historico"');
+  });
+
+  it("mantém uma navegação única com apresentação compacta no mobile", () => {
+    expect(pageSource).toContain("const PERSON_SECTION_OPTIONS");
+    expect(pageSource).toContain('aria-label="Navegação da ficha no celular"');
+    expect(pageSource).toContain('id="person-section-mobile"');
+    expect(pageSource).toContain('onValueChange={(value) => selectPersonSection(value as PersonSection)}');
+    expect(pageSource).toContain('className={`hidden gap-1 rounded-xl bg-muted p-1 sm:grid');
+    expect(pageSource).toContain('id="person-section-content"');
+    expect(pageSource).toContain('aria-controls="person-section-content"');
+    expect(pageSource).toContain('!option.pastoralOnly || canManagePastoralCoverage');
+    expect(pageSource).toContain("const nextLocation = getPersonHref(selectedPerson.id, section);");
   });
 
   it("organiza os cards da Jornada com conteúdo e ações separados no desktop", () => {
