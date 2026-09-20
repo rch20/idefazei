@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 const root = resolve(__dirname, "../../..");
 const pageSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
 const summarySource = readFileSync(resolve(root, "client/src/components/PersonExecutiveSummary.tsx"), "utf8");
+const historySource = readFileSync(resolve(root, "client/src/components/PersonHistoryTimeline.tsx"), "utf8");
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 const leaderSource = readFileSync(resolve(root, "client/src/pages/AppLider.tsx"), "utf8");
@@ -203,6 +204,31 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('toast.info("Abrindo Cuidado para atualizar o próximo passo.")');
     expect(pageSource).toContain('selectPersonSection("participacoes")');
     expect(pageSource).toContain('selectPersonSection("cuidado")');
+  });
+
+  it("organiza o histórico em uma linha do tempo única e categorizada", () => {
+    expect(pageSource).toContain('import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";');
+    expect(pageSource).toContain("const historyTimeline: PersonHistoryEvent[]");
+    expect(pageSource).toContain('category: "jornada" as const');
+    expect(pageSource).toContain('category: "cuidado" as const');
+    expect(pageSource).toContain('category: "consolidacao" as const');
+    expect(pageSource).toContain('category: "celula" as const');
+    expect(pageSource).toContain('source: "anterior" as const');
+    expect(pageSource).toContain(".map((item, index) => ({ ...item, isLatest: index === 0 }))");
+    expect(pageSource).toContain("hasModernConsolidationHistory");
+    expect(pageSource).toContain("modernConsolidationTimeline");
+    expect(pageSource).toContain('<PersonHistoryTimeline events={historyTimeline} />');
+    expect(pageSource).toContain("Entrada na Célula");
+    expect(pageSource).toContain("Saída da Célula");
+    expect(historySource).toContain('export type PersonHistoryCategory = "jornada" | "cuidado" | "consolidacao" | "celula";');
+    expect(historySource).toContain('export type PersonHistorySource = "moderno" | "anterior" | "jornada";');
+    expect(historySource).toContain("Última atividade");
+    expect(historySource).toContain("Registro anterior");
+    expect(historySource).toContain("Mostrar mais histórico");
+    expect(historySource).toContain("Mostrar menos histórico");
+    expect(historySource).toContain("Ainda não há atividades históricas registradas");
+    expect(historySource).not.toContain("trpc.");
+    expect(historySource).not.toContain("navigate(");
   });
 
   it("protege a leitura de cuidado pelo escopo acessível da Pessoa", () => {

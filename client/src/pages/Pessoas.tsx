@@ -17,6 +17,7 @@ import { civilDateParts, currentCivilDateKey, currentCivilDateParts } from "@/li
 import { DISCIPLESHIP_STAGE_LABELS } from "@/lib/discipleshipState";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
+import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";
 
 const STAGES_LABELS: Record<string, string> = DISCIPLESHIP_STAGE_LABELS;
 
@@ -513,30 +514,45 @@ export default function Pessoas() {
     }
   }, [linkedPersonQuery.data, people, personDeepLinkKey, requestedPersonSection, routePersonId, selectedPerson?.id]);
 
-  const modernConsolidationTimeline = (consolidationHistoryQuery.data ?? []).flatMap(({ referral, assignments, followUps, visits }) => [
+  const modernConsolidationTimeline: PersonHistoryEvent[] = (consolidationHistoryQuery.data ?? []).flatMap(({ referral, assignments, followUps, visits }) => [
     {
+      id: `consolidation-referral-${referral.id}`,
       date: referral.referredAt,
+      category: "consolidacao" as const,
+      source: "moderno" as const,
       title: "Encaminhamento para Consolidação",
       detail: `${CONSOLIDATION_STATUS_LABELS[referral.status] ?? referral.status} · ${referral.reason}`,
     },
     ...assignments.map((assignment) => ({
+      id: `consolidation-assignment-${assignment.id}`,
       date: assignment.createdAt,
+      category: "consolidacao" as const,
+      source: "moderno" as const,
       title: CONSOLIDATION_ACTION_LABELS[assignment.action] ?? "Atualização do caso",
       detail: assignment.notes ?? "Responsabilidade registrada no histórico da Consolidação.",
     })),
     ...followUps.map((followUp) => ({
+      id: `consolidation-follow-up-${followUp.id}`,
       date: followUp.createdAt,
+      category: "consolidacao" as const,
+      source: "moderno" as const,
       title: `Acompanhamento por ${CONTACT_CHANNEL_LABELS[followUp.contactChannel] ?? followUp.contactChannel}`,
       detail: `${FOLLOW_UP_OUTCOME_LABELS[followUp.outcome] ?? followUp.outcome}${followUp.notes ? ` · ${followUp.notes}` : ""}${followUp.nextAction ? ` · Próxima ação: ${followUp.nextAction}` : ""}`,
     })),
     ...visits.map((visit) => ({
+      id: `consolidation-visit-${visit.id}`,
       date: visit.completedAt ?? visit.cancelledAt ?? visit.scheduledAt ?? visit.createdAt,
+      category: "consolidacao" as const,
+      source: "moderno" as const,
       title: `Visita: ${VISIT_STATUS_LABELS[visit.status] ?? visit.status}`,
       detail: `${visit.reason}${visit.completionNotes ? ` · ${visit.completionNotes}` : ""}${visit.cancellationReason ? ` · ${visit.cancellationReason}` : ""}`,
     })),
     ...(referral.closedAt
       ? [{
+          id: `consolidation-closed-${referral.id}`,
           date: referral.closedAt,
+          category: "consolidacao" as const,
+          source: "moderno" as const,
           title: `Caso de Consolidação ${CONSOLIDATION_STATUS_LABELS[referral.status] ?? referral.status}`,
           detail: referral.closeNotes ?? "Desfecho registrado no caso.",
         }]
@@ -544,45 +560,55 @@ export default function Pessoas() {
   ]);
   const hasModernConsolidationHistory = (consolidationHistoryQuery.data ?? []).length > 0;
 
-  const careTimeline = selectedPerson
+  const historyTimeline: PersonHistoryEvent[] = selectedPerson
     ? [
         ...(selectedAttention?.soul
-          ? [{ date: selectedAttention.soul.decisionDate, title: "Nova Alma registrada", detail: "Decisão e origem espiritual registradas." }]
+          ? [{ id: `care-soul-${selectedAttention.soul.id}`, date: selectedAttention.soul.decisionDate, category: "cuidado" as const, source: "anterior" as const, title: "Nova Alma registrada", detail: "Decisão e origem espiritual registradas." }]
           : []),
         ...(careHistory.data ?? []).map((item) => ({
+          id: `care-assignment-${item.id}`,
           date: item.startedAt,
-          title: "Responsável pelo cuidado definido",
+          category: "cuidado" as const,
+          source: "moderno" as const,
+          title: item.active ? "Responsável pelo cuidado definido" : "Responsável anterior pelo cuidado",
           detail: `${CARE_ROLE_LABELS[item.role] ?? item.role}${item.notes ? ` · ${item.notes}` : ""}`,
         })),
         ...(hasModernConsolidationHistory
           ? modernConsolidationTimeline
           : [
               ...(selectedAttention?.consolidation?.callDate
-                ? [{ date: selectedAttention.consolidation.callDate, title: "Primeiro contato realizado", detail: "Contato de consolidação registrado no histórico anterior." }]
+                ? [{ id: `legacy-consolidation-call-${selectedAttention.consolidation.callDate}`, date: selectedAttention.consolidation.callDate, category: "consolidacao" as const, source: "anterior" as const, title: "Primeiro contato realizado", detail: "Contato de Consolidação registrado no histórico anterior." }]
                 : []),
               ...(selectedAttention?.consolidation?.messageDate
-                ? [{ date: selectedAttention.consolidation.messageDate, title: "Mensagem enviada", detail: "Ação de consolidação registrada no histórico anterior." }]
+                ? [{ id: `legacy-consolidation-message-${selectedAttention.consolidation.messageDate}`, date: selectedAttention.consolidation.messageDate, category: "consolidacao" as const, source: "anterior" as const, title: "Mensagem enviada", detail: "Ação de Consolidação registrada no histórico anterior." }]
                 : []),
               ...(selectedAttention?.consolidation?.visitDate
-                ? [{ date: selectedAttention.consolidation.visitDate, title: "Visita realizada", detail: "Ação de consolidação registrada no histórico anterior." }]
+                ? [{ id: `legacy-consolidation-visit-${selectedAttention.consolidation.visitDate}`, date: selectedAttention.consolidation.visitDate, category: "consolidacao" as const, source: "anterior" as const, title: "Visita realizada", detail: "Ação de Consolidação registrada no histórico anterior." }]
                 : []),
               ...(selectedAttention?.consolidation?.prayerDate
-                ? [{ date: selectedAttention.consolidation.prayerDate, title: "Oração realizada", detail: "Ação de consolidação registrada no histórico anterior." }]
+                ? [{ id: `legacy-consolidation-prayer-${selectedAttention.consolidation.prayerDate}`, date: selectedAttention.consolidation.prayerDate, category: "consolidacao" as const, source: "anterior" as const, title: "Oração realizada", detail: "Ação de Consolidação registrada no histórico anterior." }]
                 : []),
             ]),
         ...(journeyQuery.data?.events ?? []).map((event) => ({
+          id: `journey-${event.id}`,
           date: event.createdAt,
+          category: "jornada" as const,
+          source: "jornada" as const,
           title: `${STAGES_LABELS[event.stage] ?? event.stage}: ${event.status === "concluida" ? "Concluída" : event.status === "pendente" ? "Pendente" : "Não registrada"}`,
           detail: `${event.actorName ?? "Usuário da igreja"}${event.notes ? ` · ${event.notes}` : ""}`,
         })),
         ...(cellHistory.data ?? []).map((membership) => ({
-          date: membership.joinedAt,
-          title: membership.active ? "Integrada à Célula" : "Histórico de Célula",
-          detail: membership.active ? `Célula atual: ${membership.cellName}` : `Participou da Célula ${membership.cellName}`,
+          id: `cell-${membership.id}`,
+          date: membership.active ? membership.joinedAt : membership.leftAt ?? membership.joinedAt,
+          category: "celula" as const,
+          source: "moderno" as const,
+          title: membership.active ? `Entrada na Célula ${membership.cellName}` : `Saída da Célula ${membership.cellName}`,
+          detail: membership.active ? "Participação atual preservada na seção Participações." : "Participação encerrada; a Jornada principal não foi alterada.",
         })),
       ]
         .filter((item) => item.date)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .map((item, index) => ({ ...item, isLatest: index === 0 }))
     : [];
 
   function getPersonHref(personId: number, section: PersonSection) {
@@ -1358,23 +1384,7 @@ export default function Pessoas() {
             </section>
           </div>}
 
-          {personSection === "historico" && <section className="rounded-xl border border-border p-4">
-            <h3 className="text-sm font-semibold text-navy">Linha do tempo de acompanhamento</h3>
-            {careTimeline.length === 0 ? (
-              <p className="mt-2 text-sm text-muted-foreground">Ainda não há ações de cuidado registradas.</p>
-            ) : (
-              <div className="mt-4 space-y-4 border-l border-gold/30 pl-4">
-                {careTimeline.slice(0, 10).map((event, index) => (
-                  <div key={`${event.title}-${index}`} className="relative">
-                    <span className="absolute -left-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-gold" />
-                    <p className="text-sm font-medium text-navy">{event.title}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{event.detail}</p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">{new Date(event.date).toLocaleDateString("pt-BR")}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>}
+          {personSection === "historico" && <PersonHistoryTimeline events={historyTimeline} />}
 
           {personSection === "cuidado" && canManageJourney && (
             <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
