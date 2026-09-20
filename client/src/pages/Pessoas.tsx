@@ -20,6 +20,7 @@ import { PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from 
 import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
 import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";
 import { PersonSectionState, resolvePersonSectionState } from "@/components/PersonSectionState";
+import { ConfirmDestructiveActionDialog } from "@/components/ConfirmDestructiveActionDialog";
 
 const STAGES_LABELS: Record<string, string> = DISCIPLESHIP_STAGE_LABELS;
 
@@ -38,6 +39,10 @@ const JOURNEY_STAGES = [
 type JourneyStage = typeof JOURNEY_STAGES[number];
 type JourneyStatus = "concluida" | "pendente" | "nao_registrada";
 type DirectoryFilter = "todas" | JourneyStage | "sem_responsavel" | "atencao";
+type PendingDestructiveAction =
+  | { kind: "cell-removal"; personId: number; personName: string; cellId: number; cellName: string }
+  | { kind: "pastoral-coverage-removal"; pastorPersonId: number; personName: string }
+  | null;
 const PERSON_SECTIONS = PERSON_SECTION_VALUES;
 const PERSON_SECTION_OPTIONS: Array<{ value: PersonSection; label: string; description: string; pastoralOnly?: boolean }> = [
   { value: "resumo", label: "Resumo", description: "Visão geral, próximo passo e situação atual." },
@@ -240,6 +245,7 @@ export default function Pessoas() {
   const [directoryFilter, setDirectoryFilter] = useState<DirectoryFilter>("todas");
   const [form, setForm] = useState(defaultForm);
   const [selectedPerson, setSelectedPerson] = useState<any>(null);
+  const [pendingDestructiveAction, setPendingDestructiveAction] = useState<PendingDestructiveAction>(null);
   const consumedPersonDeepLinkRef = useRef<string | null>(null);
   const [journeyNoteStage, setJourneyNoteStage] = useState<JourneyStage | null>(null);
   const [journeyNote, setJourneyNote] = useState("");
@@ -419,6 +425,7 @@ export default function Pessoas() {
   const removePastoralCoverage = trpc.people.removePastoralCoverage.useMutation({
     onSuccess: async () => {
       toast.success("Cobertura espiritual removida.");
+      setPendingDestructiveAction(null);
       await pastoralCoverageQuery.refetch();
     },
     onError: (error) => toast.error(error.message || "Não foi possível remover a cobertura espiritual."),
@@ -434,6 +441,7 @@ export default function Pessoas() {
   const removeCell = trpc.cells.removePerson.useMutation({
     onSuccess: async () => {
       toast.success("Pessoa retirada da Célula. A Jornada principal foi preservada.");
+      setPendingDestructiveAction(null);
       await Promise.all([cellParticipationQuery.refetch(), cellHistory.refetch(), currentCare.refetch(), refreshCareAttention(), refetch(), directoryQuery.refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível retirar a pessoa da Célula."),
@@ -756,6 +764,7 @@ export default function Pessoas() {
 
   function closePersonJourney() {
     setSelectedPerson(null);
+    setPendingDestructiveAction(null);
     setJourneyNoteStage(null);
     setJourneyNote("");
     setCoverageForm(defaultCoverageForm);
@@ -805,8 +814,22 @@ export default function Pessoas() {
 
   function handleCellRemoval() {
     if (!selectedPerson || !currentCell) return;
-    if (!window.confirm(`Retirar ${selectedPerson.fullName} da Célula ${currentCell.cellName}? O histórico será preservado e a Jornada não será alterada.`)) return;
-    removeCell.mutate({ churchId, personId: selectedPerson.id, cellId: currentCell.cellId });
+    setPendingDestructiveAction({
+      kind: "cell-removal",
+      personId: selectedPerson.id,
+      personName: selectedPerson.fullName,
+      cellId: currentCell.cellId,
+      cellName: currentCell.cellName,
+    });
+  }
+
+  function confirmPendingDestructiveAction() {
+    if (!pendingDestructiveAction) return;
+    if (pendingDestructiveAction.kind === "cell-removal") {
+      removeCell.mutate({ churchId, personId: pendingDestructiveAction.personId, cellId: pendingDestructiveAction.cellId });
+      return;
+    }
+    removePastoralCoverage.mutate({ churchId, pastorPersonId: pendingDestructiveAction.pastorPersonId });
   }
 
   function handleCreateReferral() {
@@ -844,8 +867,11 @@ export default function Pessoas() {
 
   function handleRemovePastoralCoverage() {
     if (!selectedPerson || !pastoralCoverageQuery.data?.coverage) return;
-    if (!window.confirm("Remover a cobertura espiritual desta ficha? O histórico será preservado.")) return;
-    removePastoralCoverage.mutate({ churchId, pastorPersonId: selectedPerson.id });
+    setPendingDestructiveAction({
+      kind: "pastoral-coverage-removal",
+      pastorPersonId: selectedPerson.id,
+      personName: selectedPerson.fullName,
+    });
   }
 
   function handleSummaryPrimaryAction() {
@@ -1768,6 +1794,22 @@ export default function Pessoas() {
           </AdaptiveFormDialogBody>
         </AdaptiveFormDialogContent>
       </Dialog>
+      <ConfirmDestructiveActionDialog
+        open={Boolean(pendingDestructiveAction)}
+        title={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Remover cobertura espiritual?" : "Retirar da Célula?"}
+        description={pendingDestructiveAction?.kind === "pastoral-coverage-removal"
+          ? `A cobertura espiritual atual de ${pendingDestructiveAction.personName} será removida desta ficha. O histórico da cobertura será preservado.`
+          : pendingDestructiveAction
+            ? `Você está prestes a retirar ${pendingDestructiveAction.personName} da Célula ${pendingDestructiveAction.cellName}. O histórico da participação será preservado e a Jornada principal não será alterada.`
+            : "Confirme a ação para continuar."}
+        cancelLabel={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Manter cobertura" : "Manter na Célula"}
+        confirmLabel={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Remover cobertura" : "Retirar da Célula"}
+        pendingLabel={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Removendo…" : "Retirando…"}
+        pending={removeCell.isPending || removePastoralCoverage.isPending}
+        onOpenChange={(open) => !open && setPendingDestructiveAction(null)}
+        onCancel={() => setPendingDestructiveAction(null)}
+        onConfirm={confirmPendingDestructiveAction}
+      />
     </div>
   );
 }

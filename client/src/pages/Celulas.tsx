@@ -18,6 +18,7 @@ import { buildMapLocationQuery } from "@/lib/maptiler";
 import { useLocation } from "wouter";
 import { CalendarCheck2, CheckCircle2, Eye, Globe, HeartHandshake, Mail, MapPin, MessageCircle, Phone, Plus, Send, Settings2, UserMinus, Users, UserRound } from "lucide-react";
 import { ReportButton } from "@/components/ReportButton";
+import { ConfirmDestructiveActionDialog } from "@/components/ConfirmDestructiveActionDialog";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { currentCivilDateKey } from "@/lib/civilDate";
@@ -84,6 +85,12 @@ function hasPublicCellLocation(cell: { latitude?: string | number | null; longit
 }
 
 type CelulasProps = { initialTab?: "lista" | "mapa" };
+type PendingMemberRemoval = {
+  personId: number;
+  personName: string;
+  cellId: number;
+  cellName: string;
+} | null;
 
 export default function Celulas({ initialTab = "lista" }: CelulasProps) {
   const { churchId } = useChurch();
@@ -93,6 +100,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
   const [open, setOpen] = useState(false);
   const [selectedCell, setSelectedCell] = useState<any>(null);
   const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [pendingMemberRemoval, setPendingMemberRemoval] = useState<PendingMemberRemoval>(null);
   const [memberReferralIdempotencyKey, setMemberReferralIdempotencyKey] = useState(createIdempotencyKey);
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -166,10 +174,19 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
   const removePerson = trpc.cells.removePerson.useMutation({
     onSuccess: async () => {
       toast.success("Pessoa retirada da Célula. O histórico foi preservado.");
+      setPendingMemberRemoval(null);
       await Promise.all([cellMembers.refetch(), assignmentCandidates.refetch(), memberCounts.refetch(), refetch()]);
     },
     onError: (error) => toast.error(error.message || "Não foi possível retirar a Pessoa da Célula."),
   });
+  function confirmMemberRemoval() {
+    if (!pendingMemberRemoval) return;
+    removePerson.mutate({
+      churchId,
+      personId: pendingMemberRemoval.personId,
+      cellId: pendingMemberRemoval.cellId,
+    });
+  }
   const recordMeeting = trpc.cells.recordMeeting.useMutation({
     onSuccess: async () => {
       toast.success("Encontro e presença registrados com sucesso.");
@@ -659,8 +676,12 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                     const openCare = () => { setSelectedMember(item); setMemberReferralReason(""); setMemberReferralIdempotencyKey(createIdempotencyKey()); };
                     const leaveCell = () => {
                       if (!selectedCell) return;
-                      if (!window.confirm(`Retirar ${item.person.fullName} da Célula ${selectedCell.name}? O histórico será preservado e a Jornada não será alterada.`)) return;
-                      removePerson.mutate({ churchId, personId: item.person.id, cellId: selectedCell.id });
+                      setPendingMemberRemoval({
+                        personId: item.person.id,
+                        personName: item.person.fullName,
+                        cellId: selectedCell.id,
+                        cellName: selectedCell.name,
+                      });
                     };
                     return (
                       <div key={item.membership.id} className="flex items-center gap-2 px-3 py-2.5 transition-colors hover:bg-cream/60">
@@ -910,6 +931,20 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
           </form>
         </AdaptiveFormDialogContent>
       </Dialog>
+      <ConfirmDestructiveActionDialog
+        open={Boolean(pendingMemberRemoval)}
+        title="Retirar da Célula?"
+        description={pendingMemberRemoval
+          ? `Você está prestes a retirar ${pendingMemberRemoval.personName} da Célula ${pendingMemberRemoval.cellName}. O histórico da participação será preservado e a Jornada principal não será alterada.`
+          : "Confirme a ação para continuar."}
+        cancelLabel="Manter na Célula"
+        confirmLabel="Retirar da Célula"
+        pendingLabel="Retirando…"
+        pending={removePerson.isPending}
+        onOpenChange={(open) => !open && setPendingMemberRemoval(null)}
+        onCancel={() => setPendingMemberRemoval(null)}
+        onConfirm={confirmMemberRemoval}
+      />
     </div>
   );
 }

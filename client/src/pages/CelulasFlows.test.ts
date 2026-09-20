@@ -11,8 +11,9 @@ describe("Células — participação e histórico", () => {
   it("oferece saída explícita somente para quem pode administrar a Célula", () => {
     expect(pageSource).toContain("trpc.cells.removePerson.useMutation");
     expect(pageSource).toContain("selectedCell?.canManage");
+    expect(pageSource).toContain("ConfirmDestructiveActionDialog");
     expect(pageSource).toContain("Retirar da Célula");
-    expect(pageSource).toContain("O histórico será preservado e a Jornada não será alterada.");
+    expect(pageSource).toContain("O histórico da participação será preservado e a Jornada principal não será alterada.");
     expect(routerSource).toContain("removePerson: protectedProcedure");
     expect(routerSource).toContain("requireCellManagementPermission(ctx.user.id, input.churchId, input.cellId)");
   });
