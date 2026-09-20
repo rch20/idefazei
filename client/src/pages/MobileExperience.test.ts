@@ -6,6 +6,7 @@ const root = resolve(__dirname, "../../..");
 const dialogSource = readFileSync(resolve(root, "client/src/components/ui/dialog.tsx"), "utf8");
 const peopleSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
 const summarySource = readFileSync(resolve(root, "client/src/components/PersonExecutiveSummary.tsx"), "utf8");
+const historySource = readFileSync(resolve(root, "client/src/components/PersonHistoryTimeline.tsx"), "utf8");
 const cellsSource = readFileSync(resolve(root, "client/src/pages/Celulas.tsx"), "utf8");
 const ministriesSource = readFileSync(resolve(root, "client/src/pages/Ministerios.tsx"), "utf8");
 
@@ -31,6 +32,18 @@ describe("Experiência mobile e estados vazios", () => {
     expect(summarySource).toContain("Collapsible");
     expect(summarySource).toContain("aria-controls={contextId}");
     expect(summarySource).toContain("Contexto do cuidado e da Célula");
+  });
+
+  it("mantém a linha do tempo histórica compacta, acessível e progressiva", () => {
+    expect(peopleSource).toContain("<PersonHistoryTimeline events={historyTimeline} />");
+    expect(historySource).toContain("initialVisibleCount = 5");
+    expect(historySource).toContain("min-w-0");
+    expect(historySource).toContain("break-words");
+    expect(historySource).toContain("aria-controls={listId}");
+    expect(historySource).toContain("aria-expanded={expanded}");
+    expect(historySource).toContain("min-h-11 w-full");
+    expect(historySource).toContain("Ainda não há atividades históricas registradas");
+    expect(historySource).toContain("Esta linha do tempo não substitui os estados atuais do Resumo.");
   });
 
   it("mostra o primeiro passo de Células apenas para a governança pastoral", () => {
