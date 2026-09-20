@@ -34,6 +34,16 @@ describe("Experiência mobile e estados vazios", () => {
     expect(summarySource).toContain("Contexto do cuidado e da Célula");
   });
 
+  it("usa um seletor compacto para trocar a única seção aberta da ficha no celular", () => {
+    expect(peopleSource).toContain('aria-label="Navegação da ficha no celular"');
+    expect(peopleSource).toContain('aria-label="Seção atual da ficha da Pessoa"');
+    expect(peopleSource).toContain("min-h-11 w-full bg-background text-sm text-navy");
+    expect(peopleSource).toContain('className={`hidden gap-1 rounded-xl bg-muted p-1 sm:grid');
+    expect(peopleSource).toContain('role="tabpanel"');
+    expect(peopleSource).toContain('id="person-section-content"');
+    expect(peopleSource).toContain("Uma área por vez para manter a leitura simples.");
+  });
+
   it("mantém a linha do tempo histórica compacta, acessível e progressiva", () => {
     expect(peopleSource).toContain("<PersonHistoryTimeline events={historyTimeline} />");
     expect(historySource).toContain("initialVisibleCount = 5");
