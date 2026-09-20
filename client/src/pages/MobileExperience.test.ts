@@ -39,6 +39,9 @@ describe("Experiência mobile e estados vazios", () => {
     expect(peopleSource).toContain('aria-label="Seção atual da ficha da Pessoa"');
     expect(peopleSource).toContain("min-h-11 w-full bg-background text-sm text-navy");
     expect(peopleSource).toContain('className={`hidden gap-1 rounded-xl bg-muted p-1 sm:grid');
+    expect(peopleSource).toContain("const effectivePersonSection = resolvedRequestedSection ?? \"resumo\";");
+    expect(peopleSource).toContain("PERSON_SECTION_OPTIONS.filter((option) => !option.pastoralOnly || canManagePastoralCoverage)");
+    expect(peopleSource).toContain('navigate(nextLocation, { replace: true });');
     expect(peopleSource).toContain('role="tabpanel"');
     expect(peopleSource).toContain('id="person-section-content"');
     expect(peopleSource).toContain("Uma área por vez para manter a leitura simples.");

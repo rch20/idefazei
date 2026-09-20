@@ -16,6 +16,7 @@ import { useLocation } from "wouter";
 import { civilDateParts, currentCivilDateKey, currentCivilDateParts } from "@/lib/civilDate";
 import { DISCIPLESHIP_STAGE_LABELS } from "@/lib/discipleshipState";
 import { createIdempotencyKey } from "@/lib/idempotency";
+import { PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";
 import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
 import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";
 
@@ -36,8 +37,7 @@ const JOURNEY_STAGES = [
 type JourneyStage = typeof JOURNEY_STAGES[number];
 type JourneyStatus = "concluida" | "pendente" | "nao_registrada";
 type DirectoryFilter = "todas" | JourneyStage | "sem_responsavel" | "atencao";
-const PERSON_SECTIONS = ["resumo", "jornada", "participacoes", "cuidado", "cobertura", "historico"] as const;
-type PersonSection = typeof PERSON_SECTIONS[number];
+const PERSON_SECTIONS = PERSON_SECTION_VALUES;
 const PERSON_SECTION_OPTIONS: Array<{ value: PersonSection; label: string; description: string; pastoralOnly?: boolean }> = [
   { value: "resumo", label: "Resumo", description: "Visão geral, próximo passo e situação atual." },
   { value: "jornada", label: "Jornada", description: "Etapa principal, frentes paralelas e progresso." },
@@ -319,6 +319,12 @@ export default function Pessoas() {
   );
   const selectedPersonIsPastor = pastoralCoverageQuery.data?.isPastor === true;
   const canManagePastoralCoverage = Boolean(isPastorPresident && selectedPerson?.id && selectedPersonIsPastor);
+  const pastoralCoverageAccessPending = effectiveRolesQuery.isLoading || pastoralCoverageQuery.isLoading;
+  const resolvedRequestedSection = resolvePersonSection(requestedPersonSection, {
+    canManagePastoralCoverage,
+    accessPending: pastoralCoverageAccessPending,
+  });
+  const effectivePersonSection = resolvedRequestedSection ?? "resumo";
   const personFunctionsQuery = trpc.ministries.personFunctions.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
@@ -521,6 +527,13 @@ export default function Pessoas() {
       setPersonSection(requestedPersonSection);
     }
   }, [linkedPersonQuery.data, people, personDeepLinkKey, requestedPersonSection, routePersonId, selectedPerson?.id]);
+
+  useEffect(() => {
+    if (requestedPersonSection !== "cobertura" || !selectedPerson?.id || resolvedRequestedSection !== "resumo") return;
+    setPersonSection("resumo");
+    const nextLocation = getPersonHref(selectedPerson.id, "resumo");
+    if (location !== nextLocation) navigate(nextLocation, { replace: true });
+  }, [location, navigate, requestedPersonSection, resolvedRequestedSection, selectedPerson?.id]);
 
   const modernConsolidationTimeline: PersonHistoryEvent[] = (consolidationHistoryQuery.data ?? []).flatMap(({ referral, assignments, followUps, visits }) => [
     {
@@ -746,7 +759,7 @@ export default function Pessoas() {
     if (!selectedAttention || !selectedPerson) return;
     if (selectedAttention.nextStep === "Registrar primeiro contato") {
       toast.info("Abrindo o caso de Consolidação desta Pessoa.");
-      navigate(`/app/consolidacao?personId=${selectedPerson.id}&from=pessoas&returnSection=${personSection}`);
+      navigate(`/app/consolidacao?personId=${selectedPerson.id}&from=pessoas&returnSection=${effectivePersonSection}`);
       return;
     }
     if (selectedAttention.nextStep === "Enviar para célula") {
@@ -1079,9 +1092,9 @@ export default function Pessoas() {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Área da ficha</p>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Uma área por vez para manter a leitura simples.</p>
               </div>
-              <Badge variant="outline" className="shrink-0 border-navy/15 bg-background text-[10px] text-navy">{PERSON_SECTION_OPTIONS.find((option) => option.value === personSection)?.label}</Badge>
+              <Badge variant="outline" className="shrink-0 border-navy/15 bg-background text-[10px] text-navy">{PERSON_SECTION_OPTIONS.find((option) => option.value === effectivePersonSection)?.label}</Badge>
             </div>
-            <Select value={personSection} onValueChange={(value) => selectPersonSection(value as PersonSection)}>
+            <Select value={effectivePersonSection} onValueChange={(value) => selectPersonSection(value as PersonSection)}>
               <SelectTrigger id="person-section-mobile" aria-label="Seção atual da ficha da Pessoa" className="mt-3 min-h-11 w-full bg-background text-sm text-navy">
                 <SelectValue placeholder="Escolha uma área" />
               </SelectTrigger>
@@ -1092,7 +1105,7 @@ export default function Pessoas() {
               </SelectContent>
             </Select>
             <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-              {PERSON_SECTION_OPTIONS.find((option) => option.value === personSection)?.description}
+              {PERSON_SECTION_OPTIONS.find((option) => option.value === effectivePersonSection)?.description}
             </p>
           </div>
 
@@ -1102,18 +1115,18 @@ export default function Pessoas() {
                 key={value}
                 type="button"
                 role="tab"
-                aria-selected={personSection === value}
+                aria-selected={effectivePersonSection === value}
                 aria-controls="person-section-content"
                 onClick={() => selectPersonSection(value as PersonSection)}
-                className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${personSection === value ? "bg-background text-navy shadow-sm" : "text-muted-foreground hover:bg-background/70 hover:text-navy"}`}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${effectivePersonSection === value ? "bg-background text-navy shadow-sm" : "text-muted-foreground hover:bg-background/70 hover:text-navy"}`}
               >
                 {label}
               </button>
             ))}
           </div>
 
-          <div id="person-section-content" role="tabpanel" tabIndex={-1} aria-label={`Conteúdo da seção ${PERSON_SECTION_OPTIONS.find((option) => option.value === personSection)?.label ?? "Resumo"}`} className="space-y-5">
-          {personSection === "jornada" && selectedPerson && (
+          <div id="person-section-content" role="tabpanel" tabIndex={-1} aria-label={`Conteúdo da seção ${PERSON_SECTION_OPTIONS.find((option) => option.value === effectivePersonSection)?.label ?? "Resumo"}`} className="space-y-5">
+          {effectivePersonSection === "jornada" && selectedPerson && (
             <section className="rounded-xl border border-navy/10 bg-gradient-to-br from-navy/[0.03] via-background to-gold/[0.08] p-4 sm:p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
@@ -1263,7 +1276,7 @@ export default function Pessoas() {
             </section>
           )}
 
-          {personSection === "resumo" && selectedPerson && (
+          {effectivePersonSection === "resumo" && selectedPerson && (
             <PersonExecutiveSummary
               stageLabel={STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}
               currentCellName={currentCell?.cellName}
@@ -1277,13 +1290,13 @@ export default function Pessoas() {
             />
           )}
 
-          {personSection === "resumo" && canManagePastoralCoverage && (
+          {effectivePersonSection === "resumo" && canManagePastoralCoverage && (
             <button type="button" onClick={() => selectPersonSection("cobertura")} className="flex w-full items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/35 p-4 text-left transition hover:bg-indigo-50">
               <span className="flex min-w-0 items-center gap-3"><ShieldCheck className="h-5 w-5 shrink-0 text-indigo-700" /><span><span className="block text-sm font-semibold text-navy">Cobertura espiritual</span><span className="mt-0.5 block text-xs text-muted-foreground">{selectedPersonIsPastor ? "Gerencie quem oferece cobertura a este Pastor." : "Confira o vínculo pastoral para liberar esta configuração."}</span></span></span><ArrowRight className="h-4 w-4 shrink-0 text-indigo-700" />
             </button>
           )}
 
-          {personSection === "cobertura" && canManagePastoralCoverage && (
+          {effectivePersonSection === "cobertura" && canManagePastoralCoverage && (
             <section className="rounded-xl border border-indigo-200 bg-indigo-50/35 p-4">
               <div className="flex items-start gap-3">
                 <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />
@@ -1394,7 +1407,7 @@ export default function Pessoas() {
             </section>
           )}
 
-          {personSection === "cuidado" && <div className="grid gap-4 md:grid-cols-2">
+          {effectivePersonSection === "cuidado" && <div className="grid gap-4 md:grid-cols-2">
             <section className="rounded-xl border border-border p-4">
               <h3 className="text-sm font-semibold text-navy">Responsável atual</h3>
               {currentCare.isLoading ? <p className="mt-2 text-sm text-muted-foreground">Carregando…</p> : currentCare.data ? (
@@ -1410,9 +1423,9 @@ export default function Pessoas() {
             </section>
           </div>}
 
-          {personSection === "historico" && <PersonHistoryTimeline events={historyTimeline} />}
+          {effectivePersonSection === "historico" && <PersonHistoryTimeline events={historyTimeline} />}
 
-          {personSection === "cuidado" && canManageJourney && (
+          {effectivePersonSection === "cuidado" && canManageJourney && (
             <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
               <h3 className="text-sm font-semibold text-navy">Definir responsável pelo cuidado</h3>
             <p className="mt-1 text-xs text-muted-foreground">Ao atualizar, o responsável anterior é preservado no histórico e deixa de ficar ativo.</p>
@@ -1455,7 +1468,7 @@ export default function Pessoas() {
             </section>
           )}
 
-          {personSection === "participacoes" && canManageMinistryFunctions && (
+          {effectivePersonSection === "participacoes" && canManageMinistryFunctions && (
             <section className="rounded-xl border border-indigo-200 bg-indigo-50/35 p-4">
               <div className="flex items-start gap-3">
                 <BriefcaseBusiness className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />
@@ -1523,7 +1536,7 @@ export default function Pessoas() {
             </section>
           )}
 
-          {personSection === "cuidado" && canCreateReferral && (
+          {effectivePersonSection === "cuidado" && canCreateReferral && (
             <section className="rounded-xl border border-rose-200 bg-rose-50/45 p-4">
               <div className="flex items-start gap-3">
               <Send className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
@@ -1559,7 +1572,7 @@ export default function Pessoas() {
             </section>
           )}
 
-          {personSection === "participacoes" && (
+          {effectivePersonSection === "participacoes" && (
             <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
