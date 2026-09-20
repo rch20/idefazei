@@ -43,6 +43,20 @@ describe("Fluxos de liderança — contratos da interface", () => {
     expect(source).toContain("canCreateCell &&");
   });
 
+  it("confirma a retirada de uma Pessoa antes da mutation e preserva o histórico", () => {
+    const source = read("client/src/pages/Celulas.tsx");
+    expect(source).toContain("ConfirmDestructiveActionDialog");
+    expect(source).toContain("type PendingMemberRemoval");
+    expect(source).toContain("setPendingMemberRemoval");
+    expect(source).toContain("Manter na Célula");
+    expect(source).toContain("Retirar da Célula");
+    expect(source).toContain("O histórico da participação será preservado e a Jornada principal não será alterada.");
+    expect(source).toContain("onConfirm={confirmMemberRemoval}");
+    expect(source).not.toContain("window.confirm");
+    expect(source).toContain("selectedCell?.canManage");
+    expect(source).toContain("setPendingMemberRemoval(null)");
+  });
+
   it("organiza o modal de gestão da Célula para leitura no desktop", () => {
     const source = read("client/src/pages/Celulas.tsx");
     expect(source).toContain("sm:max-w-2xl");

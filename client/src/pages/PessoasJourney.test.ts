@@ -6,6 +6,7 @@ import { resolvePersonSectionState } from "../components/PersonSectionState";
 
 const root = resolve(__dirname, "../../..");
 const pageSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
+const destructiveDialogSource = readFileSync(resolve(root, "client/src/components/ConfirmDestructiveActionDialog.tsx"), "utf8");
 const summarySource = readFileSync(resolve(root, "client/src/components/PersonExecutiveSummary.tsx"), "utf8");
 const historySource = readFileSync(resolve(root, "client/src/components/PersonHistoryTimeline.tsx"), "utf8");
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
@@ -205,6 +206,21 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(dbSource).toContain("export async function removePersonFromCell");
     expect(dbSource).toContain("leftAt: now");
     expect(routerSource).not.toContain('updatePerson(person.id, input.churchId, { discipleshipStage: "celula" });');
+  });
+
+  it("confirma remoções destrutivas sem alterar a Jornada ou apagar históricos", () => {
+    expect(pageSource).toContain("type PendingDestructiveAction");
+    expect(pageSource).toContain("setPendingDestructiveAction");
+    expect(pageSource).toContain('title={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Remover cobertura espiritual?" : "Retirar da Célula?"}');
+    expect(pageSource).toContain('cancelLabel={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Manter cobertura" : "Manter na Célula"}');
+    expect(pageSource).toContain('confirmLabel={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Remover cobertura" : "Retirar da Célula"}');
+    expect(pageSource).toContain("O histórico da participação será preservado e a Jornada principal não será alterada.");
+    expect(pageSource).toContain("O histórico da cobertura será preservado.");
+    expect(pageSource).toContain("onConfirm={confirmPendingDestructiveAction}");
+    expect(pageSource).toContain("setPendingDestructiveAction(null)");
+    expect(pageSource).not.toContain("window.confirm");
+    expect(destructiveDialogSource).toContain("event.preventDefault()");
+    expect(destructiveDialogSource).toContain("disabled={pending}");
   });
 
   it("mantém atuações ministeriais como consulta e direciona a edição para o Ministério", () => {
