@@ -72,6 +72,12 @@
       "file": "drizzle/0078_foundation_weekly_class.sql",
       "kind": "custom-additive",
       "sha256": "af004f4343e4b1f14a703882da64264a894782c24ca7ac37c58d6d946fc58bcd"
+    },
+    {
+      "id": "0079",
+      "file": "drizzle/0079_foundation_mobile_progress.sql",
+      "kind": "custom-additive",
+      "sha256": "b9dc2f70a2eb5f0487953725554ab30b773bb8fde68127a11e55a6ded4fd27b3"
     }
   ]
 }

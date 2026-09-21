@@ -22,7 +22,10 @@ describe("Escola de Fundamentos", () => {
   });
 
   it("oferece ao discípulo uma preparação única sem escolha de curso", () => {
-    const source = readFileSync(resolve(process.cwd(), "client/src/pages/EscolaFundamentos.tsx"), "utf8");
+    const source = [
+      readFileSync(resolve(process.cwd(), "client/src/pages/EscolaFundamentos.tsx"), "utf8"),
+      readFileSync(resolve(process.cwd(), "client/src/pages/foundation/StudentLearningExperience.tsx"), "utf8"),
+    ].join("\n");
 
     expect(source).toContain("studentPath");
     expect(source).toContain("Minha preparação");

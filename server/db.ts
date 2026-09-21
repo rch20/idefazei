@@ -40,6 +40,7 @@ import {
   foundationStudyMaterials,
   foundationStudyAdministrators,
   foundationLessonProgress,
+  foundationBlockProgress,
   foundationStudyBlocks,
   foundationQuestions,
   foundationQuestionAttempts,
@@ -6226,11 +6227,13 @@ export async function getFoundationStudyQuestions(churchId: number, studyId: num
     .orderBy(foundationStudyBlocks.position, foundationStudyBlocks.id, foundationQuestions.position, foundationQuestions.id);
 }
 
-export async function getFoundationStudyBlocks(churchId: number, studyId: number) {
+export async function getFoundationStudyBlocks(churchId: number, studyId: number, activeOnly = false) {
   const db = await getDb();
   if (!db) return [];
+  const conditions = [eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId)];
+  if (activeOnly) conditions.push(eq(foundationStudyBlocks.active, true));
   return db.select().from(foundationStudyBlocks)
-    .where(and(eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId)))
+    .where(and(...conditions))
     .orderBy(foundationStudyBlocks.position, foundationStudyBlocks.id);
 }
 
@@ -6241,6 +6244,56 @@ export async function getFoundationStudyBlockById(churchId: number, studyId: num
     .where(and(eq(foundationStudyBlocks.id, blockId), eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId)))
     .limit(1);
   return rows[0] ?? null;
+}
+
+export async function getFoundationBlockProgress(churchId: number, enrollmentId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ progress: foundationBlockProgress, block: foundationStudyBlocks })
+    .from(foundationBlockProgress)
+    .innerJoin(foundationStudyBlocks, and(
+      eq(foundationStudyBlocks.id, foundationBlockProgress.blockId),
+      eq(foundationStudyBlocks.churchId, churchId),
+      eq(foundationStudyBlocks.studyId, studyId),
+      eq(foundationStudyBlocks.active, true),
+    ))
+    .where(and(
+      eq(foundationBlockProgress.churchId, churchId),
+      eq(foundationBlockProgress.enrollmentId, enrollmentId),
+      eq(foundationBlockProgress.studyId, studyId),
+    ))
+    .orderBy(asc(foundationStudyBlocks.position), asc(foundationStudyBlocks.id));
+}
+
+export async function getFoundationCorrectQuestionIds(churchId: number, enrollmentId: number, questionIds: number[]) {
+  if (!questionIds.length) return new Set<number>();
+  const db = await getDb();
+  if (!db) return new Set<number>();
+  const rows = await db.select({ questionId: foundationQuestionAttempts.questionId })
+    .from(foundationQuestionAttempts)
+    .where(and(
+      eq(foundationQuestionAttempts.churchId, churchId),
+      eq(foundationQuestionAttempts.enrollmentId, enrollmentId),
+      eq(foundationQuestionAttempts.isCorrect, true),
+      inArray(foundationQuestionAttempts.questionId, questionIds),
+    ));
+  return new Set(rows.map((row) => row.questionId));
+}
+
+export async function getFoundationStudySession(churchId: number, enrollmentId: number, studyId: number) {
+  const [study, progress, blocks, blockProgress, questionRows] = await Promise.all([
+    getFoundationStudyById(studyId, churchId),
+    getFoundationLessonProgress(churchId, enrollmentId, studyId),
+    getFoundationStudyBlocks(churchId, studyId, true),
+    getFoundationBlockProgress(churchId, enrollmentId, studyId),
+    getFoundationStudyQuestions(churchId, studyId),
+  ]);
+  const correctQuestionIds = await getFoundationCorrectQuestionIds(
+    churchId,
+    enrollmentId,
+    questionRows.map(({ question }) => question.id),
+  );
+  return { study, progress, blocks, blockProgress, questionRows, correctQuestionIds };
 }
 
 export async function createFoundationStudyBlock(data: { churchId: number; studyId: number; title: string; content: string; createdByChurchUserId: number }) {
@@ -6296,6 +6349,25 @@ export async function countFoundationQuestionAttempts(churchId: number, enrollme
   return Number(rows[0]?.total ?? 0);
 }
 
+export async function getFoundationQuestionAttemptByClientId(data: {
+  churchId: number;
+  enrollmentId: number;
+  questionId: number;
+  clientAttemptId: string;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(foundationQuestionAttempts)
+    .where(and(
+      eq(foundationQuestionAttempts.churchId, data.churchId),
+      eq(foundationQuestionAttempts.enrollmentId, data.enrollmentId),
+      eq(foundationQuestionAttempts.questionId, data.questionId),
+      eq(foundationQuestionAttempts.clientAttemptId, data.clientAttemptId),
+    ))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 export async function recordFoundationQuestionAttempt(data: {
   churchId: number;
   enrollmentId: number;
@@ -6303,10 +6375,14 @@ export async function recordFoundationQuestionAttempt(data: {
   selectedOptionId: string;
   isCorrect: boolean;
   attemptNumber: number;
+  clientAttemptId?: string | null;
 }) {
   const db = await getDb();
   if (!db) return null;
-  const result = await db.insert(foundationQuestionAttempts).values(data);
+  const result = await db.insert(foundationQuestionAttempts).values({
+    ...data,
+    clientAttemptId: data.clientAttemptId ?? null,
+  });
   return Number(result[0]?.insertId ?? 0);
 }
 
@@ -6385,10 +6461,76 @@ export async function touchFoundationLessonProgress(data: {
     lastAccessedAt: now,
   }).onDuplicateKeyUpdate({
     set: {
-      status: "em_andamento",
-      lastBlockPosition: data.lastBlockPosition,
+      status: sql`CASE WHEN ${foundationLessonProgress.status} = 'concluida' THEN ${foundationLessonProgress.status} ELSE 'em_andamento' END`,
+      lastBlockPosition: sql`GREATEST(${foundationLessonProgress.lastBlockPosition}, ${data.lastBlockPosition})`,
       lastAccessedAt: now,
     },
+  });
+}
+
+export async function touchFoundationBlockProgress(data: {
+  churchId: number;
+  enrollmentId: number;
+  studyId: number;
+  blockId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db.insert(foundationBlockProgress).values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    blockId: data.blockId,
+    status: "em_andamento",
+    firstViewedAt: now,
+    lastViewedAt: now,
+  }).onDuplicateKeyUpdate({
+    set: { lastViewedAt: now },
+  });
+}
+
+export async function completeFoundationBlockProgress(data: {
+  churchId: number;
+  enrollmentId: number;
+  studyId: number;
+  blockId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db.insert(foundationBlockProgress).values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    blockId: data.blockId,
+    status: "concluida",
+    firstViewedAt: now,
+    lastViewedAt: now,
+    completedAt: now,
+  }).onDuplicateKeyUpdate({
+    set: { status: "concluida", lastViewedAt: now, completedAt: now },
+  });
+}
+
+export async function saveFoundationLessonReflection(data: {
+  churchId: number;
+  enrollmentId: number;
+  studyId: number;
+  reflection: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db.insert(foundationLessonProgress).values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    status: "em_andamento",
+    lastAccessedAt: now,
+    reflection: data.reflection?.trim() || null,
+  }).onDuplicateKeyUpdate({
+    set: { lastAccessedAt: now, reflection: data.reflection?.trim() || null },
   });
 }
 

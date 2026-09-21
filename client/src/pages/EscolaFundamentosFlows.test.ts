@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(resolve(process.cwd(), "client/src/pages/EscolaFundamentos.tsx"), "utf8");
+const source = [
+  readFileSync(resolve(process.cwd(), "client/src/pages/EscolaFundamentos.tsx"), "utf8"),
+  readFileSync(resolve(process.cwd(), "client/src/pages/foundation/StudentLearningExperience.tsx"), "utf8"),
+].join("\n");
 const adaptiveSource = readFileSync(resolve(process.cwd(), "client/src/components/AdaptiveFormDialog.tsx"), "utf8");
 const schemaSource = readFileSync(resolve(process.cwd(), "drizzle/schema.ts"), "utf8");
 const routerSource = readFileSync(resolve(process.cwd(), "server/routers.ts"), "utf8");

@@ -1056,6 +1056,25 @@ export const foundationLessonProgress = mysqlTable("foundation_lesson_progress",
   uniqueIndex("foundation_lesson_progress_enrollment_study_unique").on(table.churchId, table.enrollmentId, table.studyId),
 ]);
 
+/** Progresso granular de cada bloco para retomada mobile e desktop. */
+export const foundationBlockProgress = mysqlTable("foundation_block_progress", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  enrollmentId: int("enrollmentId").notNull(),
+  studyId: int("studyId").notNull(),
+  blockId: int("blockId").notNull(),
+  status: mysqlEnum("status", ["em_andamento", "concluida"]).notNull().default("em_andamento"),
+  firstViewedAt: timestamp("firstViewedAt"),
+  lastViewedAt: timestamp("lastViewedAt"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("foundation_block_progress_church_enrollment_study_idx").on(table.churchId, table.enrollmentId, table.studyId),
+  index("foundation_block_progress_church_study_block_idx").on(table.churchId, table.studyId, table.blockId),
+  uniqueIndex("foundation_block_progress_enrollment_study_block_unique").on(table.churchId, table.enrollmentId, table.studyId, table.blockId),
+]);
+
 /** Blocos ordenados de conteúdo da preparação semanal; estudos antigos continuam usando content. */
 export const foundationStudyBlocks = mysqlTable("foundation_study_blocks", {
   id: int("id").autoincrement().primaryKey(),
@@ -1099,9 +1118,11 @@ export const foundationQuestionAttempts = mysqlTable("foundation_question_attemp
   selectedOptionId: varchar("selectedOptionId", { length: 80 }).notNull(),
   isCorrect: boolean("isCorrect").notNull(),
   attemptNumber: int("attemptNumber").notNull(),
+  clientAttemptId: varchar("clientAttemptId", { length: 80 }),
   answeredAt: timestamp("answeredAt").defaultNow().notNull(),
 }, (table) => [
   index("foundation_question_attempts_church_enrollment_question_idx").on(table.churchId, table.enrollmentId, table.questionId),
+  uniqueIndex("foundation_question_attempts_client_id_unique").on(table.churchId, table.enrollmentId, table.questionId, table.clientAttemptId),
 ]);
 
 /** Aula presencial ligada ao estudo digital da mesma semana. */
