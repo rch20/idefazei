@@ -140,7 +140,7 @@ function getAlertKey(
     severity,
     event.reason,
     event.sourceFingerprint,
-    event.targetChurchId ?? "unknown",
+    severity === "high" ? (event.targetChurchId ?? "unknown") : "all-tenants",
   ].join(":");
 }
 

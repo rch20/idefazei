@@ -106,6 +106,25 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
     expect(dbMocks.getCoursesByChurch).toHaveBeenCalledWith(CHURCH_A);
   });
 
+  it("não permite que uma sessão de superadmin use o tenantProcedure", async () => {
+    const context = createChurchContext();
+    context.user = {
+      ...context.user!,
+      id: -9,
+      openId: "admin:9",
+      role: "admin",
+      churchId: undefined,
+      authSource: "admin",
+    };
+    const caller = appRouter.createCaller(context);
+
+    await expect(
+      caller.escolaFundamentos.listCourses({ churchId: CHURCH_A })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(dbMocks.recordSecurityAccessAuditEvent).not.toHaveBeenCalled();
+    expect(dbMocks.getCoursesByChurch).not.toHaveBeenCalled();
+  });
+
   it("bloqueia usuário da Igreja A ao solicitar cursos da Igreja B", async () => {
     const caller = appRouter.createCaller(
       createChurchContext({ userChurchId: CHURCH_A })

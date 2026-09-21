@@ -77,6 +77,13 @@ const requireTenant = t.middleware(async opts => {
     throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
   }
 
+  if (ctx.user.authSource === "admin") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Esta rota exige uma sessão vinculada a uma igreja.",
+    });
+  }
+
   // Sessões próprias de igreja devem permanecer vinculadas ao tenant
   // resolvido pelo contexto. Sessões Manus continuam usando o churchId
   // explícito validado pelos gates legados da própria feature.

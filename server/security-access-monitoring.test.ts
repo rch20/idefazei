@@ -147,6 +147,22 @@ describe("limiares e disparo de alertas", () => {
     expect(notify).toHaveBeenCalledTimes(1);
   });
 
+  it("deduplica o alerta critical mesmo quando a quarta tentativa mira outro tenant", async () => {
+    const clock = createClock();
+    const notify = vi
+      .fn<(alert: SecurityAlert) => Promise<void>>()
+      .mockResolvedValue(undefined);
+    const monitor = createSecurityAccessMonitor({ now: clock.now, notify });
+
+    await monitor.record(deniedInput({ targetChurchId: 200 }));
+    await monitor.record(deniedInput({ targetChurchId: 300 }));
+    await monitor.record(deniedInput({ targetChurchId: 400 }));
+    const result = await monitor.record(deniedInput({ targetChurchId: 500 }));
+
+    expect(result.alert).toBeNull();
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
   it("não dispara alerta antes do limiar configurado", async () => {
     const clock = createClock();
     const notify = vi
