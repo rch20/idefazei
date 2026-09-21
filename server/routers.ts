@@ -13,7 +13,13 @@ import { currentCivilDateAsUtcNoon, formatCivilDateValue, normalizeCivilTime, pa
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { ENV } from "./_core/env";
-import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
+import {
+  adminProcedure,
+  protectedProcedure,
+  publicProcedure,
+  router,
+  tenantProcedure,
+} from "./_core/trpc";
 import {
   loginChurchUser,
   loginSuperAdmin,
@@ -5305,19 +5311,19 @@ const onboardingRouter = router({
 
 // ─── ESCOLA DE FUNDAMENTOS ROUTER ──────────────────────────────────────────
 const escolaFundamentosRouter = router({
-  access: protectedProcedure
+  access: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
       const access = await getFoundationStudyAccess(ctx.user.id, input.churchId);
       return { canManageStudies: access.canManageStudies, canManageAdministrators: access.isPastor };
     }),
-  listCourses: protectedProcedure
+  listCourses: tenantProcedure
     .input(z.object({ churchId: z.number() }))
     .query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
       return getCoursesByChurch(input.churchId);
     }),
-  listStudies: protectedProcedure
+  listStudies: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
       const access = await getFoundationStudyAccess(ctx.user.id, input.churchId);
@@ -5325,7 +5331,7 @@ const escolaFundamentosRouter = router({
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
       return getFoundationStudiesByCourse(input.churchId, input.courseId, access.canManageStudies);
     }),
-  listModules: protectedProcedure
+  listModules: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
       const access = await getFoundationStudyAccess(ctx.user.id, input.churchId);
@@ -5333,7 +5339,7 @@ const escolaFundamentosRouter = router({
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
       return getFoundationModulesByCourse(input.churchId, input.courseId, access.canManageStudies);
     }),
-  learningPath: protectedProcedure
+  learningPath: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
       const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
@@ -5345,14 +5351,14 @@ const escolaFundamentosRouter = router({
         canManageStudies: path.access.canManageStudies,
       };
     }),
-  startLesson: protectedProcedure
+  startLesson: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), lastBlockPosition: z.number().int().min(0).max(999).default(0) }))
     .mutation(async ({ input, ctx }) => {
       const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
       await touchFoundationLessonProgress({ churchId: input.churchId, enrollmentId: enrollment.id, studyId: input.studyId, lastBlockPosition: input.lastBlockPosition });
       return { success: true };
     }),
-  completeLesson: protectedProcedure
+  completeLesson: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), lastBlockPosition: z.number().int().min(0).max(999).default(0), reflection: z.string().trim().max(4000).nullable().optional() }))
     .mutation(async ({ input, ctx }) => {
       const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
@@ -5360,7 +5366,7 @@ const escolaFundamentosRouter = router({
       if (enrollment.status === "matriculado") await updateCourseEnrollment(enrollment.id, { status: "em_andamento" });
       return { success: true };
     }),
-  courseProgress: protectedProcedure
+  courseProgress: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
       await requireFoundationStudyManager(ctx.user.id, input.churchId);
@@ -5368,7 +5374,7 @@ const escolaFundamentosRouter = router({
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
       return getFoundationCourseProgress(input.churchId, input.courseId);
     }),
-  reviewLesson: protectedProcedure
+  reviewLesson: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), enrollmentId: z.number().int().positive(), studyId: z.number().int().positive(), reviewStatus: z.enum(["compreendeu", "precisa_reforco", "nao_participou"]), reviewNotes: z.string().trim().max(2000).nullable().optional() }))
     .mutation(async ({ input, ctx }) => {
       const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
@@ -5380,7 +5386,7 @@ const escolaFundamentosRouter = router({
       await reviewFoundationLesson({ ...input, reviewedByChurchUserId: access.member.id });
       return { success: true };
     }),
-  releaseNextStudy: protectedProcedure
+  releaseNextStudy: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), enrollmentId: z.number().int().positive(), studyId: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
       const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
@@ -5394,7 +5400,7 @@ const escolaFundamentosRouter = router({
       await releaseFoundationNextStudy({ churchId: input.churchId, enrollmentId: input.enrollmentId, studyId: input.studyId, releasedByChurchUserId: access.member.id });
       return { success: true };
     }),
-  createModule: protectedProcedure
+  createModule: tenantProcedure
     .input(z.object({
       churchId: z.number().int().positive(), courseId: z.number().int().positive(),
       title: z.string().trim().min(3, "Informe um título com ao menos 3 caracteres.").max(160),
@@ -5408,7 +5414,7 @@ const escolaFundamentosRouter = router({
       const module = await createFoundationModule({ ...input, position: input.position ?? modules.length, createdByChurchUserId: access.member.id });
       return { success: true, moduleId: module.id };
     }),
-  updateModule: protectedProcedure
+  updateModule: tenantProcedure
     .input(z.object({
       id: z.number().int().positive(), churchId: z.number().int().positive(),
       title: z.string().trim().min(3).max(160).optional(), description: z.string().trim().max(500).nullable().optional(),
@@ -5422,7 +5428,7 @@ const escolaFundamentosRouter = router({
       await updateFoundationModule(input);
       return { success: true };
     }),
-  moveModule: protectedProcedure
+  moveModule: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), id: z.number().int().positive(), direction: z.enum(["up", "down"]) }))
     .mutation(async ({ input, ctx }) => {
       await requireFoundationStudyManager(ctx.user.id, input.churchId);
@@ -5439,7 +5445,7 @@ const escolaFundamentosRouter = router({
       ]);
       return { success: true };
     }),
-  moveStudy: protectedProcedure
+  moveStudy: tenantProcedure
     .input(z.object({
       churchId: z.number().int().positive(), courseId: z.number().int().positive(), id: z.number().int().positive(),
       moduleId: z.number().int().positive().nullable(), direction: z.enum(["up", "down"]),
@@ -5460,7 +5466,7 @@ const escolaFundamentosRouter = router({
       ]);
       return { success: true };
     }),
-  listStudyMaterials: protectedProcedure
+  listStudyMaterials: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
       const access = await getFoundationStudyAccess(ctx.user.id, input.churchId);
@@ -5470,7 +5476,7 @@ const escolaFundamentosRouter = router({
       }
       return getFoundationStudyMaterials(input.churchId, input.studyId);
     }),
-  attachStudyMaterial: protectedProcedure
+  attachStudyMaterial: tenantProcedure
     .input(z.object({
       churchId: z.number().int().positive(), studyId: z.number().int().positive(),
       libraryItemId: z.number().int().positive(), position: z.number().int().min(0).max(999).optional(),
@@ -5487,7 +5493,7 @@ const escolaFundamentosRouter = router({
       await attachFoundationStudyMaterial({ ...input, position: input.position ?? current.length });
       return { success: true };
     }),
-  updateStudyMaterialPosition: protectedProcedure
+  updateStudyMaterialPosition: tenantProcedure
     .input(z.object({
       churchId: z.number().int().positive(), studyId: z.number().int().positive(),
       id: z.number().int().positive(), position: z.number().int().min(0).max(999),
@@ -5501,7 +5507,7 @@ const escolaFundamentosRouter = router({
       await updateFoundationStudyMaterialPosition(input);
       return { success: true };
     }),
-  moveStudyMaterial: protectedProcedure
+  moveStudyMaterial: tenantProcedure
     .input(z.object({
       churchId: z.number().int().positive(), studyId: z.number().int().positive(),
       id: z.number().int().positive(), direction: z.enum(["up", "down"]),
@@ -5521,7 +5527,7 @@ const escolaFundamentosRouter = router({
       ]);
       return { success: true };
     }),
-  detachStudyMaterial: protectedProcedure
+  detachStudyMaterial: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive(), id: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
       await requireFoundationStudyManager(ctx.user.id, input.churchId);
@@ -5532,7 +5538,7 @@ const escolaFundamentosRouter = router({
       await detachFoundationStudyMaterial(input);
       return { success: true };
     }),
-  createStudy: protectedProcedure
+  createStudy: tenantProcedure
     .input(z.object({
       churchId: z.number().int().positive(), courseId: z.number().int().positive(),
       moduleId: z.number().int().positive().nullable().optional(),
@@ -5552,7 +5558,7 @@ const escolaFundamentosRouter = router({
       const study = await createFoundationStudy({ ...input, position: input.position ?? existing.length, createdByChurchUserId: access.member.id });
       return { success: true, studyId: study.id };
     }),
-  updateStudy: protectedProcedure
+  updateStudy: tenantProcedure
     .input(z.object({
       id: z.number().int().positive(), churchId: z.number().int().positive(),
       moduleId: z.number().int().positive().nullable().optional(),
@@ -5572,13 +5578,13 @@ const escolaFundamentosRouter = router({
       await updateFoundationStudy(input);
       return { success: true };
     }),
-  listStudyAdministrators: protectedProcedure
+  listStudyAdministrators: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
       await requireFoundationStudyPastor(ctx.user.id, input.churchId);
       return getFoundationStudyAdministrators(input.churchId);
     }),
-  assignStudyAdministrator: protectedProcedure
+  assignStudyAdministrator: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), churchUserId: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
       const access = await requireFoundationStudyPastor(ctx.user.id, input.churchId);
@@ -5587,14 +5593,14 @@ const escolaFundamentosRouter = router({
       await assignFoundationStudyAdministrator({ churchId: input.churchId, churchUserId: input.churchUserId, assignedByChurchUserId: access.member.id });
       return { success: true };
     }),
-  removeStudyAdministrator: protectedProcedure
+  removeStudyAdministrator: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), churchUserId: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
       await requireFoundationStudyPastor(ctx.user.id, input.churchId);
       await removeFoundationStudyAdministrator(input.churchId, input.churchUserId);
       return { success: true };
     }),
-  createCourse: protectedProcedure
+  createCourse: tenantProcedure
     .input(z.object({
       churchId: z.number(),
       name: z.string().trim().min(3, "Informe um nome com ao menos 3 caracteres.").max(120),
@@ -5606,13 +5612,13 @@ const escolaFundamentosRouter = router({
       const course = await createCourse(input);
       return { success: true, courseId: course.id };
     }),
-  getEnrollments: protectedProcedure
+  getEnrollments: tenantProcedure
     .input(z.object({ courseId: z.number(), churchId: z.number() }))
     .query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
       return getCourseEnrollments(input.courseId, input.churchId);
     }),
-  enroll: protectedProcedure
+  enroll: tenantProcedure
     .input(z.object({ courseId: z.number(), personId: z.number(), churchId: z.number() }))
     .mutation(async ({ input, ctx }) => {
       await requireFoundationStudyManager(ctx.user.id, input.churchId);
@@ -5624,7 +5630,7 @@ const escolaFundamentosRouter = router({
       await enrollInCourse({ courseId: input.courseId, personId: input.personId });
       return { success: true };
     }),
-  updateEnrollment: protectedProcedure
+  updateEnrollment: tenantProcedure
     .input(z.object({
       id: z.number(),
       churchId: z.number(),
