@@ -226,4 +226,53 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
 
     expect(dbMocks.getFoundationStudiesByCourse).not.toHaveBeenCalled();
   });
+
+  it("mantém a mesma origem de correlação ao alternar entre tenants", async () => {
+    const firstCaller = appRouter.createCaller(
+      createChurchContext({
+        userChurchId: CHURCH_A,
+        tenantChurchId: CHURCH_B,
+        tenantSlug: "igreja-b",
+      })
+    );
+    const secondCaller = appRouter.createCaller(
+      createChurchContext({
+        userChurchId: CHURCH_A,
+        tenantChurchId: 300,
+        tenantSlug: "igreja-c",
+      })
+    );
+
+    await expect(
+      firstCaller.escolaFundamentos.listCourses({ churchId: CHURCH_A })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      secondCaller.escolaFundamentos.listCourses({ churchId: CHURCH_A })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const events = dbMocks.recordSecurityAccessAuditEvent.mock.calls.map(
+      ([data]) => data.event
+    );
+    expect(events).toHaveLength(2);
+    expect(events[0]?.sourceFingerprint).toBe(events[1]?.sourceFingerprint);
+    expect(events.map(event => event.targetChurchId)).toEqual([CHURCH_B, 300]);
+  });
+
+  it("continua negando o acesso quando a auditoria falha", async () => {
+    dbMocks.recordSecurityAccessAuditEvent.mockRejectedValueOnce(
+      new Error("database unavailable")
+    );
+    const caller = appRouter.createCaller(
+      createChurchContext({
+        userChurchId: CHURCH_A,
+        tenantChurchId: CHURCH_B,
+        tenantSlug: "igreja-b",
+      })
+    );
+
+    await expect(
+      caller.escolaFundamentos.listCourses({ churchId: CHURCH_A })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(dbMocks.getCoursesByChurch).not.toHaveBeenCalled();
+  });
 });

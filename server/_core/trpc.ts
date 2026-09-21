@@ -42,10 +42,10 @@ async function recordTenantAccessDenied(
   const ownerChurchId = targetChurchId ?? sessionChurchId;
   if (!ownerChurchId) return;
 
-  const host = String(ctx.req.headers.host ?? "unknown");
-  const userAgent = String(ctx.req.headers["user-agent"] ?? "unknown");
   const sourceFingerprint = createHash("sha256")
-    .update(`${host}|${userAgent}`)
+    .update(
+      `${ctx.user?.authSource ?? "unknown"}|${ctx.user?.openId ?? "unknown"}`
+    )
     .digest("hex")
     .slice(0, 64);
   const requestIdHeader = ctx.req.headers["x-request-id"];
