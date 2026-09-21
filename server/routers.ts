@@ -303,15 +303,20 @@ import {
   getFoundationStudyQuestions,
   getFoundationStudyBlocks,
   getFoundationStudyBlockById,
+  getFoundationStudySession,
   createFoundationStudyBlock,
   createFoundationQuestion,
   getFoundationQuestionForAttempt,
+  getFoundationQuestionAttemptByClientId,
   countFoundationQuestionAttempts,
   recordFoundationQuestionAttempt,
   hasCompletedFoundationQuestions,
   getFoundationLessonProgress,
   getFoundationCourseProgress,
   touchFoundationLessonProgress,
+  touchFoundationBlockProgress,
+  completeFoundationBlockProgress,
+  saveFoundationLessonReflection,
   completeFoundationLesson,
   reviewFoundationLesson,
   releaseFoundationNextStudy,
@@ -5502,6 +5507,69 @@ const escolaFundamentosRouter = router({
         question: publicFoundationQuestion(question),
       }));
     }),
+  studySession: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const session = await getFoundationStudySession(input.churchId, enrollment.id, input.studyId);
+      if (!session.study) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      const progressByBlock = new Map(session.blockProgress.map(({ block, progress }) => [block.id, progress]));
+      const questionsByBlock = new Map<number, typeof session.questionRows>();
+      for (const row of session.questionRows) {
+        const current = questionsByBlock.get(row.block.id) ?? [];
+        current.push(row);
+        questionsByBlock.set(row.block.id, current);
+      }
+      const firstPendingBlock = session.blocks.find((block) => progressByBlock.get(block.id)?.status !== "concluida");
+      const hasDetailedBlockProgress = session.blockProgress.length > 0;
+      const currentPosition = session.progress?.status === "concluida"
+        ? session.progress.lastBlockPosition
+        : hasDetailedBlockProgress
+          ? firstPendingBlock?.position ?? session.progress?.lastBlockPosition ?? 0
+          : session.progress?.lastBlockPosition ?? 0;
+      const blocks = session.blocks.map((block) => {
+        const progress = progressByBlock.get(block.id);
+        const questions = questionsByBlock.get(block.id) ?? [];
+        const status = session.progress?.status === "concluida" || progress?.status === "concluida"
+          ? "concluida"
+          : block.position < currentPosition
+            ? "concluida"
+            : block.position === currentPosition
+              ? "atual"
+              : "bloqueada";
+        return {
+          id: block.id,
+          title: block.title,
+          content: block.content,
+          position: block.position,
+          status,
+          firstViewedAt: progress?.firstViewedAt ?? null,
+          lastViewedAt: progress?.lastViewedAt ?? null,
+          completedAt: progress?.completedAt ?? null,
+          questions: questions.map(({ question }) => ({
+            ...publicFoundationQuestion(question),
+            isCorrect: session.correctQuestionIds.has(question.id),
+          })),
+        };
+      });
+      const currentBlock = blocks.find((block) => block.status === "atual") ?? blocks[blocks.length - 1] ?? null;
+      return {
+        study: {
+          id: session.study.id,
+          title: session.study.title,
+          weekStart: session.study.weekStart,
+          summary: session.study.summary,
+          content: session.study.content,
+        },
+        progress: session.progress,
+        resume: {
+          blockId: currentBlock?.id ?? null,
+          position: currentBlock?.position ?? 0,
+          label: currentBlock ? `Você está no bloco ${currentBlock.position + 1} de ${blocks.length}.` : "Este estudo ainda não tem blocos.",
+        },
+        blocks,
+      };
+    }),
   studyClass: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
@@ -5512,7 +5580,7 @@ const escolaFundamentosRouter = router({
       return { class: foundationClass, attendance };
     }),
   answerQuestion: tenantProcedure
-    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), questionId: z.number().int().positive(), selectedOptionId: z.string().trim().min(1).max(80) }))
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), questionId: z.number().int().positive(), selectedOptionId: z.string().trim().min(1).max(80), clientAttemptId: z.string().trim().min(8).max(80).optional() }))
     .mutation(async ({ input, ctx }) => {
       const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
       const row = await getFoundationQuestionForAttempt(input.churchId, input.studyId, input.questionId);
@@ -5520,9 +5588,35 @@ const escolaFundamentosRouter = router({
       const options = Array.isArray(row.question.options) ? row.question.options : [];
       const selected = options.find((option) => Boolean(option) && typeof option === "object" && (option as FoundationQuestionOption).id === input.selectedOptionId);
       if (!selected) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma alternativa válida." });
+      if (input.clientAttemptId) {
+        const existingAttempt = await getFoundationQuestionAttemptByClientId({
+          churchId: input.churchId,
+          enrollmentId: enrollment.id,
+          questionId: input.questionId,
+          clientAttemptId: input.clientAttemptId,
+        });
+        if (existingAttempt) {
+          return { isCorrect: existingAttempt.isCorrect, explanation: row.question.explanation, attemptNumber: existingAttempt.attemptNumber };
+        }
+      }
       const attemptNumber = (await countFoundationQuestionAttempts(input.churchId, enrollment.id, input.questionId)) + 1;
       const isCorrect = row.question.correctOptionId === input.selectedOptionId;
-      await recordFoundationQuestionAttempt({ ...input, enrollmentId: enrollment.id, isCorrect, attemptNumber });
+      try {
+        await recordFoundationQuestionAttempt({ ...input, enrollmentId: enrollment.id, isCorrect, attemptNumber });
+      } catch (error) {
+        if (input.clientAttemptId) {
+          const existingAttempt = await getFoundationQuestionAttemptByClientId({
+            churchId: input.churchId,
+            enrollmentId: enrollment.id,
+            questionId: input.questionId,
+            clientAttemptId: input.clientAttemptId,
+          });
+          if (existingAttempt) {
+            return { isCorrect: existingAttempt.isCorrect, explanation: row.question.explanation, attemptNumber: existingAttempt.attemptNumber };
+          }
+        }
+        throw error;
+      }
       return { isCorrect, explanation: row.question.explanation, attemptNumber };
     }),
   listQuestionBlocks: tenantProcedure
@@ -5564,11 +5658,69 @@ const escolaFundamentosRouter = router({
       await touchFoundationLessonProgress({ churchId: input.churchId, enrollmentId: enrollment.id, studyId: input.studyId, lastBlockPosition: input.lastBlockPosition });
       return { success: true };
     }),
+  viewStudyBlock: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), blockId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const session = await getFoundationStudySession(input.churchId, enrollment.id, input.studyId);
+      const block = session.blocks.find((item) => item.id === input.blockId);
+      if (!block) throw new TRPCError({ code: "NOT_FOUND", message: "Bloco não encontrado neste estudo." });
+      const currentPosition = session.blockProgress.length
+        ? session.blocks.find((item) => !session.blockProgress.some(({ block: progressBlock, progress }) => progressBlock.id === item.id && progress.status === "concluida"))?.position ?? 0
+        : session.progress?.lastBlockPosition ?? 0;
+      const currentBlock = session.blocks.find((item) => item.position === currentPosition) ?? session.blocks[0];
+      const blockAlreadyCompleted = session.progress?.status === "concluida" || session.blockProgress.some(({ block: progressBlock, progress }) => progressBlock.id === block.id && progress.status === "concluida");
+      if (!blockAlreadyCompleted && currentBlock && block.position > currentBlock.position) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Conclua o bloco atual antes de avançar." });
+      if (!session.progress || block.position >= session.progress.lastBlockPosition) {
+        await touchFoundationLessonProgress({ churchId: input.churchId, enrollmentId: enrollment.id, studyId: input.studyId, lastBlockPosition: block.position });
+      }
+      await touchFoundationBlockProgress({ churchId: input.churchId, enrollmentId: enrollment.id, studyId: input.studyId, blockId: block.id });
+      return { success: true, blockId: block.id, position: block.position };
+    }),
+  completeStudyBlock: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), blockId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const session = await getFoundationStudySession(input.churchId, enrollment.id, input.studyId);
+      const block = session.blocks.find((item) => item.id === input.blockId);
+      if (!block) throw new TRPCError({ code: "NOT_FOUND", message: "Bloco não encontrado neste estudo." });
+      const currentPosition = session.blockProgress.length
+        ? session.blocks.find((item) => !session.blockProgress.some(({ block: progressBlock, progress }) => progressBlock.id === item.id && progress.status === "concluida"))?.position ?? 0
+        : session.progress?.lastBlockPosition ?? 0;
+      const currentBlock = session.blocks.find((item) => item.position === currentPosition) ?? session.blocks[0];
+      const blockAlreadyCompleted = session.progress?.status === "concluida" || session.blockProgress.some(({ block: progressBlock, progress }) => progressBlock.id === block.id && progress.status === "concluida");
+      if (!blockAlreadyCompleted && currentBlock && block.position > currentBlock.position) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Conclua o bloco atual antes de avançar." });
+      const blockQuestions = session.questionRows.filter(({ block: questionBlock }) => questionBlock.id === block.id);
+      const missingQuestion = blockQuestions.find(({ question }) => !session.correctQuestionIds.has(question.id));
+      if (missingQuestion) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Responda corretamente às perguntas deste bloco antes de avançar." });
+      if (blockAlreadyCompleted) {
+        const nextBlock = session.blocks.find((item) => item.position > block.position);
+        return { success: true, completedBlockId: block.id, nextBlock: nextBlock ? { id: nextBlock.id, position: nextBlock.position, title: nextBlock.title } : null, studyCompleted: !nextBlock };
+      }
+      await completeFoundationBlockProgress({ churchId: input.churchId, enrollmentId: enrollment.id, studyId: input.studyId, blockId: block.id });
+      await touchFoundationLessonProgress({ churchId: input.churchId, enrollmentId: enrollment.id, studyId: input.studyId, lastBlockPosition: block.position });
+      const nextBlock = session.blocks.find((item) => item.position > block.position);
+      return { success: true, completedBlockId: block.id, nextBlock: nextBlock ? { id: nextBlock.id, position: nextBlock.position, title: nextBlock.title } : null, studyCompleted: !nextBlock };
+    }),
+  saveReflection: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), reflection: z.string().trim().max(4000).nullable() }))
+    .mutation(async ({ input, ctx }) => {
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      await saveFoundationLessonReflection({ churchId: input.churchId, enrollmentId: enrollment.id, studyId: input.studyId, reflection: input.reflection });
+      return { success: true };
+    }),
   completeLesson: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), lastBlockPosition: z.number().int().min(0).max(999).default(0), reflection: z.string().trim().max(4000).nullable().optional() }))
     .mutation(async ({ input, ctx }) => {
       const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
       if (!(await hasCompletedFoundationQuestions(input.churchId, enrollment.id, input.studyId))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Responda corretamente às perguntas do estudo antes de concluí-lo." });
+      const session = await getFoundationStudySession(input.churchId, enrollment.id, input.studyId);
+      if (session.blocks.length && session.progress?.status !== "concluida") {
+        const completedBlockIds = new Set(session.blockProgress.filter(({ progress }) => progress.status === "concluida").map(({ block }) => block.id));
+        if (!session.blocks.every((block) => completedBlockIds.has(block.id))) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Conclua todos os blocos do estudo antes de finalizar a preparação." });
+        }
+      }
       await completeFoundationLesson({ churchId: input.churchId, enrollmentId: enrollment.id, studyId: input.studyId, lastBlockPosition: input.lastBlockPosition, reflection: input.reflection });
       if (enrollment.status === "matriculado") await updateCourseEnrollment(enrollment.id, { status: "em_andamento" });
       return { success: true };
