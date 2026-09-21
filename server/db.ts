@@ -40,6 +40,11 @@ import {
   foundationStudyMaterials,
   foundationStudyAdministrators,
   foundationLessonProgress,
+  foundationStudyBlocks,
+  foundationQuestions,
+  foundationQuestionAttempts,
+  foundationClasses,
+  foundationClassAttendance,
   encounterChecklistItems,
   encounterDiscipleForms,
   encounterEnrollments,
@@ -5932,6 +5937,7 @@ export async function createFoundationStudy(data: {
   courseId: number;
   moduleId?: number | null;
   title: string;
+  weekStart?: string | null;
   summary?: string | null;
   content?: string | null;
   position: number;
@@ -5942,6 +5948,7 @@ export async function createFoundationStudy(data: {
   const [result] = await db.insert(foundationStudies).values({
     ...data,
     title: data.title.trim(),
+    weekStart: data.weekStart ?? null,
     summary: data.summary?.trim() || null,
     content: data.content?.trim() || null,
     active: true,
@@ -5953,6 +5960,7 @@ export async function updateFoundationStudy(data: {
   id: number;
   churchId: number;
   moduleId?: number | null;
+  weekStart?: string | null;
   title?: string;
   summary?: string | null;
   content?: string | null;
@@ -5964,12 +5972,180 @@ export async function updateFoundationStudy(data: {
   const update: Record<string, unknown> = {};
   if (data.title !== undefined) update.title = data.title.trim();
   if (data.moduleId !== undefined) update.moduleId = data.moduleId;
+  if (data.weekStart !== undefined) update.weekStart = data.weekStart;
   if (data.summary !== undefined) update.summary = data.summary?.trim() || null;
   if (data.content !== undefined) update.content = data.content?.trim() || null;
   if (data.position !== undefined) update.position = data.position;
   if (data.active !== undefined) update.active = data.active;
   if (Object.keys(update).length === 0) return;
   await db.update(foundationStudies).set(update).where(and(eq(foundationStudies.id, data.id), eq(foundationStudies.churchId, data.churchId)));
+}
+
+export async function getFoundationClassForStudy(churchId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(foundationClasses)
+    .where(and(eq(foundationClasses.churchId, churchId), eq(foundationClasses.studyId, studyId)))
+    .orderBy(desc(foundationClasses.classDate), desc(foundationClasses.id))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFoundationClassById(churchId: number, classId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(foundationClasses)
+    .where(and(eq(foundationClasses.churchId, churchId), eq(foundationClasses.id, classId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function upsertFoundationClass(data: {
+  churchId: number;
+  courseId: number;
+  studyId: number;
+  classDate: string;
+  status: "planejada" | "realizada" | "cancelada";
+  notes?: string | null;
+  churchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(foundationClasses).values({
+    churchId: data.churchId,
+    courseId: data.courseId,
+    studyId: data.studyId,
+    classDate: data.classDate,
+    status: data.status,
+    notes: data.notes?.trim() || null,
+    createdByChurchUserId: data.churchUserId,
+    updatedByChurchUserId: data.churchUserId,
+  }).onDuplicateKeyUpdate({
+    set: {
+      status: data.status,
+      notes: data.notes?.trim() || null,
+      updatedByChurchUserId: data.churchUserId,
+    },
+  });
+  const rows = await db.select().from(foundationClasses).where(and(
+    eq(foundationClasses.churchId, data.churchId),
+    eq(foundationClasses.studyId, data.studyId),
+    eq(foundationClasses.classDate, data.classDate),
+  )).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFoundationClassRoster(churchId: number, classId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const foundationClass = await getFoundationClassById(churchId, classId);
+  if (!foundationClass) return [];
+  return db.select({
+    enrollment: courseEnrollments,
+    person: { id: people.id, fullName: people.fullName },
+    attendance: foundationClassAttendance,
+    progress: foundationLessonProgress,
+  })
+    .from(courseEnrollments)
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .leftJoin(foundationClassAttendance, and(
+      eq(foundationClassAttendance.classId, classId),
+      eq(foundationClassAttendance.enrollmentId, courseEnrollments.id),
+      eq(foundationClassAttendance.churchId, churchId),
+    ))
+    .leftJoin(foundationLessonProgress, and(
+      eq(foundationLessonProgress.enrollmentId, courseEnrollments.id),
+      eq(foundationLessonProgress.studyId, foundationClass.studyId),
+      eq(foundationLessonProgress.churchId, churchId),
+    ))
+    .where(and(
+      eq(courseEnrollments.courseId, foundationClass.courseId),
+      eq(people.churchId, churchId),
+    ))
+    .orderBy(people.fullName, people.id);
+}
+
+export async function recordFoundationClassAttendance(data: {
+  churchId: number;
+  classId: number;
+  enrollmentId: number;
+  status: "presente" | "ausente" | "justificado";
+  notes?: string | null;
+  recordedByChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(foundationClassAttendance).values({
+    churchId: data.churchId,
+    classId: data.classId,
+    enrollmentId: data.enrollmentId,
+    status: data.status,
+    notes: data.notes?.trim() || null,
+    recordedByChurchUserId: data.recordedByChurchUserId,
+  }).onDuplicateKeyUpdate({
+    set: {
+      status: data.status,
+      notes: data.notes?.trim() || null,
+      recordedByChurchUserId: data.recordedByChurchUserId,
+    },
+  });
+}
+
+export async function getFoundationStudentAttendance(churchId: number, classId: number, enrollmentId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(foundationClassAttendance).where(and(
+    eq(foundationClassAttendance.churchId, churchId),
+    eq(foundationClassAttendance.classId, classId),
+    eq(foundationClassAttendance.enrollmentId, enrollmentId),
+  )).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFoundationStudyMetrics(churchId: number, courseId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return { started: 0, completed: 0, questionErrors: [] };
+  const progressRows = await db.select({ status: foundationLessonProgress.status })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .leftJoin(foundationLessonProgress, and(
+      eq(foundationLessonProgress.enrollmentId, courseEnrollments.id),
+      eq(foundationLessonProgress.studyId, studyId),
+      eq(foundationLessonProgress.churchId, churchId),
+    ))
+    .where(and(
+      eq(courseEnrollments.courseId, courseId),
+      eq(courses.churchId, churchId),
+      eq(people.churchId, churchId),
+    ));
+  const questionErrors = await db.select({
+    questionId: foundationQuestions.id,
+    prompt: foundationQuestions.prompt,
+    errors: count(),
+  })
+    .from(foundationQuestionAttempts)
+    .innerJoin(foundationQuestions, and(
+      eq(foundationQuestions.id, foundationQuestionAttempts.questionId),
+      eq(foundationQuestions.churchId, churchId),
+    ))
+    .innerJoin(foundationStudyBlocks, and(
+      eq(foundationStudyBlocks.id, foundationQuestions.blockId),
+      eq(foundationStudyBlocks.churchId, churchId),
+      eq(foundationStudyBlocks.studyId, studyId),
+    ))
+    .where(and(
+      eq(foundationQuestionAttempts.churchId, churchId),
+      eq(foundationQuestionAttempts.isCorrect, false),
+    ))
+    .groupBy(foundationQuestions.id, foundationQuestions.prompt)
+    .orderBy(desc(count()))
+    .limit(5);
+  return {
+    started: progressRows.filter((row) => row.status === "em_andamento" || row.status === "concluida").length,
+    completed: progressRows.filter((row) => row.status === "concluida").length,
+    questionErrors,
+  };
 }
 
 export async function getFoundationEnrollmentForPerson(courseId: number, personId: number, churchId: number) {
@@ -5987,6 +6163,26 @@ export async function getFoundationEnrollmentForPerson(courseId: number, personI
     ))
     .limit(1);
   return rows[0]?.enrollment ?? null;
+}
+
+export async function getFoundationActiveEnrollmentForPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ enrollment: courseEnrollments, course: courses })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .where(and(
+      eq(courseEnrollments.personId, personId),
+      ne(courseEnrollments.status, "concluido"),
+      eq(courses.churchId, churchId),
+      eq(courses.active, true),
+      eq(people.churchId, churchId),
+    ))
+    .orderBy(desc(courseEnrollments.enrolledAt), desc(courseEnrollments.id))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function getFoundationLearningProgress(churchId: number, enrollmentId: number, courseId: number) {
@@ -6008,6 +6204,127 @@ export async function getFoundationLearningProgress(churchId: number, enrollment
       eq(foundationStudies.active, true),
     ))
     .orderBy(foundationStudies.position, foundationStudies.id);
+}
+
+export type FoundationQuestionOption = { id: string; label: string };
+
+export async function getFoundationStudyQuestions(churchId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ block: foundationStudyBlocks, question: foundationQuestions })
+    .from(foundationStudyBlocks)
+    .innerJoin(foundationQuestions, and(
+      eq(foundationQuestions.blockId, foundationStudyBlocks.id),
+      eq(foundationQuestions.churchId, churchId),
+      eq(foundationQuestions.active, true),
+    ))
+    .where(and(
+      eq(foundationStudyBlocks.churchId, churchId),
+      eq(foundationStudyBlocks.studyId, studyId),
+      eq(foundationStudyBlocks.active, true),
+    ))
+    .orderBy(foundationStudyBlocks.position, foundationStudyBlocks.id, foundationQuestions.position, foundationQuestions.id);
+}
+
+export async function getFoundationStudyBlocks(churchId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(foundationStudyBlocks)
+    .where(and(eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId)))
+    .orderBy(foundationStudyBlocks.position, foundationStudyBlocks.id);
+}
+
+export async function getFoundationStudyBlockById(churchId: number, studyId: number, blockId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(foundationStudyBlocks)
+    .where(and(eq(foundationStudyBlocks.id, blockId), eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createFoundationStudyBlock(data: { churchId: number; studyId: number; title: string; content: string; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) return null;
+  const last = await db.select({ position: foundationStudyBlocks.position }).from(foundationStudyBlocks)
+    .where(and(eq(foundationStudyBlocks.churchId, data.churchId), eq(foundationStudyBlocks.studyId, data.studyId)))
+    .orderBy(desc(foundationStudyBlocks.position), desc(foundationStudyBlocks.id)).limit(1);
+  const result = await db.insert(foundationStudyBlocks).values({ ...data, position: (last[0]?.position ?? -1) + 1 });
+  return Number(result[0]?.insertId ?? 0);
+}
+
+export async function createFoundationQuestion(data: { churchId: number; blockId: number; prompt: string; options: FoundationQuestionOption[]; correctOptionId: string; explanation: string; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) return null;
+  const last = await db.select({ position: foundationQuestions.position }).from(foundationQuestions)
+    .where(and(eq(foundationQuestions.churchId, data.churchId), eq(foundationQuestions.blockId, data.blockId)))
+    .orderBy(desc(foundationQuestions.position), desc(foundationQuestions.id)).limit(1);
+  const result = await db.insert(foundationQuestions).values({ ...data, position: (last[0]?.position ?? -1) + 1 });
+  return Number(result[0]?.insertId ?? 0);
+}
+
+export async function getFoundationQuestionForAttempt(churchId: number, studyId: number, questionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select({ block: foundationStudyBlocks, question: foundationQuestions })
+    .from(foundationQuestions)
+    .innerJoin(foundationStudyBlocks, and(
+      eq(foundationStudyBlocks.id, foundationQuestions.blockId),
+      eq(foundationStudyBlocks.churchId, churchId),
+      eq(foundationStudyBlocks.studyId, studyId),
+      eq(foundationStudyBlocks.active, true),
+    ))
+    .where(and(
+      eq(foundationQuestions.id, questionId),
+      eq(foundationQuestions.churchId, churchId),
+      eq(foundationQuestions.active, true),
+    ))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function countFoundationQuestionAttempts(churchId: number, enrollmentId: number, questionId: number) {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db.select({ total: count() })
+    .from(foundationQuestionAttempts)
+    .where(and(
+      eq(foundationQuestionAttempts.churchId, churchId),
+      eq(foundationQuestionAttempts.enrollmentId, enrollmentId),
+      eq(foundationQuestionAttempts.questionId, questionId),
+    ));
+  return Number(rows[0]?.total ?? 0);
+}
+
+export async function recordFoundationQuestionAttempt(data: {
+  churchId: number;
+  enrollmentId: number;
+  questionId: number;
+  selectedOptionId: string;
+  isCorrect: boolean;
+  attemptNumber: number;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(foundationQuestionAttempts).values(data);
+  return Number(result[0]?.insertId ?? 0);
+}
+
+export async function hasCompletedFoundationQuestions(churchId: number, enrollmentId: number, studyId: number) {
+  const questions = await getFoundationStudyQuestions(churchId, studyId);
+  if (!questions.length) return true;
+  const db = await getDb();
+  if (!db) return false;
+  const correctRows = await db.select({ questionId: foundationQuestionAttempts.questionId })
+    .from(foundationQuestionAttempts)
+    .where(and(
+      eq(foundationQuestionAttempts.churchId, churchId),
+      eq(foundationQuestionAttempts.enrollmentId, enrollmentId),
+      eq(foundationQuestionAttempts.isCorrect, true),
+      inArray(foundationQuestionAttempts.questionId, questions.map(({ question }) => question.id)),
+    ));
+  const correctQuestionIds = new Set(correctRows.map((row) => row.questionId));
+  return questions.every(({ question }) => correctQuestionIds.has(question.id));
 }
 
 export async function getFoundationLessonProgress(churchId: number, enrollmentId: number, studyId: number) {

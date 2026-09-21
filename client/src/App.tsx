@@ -265,7 +265,7 @@ function Router() {
 
       {/* ── App — Novos Módulos ── */}
       <Route path="/app/escola-fundamentos">
-        <AppPage title="Escola de Fundamentos" requiredAccess="isExecutive">
+        <AppPage title="Escola de Fundamentos">
           <EscolaFundamentos />
         </AppPage>
       </Route>

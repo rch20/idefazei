@@ -7,7 +7,13 @@ const dbMocks = vi.hoisted(() => ({
   getFoundationStudiesByCourse: vi.fn(),
   getFoundationModulesByCourse: vi.fn(),
   getFoundationEnrollmentForPerson: vi.fn(),
+  getFoundationActiveEnrollmentForPerson: vi.fn(),
   getFoundationLearningProgress: vi.fn(),
+  getFoundationStudyQuestions: vi.fn(),
+  getFoundationQuestionForAttempt: vi.fn(),
+  countFoundationQuestionAttempts: vi.fn(),
+  recordFoundationQuestionAttempt: vi.fn(),
+  hasCompletedFoundationQuestions: vi.fn(),
   recordSecurityAccessAuditEvent: vi.fn(),
 }));
 
@@ -67,6 +73,7 @@ function configureActiveChurchUser(churchId: number) {
     id: 42,
     userId: 42,
     churchId,
+    personId: 77,
     role: "membro",
     active: true,
     registrationStatus: "approved",
@@ -88,7 +95,13 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
     dbMocks.getFoundationStudiesByCourse.mockResolvedValue([]);
     dbMocks.getFoundationModulesByCourse.mockResolvedValue([]);
     dbMocks.getFoundationEnrollmentForPerson.mockResolvedValue(null);
+    dbMocks.getFoundationActiveEnrollmentForPerson.mockResolvedValue(null);
     dbMocks.getFoundationLearningProgress.mockResolvedValue([]);
+    dbMocks.getFoundationStudyQuestions.mockResolvedValue([]);
+    dbMocks.getFoundationQuestionForAttempt.mockResolvedValue(null);
+    dbMocks.countFoundationQuestionAttempts.mockResolvedValue(0);
+    dbMocks.recordFoundationQuestionAttempt.mockResolvedValue(1);
+    dbMocks.hasCompletedFoundationQuestions.mockResolvedValue(true);
     dbMocks.recordSecurityAccessAuditEvent.mockResolvedValue(1);
   });
 
@@ -191,6 +204,98 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
 
     expect(dbMocks.getFoundationEnrollmentForPerson).not.toHaveBeenCalled();
     expect(dbMocks.getFoundationLearningProgress).not.toHaveBeenCalled();
+  });
+
+  it("resolve automaticamente a preparação ativa do discípulo no tenant autenticado", async () => {
+    dbMocks.getFoundationActiveEnrollmentForPerson.mockResolvedValue({
+      enrollment: { id: 91, courseId: COURSE_ID, personId: 77, status: "em_andamento" },
+      course: { id: COURSE_ID, churchId: CHURCH_A, name: "Fundamentos da Fé", active: true },
+    });
+    dbMocks.getFoundationLearningProgress.mockResolvedValue([
+      { study: { id: STUDY_ID, courseId: COURSE_ID, title: "A fé", active: true }, progress: null },
+    ]);
+
+    const caller = appRouter.createCaller(createChurchContext({ userChurchId: CHURCH_A }));
+    const result = await caller.escolaFundamentos.studentPath({ churchId: CHURCH_A });
+
+    expect(result).toMatchObject({
+      course: { id: COURSE_ID, churchId: CHURCH_A },
+      enrollment: { id: 91, personId: 77 },
+      items: [{ study: { id: STUDY_ID }, available: true }],
+    });
+    expect(dbMocks.getFoundationActiveEnrollmentForPerson).toHaveBeenCalledWith(77, CHURCH_A);
+    expect(dbMocks.getFoundationLearningProgress).toHaveBeenCalledWith(CHURCH_A, 91, COURSE_ID);
+  });
+
+  it("entrega perguntas sem expor a alternativa correta", async () => {
+    dbMocks.getFoundationEnrollmentForPerson.mockResolvedValue({ id: 91, courseId: COURSE_ID, personId: 77, status: "em_andamento" });
+    dbMocks.getFoundationLearningProgress.mockResolvedValue([
+      { study: { id: STUDY_ID, courseId: COURSE_ID, title: "A fé", active: true }, progress: null },
+    ]);
+    dbMocks.getFoundationStudyQuestions.mockResolvedValue([
+      {
+        block: { id: 12, studyId: STUDY_ID, title: "O fundamento", content: "Leia o texto.", position: 0 },
+        question: {
+          id: 31,
+          blockId: 12,
+          prompt: "O que é a fé?",
+          options: [{ id: "a", label: "Confiança em Deus" }, { id: "b", label: "Apenas informação" }],
+          correctOptionId: "a",
+          explanation: "A fé envolve confiança.",
+          position: 0,
+        },
+      },
+    ]);
+
+    const caller = appRouter.createCaller(createChurchContext({ userChurchId: CHURCH_A }));
+    const result = await caller.escolaFundamentos.studyQuestions({ churchId: CHURCH_A, courseId: COURSE_ID, studyId: STUDY_ID });
+
+    expect(result[0]?.question).toEqual({
+      id: 31,
+      blockId: 12,
+      prompt: "O que é a fé?",
+      options: [{ id: "a", label: "Confiança em Deus" }, { id: "b", label: "Apenas informação" }],
+      position: 0,
+    });
+    expect(result[0]?.question).not.toHaveProperty("correctOptionId");
+  });
+
+  it("registra a resposta e devolve explicação sem bloquear nova tentativa", async () => {
+    dbMocks.getFoundationEnrollmentForPerson.mockResolvedValue({ id: 91, courseId: COURSE_ID, personId: 77, status: "em_andamento" });
+    dbMocks.getFoundationLearningProgress.mockResolvedValue([
+      { study: { id: STUDY_ID, courseId: COURSE_ID, title: "A fé", active: true }, progress: null },
+    ]);
+    dbMocks.getFoundationQuestionForAttempt.mockResolvedValue({
+      block: { id: 12, studyId: STUDY_ID },
+      question: {
+        id: 31,
+        blockId: 12,
+        prompt: "O que é a fé?",
+        options: [{ id: "a", label: "Confiança em Deus" }, { id: "b", label: "Apenas informação" }],
+        correctOptionId: "a",
+        explanation: "A fé envolve confiança.",
+        position: 0,
+      },
+    });
+    dbMocks.countFoundationQuestionAttempts.mockResolvedValue(1);
+
+    const caller = appRouter.createCaller(createChurchContext({ userChurchId: CHURCH_A }));
+    const result = await caller.escolaFundamentos.answerQuestion({ churchId: CHURCH_A, courseId: COURSE_ID, studyId: STUDY_ID, questionId: 31, selectedOptionId: "a" });
+
+    expect(result).toEqual({ isCorrect: true, explanation: "A fé envolve confiança.", attemptNumber: 2 });
+    expect(dbMocks.recordFoundationQuestionAttempt).toHaveBeenCalledWith(expect.objectContaining({ churchId: CHURCH_A, enrollmentId: 91, questionId: 31, selectedOptionId: "a", isCorrect: true, attemptNumber: 2 }));
+  });
+
+  it("não permite concluir o estudo enquanto houver pergunta sem acerto", async () => {
+    dbMocks.getFoundationEnrollmentForPerson.mockResolvedValue({ id: 91, courseId: COURSE_ID, personId: 77, status: "em_andamento" });
+    dbMocks.getFoundationLearningProgress.mockResolvedValue([
+      { study: { id: STUDY_ID, courseId: COURSE_ID, title: "A fé", active: true }, progress: null },
+    ]);
+    dbMocks.hasCompletedFoundationQuestions.mockResolvedValue(false);
+
+    const caller = appRouter.createCaller(createChurchContext({ userChurchId: CHURCH_A }));
+
+    await expect(caller.escolaFundamentos.completeLesson({ churchId: CHURCH_A, courseId: COURSE_ID, studyId: STUDY_ID, lastBlockPosition: 0, reflection: null })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   });
 
   it("bloqueia mismatch entre tenant resolvido pelo host e tenant da sessão", async () => {

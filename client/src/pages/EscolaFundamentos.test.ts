@@ -20,4 +20,17 @@ describe("Escola de Fundamentos", () => {
     expect(source).toContain("Módulos da trilha");
     expect(source).toContain("createModule");
   });
+
+  it("oferece ao discípulo uma preparação única sem escolha de curso", () => {
+    const source = readFileSync(resolve(process.cwd(), "client/src/pages/EscolaFundamentos.tsx"), "utf8");
+
+    expect(source).toContain("studentPath");
+    expect(source).toContain("Minha preparação");
+    expect(source).toContain("Você não precisa escolher uma turma");
+    expect(source).toContain("A preparação liberada pela liderança aparece aqui automaticamente");
+    expect(source).toContain("Concluir estudo");
+    expect(source).toContain("Estudo da semana");
+    expect(source).toContain("Preparação concluída");
+    expect(source).toContain("Sequência da preparação");
+  });
 });

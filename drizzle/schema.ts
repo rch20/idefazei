@@ -975,6 +975,8 @@ export const foundationStudies = mysqlTable("foundation_studies", {
   courseId: int("courseId").notNull(),
   moduleId: int("moduleId"),
   title: varchar("title", { length: 160 }).notNull(),
+  /** Data civil de início da semana, sem converter para horário local. */
+  weekStart: date("weekStart", { mode: "string" }),
   summary: varchar("summary", { length: 500 }),
   content: text("content"),
   position: int("position").notNull().default(0),
@@ -1052,6 +1054,89 @@ export const foundationLessonProgress = mysqlTable("foundation_lesson_progress",
   index("foundation_lesson_progress_church_enrollment_idx").on(table.churchId, table.enrollmentId),
   index("foundation_lesson_progress_church_study_idx").on(table.churchId, table.studyId),
   uniqueIndex("foundation_lesson_progress_enrollment_study_unique").on(table.churchId, table.enrollmentId, table.studyId),
+]);
+
+/** Blocos ordenados de conteúdo da preparação semanal; estudos antigos continuam usando content. */
+export const foundationStudyBlocks = mysqlTable("foundation_study_blocks", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  studyId: int("studyId").notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  content: text("content").notNull(),
+  position: int("position").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("foundation_study_blocks_church_study_position_idx").on(table.churchId, table.studyId, table.position),
+]);
+
+/** Perguntas de múltipla escolha; a resposta correta nunca é enviada ao discípulo. */
+export const foundationQuestions = mysqlTable("foundation_questions", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  blockId: int("blockId").notNull(),
+  prompt: text("prompt").notNull(),
+  options: json("options").notNull(),
+  correctOptionId: varchar("correctOptionId", { length: 80 }).notNull(),
+  explanation: text("explanation").notNull(),
+  position: int("position").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("foundation_questions_church_block_position_idx").on(table.churchId, table.blockId, table.position),
+]);
+
+/** Tentativas append-only de resposta, permitindo erro, explicação e nova tentativa. */
+export const foundationQuestionAttempts = mysqlTable("foundation_question_attempts", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  enrollmentId: int("enrollmentId").notNull(),
+  questionId: int("questionId").notNull(),
+  selectedOptionId: varchar("selectedOptionId", { length: 80 }).notNull(),
+  isCorrect: boolean("isCorrect").notNull(),
+  attemptNumber: int("attemptNumber").notNull(),
+  answeredAt: timestamp("answeredAt").defaultNow().notNull(),
+}, (table) => [
+  index("foundation_question_attempts_church_enrollment_question_idx").on(table.churchId, table.enrollmentId, table.questionId),
+]);
+
+/** Aula presencial ligada ao estudo digital da mesma semana. */
+export const foundationClasses = mysqlTable("foundation_classes", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  courseId: int("courseId").notNull(),
+  studyId: int("studyId").notNull(),
+  classDate: date("classDate", { mode: "string" }).notNull(),
+  status: mysqlEnum("status", ["planejada", "realizada", "cancelada"]).default("planejada").notNull(),
+  notes: text("notes"),
+  createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  updatedByChurchUserId: int("updatedByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("foundation_classes_church_study_date_idx").on(table.churchId, table.studyId, table.classDate),
+  uniqueIndex("foundation_classes_church_study_date_unique").on(table.churchId, table.studyId, table.classDate),
+]);
+
+/** Presença individual registrada somente para a aula presencial correspondente. */
+export const foundationClassAttendance = mysqlTable("foundation_class_attendance", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  classId: int("classId").notNull(),
+  enrollmentId: int("enrollmentId").notNull(),
+  status: mysqlEnum("status", ["presente", "ausente", "justificado"]).notNull(),
+  notes: text("notes"),
+  recordedByChurchUserId: int("recordedByChurchUserId").notNull(),
+  recordedAt: timestamp("recordedAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  index("foundation_class_attendance_church_class_status_idx").on(table.churchId, table.classId, table.status),
+  uniqueIndex("foundation_class_attendance_class_enrollment_unique").on(table.churchId, table.classId, table.enrollmentId),
 ]);
 
 // ─── AUTENTICAÇÃO PRÓPRIA DA PLATAFORMA ──────────────────────────────────────
