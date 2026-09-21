@@ -46,6 +46,7 @@ const baseLog: Pick<
   | "sessionChurchId"
   | "targetChurchId"
   | "sourceFingerprint"
+  | "occurredAt"
   | "createdAt"
 > = {
   churchId: 100,
@@ -55,6 +56,7 @@ const baseLog: Pick<
   sessionChurchId: 100,
   targetChurchId: 200,
   sourceFingerprint: "source-a",
+  occurredAt: baseNow,
   createdAt: baseNow,
 };
 
@@ -282,6 +284,19 @@ describe("escopo e decisão de retenção", () => {
       retain: true,
       holdIds: [7, 8],
       retainUntil: new Date("2026-09-25T05:00:00.000Z"),
+    });
+  });
+
+  it("usa occurredAt, e não createdAt, para decidir a retenção", () => {
+    const log = {
+      ...baseLog,
+      occurredAt: new Date("2026-09-21T05:00:00.000Z"),
+      createdAt: new Date("2026-09-25T05:00:00.000Z"),
+    };
+
+    expect(decideSecurityAuditRetention(log, [hold()], baseNow)).toMatchObject({
+      retain: true,
+      holdIds: [7],
     });
   });
 

@@ -433,6 +433,7 @@ export function securityAuditHoldMatchesLog(
     | "sessionChurchId"
     | "targetChurchId"
     | "sourceFingerprint"
+    | "occurredAt"
     | "createdAt"
   >,
   now = new Date()
@@ -442,7 +443,7 @@ export function securityAuditHoldMatchesLog(
   if (hold.churchId !== log.churchId) return false;
   if (referenceAt < hold.startsAt || referenceAt >= hold.expiresAt)
     return false;
-  if (log.createdAt < hold.startsAt || log.createdAt >= hold.expiresAt) {
+  if (log.occurredAt < hold.startsAt || log.occurredAt >= hold.expiresAt) {
     return false;
   }
   if (hold.eventType !== log.eventType) return false;
@@ -466,6 +467,7 @@ export function decideSecurityAuditRetention(
     | "sessionChurchId"
     | "targetChurchId"
     | "sourceFingerprint"
+    | "occurredAt"
     | "createdAt"
   >,
   holds: Array<

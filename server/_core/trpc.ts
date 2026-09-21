@@ -96,8 +96,8 @@ const requireTenant = t.middleware(async opts => {
       );
     } catch (error) {
       console.warn(
-        "[tenant-security-audit] Falha ao persistir bloqueio:",
-        error
+        "[tenant-security-audit] Falha ao persistir bloqueio",
+        error instanceof Error ? error.name : "UnknownError"
       );
     }
     throw new TRPCError({
