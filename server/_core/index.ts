@@ -11,6 +11,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { dailyNotificationsHandler } from "../scheduledNotifications";
 import { scheduleRemindersHandler } from "../scheduleReminders";
+import { securityAuditHoldsExpirationHandler } from "../securityAuditHoldsJob";
 import Busboy from "busboy";
 import { storagePut } from "../storage";
 import { getDerivedLogoIconUrls, getOptimizedMediaUrls, getPwaIconUrls, uploadMedia, type MediaPurpose, type MediaResourceType } from "../media";
@@ -133,6 +134,10 @@ async function startServer() {
   // Scheduled heartbeat endpoints
   app.post("/api/scheduled/daily-notifications", dailyNotificationsHandler);
   app.post("/api/scheduled/schedule-reminders", scheduleRemindersHandler);
+  app.post(
+    "/api/scheduled/security-audit-holds-expiration",
+    securityAuditHoldsExpirationHandler
+  );
 
   // Diagnósticos de bootstrap: endpoint público e limitado, sem dados de conta,
   // tokens, conteúdo de formulário ou IP persistido.

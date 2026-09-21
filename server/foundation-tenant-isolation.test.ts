@@ -8,6 +8,7 @@ const dbMocks = vi.hoisted(() => ({
   getFoundationModulesByCourse: vi.fn(),
   getFoundationEnrollmentForPerson: vi.fn(),
   getFoundationLearningProgress: vi.fn(),
+  recordSecurityAccessAuditEvent: vi.fn(),
 }));
 
 vi.mock("./db", async () => {
@@ -53,6 +54,10 @@ function createChurchContext(options?: {
     } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
     tenantChurchId: options?.tenantChurchId ?? userChurchId,
+    requestedTenantChurchId:
+      options?.tenantChurchId === null
+        ? null
+        : (options?.tenantChurchId ?? userChurchId),
     tenantSlug: options?.tenantSlug ?? `igreja-${userChurchId}`,
   };
 }
@@ -84,6 +89,7 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
     dbMocks.getFoundationModulesByCourse.mockResolvedValue([]);
     dbMocks.getFoundationEnrollmentForPerson.mockResolvedValue(null);
     dbMocks.getFoundationLearningProgress.mockResolvedValue([]);
+    dbMocks.recordSecurityAccessAuditEvent.mockResolvedValue(1);
   });
 
   it("permite consultar cursos somente no tenant autenticado", async () => {
@@ -186,6 +192,17 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
     });
 
     expect(dbMocks.getCoursesByChurch).not.toHaveBeenCalled();
+    expect(dbMocks.recordSecurityAccessAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        churchId: CHURCH_B,
+        event: expect.objectContaining({
+          eventType: "security.tenant_access_denied",
+          reason: "jwt_host_mismatch",
+          sessionChurchId: CHURCH_A,
+          targetChurchId: CHURCH_B,
+        }),
+      })
+    );
   });
 
   it("não confia em um tenant enviado pelo cliente quando ele diverge do contexto", async () => {

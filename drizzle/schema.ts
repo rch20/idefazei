@@ -2236,3 +2236,171 @@ export const financialAuditLogs = mysqlTable("financial_audit_logs", {
 );
 
 export type FinancialAuditLog = typeof financialAuditLogs.$inferSelect;
+
+/** Eventos de segurança tenant-aware; não armazena tokens, cookies ou PII. */
+export const securityAccessAuditLogs = mysqlTable(
+  "security_access_audit_logs",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    /** Tenant proprietário da auditoria; normalmente o tenant da sessão. */
+    churchId: int("churchId").notNull(),
+    eventType: varchar("eventType", { length: 100 }).notNull(),
+    reason: mysqlEnum("reason", [
+      "jwt_host_mismatch",
+      "tenant_scope_mismatch",
+      "tenant_unresolved",
+      "client_tenant_mismatch",
+    ]).notNull(),
+    procedurePath: varchar("procedurePath", { length: 160 }).notNull(),
+    sessionChurchId: int("sessionChurchId"),
+    targetChurchId: int("targetChurchId"),
+    actorChurchUserId: int("actorChurchUserId"),
+    requestId: varchar("requestId", { length: 120 }),
+    sourceFingerprint: varchar("sourceFingerprint", { length: 128 }),
+    severity: mysqlEnum("severity", ["warning", "high", "critical"])
+      .notNull()
+      .default("warning"),
+    occurredAt: timestamp("occurredAt").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("security_access_audit_logs_church_created_idx").on(
+      table.churchId,
+      table.createdAt
+    ),
+    index("security_access_audit_logs_source_created_idx").on(
+      table.sourceFingerprint,
+      table.createdAt
+    ),
+    index("security_access_audit_logs_target_created_idx").on(
+      table.targetChurchId,
+      table.createdAt
+    ),
+    index("security_access_audit_logs_reason_created_idx").on(
+      table.reason,
+      table.createdAt
+    ),
+  ]
+);
+
+export type SecurityAccessAuditLog = typeof securityAccessAuditLogs.$inferSelect;
+export type InsertSecurityAccessAuditLog =
+  typeof securityAccessAuditLogs.$inferInsert;
+
+/** Retenção excepcional, limitada por tenant e com expiração obrigatória. */
+export const securityAccessAuditHolds = mysqlTable(
+  "security_access_audit_holds",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    /** Tenant proprietário do registro de auditoria protegido. */
+    churchId: int("churchId").notNull(),
+    eventType: varchar("eventType", { length: 100 })
+      .notNull()
+      .default("security.tenant_access_denied"),
+    reason: mysqlEnum("reason", [
+      "jwt_host_mismatch",
+      "tenant_scope_mismatch",
+      "tenant_unresolved",
+      "client_tenant_mismatch",
+    ]),
+    procedurePath: varchar("procedurePath", { length: 160 }),
+    sessionChurchId: int("sessionChurchId"),
+    targetChurchId: int("targetChurchId"),
+    sourceFingerprint: varchar("sourceFingerprint", { length: 128 }),
+    status: mysqlEnum("status", ["active", "released", "expired"])
+      .notNull()
+      .default("active"),
+    holdReason: varchar("holdReason", { length: 1000 }).notNull(),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    startsAt: timestamp("startsAt").notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    reviewDueAt: timestamp("reviewDueAt").notNull(),
+    lastReviewedByChurchUserId: int("lastReviewedByChurchUserId"),
+    lastReviewedAt: timestamp("lastReviewedAt"),
+    releasedByChurchUserId: int("releasedByChurchUserId"),
+    releasedAt: timestamp("releasedAt"),
+    releaseReason: varchar("releaseReason", { length: 500 }),
+    expiredAt: timestamp("expiredAt"),
+    idempotencyKey: varchar("idempotencyKey", { length: 64 }),
+  },
+  table => [
+    uniqueIndex("security_access_audit_holds_idempotency_unique").on(
+      table.churchId,
+      table.idempotencyKey
+    ),
+    index("security_access_audit_holds_church_status_expiry_idx").on(
+      table.churchId,
+      table.status,
+      table.expiresAt
+    ),
+    index("security_access_audit_holds_event_reason_idx").on(
+      table.eventType,
+      table.reason
+    ),
+    index("security_access_audit_holds_target_expiry_idx").on(
+      table.targetChurchId,
+      table.expiresAt
+    ),
+    index("security_access_audit_holds_source_expiry_idx").on(
+      table.sourceFingerprint,
+      table.expiresAt
+    ),
+  ]
+);
+
+export type SecurityAccessAuditHold =
+  typeof securityAccessAuditHolds.$inferSelect;
+export type InsertSecurityAccessAuditHold =
+  typeof securityAccessAuditHolds.$inferInsert;
+
+/** Histórico imutável das transições de um security hold. */
+export const securityAccessAuditHoldEvents = mysqlTable(
+  "security_access_audit_hold_events",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    holdId: int("holdId").notNull(),
+    action: mysqlEnum("action", [
+      "opened",
+      "reviewed",
+      "released",
+      "expired",
+    ]).notNull(),
+    actorChurchUserId: int("actorChurchUserId"),
+    previousStatus: mysqlEnum("previousStatus", [
+      "active",
+      "released",
+      "expired",
+    ]),
+    newStatus: mysqlEnum("newStatus", ["active", "released", "expired"]),
+    previousExpiresAt: timestamp("previousExpiresAt"),
+    newExpiresAt: timestamp("newExpiresAt"),
+    previousReviewDueAt: timestamp("previousReviewDueAt"),
+    newReviewDueAt: timestamp("newReviewDueAt"),
+    reason: varchar("reason", { length: 1000 }).notNull(),
+    metadata: json("metadata"),
+    occurredAt: timestamp("occurredAt").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("security_access_audit_hold_events_church_occurred_idx").on(
+      table.churchId,
+      table.occurredAt
+    ),
+    index("security_access_audit_hold_events_hold_occurred_idx").on(
+      table.holdId,
+      table.occurredAt
+    ),
+    index("security_access_audit_hold_events_action_occurred_idx").on(
+      table.churchId,
+      table.action,
+      table.occurredAt
+    ),
+  ]
+);
+
+export type SecurityAccessAuditHoldEvent =
+  typeof securityAccessAuditHoldEvents.$inferSelect;
+export type InsertSecurityAccessAuditHoldEvent =
+  typeof securityAccessAuditHoldEvents.$inferInsert;

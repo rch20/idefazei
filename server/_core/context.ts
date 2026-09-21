@@ -36,6 +36,7 @@ export type TrpcContext = {
   res: CreateExpressContextOptions["res"];
   user: AuthenticatedUser | null;
   tenantChurchId: number | null;
+  requestedTenantChurchId?: number | null;
   tenantSlug: string | null;
   tenantMismatch?: boolean;
 };
@@ -45,6 +46,7 @@ export async function createContext(
 ): Promise<TrpcContext> {
   let user: AuthenticatedUser | null = null;
   let tenantChurchId: number | null = null;
+  let requestedTenantChurchId: number | null = null;
   let tenantSlug: string | null = null;
   let tenantMismatch = false;
 
@@ -117,6 +119,7 @@ export async function createContext(
     if (slug) {
       const church = await getChurchBySlug(slug);
       if (church) {
+        requestedTenantChurchId = church.id;
         const churchSessionMismatch =
           user?.authSource === "church" && user.churchId !== church.id;
         if (churchSessionMismatch) {
@@ -140,6 +143,7 @@ export async function createContext(
     res: opts.res,
     user,
     tenantChurchId,
+    requestedTenantChurchId,
     tenantSlug,
     tenantMismatch,
   };

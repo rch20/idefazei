@@ -2,6 +2,9 @@ import { NOT_ADMIN_ERR_MSG, UNAUTHED_ERR_MSG } from "@shared/const";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
+import { createHash } from "node:crypto";
+import { recordSecurityAccessAuditEvent } from "../db";
+import { createSecurityAccessMonitor } from "../security-access-monitoring";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -27,6 +30,46 @@ const requireUser = t.middleware(async opts => {
 
 export const protectedProcedure = t.procedure.use(requireUser);
 
+const securityAccessMonitor = createSecurityAccessMonitor();
+
+async function recordTenantAccessDenied(
+  ctx: TrpcContext,
+  procedurePath: string,
+  reason: "jwt_host_mismatch" | "tenant_scope_mismatch"
+) {
+  const sessionChurchId = ctx.user?.churchId ?? null;
+  const targetChurchId = ctx.requestedTenantChurchId ?? ctx.tenantChurchId;
+  const ownerChurchId = targetChurchId ?? sessionChurchId;
+  if (!ownerChurchId) return;
+
+  const host = String(ctx.req.headers.host ?? "unknown");
+  const userAgent = String(ctx.req.headers["user-agent"] ?? "unknown");
+  const sourceFingerprint = createHash("sha256")
+    .update(`${host}|${userAgent}`)
+    .digest("hex")
+    .slice(0, 64);
+  const requestIdHeader = ctx.req.headers["x-request-id"];
+  const requestId = Array.isArray(requestIdHeader)
+    ? requestIdHeader[0]
+    : requestIdHeader;
+
+  const result = await securityAccessMonitor.record({
+    reason,
+    procedurePath,
+    sessionChurchId,
+    targetChurchId,
+    actorChurchUserId:
+      ctx.user?.authSource === "church" ? Math.abs(ctx.user.id) : null,
+    requestId: requestId ? String(requestId) : null,
+    sourceFingerprint,
+  });
+
+  await recordSecurityAccessAuditEvent({
+    churchId: ownerChurchId,
+    event: result.event,
+  });
+}
+
 const requireTenant = t.middleware(async opts => {
   const { ctx, next } = opts;
 
@@ -43,6 +86,20 @@ const requireTenant = t.middleware(async opts => {
       ctx.tenantChurchId === null ||
       ctx.user.churchId !== ctx.tenantChurchId)
   ) {
+    try {
+      await recordTenantAccessDenied(
+        ctx,
+        opts.path,
+        ctx.tenantMismatch || ctx.user.churchId !== ctx.tenantChurchId
+          ? "jwt_host_mismatch"
+          : "tenant_scope_mismatch"
+      );
+    } catch (error) {
+      console.warn(
+        "[tenant-security-audit] Falha ao persistir bloqueio:",
+        error
+      );
+    }
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "O tenant da sessão não corresponde ao tenant da requisição.",
