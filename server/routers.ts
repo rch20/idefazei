@@ -393,12 +393,23 @@ import {
   // Comunicação
   getCommunicationLogs,
   logCommunication,
+  createSecurityAuditHold,
+  getSecurityAuditHoldById,
+  getSecurityAuditHoldByIdempotencyKey,
+  getSecurityAuditHoldEvents,
+  listSecurityAuditHolds,
+  reviewSecurityAuditHold,
+  releaseSecurityAuditHold,
 } from "./db";
 import { getDb } from "./db";
 import { events } from "../drizzle/schema";
 import { and, eq } from "drizzle-orm";
 import { generateReportHTML, htmlToBase64 } from "./reports";
 import { emitInternalNotification } from "./notifications";
+import {
+  deriveSecurityAuditHoldState,
+  SECURITY_HOLD_EVENT_TYPE,
+} from "./security-audit-holds";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const birthDateInput = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe a data de nascimento no formato AAAA-MM-DD.").refine((value) => {
@@ -523,6 +534,72 @@ async function requireChurchAdministrator(userId: number, churchId: number) {
   }
   return member;
 }
+
+const securityAuditHoldReasonSchema = z.enum([
+  "jwt_host_mismatch",
+  "tenant_scope_mismatch",
+  "tenant_unresolved",
+  "client_tenant_mismatch",
+]);
+const securityAuditHoldStatusSchema = z.enum(["active", "released", "expired"]);
+const securityAuditHoldIdempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9_.:-]+$/);
+const securityAuditHoldCreateInput = z.object({
+  churchId: z.number().int().positive(),
+  holdReason: z.string().trim().min(10).max(1000),
+  startsAt: z.date(),
+  expiresAt: z.date(),
+  reviewDueAt: z.date().optional(),
+  reason: securityAuditHoldReasonSchema.nullable().optional(),
+  procedurePath: z.string().trim().min(1).max(160).nullable().optional(),
+  sessionChurchId: z.number().int().positive().nullable().optional(),
+  targetChurchId: z.number().int().positive().nullable().optional(),
+  sourceFingerprint: z.string().trim().min(1).max(128).nullable().optional(),
+  idempotencyKey: securityAuditHoldIdempotencyKeySchema.nullable().optional(),
+});
+
+function throwSecurityAuditHoldMutationError(error: unknown): never {
+  const message = error instanceof Error ? error.message : "Falha ao atualizar security hold";
+  if (message === "Active security hold not found") {
+    throw new TRPCError({ code: "NOT_FOUND", message: "Security hold ativo não encontrado nesta igreja." });
+  }
+  if (message === "Database not available") {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco de dados indisponível." });
+  }
+  if (message.toLowerCase().includes("duplicate")) {
+    throw new TRPCError({ code: "CONFLICT", message: "A chave de idempotência já está vinculada a outro hold." });
+  }
+  throw new TRPCError({ code: "BAD_REQUEST", message });
+}
+
+async function requireSecurityAuditReader(userId: number, churchId: number) {
+  const member = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, member);
+  if (!roles.some((role) => CHURCH_ADMIN_ROLES.has(role))) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "A leitura da auditoria de segurança é restrita à administração da igreja.",
+    });
+  }
+  return member;
+}
+
+async function requireSecurityAuditManager(userId: number, churchId: number) {
+  const member = await requireSecurityAuditReader(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, member);
+  if (!roles.some((role) => PASTOR_ROLES.has(role))) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Somente Pastores podem abrir, revisar ou liberar security holds.",
+    });
+  }
+  return member;
+}
+
 async function requirePastor(userId: number, churchId: number) {
   const member = await requireChurchMember(userId, churchId);
   const roles = await getEffectiveChurchRoles(userId, churchId, member);
@@ -7367,6 +7444,178 @@ const leaderRouter = router({
     }),
 });
 
+// ─── AUDITORIA DE SEGURANÇA ───────────────────────────────────────────────────
+// Painel administrativo: sempre exige membro administrativo da própria igreja.
+// A expiração automática permanece fora do tRPC e deve ser executada pelo worker.
+const securityAuditRouter = router({
+  listHolds: tenantProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        status: securityAuditHoldStatusSchema.optional(),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      await requireSecurityAuditReader(ctx.user.id, input.churchId);
+      const holds = await listSecurityAuditHolds(input.churchId, input.status);
+      return holds.map(hold => ({
+        hold,
+        state: deriveSecurityAuditHoldState(hold),
+      }));
+    }),
+
+  getHold: tenantProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        holdId: z.number().int().positive(),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      await requireSecurityAuditReader(ctx.user.id, input.churchId);
+      const hold = await getSecurityAuditHoldById(input.churchId, input.holdId);
+      if (!hold) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Security hold não encontrado nesta igreja.",
+        });
+      }
+      const events = await getSecurityAuditHoldEvents(input.churchId, input.holdId);
+      return {
+        hold,
+        state: deriveSecurityAuditHoldState(hold),
+        events,
+      };
+    }),
+
+  getHoldEvents: tenantProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        holdId: z.number().int().positive(),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      await requireSecurityAuditReader(ctx.user.id, input.churchId);
+      const hold = await getSecurityAuditHoldById(input.churchId, input.holdId);
+      if (!hold) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Security hold não encontrado nesta igreja.",
+        });
+      }
+      return getSecurityAuditHoldEvents(input.churchId, input.holdId);
+    }),
+
+  openHold: tenantProcedure
+    .input(securityAuditHoldCreateInput)
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireSecurityAuditManager(ctx.user.id, input.churchId);
+
+      if (input.idempotencyKey) {
+        const existing = await getSecurityAuditHoldByIdempotencyKey(
+          input.churchId,
+          input.idempotencyKey
+        );
+        if (existing) {
+          return {
+            hold: existing,
+            state: deriveSecurityAuditHoldState(existing),
+            idempotentReplay: true,
+          };
+        }
+      }
+
+      try {
+        const holdId = await createSecurityAuditHold({
+          ...input,
+          eventType: SECURITY_HOLD_EVENT_TYPE,
+          createdByChurchUserId: actor.id,
+        });
+        if (!holdId) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Não foi possível criar o security hold.",
+          });
+        }
+        const hold = await getSecurityAuditHoldById(input.churchId, holdId);
+        if (!hold) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "O security hold foi criado, mas não pôde ser lido.",
+          });
+        }
+        return {
+          hold,
+          state: deriveSecurityAuditHoldState(hold),
+          idempotentReplay: false,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throwSecurityAuditHoldMutationError(error);
+      }
+    }),
+
+  reviewHold: tenantProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        holdId: z.number().int().positive(),
+        expiresAt: z.date(),
+        reviewDueAt: z.date(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireSecurityAuditManager(ctx.user.id, input.churchId);
+      try {
+        const hold = await reviewSecurityAuditHold({
+          ...input,
+          reviewedByChurchUserId: actor.id,
+          reviewedAt: new Date(),
+        });
+        if (!hold) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Security hold ativo não encontrado nesta igreja.",
+          });
+        }
+        return { hold, state: deriveSecurityAuditHoldState(hold) };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throwSecurityAuditHoldMutationError(error);
+      }
+    }),
+
+  releaseHold: tenantProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        holdId: z.number().int().positive(),
+        releaseReason: z.string().trim().min(5).max(500),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireSecurityAuditManager(ctx.user.id, input.churchId);
+      try {
+        const hold = await releaseSecurityAuditHold({
+          ...input,
+          releasedByChurchUserId: actor.id,
+          releasedAt: new Date(),
+        });
+        if (!hold) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Security hold ativo não encontrado nesta igreja.",
+          });
+        }
+        return { hold, state: deriveSecurityAuditHoldState(hold) };
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throwSecurityAuditHoldMutationError(error);
+      }
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -7416,6 +7665,7 @@ export const appRouter = router({
   certificates: certificatesRouter,
   treasury: treasuryRouter,
   notifications: notificationsRouter,
+  securityAudit: securityAuditRouter,
   stripe: stripeRouter,
   contact: router({
     send: publicProcedure

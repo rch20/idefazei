@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, count, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   announcements,
@@ -102,8 +102,28 @@ import {
   visitorLeads,
   publicRegistrationLeads,
   onboardingProgress,
+  securityAccessAuditHolds,
+  securityAccessAuditHoldEvents,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import {
+  buildSecurityAuditHoldExpireUpdate,
+  buildSecurityAuditHoldExpiredEvent,
+  buildSecurityAuditHoldOpenedEvent,
+  buildSecurityAuditHoldReleaseUpdate,
+  buildSecurityAuditHoldReleasedEvent,
+  buildSecurityAuditHoldReviewUpdate,
+  buildSecurityAuditHoldReviewedEvent,
+  buildSecurityAuditHoldInsert,
+  decideSecurityAuditRetention,
+  deriveSecurityAuditHoldState,
+  type CreateSecurityAuditHoldInput,
+  type ReleaseSecurityAuditHoldInput,
+  type ReviewSecurityAuditHoldInput,
+  type SecurityAuditHoldStatus,
+} from "./security-audit-holds";
+import { insertSecurityAccessAuditLog } from "./security-audit-persistence";
+import type { SecurityAccessEvent } from "./security-access-monitoring";
 import { getDerivedLogoIconUrls, getOptimizedMediaUrls } from "./media";
 import { currentCivilDateAsUtcNoon, formatCivilDateInput, formatCivilDateValue, parseCivilDateAsUtcNoon } from "./civilDate";
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
@@ -125,6 +145,323 @@ export async function getDb() {
   return _db;
 }
 
+export async function recordSecurityAccessAuditEvent(data: {
+  churchId: number;
+  event: SecurityAccessEvent;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return insertSecurityAccessAuditLog(db, data);
+}
+
+export async function createSecurityAuditHold(
+  data: CreateSecurityAuditHoldInput,
+  now = new Date()
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const values = buildSecurityAuditHoldInsert(data, now);
+  return db.transaction(async tx => {
+    const result = await tx.insert(securityAccessAuditHolds).values(values);
+    const holdId = Number(
+      (result[0] as { insertId?: number } | undefined)?.insertId ?? 0
+    );
+    if (!holdId) throw new Error("Unable to create security hold");
+    await tx.insert(securityAccessAuditHoldEvents).values(
+      buildSecurityAuditHoldOpenedEvent({
+        churchId: values.churchId,
+        holdId,
+        actorChurchUserId: values.createdByChurchUserId,
+        occurredAt: now,
+        reason: values.holdReason,
+        hold: {
+          expiresAt: values.expiresAt,
+          reviewDueAt: values.reviewDueAt,
+        },
+      })
+    );
+    return holdId;
+  });
+}
+
+export async function getSecurityAuditHoldById(
+  churchId: number,
+  holdId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select()
+    .from(securityAccessAuditHolds)
+    .where(
+      and(
+        eq(securityAccessAuditHolds.churchId, churchId),
+        eq(securityAccessAuditHolds.id, holdId)
+      )
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getSecurityAuditHoldByIdempotencyKey(
+  churchId: number,
+  idempotencyKey: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select()
+    .from(securityAccessAuditHolds)
+    .where(
+      and(
+        eq(securityAccessAuditHolds.churchId, churchId),
+        eq(securityAccessAuditHolds.idempotencyKey, idempotencyKey)
+      )
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function listSecurityAuditHolds(
+  churchId: number,
+  status?: SecurityAuditHoldStatus
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const conditions = [eq(securityAccessAuditHolds.churchId, churchId)];
+  if (status) conditions.push(eq(securityAccessAuditHolds.status, status));
+  return db
+    .select()
+    .from(securityAccessAuditHolds)
+    .where(and(...conditions))
+    .orderBy(desc(securityAccessAuditHolds.createdAt), desc(securityAccessAuditHolds.id));
+}
+
+export async function getSecurityAuditHoldEvents(
+  churchId: number,
+  holdId: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db
+    .select()
+    .from(securityAccessAuditHoldEvents)
+    .where(
+      and(
+        eq(securityAccessAuditHoldEvents.churchId, churchId),
+        eq(securityAccessAuditHoldEvents.holdId, holdId)
+      )
+    )
+    .orderBy(asc(securityAccessAuditHoldEvents.occurredAt), asc(securityAccessAuditHoldEvents.id));
+}
+
+export async function listActiveSecurityAuditHolds(
+  churchId: number,
+  at = new Date()
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db
+    .select()
+    .from(securityAccessAuditHolds)
+    .where(
+      and(
+        eq(securityAccessAuditHolds.churchId, churchId),
+        eq(securityAccessAuditHolds.status, "active"),
+        lte(securityAccessAuditHolds.startsAt, at),
+        gt(securityAccessAuditHolds.expiresAt, at)
+      )
+    )
+    .orderBy(asc(securityAccessAuditHolds.expiresAt));
+}
+
+export async function reviewSecurityAuditHold(
+  data: ReviewSecurityAuditHoldInput
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const values = buildSecurityAuditHoldReviewUpdate(data);
+  return db.transaction(async tx => {
+    const beforeRows = await tx
+      .select()
+      .from(securityAccessAuditHolds)
+      .where(
+        and(
+          eq(securityAccessAuditHolds.id, data.holdId),
+          eq(securityAccessAuditHolds.churchId, data.churchId),
+          eq(securityAccessAuditHolds.status, "active")
+        )
+      )
+      .limit(1)
+      .for("update");
+    const before = beforeRows[0];
+    if (!before) throw new Error("Active security hold not found");
+
+    await tx
+      .update(securityAccessAuditHolds)
+      .set(values)
+      .where(
+        and(
+          eq(securityAccessAuditHolds.id, data.holdId),
+          eq(securityAccessAuditHolds.churchId, data.churchId),
+          eq(securityAccessAuditHolds.status, "active")
+        )
+      );
+    const afterRows = await tx
+      .select()
+      .from(securityAccessAuditHolds)
+      .where(
+        and(
+          eq(securityAccessAuditHolds.id, data.holdId),
+          eq(securityAccessAuditHolds.churchId, data.churchId)
+        )
+      )
+      .limit(1);
+    const after = afterRows[0];
+    if (!after) throw new Error("Security hold disappeared during review");
+
+    await tx.insert(securityAccessAuditHoldEvents).values(
+      buildSecurityAuditHoldReviewedEvent({
+        churchId: data.churchId,
+        holdId: data.holdId,
+        actorChurchUserId: data.reviewedByChurchUserId,
+        occurredAt: data.reviewedAt,
+        reason: "Security hold revisado e prazo renovado.",
+        previous: before,
+        next: after,
+      })
+    );
+    return after;
+  });
+}
+
+export async function releaseSecurityAuditHold(
+  data: ReleaseSecurityAuditHoldInput
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const values = buildSecurityAuditHoldReleaseUpdate(data);
+  return db.transaction(async tx => {
+    const beforeRows = await tx
+      .select()
+      .from(securityAccessAuditHolds)
+      .where(
+        and(
+          eq(securityAccessAuditHolds.id, data.holdId),
+          eq(securityAccessAuditHolds.churchId, data.churchId),
+          eq(securityAccessAuditHolds.status, "active")
+        )
+      )
+      .limit(1)
+      .for("update");
+    const before = beforeRows[0];
+    if (!before) throw new Error("Active security hold not found");
+
+    await tx
+      .update(securityAccessAuditHolds)
+      .set(values)
+      .where(
+        and(
+          eq(securityAccessAuditHolds.id, data.holdId),
+          eq(securityAccessAuditHolds.churchId, data.churchId),
+          eq(securityAccessAuditHolds.status, "active")
+        )
+      );
+    const afterRows = await tx
+      .select()
+      .from(securityAccessAuditHolds)
+      .where(
+        and(
+          eq(securityAccessAuditHolds.id, data.holdId),
+          eq(securityAccessAuditHolds.churchId, data.churchId)
+        )
+      )
+      .limit(1);
+    const after = afterRows[0];
+    if (!after) throw new Error("Security hold disappeared during release");
+
+    await tx.insert(securityAccessAuditHoldEvents).values(
+      buildSecurityAuditHoldReleasedEvent({
+        churchId: data.churchId,
+        holdId: data.holdId,
+        actorChurchUserId: data.releasedByChurchUserId,
+        occurredAt: data.releasedAt,
+        reason: data.releaseReason,
+        previous: before,
+      })
+    );
+    return after;
+  });
+}
+
+export async function expireSecurityAuditHolds(
+  churchId: number,
+  at = new Date()
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async tx => {
+    const due = await tx
+      .select()
+      .from(securityAccessAuditHolds)
+      .where(
+        and(
+          eq(securityAccessAuditHolds.churchId, churchId),
+          eq(securityAccessAuditHolds.status, "active"),
+          lte(securityAccessAuditHolds.expiresAt, at)
+        )
+      )
+      .for("update");
+    let expiredCount = 0;
+    for (const hold of due) {
+      const result = await tx
+        .update(securityAccessAuditHolds)
+        .set(buildSecurityAuditHoldExpireUpdate(at, hold))
+        .where(
+          and(
+            eq(securityAccessAuditHolds.id, hold.id),
+            eq(securityAccessAuditHolds.churchId, churchId),
+            eq(securityAccessAuditHolds.status, "active")
+          )
+        );
+      const affectedRows = Number(
+        (result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0
+      );
+      if (!affectedRows) continue;
+      await tx.insert(securityAccessAuditHoldEvents).values(
+        buildSecurityAuditHoldExpiredEvent({
+          churchId,
+          holdId: hold.id,
+          actorChurchUserId: null,
+          occurredAt: at,
+          reason: "Security hold expirado automaticamente pelo job interno.",
+          previous: hold,
+        })
+      );
+      expiredCount += 1;
+    }
+    return expiredCount;
+  });
+}
+
+export async function decideSecurityAuditLogRetention(
+  churchId: number,
+  log: Parameters<typeof decideSecurityAuditRetention>[0],
+  at = new Date()
+) {
+  const holds = await listActiveSecurityAuditHolds(churchId, at);
+  return decideSecurityAuditRetention(log, holds, at);
+}
 function activeConsolidationReferralCondition() {
   return inArray(consolidationReferrals.status, [...ACTIVE_CONSOLIDATION_REFERRAL_STATUSES]);
 }

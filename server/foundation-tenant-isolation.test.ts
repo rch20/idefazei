@@ -8,6 +8,7 @@ const dbMocks = vi.hoisted(() => ({
   getFoundationModulesByCourse: vi.fn(),
   getFoundationEnrollmentForPerson: vi.fn(),
   getFoundationLearningProgress: vi.fn(),
+  recordSecurityAccessAuditEvent: vi.fn(),
 }));
 
 vi.mock("./db", async () => {
@@ -53,6 +54,10 @@ function createChurchContext(options?: {
     } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
     tenantChurchId: options?.tenantChurchId ?? userChurchId,
+    requestedTenantChurchId:
+      options?.tenantChurchId === null
+        ? null
+        : (options?.tenantChurchId ?? userChurchId),
     tenantSlug: options?.tenantSlug ?? `igreja-${userChurchId}`,
   };
 }
@@ -84,6 +89,7 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
     dbMocks.getFoundationModulesByCourse.mockResolvedValue([]);
     dbMocks.getFoundationEnrollmentForPerson.mockResolvedValue(null);
     dbMocks.getFoundationLearningProgress.mockResolvedValue([]);
+    dbMocks.recordSecurityAccessAuditEvent.mockResolvedValue(1);
   });
 
   it("permite consultar cursos somente no tenant autenticado", async () => {
@@ -98,6 +104,25 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
     ]);
 
     expect(dbMocks.getCoursesByChurch).toHaveBeenCalledWith(CHURCH_A);
+  });
+
+  it("não permite que uma sessão de superadmin use o tenantProcedure", async () => {
+    const context = createChurchContext();
+    context.user = {
+      ...context.user!,
+      id: -9,
+      openId: "admin:9",
+      role: "admin",
+      churchId: undefined,
+      authSource: "admin",
+    };
+    const caller = appRouter.createCaller(context);
+
+    await expect(
+      caller.escolaFundamentos.listCourses({ churchId: CHURCH_A })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(dbMocks.recordSecurityAccessAuditEvent).not.toHaveBeenCalled();
+    expect(dbMocks.getCoursesByChurch).not.toHaveBeenCalled();
   });
 
   it("bloqueia usuário da Igreja A ao solicitar cursos da Igreja B", async () => {
@@ -186,6 +211,17 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
     });
 
     expect(dbMocks.getCoursesByChurch).not.toHaveBeenCalled();
+    expect(dbMocks.recordSecurityAccessAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        churchId: CHURCH_B,
+        event: expect.objectContaining({
+          eventType: "security.tenant_access_denied",
+          reason: "jwt_host_mismatch",
+          sessionChurchId: CHURCH_A,
+          targetChurchId: CHURCH_B,
+        }),
+      })
+    );
   });
 
   it("não confia em um tenant enviado pelo cliente quando ele diverge do contexto", async () => {
@@ -208,5 +244,54 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
     });
 
     expect(dbMocks.getFoundationStudiesByCourse).not.toHaveBeenCalled();
+  });
+
+  it("mantém a mesma origem de correlação ao alternar entre tenants", async () => {
+    const firstCaller = appRouter.createCaller(
+      createChurchContext({
+        userChurchId: CHURCH_A,
+        tenantChurchId: CHURCH_B,
+        tenantSlug: "igreja-b",
+      })
+    );
+    const secondCaller = appRouter.createCaller(
+      createChurchContext({
+        userChurchId: CHURCH_A,
+        tenantChurchId: 300,
+        tenantSlug: "igreja-c",
+      })
+    );
+
+    await expect(
+      firstCaller.escolaFundamentos.listCourses({ churchId: CHURCH_A })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(
+      secondCaller.escolaFundamentos.listCourses({ churchId: CHURCH_A })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+
+    const events = dbMocks.recordSecurityAccessAuditEvent.mock.calls.map(
+      ([data]) => data.event
+    );
+    expect(events).toHaveLength(2);
+    expect(events[0]?.sourceFingerprint).toBe(events[1]?.sourceFingerprint);
+    expect(events.map(event => event.targetChurchId)).toEqual([CHURCH_B, 300]);
+  });
+
+  it("continua negando o acesso quando a auditoria falha", async () => {
+    dbMocks.recordSecurityAccessAuditEvent.mockRejectedValueOnce(
+      new Error("database unavailable")
+    );
+    const caller = appRouter.createCaller(
+      createChurchContext({
+        userChurchId: CHURCH_A,
+        tenantChurchId: CHURCH_B,
+        tenantSlug: "igreja-b",
+      })
+    );
+
+    await expect(
+      caller.escolaFundamentos.listCourses({ churchId: CHURCH_A })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(dbMocks.getCoursesByChurch).not.toHaveBeenCalled();
   });
 });

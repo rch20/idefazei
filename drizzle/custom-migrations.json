@@ -1,0 +1,65 @@
+{
+  "formatVersion": 1,
+  "purpose": "Ledger explícito das migrations SQL aditivas mantidas fora do journal gerado pelo Drizzle.",
+  "drizzleJournalBoundary": {
+    "idx": 67,
+    "tag": "0067_closed_blue_shield"
+  },
+  "policy": "As migrations desta lista são aplicadas e validadas pelo fluxo operacional controlado do Ide Fazei. Não devem ser executadas por db:push nem inseridas no journal automaticamente sem reconciliar todos os snapshots intermediários.",
+  "entries": [
+    {
+      "id": "0068",
+      "file": "drizzle/0068_public_registration_qr.sql",
+      "kind": "custom-additive",
+      "sha256": "e672ddb1121e2da62110555630b0384c319f1c8c601d61dc8135b0a6b3f8a68f"
+    },
+    {
+      "id": "0069",
+      "file": "drizzle/0069_parallel_journey_fronts.sql",
+      "kind": "custom-additive",
+      "sha256": "29a5f241cb38e92675866b2f8e12586350bdea203f86dc283ec910d843bfe116"
+    },
+    {
+      "id": "0070",
+      "file": "drizzle/0070_treasury_report_signatures.sql",
+      "kind": "custom-additive",
+      "sha256": "b7cf6c43d8ce10743bdb5c45f219f2673304c6a7891ceb86d8ad9ea31fd028a3"
+    },
+    {
+      "id": "0071",
+      "file": "drizzle/0071_financial_reconciliation_audit.sql",
+      "kind": "custom-additive",
+      "sha256": "af5e1c3bdba58d868bc2797a0ae07bad583d58858c64eb0176ac06da2dfe53ab"
+    },
+    {
+      "id": "0072",
+      "file": "drizzle/0072_treasury_authority_audit.sql",
+      "kind": "custom-additive",
+      "sha256": "596c8ac98addbe869c5c5ddec912ed258410cbe4097bbe8679c0a3c15dc9d9a6"
+    },
+    {
+      "id": "0073",
+      "file": "drizzle/0073_consolidation_idempotency.sql",
+      "kind": "custom-additive",
+      "sha256": "fdbd106a8618e85fcfa969a517112883c8fe331921d566db87cafe0796544b06"
+    },
+    {
+      "id": "0074",
+      "file": "drizzle/0074_security_access_audit.sql",
+      "kind": "custom-additive",
+      "sha256": "9eb3a1e9de1e79d28c40b642c755f92e8eadebf75951d8bf2c3d689f3a3717c4"
+    },
+    {
+      "id": "0075",
+      "file": "drizzle/0075_security_access_audit_holds.sql",
+      "kind": "custom-additive",
+      "sha256": "d68a2f851d49bf4f36acaa6de3830eef09486eab2e70544e9fea071c65f1f6f9"
+    },
+    {
+      "id": "0076",
+      "file": "drizzle/0076_security_access_audit_hold_events.sql",
+      "kind": "custom-additive",
+      "sha256": "596a803a2621ef721b5b5ffa58b68e3fdf75b38dd93183ba66267c95f6bfc692"
+    }
+  ]
+}

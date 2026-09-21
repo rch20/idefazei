@@ -99,6 +99,7 @@ describe("contexto de autenticação da igreja", () => {
 
     expect(context.user?.churchId).toBe(23);
     expect(context.tenantChurchId).toBe(23);
+    expect(context.requestedTenantChurchId).toBe(99);
     expect(context.tenantMismatch).toBe(true);
   });
 
