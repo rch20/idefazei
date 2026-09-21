@@ -60,6 +60,18 @@
       "file": "drizzle/0076_security_access_audit_hold_events.sql",
       "kind": "custom-additive",
       "sha256": "596a803a2621ef721b5b5ffa58b68e3fdf75b38dd93183ba66267c95f6bfc692"
+    },
+    {
+      "id": "0077",
+      "file": "drizzle/0077_foundation_weekly_questions.sql",
+      "kind": "custom-additive",
+      "sha256": "1311be1a448e9b9704849631d85b0e6a7467b4b892b24d1c34b031fc8bfd2dad"
+    },
+    {
+      "id": "0078",
+      "file": "drizzle/0078_foundation_weekly_class.sql",
+      "kind": "custom-additive",
+      "sha256": "af004f4343e4b1f14a703882da64264a894782c24ca7ac37c58d6d946fc58bcd"
     }
   ]
 }

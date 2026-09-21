@@ -120,7 +120,7 @@ const navItems: NavItem[] = [
   { icon: CalendarDays, label: "Eventos", path: "/app/eventos", group: "ministerio", accessKey: "isExecutive" },
   { icon: Music, label: "Ministérios", path: "/app/ministerios", group: "ministerio", accessKey: "canAccessMinistry" },
   { icon: Star, label: "Escalas", path: "/app/escalas", group: "ministerio", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"], accessKey: "canManageCells" },
-  { icon: BookOpen, label: "Escola de Fundamentos", path: "/app/escola-fundamentos", group: "discipulado", accessKey: "isExecutive" },
+  { icon: BookOpen, label: "Escola de Fundamentos", path: "/app/escola-fundamentos", group: "discipulado" },
   { icon: Droplets, label: "Batismo nas Águas", path: "/app/batismo", group: "discipulado", accessKey: "isExecutive" },
   { icon: Heart, label: "Encontro com Deus", path: "/app/encontro-com-deus", group: "discipulado", accessKey: "canManageEncounter", requiresEncounterAccess: true },
   { icon: GraduationCap, label: "Escola de Líderes", path: "/app/escola-lideres", group: "lideranca", accessKey: "isExecutive" },

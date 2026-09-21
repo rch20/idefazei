@@ -37,11 +37,13 @@ describe("Formação de Fundamentos", () => {
     expect(adaptiveSource).toContain("safe-area-inset-bottom");
   });
 
-  it("oferece aula digital com retomada, reflexão e conclusão sem prova formal", () => {
+  it("oferece preparação digital com retomada, reflexão e conclusão sem prova formal", () => {
     expect(source).toContain("learningPath");
-    expect(source).toContain("Continuar aula");
-    expect(source).toContain("Reflexão da aula");
-    expect(source).toContain("Não é uma prova.");
+    expect(source).toContain("studentPath");
+    expect(source).toContain("Estudo da semana");
+    expect(source).toContain("Continuar estudo");
+    expect(source).toContain("Reflexão da preparação");
+    expect(source).toContain("Esta preparação não é uma prova.");
     expect(source).toContain("completeLesson");
   });
 
@@ -52,6 +54,19 @@ describe("Formação de Fundamentos", () => {
     expect(routerSource).toContain("releaseNextStudy");
     expect(routerSource).toContain("Esta aula ainda aguarda a liberação do professor.");
     expect(routerSource).toContain("Registre a revisão como Compreendeu antes de liberar o próximo tema.");
+  });
+
+  it("mantém perguntas e tentativas separadas do progresso geral", () => {
+    expect(schemaSource).toContain("foundationStudyBlocks");
+    expect(schemaSource).toContain("foundationQuestions");
+    expect(schemaSource).toContain("foundationQuestionAttempts");
+    expect(routerSource).toContain("studyQuestions");
+    expect(routerSource).toContain("answerQuestion");
+    expect(routerSource).toContain("manageStudyQuestions");
+    expect(routerSource).toContain("createQuestionBlock");
+    expect(routerSource).toContain("createStudyQuestion");
+    expect(routerSource).toContain("Responda corretamente às perguntas do estudo antes de concluí-lo.");
+    expect(source).toContain("Tentar novamente");
   });
 });
 

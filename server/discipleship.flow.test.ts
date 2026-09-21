@@ -2373,6 +2373,7 @@ describe("Fluxo completo de discipulado", () => {
       await expect(caller.escolaFundamentos.createStudy({
         churchId: CHURCH_ID,
         courseId: 55,
+        weekStart: "2026-09-20",
         title: "A graça e a salvação",
         summary: "Compreender a salvação pela graça.",
         content: "Efésios 2:8-9",
@@ -2398,7 +2399,7 @@ describe("Fluxo completo de discipulado", () => {
       (getFoundationModuleById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 72, churchId: CHURCH_ID, courseId: 999, title: "Outra turma" });
       const caller = appRouter.createCaller(createMemberContext());
 
-      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, moduleId: 72, title: "Estudo inválido" })).rejects.toThrow("Módulo não encontrado nesta turma");
+      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, moduleId: 72, weekStart: "2026-09-20", title: "Estudo inválido" })).rejects.toThrow("Módulo não encontrado nesta turma");
       expect(createFoundationStudy).not.toHaveBeenCalled();
     });
 
@@ -2408,7 +2409,7 @@ describe("Fluxo completo de discipulado", () => {
       (isFoundationStudyAdministrator as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
       const caller = appRouter.createCaller(createMemberContext(-88));
 
-      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, title: "Vida de oração" })).resolves.toEqual({ success: true, studyId: 90 });
+      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, weekStart: "2026-09-20", title: "Vida de oração" })).resolves.toEqual({ success: true, studyId: 90 });
       expect(createFoundationStudy).toHaveBeenCalledWith(expect.objectContaining({ createdByChurchUserId: 88 }));
     });
 
@@ -2417,7 +2418,7 @@ describe("Fluxo completo de discipulado", () => {
       (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 3, userId: 10, churchId: CHURCH_ID, role: "membro", active: true });
       const caller = appRouter.createCaller(createMemberContext());
 
-      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, title: "Estudo sem autorização" })).rejects.toThrow("gestão de estudos é restrita");
+      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, weekStart: "2026-09-20", title: "Estudo sem autorização" })).rejects.toThrow("gestão de estudos é restrita");
       expect(createFoundationStudy).not.toHaveBeenCalled();
     });
 

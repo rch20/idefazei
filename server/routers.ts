@@ -298,13 +298,30 @@ import {
   assignFoundationStudyAdministrator,
   removeFoundationStudyAdministrator,
   getFoundationEnrollmentForPerson,
+  getFoundationActiveEnrollmentForPerson,
   getFoundationLearningProgress,
+  getFoundationStudyQuestions,
+  getFoundationStudyBlocks,
+  getFoundationStudyBlockById,
+  createFoundationStudyBlock,
+  createFoundationQuestion,
+  getFoundationQuestionForAttempt,
+  countFoundationQuestionAttempts,
+  recordFoundationQuestionAttempt,
+  hasCompletedFoundationQuestions,
   getFoundationLessonProgress,
   getFoundationCourseProgress,
   touchFoundationLessonProgress,
   completeFoundationLesson,
   reviewFoundationLesson,
   releaseFoundationNextStudy,
+  getFoundationClassForStudy,
+  getFoundationClassById,
+  upsertFoundationClass,
+  getFoundationClassRoster,
+  recordFoundationClassAttendance,
+  getFoundationStudentAttendance,
+  getFoundationStudyMetrics,
   // Estudos semanais de Células
   getCellStudiesByChurch,
   getCellStudyById,
@@ -680,12 +697,48 @@ async function getFoundationStudentPath(userId: number, churchId: number, course
   return { access, enrollment, items };
 }
 
+async function getFoundationCurrentStudentPath(userId: number, churchId: number) {
+  const access = await getFoundationStudyAccess(userId, churchId);
+  if (!access.member.personId) return { access, course: null, enrollment: null, items: [] as any[] };
+  const current = await getFoundationActiveEnrollmentForPerson(access.member.personId, churchId);
+  if (!current) return { access, course: null, enrollment: null, items: [] as any[] };
+  const rows = await getFoundationLearningProgress(churchId, current.enrollment.id, current.course.id);
+  const items = rows.map((row, index) => ({
+    study: row.study,
+    progress: row.progress,
+    available: index === 0 || Boolean(rows[index - 1]?.progress?.releasedAt),
+  }));
+  return { access, course: current.course, enrollment: current.enrollment, items };
+}
+
+type FoundationQuestionOption = { id: string; label: string };
+
+function publicFoundationQuestion(question: { id: number; blockId: number; prompt: string; options: unknown; position: number }) {
+  const options = Array.isArray(question.options)
+    ? question.options.filter((option): option is FoundationQuestionOption => Boolean(option) && typeof option === "object" && typeof (option as FoundationQuestionOption).id === "string" && typeof (option as FoundationQuestionOption).label === "string")
+    : [];
+  return { id: question.id, blockId: question.blockId, prompt: question.prompt, options, position: question.position };
+}
+
 async function requireFoundationStudentLesson(userId: number, churchId: number, courseId: number, studyId: number) {
   const path = await getFoundationStudentPath(userId, churchId, courseId);
   const item = path.items.find((candidate) => candidate.study.id === studyId);
   if (!path.enrollment || !item) throw new TRPCError({ code: "NOT_FOUND", message: "Aula não encontrada na matrícula desta Pessoa." });
   if (!item.available) throw new TRPCError({ code: "FORBIDDEN", message: "Esta aula ainda aguarda a liberação do professor." });
   return { ...path, item };
+}
+
+function parseFoundationCivilDate(value: string, label: string) {
+  const parsed = parseCivilDateAsUtcNoon(value);
+  if (!parsed) throw new TRPCError({ code: "BAD_REQUEST", message: `${label} inválida.` });
+  return parsed;
+}
+
+function assertFoundationSunday(value: string) {
+  const parsed = parseFoundationCivilDate(value, "A data da aula presencial");
+  if (parsed.getUTCDay() !== 0) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "A aula presencial deve ser registrada em um domingo." });
+  }
 }
 
 async function getCellStudyAccess(userId: number, churchId: number) {
@@ -5428,6 +5481,82 @@ const escolaFundamentosRouter = router({
         canManageStudies: path.access.canManageStudies,
       };
     }),
+  studentPath: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const path = await getFoundationCurrentStudentPath(ctx.user.id, input.churchId);
+      return {
+        course: path.course,
+        enrollment: path.enrollment,
+        items: path.items,
+        canManageStudies: path.access.canManageStudies,
+      };
+    }),
+  studyQuestions: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const rows = await getFoundationStudyQuestions(input.churchId, input.studyId);
+      return rows.map(({ block, question }) => ({
+        block: { id: block.id, title: block.title, content: block.content, position: block.position },
+        question: publicFoundationQuestion(question),
+      }));
+    }),
+  studyClass: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const foundationClass = await getFoundationClassForStudy(input.churchId, input.studyId);
+      if (!foundationClass) return null;
+      const attendance = await getFoundationStudentAttendance(input.churchId, foundationClass.id, enrollment.id);
+      return { class: foundationClass, attendance };
+    }),
+  answerQuestion: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), questionId: z.number().int().positive(), selectedOptionId: z.string().trim().min(1).max(80) }))
+    .mutation(async ({ input, ctx }) => {
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const row = await getFoundationQuestionForAttempt(input.churchId, input.studyId, input.questionId);
+      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Pergunta não encontrada neste estudo." });
+      const options = Array.isArray(row.question.options) ? row.question.options : [];
+      const selected = options.find((option) => Boolean(option) && typeof option === "object" && (option as FoundationQuestionOption).id === input.selectedOptionId);
+      if (!selected) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione uma alternativa válida." });
+      const attemptNumber = (await countFoundationQuestionAttempts(input.churchId, enrollment.id, input.questionId)) + 1;
+      const isCorrect = row.question.correctOptionId === input.selectedOptionId;
+      await recordFoundationQuestionAttempt({ ...input, enrollmentId: enrollment.id, isCorrect, attemptNumber });
+      return { isCorrect, explanation: row.question.explanation, attemptNumber };
+    }),
+  listQuestionBlocks: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      if (!(await getFoundationStudyById(input.studyId, input.churchId))) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      return getFoundationStudyBlocks(input.churchId, input.studyId);
+    }),
+  manageStudyQuestions: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      if (!(await getFoundationStudyById(input.studyId, input.churchId))) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      return getFoundationStudyQuestions(input.churchId, input.studyId);
+    }),
+  createQuestionBlock: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive(), title: z.string().trim().min(3).max(160), content: z.string().trim().min(1).max(12000) }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      if (!(await getFoundationStudyById(input.studyId, input.churchId))) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      const id = await createFoundationStudyBlock({ ...input, createdByChurchUserId: access.member.id });
+      return { id };
+    }),
+  createStudyQuestion: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), studyId: z.number().int().positive(), blockId: z.number().int().positive(), prompt: z.string().trim().min(3).max(4000), options: z.array(z.object({ id: z.string().trim().min(1).max(80), label: z.string().trim().min(1).max(500) })).min(2).max(6), correctOptionId: z.string().trim().min(1).max(80), explanation: z.string().trim().min(1).max(4000) }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      if (!(await getFoundationStudyById(input.studyId, input.churchId))) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      if (!(await getFoundationStudyBlockById(input.churchId, input.studyId, input.blockId))) throw new TRPCError({ code: "NOT_FOUND", message: "Bloco não encontrado neste estudo." });
+      if (!input.options.some((option) => option.id === input.correctOptionId)) throw new TRPCError({ code: "BAD_REQUEST", message: "A resposta correta precisa ser uma das alternativas." });
+      const id = await createFoundationQuestion({ ...input, createdByChurchUserId: access.member.id });
+      return { id };
+    }),
   startLesson: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), lastBlockPosition: z.number().int().min(0).max(999).default(0) }))
     .mutation(async ({ input, ctx }) => {
@@ -5439,6 +5568,7 @@ const escolaFundamentosRouter = router({
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(), lastBlockPosition: z.number().int().min(0).max(999).default(0), reflection: z.string().trim().max(4000).nullable().optional() }))
     .mutation(async ({ input, ctx }) => {
       const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      if (!(await hasCompletedFoundationQuestions(input.churchId, enrollment.id, input.studyId))) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Responda corretamente às perguntas do estudo antes de concluí-lo." });
       await completeFoundationLesson({ churchId: input.churchId, enrollmentId: enrollment.id, studyId: input.studyId, lastBlockPosition: input.lastBlockPosition, reflection: input.reflection });
       if (enrollment.status === "matriculado") await updateCourseEnrollment(enrollment.id, { status: "em_andamento" });
       return { success: true };
@@ -5450,6 +5580,47 @@ const escolaFundamentosRouter = router({
       const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
       return getFoundationCourseProgress(input.churchId, input.courseId);
+    }),
+  classManagement: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const study = await getFoundationStudyById(input.studyId, input.churchId);
+      if (!study || study.courseId !== input.courseId) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta turma." });
+      const foundationClass = await getFoundationClassForStudy(input.churchId, input.studyId);
+      const [roster, metrics] = await Promise.all([
+        foundationClass ? getFoundationClassRoster(input.churchId, foundationClass.id) : Promise.resolve([]),
+        getFoundationStudyMetrics(input.churchId, input.courseId, input.studyId),
+      ]);
+      return { study, class: foundationClass, roster, metrics };
+    }),
+  saveClass: tenantProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive(),
+      classDate: z.string().trim().min(10).max(10), status: z.enum(["planejada", "realizada", "cancelada"]), notes: z.string().trim().max(2000).nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const study = await getFoundationStudyById(input.studyId, input.churchId);
+      if (!study || study.courseId !== input.courseId) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta turma." });
+      assertFoundationSunday(input.classDate);
+      if (study.weekStart && input.classDate < study.weekStart) throw new TRPCError({ code: "BAD_REQUEST", message: "A aula presencial não pode ocorrer antes do início da semana." });
+      const foundationClass = await upsertFoundationClass({ ...input, churchUserId: access.member.id });
+      if (!foundationClass) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível salvar a aula presencial." });
+      return { success: true, class: foundationClass };
+    }),
+  recordClassAttendance: tenantProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(), classId: z.number().int().positive(), enrollmentId: z.number().int().positive(),
+      status: z.enum(["presente", "ausente", "justificado"]), notes: z.string().trim().max(1000).nullable().optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const foundationClass = await getFoundationClassById(input.churchId, input.classId);
+      const enrollment = await getCourseEnrollmentById(input.enrollmentId, input.churchId);
+      if (!foundationClass || !enrollment || enrollment.courseId !== foundationClass.courseId) throw new TRPCError({ code: "NOT_FOUND", message: "Aula ou matrícula não pertence a esta igreja." });
+      await recordFoundationClassAttendance({ ...input, recordedByChurchUserId: access.member.id });
+      return { success: true };
     }),
   reviewLesson: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), enrollmentId: z.number().int().positive(), studyId: z.number().int().positive(), reviewStatus: z.enum(["compreendeu", "precisa_reforco", "nao_participou"]), reviewNotes: z.string().trim().max(2000).nullable().optional() }))
@@ -5620,11 +5791,14 @@ const escolaFundamentosRouter = router({
       churchId: z.number().int().positive(), courseId: z.number().int().positive(),
       moduleId: z.number().int().positive().nullable().optional(),
       title: z.string().trim().min(3, "Informe um título com ao menos 3 caracteres.").max(160),
+      weekStart: z.string().trim().nullable().optional(),
       summary: z.string().trim().max(500).optional(), content: z.string().trim().max(12000).optional(),
       position: z.number().int().min(0).max(999).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      if (!input.weekStart) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o início da semana para este estudo." });
+      if (input.weekStart) parseFoundationCivilDate(input.weekStart, "A semana");
       const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
       if (input.moduleId) {
@@ -5639,11 +5813,13 @@ const escolaFundamentosRouter = router({
     .input(z.object({
       id: z.number().int().positive(), churchId: z.number().int().positive(),
       moduleId: z.number().int().positive().nullable().optional(),
+      weekStart: z.string().trim().nullable().optional(),
       title: z.string().trim().min(3).max(160).optional(), summary: z.string().trim().max(500).nullable().optional(),
       content: z.string().trim().max(12000).nullable().optional(), position: z.number().int().min(0).max(999).optional(), active: z.boolean().optional(),
     }))
     .mutation(async ({ input, ctx }) => {
       await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      if (input.weekStart) parseFoundationCivilDate(input.weekStart, "A semana");
       if (!(await getFoundationStudyById(input.id, input.churchId))) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
       }
