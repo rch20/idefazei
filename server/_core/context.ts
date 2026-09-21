@@ -1,7 +1,11 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
 import { sdk } from "./sdk";
-import { getActiveChurchUserById, getActiveSuperAdminById, getChurchBySlug } from "../db";
+import {
+  getActiveChurchUserById,
+  getActiveSuperAdminById,
+  getChurchBySlug,
+} from "../db";
 import { verifyToken } from "../auth";
 
 type AuthenticatedUser = Omit<User, "role"> & {
@@ -33,6 +37,7 @@ export type TrpcContext = {
   user: AuthenticatedUser | null;
   tenantChurchId: number | null;
   tenantSlug: string | null;
+  tenantMismatch?: boolean;
 };
 
 export async function createContext(
@@ -41,9 +46,12 @@ export async function createContext(
   let user: AuthenticatedUser | null = null;
   let tenantChurchId: number | null = null;
   let tenantSlug: string | null = null;
+  let tenantMismatch = false;
 
   const authorization = opts.req.headers.authorization;
-  const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+  const token = authorization?.startsWith("Bearer ")
+    ? authorization.slice(7)
+    : null;
 
   if (token) {
     const payload = await verifyToken(token);
@@ -109,7 +117,15 @@ export async function createContext(
     if (slug) {
       const church = await getChurchBySlug(slug);
       if (church) {
-        if (!user || user.authSource === "manus" || user.churchId === church.id) {
+        const churchSessionMismatch =
+          user?.authSource === "church" && user.churchId !== church.id;
+        if (churchSessionMismatch) {
+          tenantMismatch = true;
+        } else if (
+          !user ||
+          user.authSource === "manus" ||
+          user.churchId === church.id
+        ) {
           tenantChurchId = church.id;
         }
         tenantSlug = slug;
@@ -125,5 +141,6 @@ export async function createContext(
     user,
     tenantChurchId,
     tenantSlug,
+    tenantMismatch,
   };
 }
