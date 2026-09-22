@@ -93,10 +93,14 @@ describe("experiência mobile-first da Escola de Fundamentos", () => {
 
   it("oferece um resumo semanal antes do acompanhamento detalhado", () => {
     expect(db).toContain("getFoundationWeeklyOverview");
+    expect(db).toContain("selectFoundationWeeklyStudy");
+    expect(db).toContain("startedPercent");
     expect(router).toContain("weeklyOverview: tenantProcedure");
     expect(page).toContain("function WeeklyOverview");
     expect(page).toContain("Semana atual");
     expect(page).toContain("Para reforçar no domingo");
+    expect(page).toContain("Acompanhamento detalhado");
+    expect(page).toContain("Trilha e conteúdo");
   });
 });
 
