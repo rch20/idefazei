@@ -73,6 +73,8 @@ describe("experiência mobile-first da Escola de Fundamentos", () => {
     expect(router).toContain("isFoundationStudyCollectivelyAvailable");
     expect(router).toContain('availabilityMode: "coletiva"');
     expect(router).toContain("study.weekStart <= today");
+    expect(router).toContain("if (study.weekStart) throw new TRPCError");
+    expect(router).toContain("não há liberação individual");
     expect(page).toContain("A semana é coletiva");
     expect(page).not.toContain("releaseNextStudy.useMutation");
     expect(page).not.toContain("Liberar próximo tema");

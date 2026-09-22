@@ -5828,7 +5828,9 @@ const escolaFundamentosRouter = router({
         getFoundationStudyById(input.studyId, input.churchId),
         getFoundationLessonProgress(input.churchId, input.enrollmentId, input.studyId),
       ]);
-      if (!enrollment || !study || enrollment.courseId !== study.courseId || !progress) throw new TRPCError({ code: "NOT_FOUND", message: "Acompanhamento da aula não encontrado nesta igreja." });
+      if (!enrollment || !study || enrollment.courseId !== study.courseId) throw new TRPCError({ code: "NOT_FOUND", message: "Acompanhamento da aula não encontrado nesta igreja." });
+      if (study.weekStart) throw new TRPCError({ code: "BAD_REQUEST", message: "Estudos semanais são liberados coletivamente pela data da semana; não há liberação individual." });
+      if (!progress) throw new TRPCError({ code: "NOT_FOUND", message: "Acompanhamento da aula não encontrado nesta igreja." });
       if (progress.reviewStatus !== "compreendeu") throw new TRPCError({ code: "BAD_REQUEST", message: "Registre a revisão como Compreendeu antes de liberar o próximo tema." });
       await releaseFoundationNextStudy({ churchId: input.churchId, enrollmentId: input.enrollmentId, studyId: input.studyId, releasedByChurchUserId: access.member.id });
       return { success: true };
