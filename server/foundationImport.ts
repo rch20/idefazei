@@ -1,6 +1,4 @@
-import ExcelJS from "exceljs";
 import type { CellValue, Worksheet } from "exceljs";
-import JSZip from "jszip";
 import { parseCivilDateAsUtcNoon } from "./civilDate";
 
 export type FoundationImportProblem = {
@@ -98,6 +96,35 @@ const MAX_ROWS_PER_SHEET = 300;
 const MAX_COLUMNS_PER_SHEET = 32;
 const MAX_ZIP_ENTRIES = 96;
 const MAX_UNCOMPRESSED_ZIP_BYTES = 32 * 1024 * 1024;
+
+type FoundationImportRuntime = typeof import("./foundationImportRuntime");
+
+let runtimePromise: Promise<FoundationImportRuntime> | undefined;
+const FOUNDATION_IMPORT_RUNTIME_SPECIFIER = "./foundation-import-runtime.mjs";
+const EXCELJS_PACKAGE_SPECIFIER = "exceljs";
+const JSZIP_PACKAGE_SPECIFIER = "jszip";
+
+function loadFoundationImportRuntime() {
+  runtimePromise ??= (async () => {
+    try {
+      return await import(FOUNDATION_IMPORT_RUNTIME_SPECIFIER) as FoundationImportRuntime;
+    } catch (vendorError) {
+      try {
+        const [excelModule, zipModule] = await Promise.all([
+          import(EXCELJS_PACKAGE_SPECIFIER),
+          import(JSZIP_PACKAGE_SPECIFIER),
+        ]);
+        return {
+          ExcelJS: excelModule.default ?? excelModule,
+          JSZip: zipModule.default ?? zipModule,
+        } as FoundationImportRuntime;
+      } catch {
+        throw vendorError;
+      }
+    }
+  })();
+  return runtimePromise;
+}
 
 const HEADERS = {
   ESTUDO: [
@@ -344,7 +371,7 @@ export function hasForbiddenVbaEntry(buffer: Buffer) {
   return inspectXlsxContainer(buffer).containsVba;
 }
 
-async function removeUnsupportedCommentMetadata(buffer: Buffer) {
+async function removeUnsupportedCommentMetadata(buffer: Buffer, JSZip: FoundationImportRuntime["JSZip"]) {
   const zip = await JSZip.loadAsync(buffer);
   for (const filename of Object.keys(zip.files)) {
     if (
@@ -383,9 +410,10 @@ export async function parseFoundationWorkbook(buffer: Buffer, context: Foundatio
     throw new FoundationImportError("O arquivo Excel excede os limites de segurança para descompactação.", "BAD_REQUEST");
   }
 
+  const { ExcelJS, JSZip } = await loadFoundationImportRuntime();
   const workbook = new ExcelJS.Workbook();
   try {
-    const sanitizedBuffer = await removeUnsupportedCommentMetadata(buffer);
+    const sanitizedBuffer = await removeUnsupportedCommentMetadata(buffer, JSZip);
     const excelBuffer = sanitizedBuffer as unknown as Parameters<typeof workbook.xlsx.load>[0];
     await workbook.xlsx.load(excelBuffer);
   } catch {
