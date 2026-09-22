@@ -300,6 +300,7 @@ import {
   getFoundationEnrollmentForPerson,
   getFoundationActiveEnrollmentForPerson,
   getFoundationLearningProgress,
+  getFoundationStudentHistory,
   getFoundationStudyQuestions,
   getFoundationStudyBlocks,
   getFoundationStudyBlockById,
@@ -313,6 +314,7 @@ import {
   hasCompletedFoundationQuestions,
   getFoundationLessonProgress,
   getFoundationCourseProgress,
+  getFoundationWeeklyOverview,
   touchFoundationLessonProgress,
   touchFoundationBlockProgress,
   completeFoundationBlockProgress,
@@ -688,16 +690,23 @@ async function requireFoundationStudyPastor(userId: number, churchId: number) {
   return access;
 }
 
+function isFoundationStudyCollectivelyAvailable(study: { weekStart?: string | null }, today: string) {
+  return Boolean(study.weekStart && study.weekStart <= today);
+}
+
 async function getFoundationStudentPath(userId: number, churchId: number, courseId: number) {
   const access = await getFoundationStudyAccess(userId, churchId);
   if (!access.member.personId) return { access, enrollment: null, items: [] as any[] };
   const enrollment = await getFoundationEnrollmentForPerson(courseId, access.member.personId, churchId);
   if (!enrollment) return { access, enrollment: null, items: [] as any[] };
   const rows = await getFoundationLearningProgress(churchId, enrollment.id, courseId);
+  const today = formatCivilDateValue(currentCivilDateAsUtcNoon());
   const items = rows.map((row, index) => ({
     study: row.study,
     progress: row.progress,
-    available: index === 0 || Boolean(rows[index - 1]?.progress?.releasedAt),
+    available: Boolean(row.progress?.status === "concluida")
+      || isFoundationStudyCollectivelyAvailable(row.study, today)
+      || (!row.study.weekStart && (index === 0 || Boolean(rows[index - 1]?.progress?.releasedAt))),
   }));
   return { access, enrollment, items };
 }
@@ -708,10 +717,13 @@ async function getFoundationCurrentStudentPath(userId: number, churchId: number)
   const current = await getFoundationActiveEnrollmentForPerson(access.member.personId, churchId);
   if (!current) return { access, course: null, enrollment: null, items: [] as any[] };
   const rows = await getFoundationLearningProgress(churchId, current.enrollment.id, current.course.id);
+  const today = formatCivilDateValue(currentCivilDateAsUtcNoon());
   const items = rows.map((row, index) => ({
     study: row.study,
     progress: row.progress,
-    available: index === 0 || Boolean(rows[index - 1]?.progress?.releasedAt),
+    available: Boolean(row.progress?.status === "concluida")
+      || isFoundationStudyCollectivelyAvailable(row.study, today)
+      || (!row.study.weekStart && (index === 0 || Boolean(rows[index - 1]?.progress?.releasedAt))),
   }));
   return { access, course: current.course, enrollment: current.enrollment, items };
 }
@@ -5495,6 +5507,19 @@ const escolaFundamentosRouter = router({
         enrollment: path.enrollment,
         items: path.items,
         canManageStudies: path.access.canManageStudies,
+        availabilityMode: "coletiva" as const,
+      };
+    }),
+  studentHistory: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await getFoundationStudyAccess(ctx.user.id, input.churchId);
+      if (!access.member.personId) return { course: null, items: [] };
+      const latest = await getFoundationActiveEnrollmentForPerson(access.member.personId, input.churchId, true);
+      if (!latest) return { course: null, items: [] };
+      return {
+        course: latest.course,
+        items: await getFoundationStudentHistory(input.churchId, latest.enrollment.id, latest.course.id),
       };
     }),
   studyQuestions: tenantProcedure
@@ -5733,6 +5758,14 @@ const escolaFundamentosRouter = router({
       if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
       return getFoundationCourseProgress(input.churchId, input.courseId);
     }),
+  weeklyOverview: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const course = (await getCoursesByChurch(input.churchId)).find((item) => item.id === input.courseId);
+      if (!course) throw new TRPCError({ code: "NOT_FOUND", message: "Turma não encontrada nesta igreja." });
+      return getFoundationWeeklyOverview(input.churchId, input.courseId, formatCivilDateValue(currentCivilDateAsUtcNoon()));
+    }),
   classManagement: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), courseId: z.number().int().positive(), studyId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
@@ -5786,6 +5819,7 @@ const escolaFundamentosRouter = router({
       await reviewFoundationLesson({ ...input, reviewedByChurchUserId: access.member.id });
       return { success: true };
     }),
+  // Compatibilidade com estudos legados sem weekStart; estudos semanais usam a data coletiva.
   releaseNextStudy: tenantProcedure
     .input(z.object({ churchId: z.number().int().positive(), enrollmentId: z.number().int().positive(), studyId: z.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
