@@ -5881,6 +5881,15 @@ export async function getFoundationStudiesByCourse(churchId: number, courseId: n
     .orderBy(foundationStudies.position, foundationStudies.id);
 }
 
+export function selectFoundationWeeklyStudy<T extends { id: number; weekStart?: string | null }>(studies: T[], today: string) {
+  const datedStudies = studies
+    .filter((study) => Boolean(study.weekStart && study.weekStart <= today))
+    .sort((left, right) => (right.weekStart ?? "").localeCompare(left.weekStart ?? "") || right.id - left.id);
+  if (datedStudies[0]) return datedStudies[0];
+  const legacyStudies = studies.filter((study) => !study.weekStart);
+  return legacyStudies[legacyStudies.length - 1] ?? null;
+}
+
 export async function getFoundationModulesByCourse(churchId: number, courseId: number, includeInactive = false) {
   const db = await getDb();
   if (!db) return [];
@@ -6151,14 +6160,13 @@ export async function getFoundationStudyMetrics(churchId: number, courseId: numb
 
 export async function getFoundationWeeklyOverview(churchId: number, courseId: number, today: string) {
   const studies = await getFoundationStudiesByCourse(churchId, courseId);
-  const dueStudies = studies.filter((item) => !item.weekStart || item.weekStart <= today);
-  const study = [...dueStudies].reverse()[0] ?? null;
+  const study = selectFoundationWeeklyStudy(studies, today);
   if (!study) {
-    return { study: null, metrics: { enrolled: 0, started: 0, completed: 0, pending: 0, questionErrors: [] }, class: null };
+    return { study: null, metrics: { enrolled: 0, started: 0, completed: 0, pending: 0, startedPercent: 0, completedPercent: 0, questionErrors: [] }, class: null };
   }
 
   const db = await getDb();
-  if (!db) return { study, metrics: { enrolled: 0, started: 0, completed: 0, pending: 0, questionErrors: [] }, class: null };
+  if (!db) return { study, metrics: { enrolled: 0, started: 0, completed: 0, pending: 0, startedPercent: 0, completedPercent: 0, questionErrors: [] }, class: null };
   const progressRows = await db.select({ status: foundationLessonProgress.status })
     .from(courseEnrollments)
     .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
@@ -6178,13 +6186,19 @@ export async function getFoundationWeeklyOverview(churchId: number, courseId: nu
     getFoundationClassForStudy(churchId, study.id),
   ]);
   const roster = foundationClass ? await getFoundationClassRoster(churchId, foundationClass.id) : [];
+  const enrolled = progressRows.length;
+  const started = progressRows.filter((row) => row.status === "em_andamento" || row.status === "concluida").length;
+  const completed = progressRows.filter((row) => row.status === "concluida").length;
+  const pending = progressRows.filter((row) => !row.status || row.status === "nao_iniciada").length;
   return {
     study,
     metrics: {
-      enrolled: progressRows.length,
-      started: progressRows.filter((row) => row.status === "em_andamento" || row.status === "concluida").length,
-      completed: progressRows.filter((row) => row.status === "concluida").length,
-      pending: progressRows.filter((row) => !row.status || row.status === "nao_iniciada").length,
+      enrolled,
+      started,
+      completed,
+      pending,
+      startedPercent: enrolled ? Math.round((started / enrolled) * 100) : 0,
+      completedPercent: enrolled ? Math.round((completed / enrolled) * 100) : 0,
       questionErrors: metrics.questionErrors,
     },
     class: foundationClass ? {
