@@ -30,7 +30,7 @@ describe("Escola de Fundamentos", () => {
     expect(source).toContain("studentPath");
     expect(source).toContain("Minha preparação");
     expect(source).toContain("Você não precisa escolher uma turma");
-    expect(source).toContain("A preparação liberada pela liderança aparece aqui automaticamente");
+    expect(source).toContain("O estudo da semana aparece aqui automaticamente");
     expect(source).toContain("Concluir estudo");
     expect(source).toContain("Estudo da semana");
     expect(source).toContain("Preparação concluída");

@@ -6149,6 +6149,58 @@ export async function getFoundationStudyMetrics(churchId: number, courseId: numb
   };
 }
 
+export async function getFoundationWeeklyOverview(churchId: number, courseId: number, today: string) {
+  const studies = await getFoundationStudiesByCourse(churchId, courseId);
+  const dueStudies = studies.filter((item) => !item.weekStart || item.weekStart <= today);
+  const study = [...dueStudies].reverse()[0] ?? null;
+  if (!study) {
+    return { study: null, metrics: { enrolled: 0, started: 0, completed: 0, pending: 0, questionErrors: [] }, class: null };
+  }
+
+  const db = await getDb();
+  if (!db) return { study, metrics: { enrolled: 0, started: 0, completed: 0, pending: 0, questionErrors: [] }, class: null };
+  const progressRows = await db.select({ status: foundationLessonProgress.status })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .leftJoin(foundationLessonProgress, and(
+      eq(foundationLessonProgress.enrollmentId, courseEnrollments.id),
+      eq(foundationLessonProgress.studyId, study.id),
+      eq(foundationLessonProgress.churchId, churchId),
+    ))
+    .where(and(
+      eq(courseEnrollments.courseId, courseId),
+      eq(courses.churchId, churchId),
+      eq(people.churchId, churchId),
+    ));
+  const [metrics, foundationClass] = await Promise.all([
+    getFoundationStudyMetrics(churchId, courseId, study.id),
+    getFoundationClassForStudy(churchId, study.id),
+  ]);
+  const roster = foundationClass ? await getFoundationClassRoster(churchId, foundationClass.id) : [];
+  return {
+    study,
+    metrics: {
+      enrolled: progressRows.length,
+      started: progressRows.filter((row) => row.status === "em_andamento" || row.status === "concluida").length,
+      completed: progressRows.filter((row) => row.status === "concluida").length,
+      pending: progressRows.filter((row) => !row.status || row.status === "nao_iniciada").length,
+      questionErrors: metrics.questionErrors,
+    },
+    class: foundationClass ? {
+      id: foundationClass.id,
+      classDate: foundationClass.classDate,
+      status: foundationClass.status,
+      attendance: {
+        total: roster.length,
+        present: roster.filter((row) => row.attendance?.status === "presente").length,
+        absent: roster.filter((row) => row.attendance?.status === "ausente").length,
+        justified: roster.filter((row) => row.attendance?.status === "justificado").length,
+      },
+    } : null,
+  };
+}
+
 export async function getFoundationEnrollmentForPerson(courseId: number, personId: number, churchId: number) {
   const db = await getDb();
   if (!db) return null;
@@ -6166,29 +6218,37 @@ export async function getFoundationEnrollmentForPerson(courseId: number, personI
   return rows[0]?.enrollment ?? null;
 }
 
-export async function getFoundationActiveEnrollmentForPerson(personId: number, churchId: number) {
+export async function getFoundationActiveEnrollmentForPerson(personId: number, churchId: number, includeCompleted = false) {
   const db = await getDb();
   if (!db) return null;
+  const conditions = [
+    eq(courseEnrollments.personId, personId),
+    eq(courses.churchId, churchId),
+    eq(people.churchId, churchId),
+  ];
+  if (!includeCompleted) {
+    conditions.push(ne(courseEnrollments.status, "concluido"));
+    conditions.push(eq(courses.active, true));
+  }
   const rows = await db
     .select({ enrollment: courseEnrollments, course: courses })
     .from(courseEnrollments)
     .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
     .innerJoin(people, eq(courseEnrollments.personId, people.id))
-    .where(and(
-      eq(courseEnrollments.personId, personId),
-      ne(courseEnrollments.status, "concluido"),
-      eq(courses.churchId, churchId),
-      eq(courses.active, true),
-      eq(people.churchId, churchId),
-    ))
+    .where(and(...conditions))
     .orderBy(desc(courseEnrollments.enrolledAt), desc(courseEnrollments.id))
     .limit(1);
   return rows[0] ?? null;
 }
 
-export async function getFoundationLearningProgress(churchId: number, enrollmentId: number, courseId: number) {
+export async function getFoundationLearningProgress(churchId: number, enrollmentId: number, courseId: number, includeInactive = false) {
   const db = await getDb();
   if (!db) return [];
+  const conditions = [
+    eq(foundationStudies.churchId, churchId),
+    eq(foundationStudies.courseId, courseId),
+  ];
+  if (!includeInactive) conditions.push(eq(foundationStudies.active, true));
   return db.select({
     study: foundationStudies,
     progress: foundationLessonProgress,
@@ -6199,11 +6259,7 @@ export async function getFoundationLearningProgress(churchId: number, enrollment
       eq(foundationLessonProgress.churchId, churchId),
       eq(foundationLessonProgress.enrollmentId, enrollmentId),
     ))
-    .where(and(
-      eq(foundationStudies.churchId, churchId),
-      eq(foundationStudies.courseId, courseId),
-      eq(foundationStudies.active, true),
-    ))
+    .where(and(...conditions))
     .orderBy(foundationStudies.position, foundationStudies.id);
 }
 
@@ -6443,6 +6499,55 @@ export async function getFoundationCourseProgress(churchId: number, courseId: nu
       eq(courses.churchId, churchId),
       eq(people.churchId, churchId),
     ));
+}
+
+export async function getFoundationStudentHistory(churchId: number, enrollmentId: number, courseId: number, today: string) {
+  const rows = await getFoundationLearningProgress(churchId, enrollmentId, courseId, true);
+  const history = await Promise.all(rows.map(async ({ study, progress }) => {
+    const foundationClass = await getFoundationClassForStudy(churchId, study.id);
+    const attendance = foundationClass
+      ? await getFoundationStudentAttendance(churchId, foundationClass.id, enrollmentId)
+      : null;
+    return {
+      study,
+      progress,
+      class: foundationClass
+        ? { id: foundationClass.id, classDate: foundationClass.classDate, status: foundationClass.status }
+        : null,
+      attendance: attendance ? { status: attendance.status } : null,
+    };
+  }));
+  return history.filter((item) => Boolean(item.progress) || Boolean(item.class) || !item.study.weekStart || item.study.weekStart <= today);
+}
+
+export async function getFoundationStudentHistoryForPerson(churchId: number, personId: number, today: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const enrollments = await db.select({ enrollment: courseEnrollments, course: courses })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .where(and(
+      eq(courseEnrollments.personId, personId),
+      eq(courses.churchId, churchId),
+      eq(people.churchId, churchId),
+    ))
+    .orderBy(desc(courseEnrollments.enrolledAt), desc(courseEnrollments.id));
+  const grouped = await Promise.all(enrollments.map(async ({ enrollment, course }) => {
+    const items = await getFoundationStudentHistory(churchId, enrollment.id, course.id, today);
+    return items.map((item) => ({
+      ...item,
+      course: { id: course.id, name: course.name },
+      enrollmentId: enrollment.id,
+    }));
+  }));
+  const history = grouped.flat();
+  const dateKey = (item: (typeof history)[number]) => {
+    if (item.study.weekStart) return item.study.weekStart;
+    const progressDate = item.progress?.completedAt ?? item.progress?.updatedAt ?? item.progress?.createdAt;
+    return progressDate ? new Date(progressDate).toISOString() : "0000-00-00";
+  };
+  return history.sort((left, right) => dateKey(right).localeCompare(dateKey(left)) || right.study.id - left.study.id);
 }
 
 export async function touchFoundationLessonProgress(data: {

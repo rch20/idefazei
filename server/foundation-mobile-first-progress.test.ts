@@ -66,7 +66,35 @@ describe("experiência mobile-first da Escola de Fundamentos", () => {
   it("preserva entrada simples sem escolha manual de turma", () => {
     expect(page).toContain("Você não precisa escolher uma turma");
     expect(page).toContain("StudentLearningExperience");
-    expect(page).toContain("A preparação liberada pela liderança aparece aqui automaticamente.");
+    expect(page).toContain("O estudo da semana aparece aqui automaticamente");
+  });
+
+  it("trata a semana como coletiva e remove a liberação individual da interface", () => {
+    expect(router).toContain("isFoundationStudyCollectivelyAvailable");
+    expect(router).toContain('availabilityMode: "coletiva"');
+    expect(router).toContain("study.weekStart <= today");
+    expect(page).toContain("A semana é coletiva");
+    expect(page).not.toContain("releaseNextStudy.useMutation");
+    expect(page).not.toContain("Liberar próximo tema");
+  });
+
+  it("oferece histórico individual separado da preparação atual", () => {
+    expect(db).toContain("getFoundationStudentHistory");
+    expect(router).toContain("studentHistory: tenantProcedure");
+    expect(router).toContain("getFoundationStudentHistoryForPerson(input.churchId");
+    expect(db).toContain("!item.study.weekStart || item.study.weekStart <= today");
+    expect(experience).toContain("studentHistory.useQuery");
+    expect(experience).toContain("Meu histórico");
+    expect(experience).toContain("Não iniciado");
+    expect(experience).toContain("Presença registrada");
+  });
+
+  it("oferece um resumo semanal antes do acompanhamento detalhado", () => {
+    expect(db).toContain("getFoundationWeeklyOverview");
+    expect(router).toContain("weeklyOverview: tenantProcedure");
+    expect(page).toContain("function WeeklyOverview");
+    expect(page).toContain("Semana atual");
+    expect(page).toContain("Para reforçar no domingo");
   });
 });
 
