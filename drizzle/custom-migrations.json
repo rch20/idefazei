@@ -84,6 +84,12 @@
       "file": "drizzle/0080_foundation_excel_import_drafts.sql",
       "kind": "custom-additive",
       "sha256": "52e0ebceb60b3db5c51c609abe9c5b9b820d4de05380ffed64f319ffebbb9b64"
+    },
+    {
+      "id": "0081",
+      "file": "drizzle/0081_foundation_material_notes.sql",
+      "kind": "custom-additive",
+      "sha256": "1676d9a63851d31d9c505c1a9d585160cc81af2540ed3e3cbc921251ff247a09"
     }
   ]
 }

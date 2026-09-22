@@ -1,4 +1,6 @@
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
+import type { CellValue, Worksheet } from "exceljs";
+import JSZip from "jszip";
 import { parseCivilDateAsUtcNoon } from "./civilDate";
 
 export type FoundationImportProblem = {
@@ -92,6 +94,10 @@ const MAX_BLOCKS = 200;
 const MAX_QUESTIONS = 400;
 const MAX_MATERIALS = 20;
 const MAX_SHEETS = 7;
+const MAX_ROWS_PER_SHEET = 300;
+const MAX_COLUMNS_PER_SHEET = 32;
+const MAX_ZIP_ENTRIES = 96;
+const MAX_UNCOMPRESSED_ZIP_BYTES = 32 * 1024 * 1024;
 
 const HEADERS = {
   ESTUDO: [
@@ -120,6 +126,14 @@ const HEADERS = {
   MATERIAIS: ["Ordem", "Título exato na Biblioteca Digital", "Observação", "Validação"],
 } as const;
 
+type ZipContainerInspection = {
+  hasCentralDirectory: boolean;
+  containsVba: boolean;
+  entryCount: number;
+  uncompressedBytes: number;
+  exceedsLimits: boolean;
+};
+
 function normalizeText(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
@@ -133,32 +147,57 @@ function isBlank(value: unknown) {
 }
 
 function columnName(index: number) {
-  return XLSX.utils.encode_col(index);
+  let value = index;
+  let result = "";
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    result = String.fromCharCode(65 + remainder) + result;
+    value = Math.floor((value - 1) / 26);
+  }
+  return result;
 }
 
 function cellAddress(row: number, column: number) {
-  return `${columnName(column)}${row + 1}`;
+  return `${columnName(column)}${row}`;
 }
 
-function excelDateValue(value: unknown) {
+function isFormulaValue(value: unknown): value is { formula: string; result?: unknown } {
+  return Boolean(value && typeof value === "object" && "formula" in value && typeof (value as { formula?: unknown }).formula === "string");
+}
+
+function unwrapCellValue(value: unknown): unknown {
+  if (isFormulaValue(value)) return value.result ?? "";
+  if (value && typeof value === "object") {
+    if ("richText" in value && Array.isArray((value as { richText?: unknown }).richText)) {
+      return (value as { richText: Array<{ text?: string }> }).richText.map((part) => part.text ?? "").join("");
+    }
+    if ("text" in value && typeof (value as { text?: unknown }).text === "string") return (value as { text: string }).text;
+  }
+  return value;
+}
+
+function excelDateValue(value: unknown, date1904 = false) {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(value) * 86_400_000);
+  const epoch = date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30);
+  const date = new Date(epoch + Math.floor(value) * 86_400_000);
   if (Number.isNaN(date.getTime())) return null;
   return `${String(date.getUTCFullYear()).padStart(4, "0")}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
 }
 
 function cellText(value: unknown) {
-  if (value instanceof Date) {
-    return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}-${String(value.getUTCDate()).padStart(2, "0")}`;
+  const unwrapped = unwrapCellValue(value);
+  if (unwrapped instanceof Date) {
+    return `${unwrapped.getUTCFullYear()}-${String(unwrapped.getUTCMonth() + 1).padStart(2, "0")}-${String(unwrapped.getUTCDate()).padStart(2, "0")}`;
   }
-  return normalizeText(value);
+  return normalizeText(unwrapped);
 }
 
-function cellDateText(value: unknown) {
-  if (value instanceof Date) {
-    return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}-${String(value.getUTCDate()).padStart(2, "0")}`;
+function cellDateText(value: unknown, date1904 = false) {
+  const unwrapped = unwrapCellValue(value);
+  if (unwrapped instanceof Date) {
+    return `${unwrapped.getUTCFullYear()}-${String(unwrapped.getUTCMonth() + 1).padStart(2, "0")}-${String(unwrapped.getUTCDate()).padStart(2, "0")}`;
   }
-  return normalizeText(excelDateValue(value) ?? value);
+  return normalizeText(excelDateValue(unwrapped, date1904) ?? unwrapped);
 }
 
 function isValidCivilDate(value: string) {
@@ -193,37 +232,48 @@ function addProblem(
   problems.push({ sheet, row, field, code, message, severity });
 }
 
+function worksheetDimension(worksheet: Worksheet) {
+  return {
+    rows: Math.max(worksheet.actualRowCount, worksheet.rowCount, 1),
+    columns: Math.max(worksheet.actualColumnCount, worksheet.columnCount, 1),
+  };
+}
+
 function sheetRows(
-  workbook: XLSX.WorkBook,
+  worksheet: Worksheet | undefined,
   sheetName: keyof typeof HEADERS,
   problems: FoundationImportProblem[],
 ) {
-  const worksheet = workbook.Sheets[sheetName];
   const expectedHeaders = HEADERS[sheetName];
   if (!worksheet) return [] as Array<{ rowNumber: number; values: Record<string, unknown> }>;
-  const range = XLSX.utils.decode_range(worksheet["!ref"] ?? "A1:A1");
-  const actualHeaders = expectedHeaders.map((_header, index) => cellText(worksheet[cellAddress(3, index)]?.v));
+  const dimension = worksheetDimension(worksheet);
+  if (dimension.rows > MAX_ROWS_PER_SHEET || dimension.columns > MAX_COLUMNS_PER_SHEET) {
+    addProblem(problems, sheetName, null, null, "PLANILHA_GRANDE_DEMAIS", `A aba ${sheetName} excede o limite de ${MAX_ROWS_PER_SHEET} linhas ou ${MAX_COLUMNS_PER_SHEET} colunas.`);
+    return [] as Array<{ rowNumber: number; values: Record<string, unknown> }>;
+  }
+
+  const actualHeaders = expectedHeaders.map((_header, index) => cellText(worksheet.getCell(4, index + 1).value));
   expectedHeaders.forEach((header, index) => {
     if (actualHeaders[index] !== header) {
-      addProblem(problems, sheetName, 4, columnName(index), "CABECALHO_INVALIDO", `A coluna ${columnName(index)} deve ser “${header}”.`);
+      addProblem(problems, sheetName, 4, columnName(index + 1), "CABECALHO_INVALIDO", `A coluna ${columnName(index + 1)} deve ser “${header}”.`);
     }
   });
 
-  for (let row = 3; row <= range.e.r; row += 1) {
-    for (let column = 0; column <= Math.min(range.e.c, expectedHeaders.length - 1); column += 1) {
-      const cell = worksheet[cellAddress(row, column)];
-      if (cell?.f && expectedHeaders[column] !== "Validação") {
-        addProblem(problems, sheetName, row + 1, expectedHeaders[column], "FORMULA_CAMPO_EDITORIAL", "Use valores escritos no campo editorial; fórmulas só são permitidas na coluna Validação.");
+  for (let row = 4; row <= dimension.rows; row += 1) {
+    for (let column = 1; column <= Math.min(dimension.columns, expectedHeaders.length); column += 1) {
+      const value = worksheet.getCell(row, column).value as CellValue;
+      if (isFormulaValue(value) && expectedHeaders[column - 1] !== "Validação") {
+        addProblem(problems, sheetName, row, expectedHeaders[column - 1], "FORMULA_CAMPO_EDITORIAL", "Use valores escritos no campo editorial; fórmulas só são permitidas na coluna Validação.");
       }
     }
   }
 
   const rows: Array<{ rowNumber: number; values: Record<string, unknown> }> = [];
-  for (let row = 4; row <= range.e.r; row += 1) {
-    const values = Object.fromEntries(expectedHeaders.map((header, index) => [header, worksheet[cellAddress(row, index)]?.v ?? null]));
+  for (let row = 5; row <= dimension.rows; row += 1) {
+    const values = Object.fromEntries(expectedHeaders.map((header, index) => [header, worksheet.getCell(row, index + 1).value ?? null]));
     const editorialValues = expectedHeaders.filter((header) => header !== "Validação").map((header) => values[header]);
     if (editorialValues.every(isBlank)) continue;
-    rows.push({ rowNumber: row + 1, values });
+    rows.push({ rowNumber: row, values });
   }
   return rows;
 }
@@ -248,42 +298,129 @@ function checkMaxLength(
   if (value.length > max) addProblem(problems, sheet, row, field, "CAMPO_LONGO_DEMAIS", `O campo deve ter no máximo ${max} caracteres.`);
 }
 
-export function parseFoundationWorkbook(buffer: Buffer, context: FoundationImportContext): FoundationImportPreview {
+function hasBufferEntry(buffer: Buffer, entryName: string) {
+  return buffer.indexOf(Buffer.from(entryName, "utf8")) >= 0;
+}
+
+export function inspectXlsxContainer(buffer: Buffer): ZipContainerInspection {
+  const containsVba = hasBufferEntry(buffer, "vbaProject.bin") || hasBufferEntry(buffer, "VBAProject.bin");
+  let offset = 0;
+  let entryCount = 0;
+  let uncompressedBytes = 0;
+  let hasCentralDirectory = false;
+  const centralDirectorySignature = 0x02014b50;
+
+  while (offset + 46 <= buffer.length) {
+    const index = buffer.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]), offset);
+    if (index < 0 || index + 46 > buffer.length) break;
+    const fileNameLength = buffer.readUInt16LE(index + 28);
+    const extraLength = buffer.readUInt16LE(index + 30);
+    const commentLength = buffer.readUInt16LE(index + 32);
+    const next = index + 46 + fileNameLength + extraLength + commentLength;
+    if (next > buffer.length) break;
+    if (buffer.readUInt32LE(index) !== centralDirectorySignature) break;
+    const uncompressedSize = buffer.readUInt32LE(index + 24);
+    hasCentralDirectory = true;
+    entryCount += 1;
+    if (uncompressedSize === 0xffffffff) {
+      uncompressedBytes = MAX_UNCOMPRESSED_ZIP_BYTES + 1;
+    } else {
+      uncompressedBytes += uncompressedSize;
+    }
+    offset = next;
+    if (entryCount > MAX_ZIP_ENTRIES || uncompressedBytes > MAX_UNCOMPRESSED_ZIP_BYTES) break;
+  }
+
+  return {
+    hasCentralDirectory,
+    containsVba,
+    entryCount,
+    uncompressedBytes,
+    exceedsLimits: entryCount > MAX_ZIP_ENTRIES || uncompressedBytes > MAX_UNCOMPRESSED_ZIP_BYTES,
+  };
+}
+
+export function hasForbiddenVbaEntry(buffer: Buffer) {
+  return inspectXlsxContainer(buffer).containsVba;
+}
+
+async function removeUnsupportedCommentMetadata(buffer: Buffer) {
+  const zip = await JSZip.loadAsync(buffer);
+  for (const filename of Object.keys(zip.files)) {
+    if (
+      /^xl\/comments\//i.test(filename) ||
+      /^xl\/comments\d+\.xml$/i.test(filename) ||
+      /^xl\/drawings\/commentsDrawing\d+\.vml$/i.test(filename) ||
+      /^xl\/threadedComments\//i.test(filename) ||
+      /^xl\/persons\//i.test(filename)
+    ) {
+      zip.remove(filename);
+    }
+  }
+
+  const sheetNames = Object.keys(zip.files).filter((filename) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(filename));
+  for (const filename of sheetNames) {
+    const source = await zip.file(filename)!.async("string");
+    zip.file(filename, source.replace(/<legacyDrawing\b[^>]*\/>/gi, ""));
+  }
+
+  const relationshipNames = Object.keys(zip.files).filter((filename) => /^xl\/worksheets\/_rels\/sheet\d+\.xml\.rels$/i.test(filename));
+  for (const filename of relationshipNames) {
+    const source = await zip.file(filename)!.async("string");
+    zip.file(filename, source
+      .replace(/<Relationship\b[^>]*?Type="[^"]*\/comments"[^>]*\/>/gi, "")
+      .replace(/<Relationship\b[^>]*?Type="[^"]*\/vmlDrawing"[^>]*\/>/gi, "")
+      .replace(/Target="\/xl\//gi, 'Target="../'));
+  }
+
+  return Buffer.from(await zip.generateAsync({ type: "nodebuffer", compression: "STORE" }));
+}
+
+export async function parseFoundationWorkbook(buffer: Buffer, context: FoundationImportContext): Promise<FoundationImportPreview> {
   const problems: FoundationImportProblem[] = [];
-  let workbook: XLSX.WorkBook;
+  const container = inspectXlsxContainer(buffer);
+  if (container.exceedsLimits) {
+    throw new FoundationImportError("O arquivo Excel excede os limites de segurança para descompactação.", "BAD_REQUEST");
+  }
+
+  const workbook = new ExcelJS.Workbook();
   try {
-    workbook = XLSX.read(buffer, { type: "buffer", cellFormula: true, cellDates: false, bookVBA: true });
+    const sanitizedBuffer = await removeUnsupportedCommentMetadata(buffer);
+    const excelBuffer = sanitizedBuffer as unknown as Parameters<typeof workbook.xlsx.load>[0];
+    await workbook.xlsx.load(excelBuffer);
   } catch {
     throw new FoundationImportError("Não foi possível ler o arquivo Excel. Use o gabarito .xlsx oficial.", "BAD_REQUEST");
   }
 
-  if (workbook.vbaraw) {
+  if (container.containsVba) {
     addProblem(problems, "ARQUIVO", null, null, "MACRO_NAO_PERMITIDA", "Arquivos com macros não são aceitos.");
   }
-  if (workbook.SheetNames.length > MAX_SHEETS) {
+  if (workbook.worksheets.length > MAX_SHEETS) {
     addProblem(problems, "ARQUIVO", null, null, "MUITAS_ABAS", `O arquivo pode ter no máximo ${MAX_SHEETS} abas.`);
   }
   for (const sheetName of REQUIRED_SHEETS) {
-    if (!workbook.SheetNames.includes(sheetName)) addProblem(problems, sheetName, null, null, "ABA_OBRIGATORIA_AUSENTE", `A aba ${sheetName} não foi encontrada.`);
+    if (!workbook.getWorksheet(sheetName)) addProblem(problems, sheetName, null, null, "ABA_OBRIGATORIA_AUSENTE", `A aba ${sheetName} não foi encontrada.`);
   }
-  for (const sheetName of workbook.SheetNames) {
+  for (const worksheet of workbook.worksheets) {
+    const sheetName = worksheet.name;
     if (sheetName !== "LEIA-ME" && sheetName !== "LISTAS" && !REQUIRED_SHEETS.includes(sheetName as typeof REQUIRED_SHEETS[number]) && !OPTIONAL_SHEETS.includes(sheetName as typeof OPTIONAL_SHEETS[number])) {
       addProblem(problems, sheetName, null, null, "ABA_NAO_RECONHECIDA", "A aba não faz parte do gabarito oficial.", "aviso");
     }
   }
 
-  const studyRows = sheetRows(workbook, "ESTUDO", problems);
-  const blockRows = sheetRows(workbook, "BLOCOS", problems);
-  const questionRows = sheetRows(workbook, "PERGUNTAS", problems);
-  const classRows = workbook.SheetNames.includes("AULA") ? sheetRows(workbook, "AULA", problems) : [];
-  const materialRows = workbook.SheetNames.includes("MATERIAIS") ? sheetRows(workbook, "MATERIAIS", problems) : [];
+  const date1904 = Boolean(workbook.properties.date1904);
+  const studyRows = sheetRows(workbook.getWorksheet("ESTUDO"), "ESTUDO", problems);
+  const blockRows = sheetRows(workbook.getWorksheet("BLOCOS"), "BLOCOS", problems);
+  const questionRows = sheetRows(workbook.getWorksheet("PERGUNTAS"), "PERGUNTAS", problems);
+  const classRows = workbook.getWorksheet("AULA") ? sheetRows(workbook.getWorksheet("AULA"), "AULA", problems) : [];
+  const materialRows = workbook.getWorksheet("MATERIAIS") ? sheetRows(workbook.getWorksheet("MATERIAIS"), "MATERIAIS", problems) : [];
 
   if (studyRows.length !== 1) addProblem(problems, "ESTUDO", null, null, "ESTUDO_DEVE_TER_UMA_LINHA", "Preencha exatamente uma linha na aba ESTUDO.");
   const studyRow = studyRows[0];
   const studyValues = studyRow?.values ?? {};
   const courseName = cellText(studyValues["Nome exato da turma"]);
   const title = cellText(studyValues["Título do estudo"]);
-  const weekStart = cellDateText(studyValues["Data de início da semana (AAAA-MM-DD)"]);
+  const weekStart = cellDateText(studyValues["Data de início da semana (AAAA-MM-DD)"], date1904);
   const moduleTitle = cellText(studyValues["Nome do módulo"]);
   const summary = cellText(studyValues["Objetivo ou resumo"]);
   const content = cellText(studyValues["Introdução / roteiro geral"]);
@@ -364,7 +501,7 @@ export function parseFoundationWorkbook(buffer: Buffer, context: FoundationImpor
   if (meaningfulClassRows.length > 1) addProblem(problems, "AULA", null, null, "AULA_DEVE_TER_UMA_LINHA", "Informe no máximo uma aula presencial.");
   const classRow = meaningfulClassRows[0];
   if (classRow) {
-    const classDate = cellDateText(classRow.values["Data do domingo (AAAA-MM-DD)"]);
+    const classDate = cellDateText(classRow.values["Data do domingo (AAAA-MM-DD)"], date1904);
     const status = parseStatus(classRow.values["Status da aula"], problems, classRow.rowNumber);
     const notes = cellText(classRow.values["Observação para o professor"]);
     if (!isValidCivilDate(classDate)) addProblem(problems, "AULA", classRow.rowNumber, "Data do domingo (AAAA-MM-DD)", "DATA_AULA_INVALIDA", "Informe uma data civil válida no formato AAAA-MM-DD.");
@@ -385,6 +522,7 @@ export function parseFoundationWorkbook(buffer: Buffer, context: FoundationImpor
     const materialMatches = context.materials.filter((item) => normalizeFoundationImportTitle(item.title) === normalizeFoundationImportTitle(titleValue));
     if (!materialMatches.length) addProblem(problems, "MATERIAIS", row.rowNumber, "Título exato na Biblioteca Digital", "MATERIAL_NAO_ENCONTRADO", `O material “${titleValue}” não foi encontrado na Biblioteca desta igreja.`);
     if (materialMatches.length > 1) addProblem(problems, "MATERIAIS", row.rowNumber, "Título exato na Biblioteca Digital", "MATERIAL_AMBIGUO", `Há mais de um material com o título “${titleValue}”. Renomeie os materiais ou escolha um título único.`);
+    checkMaxLength(problems, "MATERIAIS", row.rowNumber, "Observação", notes, 2000);
     materials.push({ position: Math.max(0, (order ?? materials.length + 1) - 1), title: titleValue, notes: notes || null });
   }
   materials.sort((left, right) => left.position - right.position);

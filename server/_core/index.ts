@@ -40,6 +40,7 @@ import {
 } from "../db";
 import {
   FoundationImportError,
+  inspectXlsxContainer,
   isXlsxFileSignature,
   parseFoundationWorkbook,
   sanitizeFoundationImportFilename,
@@ -592,6 +593,10 @@ async function startServer() {
       if (fileCount !== 1 || !fileBuffer) return res.status(400).json({ error: "Envie um único arquivo .xlsx no campo file." });
       if (limitReached) return res.status(413).json({ error: "O gabarito deve ter no máximo 2 MB." });
       if (invalidFileType || !isXlsxFileSignature(fileBuffer)) return res.status(415).json({ error: "Use um arquivo .xlsx válido, sem macros." });
+      const container = inspectXlsxContainer(fileBuffer);
+      if (container.containsVba) return res.status(415).json({ error: "Arquivos Excel com macros não são aceitos." });
+      if (!container.hasCentralDirectory) return res.status(415).json({ error: "O arquivo Excel está incompleto ou corrompido." });
+      if (container.exceedsLimits) return res.status(413).json({ error: "O conteúdo descompactado do Excel excede o limite de segurança." });
       if (!courseId) return res.status(400).json({ error: "Selecione a turma antes de enviar o gabarito." });
       const course = (await getCoursesByChurch(churchUser.churchId)).find((item) => item.id === courseId && item.active);
       if (!course) return res.status(404).json({ error: "A turma selecionada não foi encontrada nesta igreja." });
@@ -602,7 +607,7 @@ async function startServer() {
           getLibraryItemsByChurch(churchUser.churchId),
           getFoundationStudyWeekStarts(churchUser.churchId, course.id),
         ]);
-        const preview = parseFoundationWorkbook(fileBuffer, {
+        const preview = await parseFoundationWorkbook(fileBuffer, {
           courseId: course.id,
           courseName: course.name,
           moduleTitles: modules.map((module) => module.title),

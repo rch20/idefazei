@@ -6758,6 +6758,7 @@ export async function getFoundationStudyMaterials(churchId: number, studyId: num
     studyId: foundationStudyMaterials.studyId,
     libraryItemId: foundationStudyMaterials.libraryItemId,
     position: foundationStudyMaterials.position,
+    notes: foundationStudyMaterials.notes,
     title: libraryItems.title,
     type: libraryItems.type,
     fileUrl: libraryItems.fileUrl,
@@ -6773,10 +6774,10 @@ export async function getFoundationStudyMaterials(churchId: number, studyId: num
     .orderBy(foundationStudyMaterials.position, foundationStudyMaterials.id);
 }
 
-export async function attachFoundationStudyMaterial(data: { churchId: number; studyId: number; libraryItemId: number; position: number }) {
+export async function attachFoundationStudyMaterial(data: { churchId: number; studyId: number; libraryItemId: number; position: number; notes?: string | null }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  await db.insert(foundationStudyMaterials).values(data).onDuplicateKeyUpdate({ set: { position: data.position } });
+  await db.insert(foundationStudyMaterials).values({ ...data, notes: data.notes ?? null }).onDuplicateKeyUpdate({ set: { position: data.position, notes: data.notes ?? null } });
 }
 
 export async function updateFoundationStudyMaterialPosition(data: { id: number; churchId: number; studyId: number; position: number }) {
@@ -7030,6 +7031,7 @@ export async function confirmFoundationImportDraft(data: { churchId: number; dra
           studyId,
           libraryItemId: matches[0].id,
           position: material.position,
+          notes: material.notes?.trim() || null,
         });
       }
     }

@@ -1012,6 +1012,7 @@ export const foundationStudyMaterials = mysqlTable("foundation_study_materials",
   studyId: int("studyId").notNull(),
   libraryItemId: int("libraryItemId").notNull(),
   position: int("position").notNull().default(0),
+  notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (table) => [
   index("foundation_study_materials_church_study_position_idx").on(table.churchId, table.studyId, table.position),
