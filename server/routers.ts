@@ -300,7 +300,7 @@ import {
   getFoundationEnrollmentForPerson,
   getFoundationActiveEnrollmentForPerson,
   getFoundationLearningProgress,
-  getFoundationStudentHistory,
+  getFoundationStudentHistoryForPerson,
   getFoundationStudyQuestions,
   getFoundationStudyBlocks,
   getFoundationStudyBlockById,
@@ -5515,11 +5515,10 @@ const escolaFundamentosRouter = router({
     .query(async ({ input, ctx }) => {
       const access = await getFoundationStudyAccess(ctx.user.id, input.churchId);
       if (!access.member.personId) return { course: null, items: [] };
-      const latest = await getFoundationActiveEnrollmentForPerson(access.member.personId, input.churchId, true);
-      if (!latest) return { course: null, items: [] };
+      const items = await getFoundationStudentHistoryForPerson(input.churchId, access.member.personId, formatCivilDateValue(currentCivilDateAsUtcNoon()));
       return {
-        course: latest.course,
-        items: await getFoundationStudentHistory(input.churchId, latest.enrollment.id, latest.course.id),
+        course: items[0]?.course ?? null,
+        items,
       };
     }),
   studyQuestions: tenantProcedure

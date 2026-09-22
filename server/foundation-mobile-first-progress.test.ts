@@ -81,9 +81,11 @@ describe("experiência mobile-first da Escola de Fundamentos", () => {
   it("oferece histórico individual separado da preparação atual", () => {
     expect(db).toContain("getFoundationStudentHistory");
     expect(router).toContain("studentHistory: tenantProcedure");
-    expect(router).toContain("getFoundationStudentHistory(input.churchId");
+    expect(router).toContain("getFoundationStudentHistoryForPerson(input.churchId");
+    expect(db).toContain("!item.study.weekStart || item.study.weekStart <= today");
     expect(experience).toContain("studentHistory.useQuery");
     expect(experience).toContain("Meu histórico");
+    expect(experience).toContain("Não iniciado");
     expect(experience).toContain("Presença registrada");
   });
 

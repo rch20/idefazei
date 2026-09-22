@@ -90,6 +90,8 @@ type StudentClassResponse = {
 
 type StudentHistoryItem = {
   study: Study;
+  course?: { id: number; name: string };
+  enrollmentId?: number;
   progress: { status: "nao_iniciada" | "em_andamento" | "concluida"; completedAt?: Date | string | null } | null;
   class: { classDate: string; status: "planejada" | "realizada" | "cancelada" } | null;
   attendance: { status: "presente" | "ausente" | "justificado" } | null;
@@ -99,6 +101,18 @@ type StudentHistoryResponse = {
   course: { id: number; name: string } | null;
   items: StudentHistoryItem[];
 };
+
+function StudentHistorySection({ items, isLoading }: { items: StudentHistoryItem[]; isLoading: boolean }) {
+  return <details className="mb-5 overflow-hidden rounded-2xl border border-[#1e3a5f]/15 bg-white">
+    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 sm:p-5">
+      <div className="min-w-0"><p className="font-semibold text-[#1e3a5f]">Meu histórico</p><p className="mt-1 text-sm text-muted-foreground">Veja tudo o que você já estudou e o que aconteceu nas aulas presenciais.</p></div>
+      <Badge variant="outline" className="shrink-0">{items.length} registro{items.length === 1 ? "" : "s"}</Badge>
+    </summary>
+    <div className="space-y-2 border-t bg-[#fdfaf1]/50 p-4 sm:p-5">
+      {isLoading ? <div className="h-20 animate-pulse rounded-lg bg-muted/30" /> : items.length ? items.map((item) => <div key={`${item.enrollmentId ?? item.course?.id ?? "course"}-${item.study.id}`} className="rounded-xl border border-[#c9a84c]/20 bg-white p-3"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><p className="font-semibold text-[#1e3a5f]">{item.study.title}</p>{item.course?.name ? <p className="mt-1 text-xs font-medium text-[#1e3a5f]/70">{item.course.name}</p> : null}{item.study.weekStart ? <p className="mt-1 text-xs text-muted-foreground">Semana de {formatCivilDate(item.study.weekStart)}</p> : null}</div><div className="flex flex-wrap gap-2">{item.progress?.status === "concluida" ? <Badge>Preparação concluída</Badge> : item.progress?.status === "em_andamento" ? <Badge variant="secondary">Em andamento</Badge> : <Badge variant="outline">Não iniciado</Badge>}{item.attendance ? <Badge variant={item.attendance.status === "presente" ? "default" : "secondary"}>{item.attendance.status === "presente" ? "Presença registrada" : item.attendance.status === "justificado" ? "Ausência justificada" : "Ausência registrada"}</Badge> : null}</div></div>{item.class ? <p className="mt-2 text-xs text-muted-foreground">Aula de domingo: {formatCivilDate(item.class.classDate)} · {item.class.status === "realizada" ? "realizada" : item.class.status === "cancelada" ? "cancelada" : "planejada"}</p> : null}</div>) : <p className="text-sm text-muted-foreground">Seu histórico aparecerá aqui depois que você iniciar um estudo ou quando uma aula for registrada.</p>}
+    </div>
+  </details>;
+}
 
 function createClientAttemptId() {
   if (typeof globalThis.crypto?.randomUUID === "function") return globalThis.crypto.randomUUID();
@@ -278,15 +292,7 @@ export function StudentLearningExperience({ churchId, courseId = null }: { churc
       <div className="space-y-3">{path.items.map((item, index) => { const progress = item.progress; const status = progress?.status === "concluida" ? "Estudo concluído" : progress?.status === "em_andamento" ? "Em andamento" : item.available ? "Disponível" : "Aguardando orientação"; const isCurrent = currentItem?.study.id === item.study.id; return <div key={item.study.id} className={`rounded-xl border p-3 ${item.available ? "border-[#1e3a5f]/15 bg-white" : "border-border bg-muted/30"}`}><div className="flex items-start gap-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${progress?.status === "concluida" ? "bg-emerald-100 text-emerald-800" : item.available ? "bg-[#c9a84c]/25 text-[#1e3a5f]" : "bg-muted text-muted-foreground"}`}>{progress?.status === "concluida" ? <CheckCircle2 className="h-4 w-4" /> : item.available ? index + 1 : <Lock className="h-4 w-4" />}</span><div className="min-w-0 flex-1"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Estudo {index + 1}</p><p className="mt-0.5 font-semibold text-[#1e3a5f]">{item.study.title}</p>{item.study.summary ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.study.summary}</p> : null}<Badge className="mt-2" variant={progress?.status === "concluida" ? "default" : "secondary"}>{status}</Badge></div>{isCurrent ? <Badge className="shrink-0 bg-[#c9a84c] text-[#1e3a5f]">Atual</Badge> : <Button type="button" size="sm" variant={item.available ? "outline" : "ghost"} disabled={!item.available} onClick={() => openLesson(item)} className="shrink-0 gap-1">{item.available ? <Play className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}{item.available ? progress?.status === "em_andamento" ? "Continuar estudo" : progress?.status === "concluida" ? "Revisar estudo" : "Começar estudo" : "Aguardando"}</Button>}</div></div>; })}</div>
     </section>
 
-    <details className="mb-5 overflow-hidden rounded-2xl border border-[#1e3a5f]/15 bg-white">
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 sm:p-5">
-        <div className="min-w-0"><p className="font-semibold text-[#1e3a5f]">Meu histórico</p><p className="mt-1 text-sm text-muted-foreground">Veja o que você já estudou e o que aconteceu na aula presencial.</p></div>
-        <Badge variant="outline" className="shrink-0">{studentHistory.length} registro{studentHistory.length === 1 ? "" : "s"}</Badge>
-      </summary>
-      <div className="space-y-2 border-t bg-[#fdfaf1]/50 p-4 sm:p-5">
-        {studentHistoryQuery.isLoading ? <div className="h-20 animate-pulse rounded-lg bg-muted/30" /> : studentHistory.length ? studentHistory.slice().reverse().map((item) => <div key={item.study.id} className="rounded-xl border border-[#c9a84c]/20 bg-white p-3"><div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><p className="font-semibold text-[#1e3a5f]">{item.study.title}</p>{item.study.weekStart ? <p className="mt-1 text-xs text-muted-foreground">Semana de {formatCivilDate(item.study.weekStart)}</p> : null}</div><div className="flex flex-wrap gap-2">{item.progress?.status === "concluida" ? <Badge>Preparação concluída</Badge> : item.progress?.status === "em_andamento" ? <Badge variant="secondary">Em andamento</Badge> : null}{item.attendance ? <Badge variant={item.attendance.status === "presente" ? "default" : "secondary"}>{item.attendance.status === "presente" ? "Presença registrada" : item.attendance.status === "justificado" ? "Ausência justificada" : "Ausência registrada"}</Badge> : null}</div></div>{item.class ? <p className="mt-2 text-xs text-muted-foreground">Aula de domingo: {formatCivilDate(item.class.classDate)} · {item.class.status === "realizada" ? "realizada" : item.class.status === "cancelada" ? "cancelada" : "planejada"}</p> : null}</div>) : <p className="text-sm text-muted-foreground">Seu histórico aparecerá aqui depois que você iniciar um estudo ou quando uma aula for registrada.</p>}
-      </div>
-    </details>
+    <StudentHistorySection items={studentHistory} isLoading={studentHistoryQuery.isLoading} />
 
     <Dialog open={Boolean(selectedLesson)} onOpenChange={(open) => !open && closeLesson()}>
       <AdaptiveFormDialogContent className="sm:max-w-5xl">

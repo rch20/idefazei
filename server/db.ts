@@ -6501,7 +6501,7 @@ export async function getFoundationCourseProgress(churchId: number, courseId: nu
     ));
 }
 
-export async function getFoundationStudentHistory(churchId: number, enrollmentId: number, courseId: number) {
+export async function getFoundationStudentHistory(churchId: number, enrollmentId: number, courseId: number, today: string) {
   const rows = await getFoundationLearningProgress(churchId, enrollmentId, courseId, true);
   const history = await Promise.all(rows.map(async ({ study, progress }) => {
     const foundationClass = await getFoundationClassForStudy(churchId, study.id);
@@ -6517,7 +6517,37 @@ export async function getFoundationStudentHistory(churchId: number, enrollmentId
       attendance: attendance ? { status: attendance.status } : null,
     };
   }));
-  return history.filter((item) => Boolean(item.progress) || Boolean(item.class));
+  return history.filter((item) => Boolean(item.progress) || Boolean(item.class) || !item.study.weekStart || item.study.weekStart <= today);
+}
+
+export async function getFoundationStudentHistoryForPerson(churchId: number, personId: number, today: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const enrollments = await db.select({ enrollment: courseEnrollments, course: courses })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .where(and(
+      eq(courseEnrollments.personId, personId),
+      eq(courses.churchId, churchId),
+      eq(people.churchId, churchId),
+    ))
+    .orderBy(desc(courseEnrollments.enrolledAt), desc(courseEnrollments.id));
+  const grouped = await Promise.all(enrollments.map(async ({ enrollment, course }) => {
+    const items = await getFoundationStudentHistory(churchId, enrollment.id, course.id, today);
+    return items.map((item) => ({
+      ...item,
+      course: { id: course.id, name: course.name },
+      enrollmentId: enrollment.id,
+    }));
+  }));
+  const history = grouped.flat();
+  const dateKey = (item: (typeof history)[number]) => {
+    if (item.study.weekStart) return item.study.weekStart;
+    const progressDate = item.progress?.completedAt ?? item.progress?.updatedAt ?? item.progress?.createdAt;
+    return progressDate ? new Date(progressDate).toISOString() : "0000-00-00";
+  };
+  return history.sort((left, right) => dateKey(right).localeCompare(dateKey(left)) || right.study.id - left.study.id);
 }
 
 export async function touchFoundationLessonProgress(data: {
