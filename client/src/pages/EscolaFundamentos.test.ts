@@ -19,6 +19,11 @@ describe("Escola de Fundamentos", () => {
     expect(source).toContain("Trilha de aprendizado");
     expect(source).toContain("Módulos da trilha");
     expect(source).toContain("createModule");
+    expect(source).toContain("FoundationImportDialog");
+    expect(source).toContain("Preencher por Excel");
+    const importDialogSource = readFileSync(resolve(process.cwd(), "client/src/pages/foundation/FoundationImportDialog.tsx"), "utf8");
+    expect(importDialogSource).toContain("Importar gabarito Excel");
+    expect(importDialogSource).toContain("Confirmar importação");
   });
 
   it("oferece ao discípulo uma preparação única sem escolha de curso", () => {

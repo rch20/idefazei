@@ -1125,6 +1125,25 @@ export const foundationQuestionAttempts = mysqlTable("foundation_question_attemp
   uniqueIndex("foundation_question_attempts_client_id_unique").on(table.churchId, table.enrollmentId, table.questionId, table.clientAttemptId),
 ]);
 
+/** Prévia temporária de um gabarito Excel; não é conteúdo pedagógico até a confirmação. */
+export const foundationImportDrafts = mysqlTable("foundation_import_drafts", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  courseId: int("courseId").notNull(),
+  createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  sourceFilename: varchar("sourceFilename", { length: 255 }).notNull(),
+  fileSha256: varchar("fileSha256", { length: 64 }).notNull(),
+  status: mysqlEnum("status", ["pendente", "confirmado", "cancelado", "expirado"]).notNull().default("pendente"),
+  payload: json("payload").notNull(),
+  summary: json("summary").notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  confirmedAt: timestamp("confirmedAt"),
+}, (table) => [
+  index("foundation_import_drafts_church_user_status_idx").on(table.churchId, table.createdByChurchUserId, table.status),
+  index("foundation_import_drafts_church_expires_idx").on(table.churchId, table.expiresAt),
+]);
+
 /** Aula presencial ligada ao estudo digital da mesma semana. */
 export const foundationClasses = mysqlTable("foundation_classes", {
   id: int("id").autoincrement().primaryKey(),

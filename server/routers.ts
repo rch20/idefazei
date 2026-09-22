@@ -10,6 +10,7 @@ import { MINISTRY_VICE_LEADER_LABEL, MINISTRY_VICE_LEADER_ROLE_KEY } from "../sh
 import { getConsolidationResponsiblePersonId, hasConsolidationResponsible } from "../shared/consolidation";
 import { getOptimizedMediaUrls } from "./media";
 import { currentCivilDateAsUtcNoon, formatCivilDateValue, normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
+import { FoundationImportError, parseFoundationWorkbook } from "./foundationImport";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { ENV } from "./_core/env";
@@ -289,6 +290,8 @@ import {
   updateFoundationStudy,
   updateFoundationModule,
   getLibraryItemById,
+  getLibraryItemsByChurch,
+  getFoundationStudyWeekStarts,
   getFoundationStudyMaterials,
   attachFoundationStudyMaterial,
   updateFoundationStudyMaterialPosition,
@@ -329,6 +332,10 @@ import {
   recordFoundationClassAttendance,
   getFoundationStudentAttendance,
   getFoundationStudyMetrics,
+  createFoundationImportDraft,
+  getFoundationImportDraft,
+  cancelFoundationImportDraft,
+  confirmFoundationImportDraft,
   // Estudos semanais de Células
   getCellStudiesByChurch,
   getCellStudyById,
@@ -663,7 +670,7 @@ async function requirePastoralCoverageRead(userId: number, churchId: number, pas
   return member;
 }
 
-async function getFoundationStudyAccess(userId: number, churchId: number) {
+export async function getFoundationStudyAccess(userId: number, churchId: number) {
   const member = await requireChurchMember(userId, churchId);
   const roles = await getEffectiveChurchRoles(userId, churchId, member);
   const isPastor = roles.some((role) => role === "pastor_presidente" || role === "pastor_local");
@@ -7979,6 +7986,48 @@ const securityAuditRouter = router({
     }),
 });
 
+const foundationImportRouter = router({
+  getPreview: tenantProcedure
+    .input(z.object({ draftId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const churchId = ctx.user.churchId;
+      if (!churchId) throw new TRPCError({ code: "FORBIDDEN", message: "Sessão sem igreja vinculada." });
+      const access = await requireFoundationStudyManager(ctx.user.id, churchId);
+      const draft = await getFoundationImportDraft({ churchId, draftId: input.draftId, createdByChurchUserId: access.member.id });
+      if (!draft) throw new TRPCError({ code: "NOT_FOUND", message: "Prévia de importação não encontrada." });
+      return {
+        draftId: draft.id,
+        sourceFilename: draft.sourceFilename,
+        status: draft.status,
+        expiresAt: draft.expiresAt,
+        payload: draft.payload,
+        summary: draft.summary,
+      };
+    }),
+  confirm: tenantProcedure
+    .input(z.object({ draftId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const churchId = ctx.user.churchId;
+      if (!churchId) throw new TRPCError({ code: "FORBIDDEN", message: "Sessão sem igreja vinculada." });
+      const access = await requireFoundationStudyManager(ctx.user.id, churchId);
+      try {
+        return await confirmFoundationImportDraft({ churchId, draftId: input.draftId, createdByChurchUserId: access.member.id });
+      } catch (error) {
+        if (error instanceof FoundationImportError) throw new TRPCError({ code: error.code, message: error.message });
+        throw error;
+      }
+    }),
+  cancel: tenantProcedure
+    .input(z.object({ draftId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const churchId = ctx.user.churchId;
+      if (!churchId) throw new TRPCError({ code: "FORBIDDEN", message: "Sessão sem igreja vinculada." });
+      const access = await requireFoundationStudyManager(ctx.user.id, churchId);
+      await cancelFoundationImportDraft({ churchId, draftId: input.draftId, createdByChurchUserId: access.member.id });
+      return { success: true } as const;
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -8019,6 +8068,7 @@ export const appRouter = router({
   onboarding: onboardingRouter,
   reports: reportsRouter,
   escolaFundamentos: escolaFundamentosRouter,
+  foundationImport: foundationImportRouter,
   batismo: batismoRouter,
   encontro: encontroRouter,
   escolaLideres: escolaLideresRouter,

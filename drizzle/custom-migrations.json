@@ -78,6 +78,12 @@
       "file": "drizzle/0079_foundation_mobile_progress.sql",
       "kind": "custom-additive",
       "sha256": "b9dc2f70a2eb5f0487953725554ab30b773bb8fde68127a11e55a6ded4fd27b3"
+    },
+    {
+      "id": "0080",
+      "file": "drizzle/0080_foundation_excel_import_drafts.sql",
+      "kind": "custom-additive",
+      "sha256": "52e0ebceb60b3db5c51c609abe9c5b9b820d4de05380ffed64f319ffebbb9b64"
     }
   ]
 }

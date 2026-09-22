@@ -44,6 +44,7 @@ import {
   foundationStudyBlocks,
   foundationQuestions,
   foundationQuestionAttempts,
+  foundationImportDrafts,
   foundationClasses,
   foundationClassAttendance,
   encounterChecklistItems,
@@ -136,6 +137,7 @@ import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
 import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus } from "../shared/consolidation";
+import { FoundationImportError, type FoundationImportPayload, type FoundationImportSummary } from "./foundationImport";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -5881,6 +5883,17 @@ export async function getFoundationStudiesByCourse(churchId: number, courseId: n
     .orderBy(foundationStudies.position, foundationStudies.id);
 }
 
+export async function getFoundationStudyWeekStarts(churchId: number, courseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select({ weekStart: foundationStudies.weekStart }).from(foundationStudies).where(and(
+    eq(foundationStudies.churchId, churchId),
+    eq(foundationStudies.courseId, courseId),
+    isNotNull(foundationStudies.weekStart),
+  ));
+  return rows.map((row) => row.weekStart).filter((value): value is string => Boolean(value));
+}
+
 export function selectFoundationWeeklyStudy<T extends { id: number; weekStart?: string | null }>(studies: T[], today: string) {
   const datedStudies = studies
     .filter((study) => Boolean(study.weekStart && study.weekStart <= today))
@@ -6729,6 +6742,14 @@ export async function getLibraryItemById(id: number, churchId: number) {
   return rows[0] ?? null;
 }
 
+export async function getLibraryItemsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: libraryItems.id, title: libraryItems.title }).from(libraryItems)
+    .where(eq(libraryItems.churchId, churchId))
+    .orderBy(libraryItems.title, libraryItems.id);
+}
+
 export async function getFoundationStudyMaterials(churchId: number, studyId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -6830,6 +6851,210 @@ export async function removeFoundationStudyAdministrator(churchId: number, churc
   await db
     .delete(foundationStudyAdministrators)
     .where(and(eq(foundationStudyAdministrators.churchId, churchId), eq(foundationStudyAdministrators.churchUserId, churchUserId)));
+}
+
+function normalizeFoundationImportText(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("pt-BR");
+}
+
+export async function createFoundationImportDraft(data: {
+  churchId: number;
+  courseId: number;
+  createdByChurchUserId: number;
+  sourceFilename: string;
+  fileSha256: string;
+  payload: FoundationImportPayload;
+  summary: FoundationImportSummary;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const [result] = await db.insert(foundationImportDrafts).values({
+    churchId: data.churchId,
+    courseId: data.courseId,
+    createdByChurchUserId: data.createdByChurchUserId,
+    sourceFilename: data.sourceFilename,
+    fileSha256: data.fileSha256,
+    status: "pendente",
+    payload: data.payload,
+    summary: data.summary,
+    expiresAt,
+  });
+  const id = Number(result.insertId ?? 0);
+  if (!id) throw new Error("Não foi possível criar a prévia da importação.");
+  return { id, expiresAt };
+}
+
+export async function getFoundationImportDraft(data: { churchId: number; draftId: number; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(foundationImportDrafts).where(and(
+    eq(foundationImportDrafts.id, data.draftId),
+    eq(foundationImportDrafts.churchId, data.churchId),
+    eq(foundationImportDrafts.createdByChurchUserId, data.createdByChurchUserId),
+  )).limit(1);
+  const draft = rows[0] ?? null;
+  if (draft && draft.status === "pendente" && draft.expiresAt.getTime() <= Date.now()) {
+    await db.update(foundationImportDrafts).set({ status: "expirado" }).where(and(
+      eq(foundationImportDrafts.id, data.draftId),
+      eq(foundationImportDrafts.churchId, data.churchId),
+      eq(foundationImportDrafts.createdByChurchUserId, data.createdByChurchUserId),
+      eq(foundationImportDrafts.status, "pendente"),
+    ));
+    return { ...draft, status: "expirado" as const };
+  }
+  return draft;
+}
+
+export async function cancelFoundationImportDraft(data: { churchId: number; draftId: number; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(foundationImportDrafts).set({ status: "cancelado" }).where(and(
+    eq(foundationImportDrafts.id, data.draftId),
+    eq(foundationImportDrafts.churchId, data.churchId),
+    eq(foundationImportDrafts.createdByChurchUserId, data.createdByChurchUserId),
+    eq(foundationImportDrafts.status, "pendente"),
+  ));
+}
+
+export async function confirmFoundationImportDraft(data: { churchId: number; draftId: number; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async (tx) => {
+    const rows = await tx.select().from(foundationImportDrafts).where(and(
+      eq(foundationImportDrafts.id, data.draftId),
+      eq(foundationImportDrafts.churchId, data.churchId),
+      eq(foundationImportDrafts.createdByChurchUserId, data.createdByChurchUserId),
+    )).limit(1).for("update");
+    const draft = rows[0];
+    if (!draft) throw new FoundationImportError("Prévia de importação não encontrada nesta igreja.", "NOT_FOUND");
+    if (draft.status !== "pendente") throw new FoundationImportError("Esta prévia já foi encerrada e não pode ser confirmada novamente.", "CONFLICT");
+    if (draft.expiresAt.getTime() <= Date.now()) {
+      await tx.update(foundationImportDrafts).set({ status: "expirado" }).where(eq(foundationImportDrafts.id, draft.id));
+      throw new FoundationImportError("A prévia expirou. Envie o Excel novamente.", "PRECONDITION_FAILED");
+    }
+    const summary = draft.summary as FoundationImportSummary;
+    if (summary.errors > 0) throw new FoundationImportError("Corrija os erros apontados na prévia antes de confirmar.", "PRECONDITION_FAILED");
+    const payload = draft.payload as FoundationImportPayload;
+
+    const courseRows = await tx.select({ id: courses.id, name: courses.name }).from(courses).where(and(
+      eq(courses.id, payload.courseId),
+      eq(courses.churchId, data.churchId),
+      eq(courses.active, true),
+    )).limit(1).for("update");
+    const course = courseRows[0];
+    if (!course) throw new FoundationImportError("A turma selecionada não existe ou está inativa nesta igreja.", "NOT_FOUND");
+
+    const duplicateStudies = await tx.select({ id: foundationStudies.id }).from(foundationStudies).where(and(
+      eq(foundationStudies.churchId, data.churchId),
+      eq(foundationStudies.courseId, payload.courseId),
+      eq(foundationStudies.weekStart, payload.study.weekStart),
+    )).limit(1);
+    if (duplicateStudies.length) throw new FoundationImportError("Já existe um estudo para esta turma e esta semana. Edite o estudo existente na gestão normal.", "CONFLICT");
+
+    const lastStudyRows = await tx.select({ position: foundationStudies.position }).from(foundationStudies).where(and(
+      eq(foundationStudies.churchId, data.churchId),
+      eq(foundationStudies.courseId, payload.courseId),
+    )).orderBy(desc(foundationStudies.position), desc(foundationStudies.id)).limit(1);
+    const studyPosition = (lastStudyRows[0]?.position ?? -1) + 1;
+
+    let moduleId: number | null = null;
+    if (payload.study.moduleTitle) {
+      const moduleRows = await tx.select({ id: foundationModules.id, title: foundationModules.title }).from(foundationModules).where(and(
+        eq(foundationModules.churchId, data.churchId),
+        eq(foundationModules.courseId, payload.courseId),
+        eq(foundationModules.active, true),
+      ));
+      const module = moduleRows.find((item) => normalizeFoundationImportText(item.title) === normalizeFoundationImportText(payload.study.moduleTitle ?? ""));
+      if (!module) throw new FoundationImportError("O módulo informado não existe mais nesta turma.", "PRECONDITION_FAILED");
+      moduleId = module.id;
+    }
+
+    const studyResult = await tx.insert(foundationStudies).values({
+      churchId: data.churchId,
+      courseId: payload.courseId,
+      moduleId,
+      title: payload.study.title.trim(),
+      weekStart: payload.study.weekStart,
+      summary: payload.study.summary?.trim() || null,
+      content: payload.study.content?.trim() || null,
+      position: studyPosition,
+      active: payload.study.publish,
+      createdByChurchUserId: data.createdByChurchUserId,
+    });
+    const studyId = Number(studyResult[0]?.insertId ?? 0);
+    if (!studyId) throw new Error("Não foi possível criar o estudo importado.");
+
+    const blockIdsByPosition = new Map<number, number>();
+    for (const block of [...payload.blocks].sort((left, right) => left.position - right.position)) {
+      const result = await tx.insert(foundationStudyBlocks).values({
+        churchId: data.churchId,
+        studyId,
+        title: block.title.trim(),
+        content: block.content.trim(),
+        position: block.position,
+        active: block.publish,
+        createdByChurchUserId: data.createdByChurchUserId,
+      });
+      const blockId = Number(result[0]?.insertId ?? 0);
+      if (!blockId) throw new Error("Não foi possível criar um bloco do estudo importado.");
+      blockIdsByPosition.set(block.position, blockId);
+    }
+
+    const questionPositionByBlock = new Map<number, number>();
+    for (const question of payload.questions) {
+      const blockId = blockIdsByPosition.get(question.blockPosition);
+      if (!blockId) throw new FoundationImportError(`O bloco “${question.blockTitle}” não está disponível para esta pergunta.`, "PRECONDITION_FAILED");
+      const position = questionPositionByBlock.get(question.blockPosition) ?? 0;
+      questionPositionByBlock.set(question.blockPosition, position + 1);
+      await tx.insert(foundationQuestions).values({
+        churchId: data.churchId,
+        blockId,
+        prompt: question.prompt.trim(),
+        options: question.options,
+        correctOptionId: question.correctOptionId,
+        explanation: question.explanation.trim(),
+        position,
+        active: question.publish,
+        createdByChurchUserId: data.createdByChurchUserId,
+      });
+    }
+
+    if (payload.materials.length) {
+      const libraryRows = await tx.select({ id: libraryItems.id, title: libraryItems.title }).from(libraryItems).where(eq(libraryItems.churchId, data.churchId));
+      for (const material of payload.materials) {
+        const matches = libraryRows.filter((item) => normalizeFoundationImportText(item.title) === normalizeFoundationImportText(material.title));
+        if (matches.length !== 1) throw new FoundationImportError(`O material “${material.title}” não pode ser resolvido de forma única nesta igreja.`, "PRECONDITION_FAILED");
+        await tx.insert(foundationStudyMaterials).values({
+          churchId: data.churchId,
+          studyId,
+          libraryItemId: matches[0].id,
+          position: material.position,
+        });
+      }
+    }
+
+    let classId: number | null = null;
+    if (payload.class) {
+      const classResult = await tx.insert(foundationClasses).values({
+        churchId: data.churchId,
+        courseId: payload.courseId,
+        studyId,
+        classDate: payload.class.classDate,
+        status: payload.class.status,
+        notes: payload.class.notes?.trim() || null,
+        createdByChurchUserId: data.createdByChurchUserId,
+        updatedByChurchUserId: data.createdByChurchUserId,
+      });
+      classId = Number(classResult[0]?.insertId ?? 0);
+    }
+
+    await tx.update(foundationImportDrafts).set({ status: "confirmado", confirmedAt: new Date() }).where(and(
+      eq(foundationImportDrafts.id, draft.id),
+      eq(foundationImportDrafts.status, "pendente"),
+    ));
+    return { draftId: draft.id, studyId, classId, blockCount: payload.blocks.length, questionCount: payload.questions.length, materialCount: payload.materials.length };
+  });
 }
 
 // ─── BATISMO ──────────────────────────────────────────────────────────────────
