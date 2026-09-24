@@ -7,8 +7,8 @@
 import { SignJWT, jwtVerify } from "jose";
 import { ENV } from "./_core/env";
 import { getChurchById, getDb } from "./db";
-import { churchUsers, superAdmins, superAdminBootstrap } from "../drizzle/schema";
-import { eq } from "drizzle-orm";
+import { churchUsers, people, superAdmins, superAdminBootstrap } from "../drizzle/schema";
+import { and, eq, or, sql } from "drizzle-orm";
 import { createHash, timingSafeEqual } from "crypto";
 
 const JWT_SECRET = new TextEncoder().encode(ENV.cookieSecret || "fallback-secret-change-me");
@@ -55,12 +55,75 @@ export async function verifyToken(token: string): Promise<ChurchTokenPayload | A
 
 // ─── CHURCH USER AUTH ─────────────────────────────────────────────────────────
 
-export async function loginChurchUser(email: string, password: string) {
+export type ChurchLoginIdentifier =
+  | { kind: "email"; value: string }
+  | { kind: "phone"; value: string }
+  | { kind: "invalid"; value: null };
+
+/**
+ * Normaliza o único campo de login sem transformar contato em uma nova identidade.
+ * O telefone é resolvido dentro da igreja do host para preservar o isolamento tenant.
+ */
+export function normalizeChurchLoginIdentifier(value: string): ChurchLoginIdentifier {
+  const trimmed = value.trim();
+  if (trimmed.includes("@")) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)
+      ? { kind: "email", value: trimmed.toLowerCase() }
+      : { kind: "invalid", value: null };
+  }
+
+  if (!/^[+\d\s().-]+$/.test(trimmed)) return { kind: "invalid", value: null };
+  const digits = trimmed.replace(/\D/g, "");
+  return digits.length >= 10 && digits.length <= 15
+    ? { kind: "phone", value: digits }
+    : { kind: "invalid", value: null };
+}
+
+function normalizedPhoneExpression(column: any, normalizedPhone: string) {
+  return sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') = ${normalizedPhone}`;
+}
+
+export async function loginChurchUser(identifier: string, password: string, tenantChurchId?: number | null) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
 
-  const rows = await db.select().from(churchUsers).where(eq(churchUsers.email, email.toLowerCase())).limit(1);
-  const user = rows[0];
+  const normalized = normalizeChurchLoginIdentifier(identifier);
+  if (normalized.kind === "invalid") return null;
+
+  let user: typeof churchUsers.$inferSelect | undefined;
+  if (normalized.kind === "email") {
+    const conditions = [eq(churchUsers.email, normalized.value)];
+    if (tenantChurchId) conditions.push(eq(churchUsers.churchId, tenantChurchId));
+    const rows = await db.select().from(churchUsers).where(and(...conditions)).limit(1);
+    user = rows[0];
+  } else if (tenantChurchId) {
+    const matchingPeople = await db
+      .select({ id: people.id })
+      .from(people)
+      .where(and(
+        eq(people.churchId, tenantChurchId),
+        eq(people.active, true),
+        or(
+          normalizedPhoneExpression(people.phone, normalized.value),
+          normalizedPhoneExpression(people.whatsapp, normalized.value),
+        ),
+      ))
+      .limit(2);
+    // Telefone compartilhado ou duplicado nunca escolhe uma Pessoa arbitrariamente.
+    if (matchingPeople.length === 1) {
+      const rows = await db
+        .select()
+        .from(churchUsers)
+        .where(and(
+          eq(churchUsers.churchId, tenantChurchId),
+          eq(churchUsers.personId, matchingPeople[0].id),
+        ))
+        .limit(2);
+      // Uma Pessoa não pode ser acessada por mais de uma conta silenciosamente.
+      if (rows.length === 1) user = rows[0];
+    }
+  }
+
   if (!user || !user.active) return null;
 
   const church = await getChurchById(user.churchId);
