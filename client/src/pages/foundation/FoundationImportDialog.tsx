@@ -5,7 +5,7 @@ import { trpc } from "@/lib/trpc";
 import { uploadFoundationImportPreview, type FoundationImportPreview } from "@/lib/foundationImportUpload";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export function FoundationImportDialog({ courseId, courseName, onImported }: { courseId: number; courseName: string; onImported: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,7 +56,7 @@ export function FoundationImportDialog({ courseId, courseName, onImported }: { c
       <Button type="button" variant="outline" className="border-[#c9a84c] text-[#1e3a5f]"><FileSpreadsheet className="mr-2 h-4 w-4" />Importar gabarito Excel</Button>
     </DialogTrigger>
     <DialogContent className="max-h-[90vh] max-w-[calc(100%-1.5rem)] overflow-hidden p-0 sm:max-w-2xl">
-      <DialogHeader className="border-b bg-[#fdfaf1] px-5 py-4 sm:px-6"><DialogTitle className="flex items-center gap-2 text-[#1e3a5f]"><FileSpreadsheet className="h-5 w-5 text-[#c9a84c]" />Importar estudo para {courseName}</DialogTitle></DialogHeader>
+      <DialogHeader className="border-b bg-[#fdfaf1] px-5 py-4 sm:px-6"><DialogTitle className="flex items-center gap-2 text-[#1e3a5f]"><FileSpreadsheet className="h-5 w-5 text-[#c9a84c]" />Importar estudo para {courseName}</DialogTitle><DialogDescription>Envie o gabarito, revise os problemas e confirme somente quando a prévia estiver correta.</DialogDescription></DialogHeader>
       <div className="max-h-[calc(90vh-5rem)] space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"><Badge variant={!preview ? "default" : "secondary"}>1. Enviar</Badge><span>→</span><Badge variant={preview ? "default" : "secondary"}>2. Revisar</Badge><span>→</span><Badge variant={preview && !hasErrors ? "default" : "secondary"}>3. Confirmar</Badge></div>
         {error ? <div role="alert" className="flex gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}

@@ -24,6 +24,7 @@ describe("Escola de Fundamentos", () => {
     const importDialogSource = readFileSync(resolve(process.cwd(), "client/src/pages/foundation/FoundationImportDialog.tsx"), "utf8");
     expect(importDialogSource).toContain("Importar gabarito Excel");
     expect(importDialogSource).toContain("Confirmar importação");
+    expect(importDialogSource).toContain("DialogDescription");
   });
 
   it("oferece ao discípulo uma preparação única sem escolha de curso", () => {
