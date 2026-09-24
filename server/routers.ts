@@ -23,6 +23,7 @@ import {
 } from "./_core/trpc";
 import {
   loginChurchUser,
+  normalizeChurchLoginIdentifier,
   loginSuperAdmin,
   createChurchUser,
   createSuperAdmin,
@@ -4765,18 +4766,31 @@ const radarRouter = router({
 
 const churchAuthRouter = router({
   login: publicProcedure
-    .input(z.object({ email: z.string().email(), password: z.string().min(6) }))
-    .mutation(async ({ input }) => {
-      const result = await loginChurchUser(input.email, input.password);
+    .input(z.object({
+      identifier: z.string().trim().min(3).max(320).optional(),
+      /** Compatibilidade transitória com clientes antigos que ainda enviam email. */
+      email: z.string().email().optional(),
+      password: z.string().min(6),
+    }).refine((input) => Boolean(input.identifier || input.email), {
+      message: "Informe seu e-mail ou telefone.",
+      path: ["identifier"],
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const identifier = input.identifier ?? input.email ?? "";
+      const normalizedIdentifier = normalizeChurchLoginIdentifier(identifier);
+      const result = await loginChurchUser(identifier, input.password, ctx.tenantChurchId);
       if (!result) {
-        const account = await getChurchUserByEmail(input.email);
-        if (account?.registrationStatus === "pending") {
+        const account = normalizedIdentifier.kind === "email"
+          ? await getChurchUserByEmail(normalizedIdentifier.value)
+          : null;
+        const accountBelongsToTenant = !account || !ctx.tenantChurchId || account.churchId === ctx.tenantChurchId;
+        if (accountBelongsToTenant && account?.registrationStatus === "pending") {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Seu cadastro ainda aguarda aprovação da liderança." });
         }
-        if (account && !account.active) {
+        if (accountBelongsToTenant && account && !account.active) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Seu acesso ainda não está liberado. Fale com a liderança da sua igreja." });
         }
-        throw new TRPCError({ code: "UNAUTHORIZED", message: "Email ou senha inválidos" });
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "E-mail, telefone ou senha inválidos" });
       }
       return result;
     }),

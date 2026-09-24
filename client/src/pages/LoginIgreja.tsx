@@ -16,7 +16,7 @@ import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 import { getChurchHomePath } from "@/lib/churchHome";
 
 const loginSchema = z.object({
-  email: z.string().email("Email inválido"),
+  identifier: z.string().trim().min(3, "Informe seu e-mail ou telefone"),
   password: z.string().min(1, "Senha é obrigatória"),
 });
 
@@ -83,7 +83,7 @@ export default function LoginIgreja() {
       navigate(getChurchHomePath({ actorRole: data.user.role, roles: [data.user.role] }));
     },
     onError: (err: { message?: string }) => {
-      toast.error(err.message || "Email ou senha inválidos.");
+      toast.error(err.message || "E-mail, telefone ou senha inválidos.");
     },
   });
 
@@ -148,15 +148,17 @@ export default function LoginIgreja() {
             <CardContent>
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 <div>
-                  <Label htmlFor="email" className="text-[var(--tenant-login-primary)] font-medium text-sm">Email</Label>
+                  <Label htmlFor="identifier" className="text-[var(--tenant-login-primary)] font-medium text-sm">E-mail ou telefone</Label>
                   <Input
-                    id="email"
-                    type="email"
-                    placeholder="seu@email.com"
+                    id="identifier"
+                    type="text"
+                    inputMode="email"
+                    autoComplete="username"
+                    placeholder="seu@email.com ou (11) 99999-9999"
                     className="mt-1 border-[color:color-mix(in_srgb,var(--tenant-login-accent)_40%,transparent)] focus:border-[var(--tenant-login-primary)] bg-white"
-                    {...register("email")}
+                    {...register("identifier")}
                   />
-                  {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>}
+                  {errors.identifier && <p className="text-red-500 text-xs mt-1">{errors.identifier.message}</p>}
                 </div>
 
                 <div>
@@ -186,7 +188,7 @@ export default function LoginIgreja() {
                     <input type="checkbox" checked={rememberMe} onChange={(event) => setRememberMe(event.target.checked)} className="rounded border-[#c9a84c]/30" />
                     Lembrar-me
                   </label>
-                  <Dialog open={forgotPasswordOpen} onOpenChange={(open) => { setForgotPasswordOpen(open); if (open) { setForgotSubmitted(false); setForgotEmail(getValues("email") ?? ""); } }}>
+                  <Dialog open={forgotPasswordOpen} onOpenChange={(open) => { setForgotPasswordOpen(open); if (open) { setForgotSubmitted(false); const identifier = getValues("identifier") ?? ""; setForgotEmail(identifier.includes("@") ? identifier : ""); } }}>
                     <DialogTrigger asChild>
                       <button type="button" className="text-[var(--tenant-login-accent)] hover:opacity-80 transition-opacity">
                         Esqueci a senha

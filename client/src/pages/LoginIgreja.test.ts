@@ -42,6 +42,15 @@ describe("LoginIgreja", () => {
     expect(source).not.toContain("Entre em contato com a liderança da sua igreja para receber uma nova senha");
   });
 
+  it("usa um único identificador para e-mail ou telefone", () => {
+    const source = readFileSync(resolve(process.cwd(), "client/src/pages/LoginIgreja.tsx"), "utf8");
+    expect(source).toContain('htmlFor="identifier"');
+    expect(source).toContain("E-mail ou telefone");
+    expect(source).toContain('autoComplete="username"');
+    expect(source).toContain('{...register("identifier")}');
+    expect(source).toContain('const identifier = getValues("identifier") ?? ""');
+  });
+
   it("não renderiza a saudação de login como toast sobre a navegação móvel", () => {
     const loginSource = readFileSync(resolve(process.cwd(), "client/src/pages/LoginIgreja.tsx"), "utf8");
     const dashboardSource = readFileSync(resolve(process.cwd(), "client/src/pages/Dashboard.tsx"), "utf8");
