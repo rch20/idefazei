@@ -45,6 +45,7 @@ import {
   parseFoundationWorkbook,
   sanitizeFoundationImportFilename,
 } from "../foundationImport";
+import { createFoundationImportRequestId, describeFoundationImportFailure, type FoundationImportPreviewStage } from "../foundationImportDiagnostics";
 
 const STARTUP_DIAGNOSTIC_INTERVAL_MS = 60_000;
 const startupDiagnosticRateLimit = new Map<string, number>();
@@ -553,6 +554,7 @@ async function startServer() {
 
   // Gabarito Excel da Escola: o upload apenas cria uma prévia temporária.
   app.post("/api/escola-fundamentos/import/preview", async (req, res) => {
+    const requestId = createFoundationImportRequestId();
     const authorization = req.headers.authorization;
     const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
     const payload = token ? await verifyToken(token) : null;
@@ -562,11 +564,26 @@ async function startServer() {
     if (!churchUser || churchUser.churchId !== payload.churchId || churchUser.role !== payload.role) {
       return res.status(403).json({ error: "Invalid church session" });
     }
-    const access = await getFoundationStudyAccess(-churchUser.id, churchUser.churchId);
+    let stage: FoundationImportPreviewStage = "autorizacao";
+    let access;
+    try {
+      access = await getFoundationStudyAccess(-churchUser.id, churchUser.churchId);
+    } catch (error) {
+      const failure = describeFoundationImportFailure(stage, requestId, error);
+      console.error("[FoundationImport] Preview failed:", failure.logContext);
+      return res.status(500).json({ error: failure.userMessage, code: failure.code });
+    }
     if (!access.canManageStudies) return res.status(403).json({ error: "Foundation study management permission required" });
     if (!(req.headers["content-type"] ?? "").includes("multipart/form-data")) return res.status(400).json({ error: "Expected multipart/form-data" });
 
-    const bb = Busboy({ headers: req.headers, limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 4 } });
+    let bb: ReturnType<typeof Busboy>;
+    try {
+      bb = Busboy({ headers: req.headers, limits: { fileSize: 2 * 1024 * 1024, files: 1, fields: 4 } });
+    } catch (error) {
+      const failure = describeFoundationImportFailure("upload", requestId, error);
+      console.error("[FoundationImport] Preview failed:", failure.logContext);
+      return res.status(400).json({ error: "Não foi possível receber o gabarito. Escolha um arquivo .xlsx e tente novamente.", code: failure.code });
+    }
     let courseId: number | null = null;
     let fileBuffer: Buffer | null = null;
     let originalFilename = "gabarito-fundamentos.xlsx";
@@ -597,16 +614,17 @@ async function startServer() {
       if (container.containsVba) return res.status(415).json({ error: "Arquivos Excel com macros não são aceitos." });
       if (!container.hasCentralDirectory) return res.status(415).json({ error: "O arquivo Excel está incompleto ou corrompido." });
       if (container.exceedsLimits) return res.status(413).json({ error: "O conteúdo descompactado do Excel excede o limite de segurança." });
-      if (!courseId) return res.status(400).json({ error: "Selecione a turma antes de enviar o gabarito." });
-      const course = (await getCoursesByChurch(churchUser.churchId)).find((item) => item.id === courseId && item.active);
-      if (!course) return res.status(404).json({ error: "A turma selecionada não foi encontrada nesta igreja." });
-
       try {
+        stage = "catalogo";
+        if (!courseId) return res.status(400).json({ error: "Selecione a turma antes de enviar o gabarito." });
+        const course = (await getCoursesByChurch(churchUser.churchId)).find((item) => item.id === courseId && item.active);
+        if (!course) return res.status(404).json({ error: "A turma selecionada não foi encontrada nesta igreja." });
         const [modules, materials, existingWeekStarts] = await Promise.all([
           getFoundationModulesByCourse(churchUser.churchId, course.id, false),
           getLibraryItemsByChurch(churchUser.churchId),
           getFoundationStudyWeekStarts(churchUser.churchId, course.id),
         ]);
+        stage = "parser";
         const preview = await parseFoundationWorkbook(fileBuffer, {
           courseId: course.id,
           courseName: course.name,
@@ -614,6 +632,7 @@ async function startServer() {
           materials,
           existingWeekStarts,
         });
+        stage = "rascunho";
         const draft = await createFoundationImportDraft({
           churchId: churchUser.churchId,
           courseId: course.id,
@@ -626,13 +645,15 @@ async function startServer() {
         return res.json({ draftId: draft.id, expiresAt: draft.expiresAt, sourceFilename: originalFilename, ...preview });
       } catch (error) {
         if (error instanceof FoundationImportError) return res.status(400).json({ error: error.message });
-        console.error("[FoundationImport] Preview failed:", error instanceof Error ? error.name : "UnknownError");
-        return res.status(500).json({ error: "Não foi possível validar o gabarito." });
+        const failure = describeFoundationImportFailure(stage, requestId, error);
+        console.error("[FoundationImport] Preview failed:", failure.logContext);
+        return res.status(500).json({ error: failure.userMessage, code: failure.code });
       }
     });
     bb.on("error", (error) => {
-      console.error("[FoundationImport] Upload error:", error instanceof Error ? error.name : "UnknownError");
-      if (!res.headersSent) res.status(400).json({ error: "Não foi possível receber o gabarito." });
+      const failure = describeFoundationImportFailure("upload", requestId, error);
+      console.error("[FoundationImport] Upload error:", failure.logContext);
+      if (!res.headersSent) res.status(400).json({ error: "Não foi possível receber o gabarito. Escolha um arquivo .xlsx e tente novamente.", code: failure.code });
     });
     req.pipe(bb);
   });
