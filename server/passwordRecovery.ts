@@ -18,7 +18,7 @@ function getPublicBaseUrl() {
   return ENV.publicAppUrl.replace(/\/$/, "") || "https://idefazei.com.br";
 }
 
-export function getPasswordResetMailConfig() {
+export function getSmtpMailConfig(enabledByFlag: boolean) {
   const from = ENV.mailFrom.trim().toLowerCase();
   const user = (ENV.smtpUser || from).trim();
   const password = ENV.smtpPassword.trim();
@@ -31,8 +31,12 @@ export function getPasswordResetMailConfig() {
     host,
     port: Number.isFinite(port) ? port : 465,
     secure: ENV.smtpSecure,
-    enabled: ENV.passwordResetEmailEnabled && Boolean(from && host && user && password),
+    enabled: enabledByFlag && Boolean(from && host && user && password),
   };
+}
+
+export function getPasswordResetMailConfig() {
+  return getSmtpMailConfig(ENV.passwordResetEmailEnabled);
 }
 
 export function getTenantResetUrl(slug: string, token: string) {
@@ -62,7 +66,7 @@ function escapeHtml(value: string) {
 }
 
 async function sendPasswordResetEmail(input: { to: string; churchName: string; resetUrl: string; recipientName: string | null }) {
-  const config = getPasswordResetMailConfig();
+  const config = getSmtpMailConfig(ENV.passwordResetEmailEnabled);
   if (!config.enabled) {
     if (ENV.isProduction) console.error("[PasswordRecovery] SMTP não configurado; e-mail de recuperação não enviado.");
     return false;
@@ -94,6 +98,7 @@ export async function requestChurchPasswordReset(input: { email: string; tenantC
 
   const account = await getChurchUserByEmail(input.email);
   if (!account || !account.active || account.registrationStatus !== "approved") return neutralResponse;
+  if (account.emailVerificationRequired && !account.emailVerifiedAt) return neutralResponse;
   if (input.tenantChurchId && account.churchId !== input.tenantChurchId) return neutralResponse;
 
   const church = await getChurchById(account.churchId);

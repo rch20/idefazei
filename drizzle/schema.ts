@@ -1207,6 +1207,9 @@ export const churchUsers = mysqlTable("church_users", {
   approvedByChurchUserId: int("approvedByChurchUserId"),
   rejectionReason: text("rejectionReason"),
   lastLoginAt: timestamp("lastLoginAt"),
+  emailVerificationRequired: boolean("emailVerificationRequired").default(false).notNull(),
+  emailVerifiedAt: timestamp("emailVerifiedAt"),
+  emailVerificationSentAt: timestamp("emailVerificationSentAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -1287,6 +1290,23 @@ export const churchPasswordResetTokens = mysqlTable("church_password_reset_token
 }));
 
 export type ChurchPasswordResetToken = typeof churchPasswordResetTokens.$inferSelect;
+
+/** Tokens efêmeros e de uso único para confirmar o e-mail de usuários de igrejas. */
+export const churchEmailVerificationTokens = mysqlTable("church_email_verification_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  churchUserId: int("churchUserId").notNull(),
+  tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  usedAt: timestamp("usedAt"),
+  requestIp: varchar("requestIp", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  churchUserCreatedAtIdx: index("church_email_verification_tokens_user_created_idx").on(table.churchUserId, table.createdAt),
+  expiresAtIdx: index("church_email_verification_tokens_expires_idx").on(table.expiresAt),
+}));
+
+export type ChurchEmailVerificationToken = typeof churchEmailVerificationTokens.$inferSelect;
 
 // ─── PLANOS E ASSINATURAS ─────────────────────────────────────────────────────
 

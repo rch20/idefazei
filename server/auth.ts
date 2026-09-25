@@ -131,6 +131,10 @@ export async function loginChurchUser(identifier: string, password: string, tena
 
   if (!verifyPassword(password, user.passwordHash)) return null;
 
+  if (user.emailVerificationRequired && !user.emailVerifiedAt) {
+    return { kind: "email_verification_required" as const };
+  }
+
   // Update lastLoginAt
   await db.update(churchUsers).set({ lastLoginAt: new Date() }).where(eq(churchUsers.id, user.id));
 
@@ -155,6 +159,7 @@ export async function createChurchUser(data: {
   registrationStatus?: "approved" | "pending" | "rejected";
   approvedAt?: Date | null;
   approvedByChurchUserId?: number | null;
+  emailVerificationRequired?: boolean;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -171,6 +176,7 @@ export async function createChurchUser(data: {
     registrationStatus: data.registrationStatus ?? "approved",
     approvedAt: data.approvedAt ?? null,
     approvedByChurchUserId: data.approvedByChurchUserId ?? null,
+    emailVerificationRequired: data.emailVerificationRequired ?? false,
   });
 
   const rows = await db.select().from(churchUsers).where(eq(churchUsers.email, data.email.toLowerCase())).limit(1);

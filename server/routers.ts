@@ -31,6 +31,7 @@ import {
   isInitialSuperAdminSetupAvailable,
 } from "./auth";
 import { requestChurchPasswordReset, resetChurchPassword } from "./passwordRecovery";
+import { confirmEmailVerificationToken, isEmailVerificationDeliveryConfigured, issueEmailVerification } from "./emailVerification";
 import {
   createAnnouncement,
   deleteAnnouncement,
@@ -4779,6 +4780,9 @@ const churchAuthRouter = router({
       const identifier = input.identifier ?? input.email ?? "";
       const normalizedIdentifier = normalizeChurchLoginIdentifier(identifier);
       const result = await loginChurchUser(identifier, input.password, ctx.tenantChurchId);
+      if (result?.kind === "email_verification_required") {
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Confirme seu e-mail antes de entrar. Se necessário, solicite um novo link de confirmação." });
+      }
       if (!result) {
         const account = normalizedIdentifier.kind === "email"
           ? await getChurchUserByEmail(normalizedIdentifier.value)
@@ -4804,6 +4808,35 @@ const churchAuthRouter = router({
         requestIp: ctx.req.ip || null,
       });
       return { accepted: true, message: "Se o e-mail estiver cadastrado, enviaremos as instruções de recuperação." };
+    }),
+
+  resendEmailVerification: publicProcedure
+    .input(z.object({ email: z.string().trim().email("E-mail inválido") }))
+    .mutation(async ({ input, ctx }) => {
+      const account = ctx.tenantChurchId ? await getChurchUserByEmail(input.email) : null;
+      const accountBelongsToTenant = Boolean(account && account.churchId === ctx.tenantChurchId);
+      if (ENV.emailVerificationEnabled && accountBelongsToTenant && account && account.active && account.emailVerificationRequired && !account.emailVerifiedAt) {
+        try {
+          await issueEmailVerification({
+            churchId: account.churchId,
+            churchUserId: account.id,
+            email: account.email,
+            recipientName: account.name,
+            requestIp: ctx.req.ip || null,
+          });
+        } catch (error) {
+          console.error("[EmailVerification] Falha no reenvio:", error instanceof Error ? error.message : "erro desconhecido");
+        }
+      }
+      return { accepted: true, message: "Se houver um cadastro pendente nesta igreja, enviaremos um novo link de confirmação." };
+    }),
+
+  confirmEmail: publicProcedure
+    .input(z.object({ token: z.string().min(32).max(128) }))
+    .mutation(async ({ input }) => {
+      const confirmed = await confirmEmailVerificationToken(input.token);
+      if (!confirmed) throw new TRPCError({ code: "BAD_REQUEST", message: "Este link de confirmação é inválido, expirou ou já foi utilizado." });
+      return { success: true, message: "E-mail confirmado. Agora você já pode entrar na plataforma." };
     }),
 
   resetPassword: publicProcedure
@@ -5226,6 +5259,7 @@ const registerRouter = router({
       churchSlug: z.string().min(3).max(100),
       name: z.string().min(2).max(255),
       email: z.string().email().max(320),
+      emailConfirmation: z.string().email().max(320),
       password: z.string().min(8).max(128),
       birthDate: birthDateInput,
       phone: z.string().max(20).optional(),
@@ -5236,6 +5270,9 @@ const registerRouter = router({
       neighborhood: z.string().max(100).optional(),
       city: z.string().max(100).optional(),
       state: z.string().regex(/^[A-Za-z]{2}$/).optional(),
+    }).refine((input) => input.email.trim().toLowerCase() === input.emailConfirmation.trim().toLowerCase(), {
+      message: "Os e-mails não coincidem.",
+      path: ["emailConfirmation"],
     }))
     .mutation(async ({ input, ctx }) => {
       if (!ctx.tenantSlug || ctx.tenantSlug !== input.churchSlug) {
@@ -5244,6 +5281,9 @@ const registerRouter = router({
       const church = await getChurchBySlug(input.churchSlug);
       if (!church?.active) throw new TRPCError({ code: "NOT_FOUND", message: "Igreja não encontrada ou indisponível." });
       if (!church.publicRegistrationEnabled) throw new TRPCError({ code: "FORBIDDEN", message: "O cadastro público está temporariamente fechado por esta igreja." });
+      if (ENV.emailVerificationEnabled && !isEmailVerificationDeliveryConfigured()) {
+        throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "A confirmação por e-mail está temporariamente indisponível. Tente novamente mais tarde." });
+      }
       const existingAccount = await getChurchUserByEmail(input.email);
       if (existingAccount) throw new TRPCError({ code: "CONFLICT", message: "Este e-mail já possui um cadastro. Solicite acesso à liderança ou use outro e-mail." });
       const existingIdentity = await findPossiblePeopleByIdentity(church.id, {
@@ -5279,12 +5319,29 @@ const registerRouter = router({
         registrationStatus: "approved",
         approvedAt: new Date(),
         approvedByChurchUserId: null,
+        emailVerificationRequired: ENV.emailVerificationEnabled,
       });
+      if (ENV.emailVerificationEnabled) {
+        try {
+          await issueEmailVerification({
+            churchId: church.id,
+            churchUserId: user.id,
+            email: user.email,
+            recipientName: user.name,
+            requestIp: ctx.req.ip || null,
+          });
+        } catch {
+          throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: "Não foi possível enviar a confirmação agora. Tente novamente mais tarde ou solicite um novo link na tela de login." });
+        }
+      }
       return {
         success: true,
         userId: user.id,
         registrationStatus: "approved" as const,
-        message: "Cadastro aprovado. Você já pode entrar na plataforma com o e-mail e a senha cadastrados.",
+        emailVerificationPending: ENV.emailVerificationEnabled,
+        message: ENV.emailVerificationEnabled
+          ? "Cadastro recebido. Confirme seu e-mail pelo link enviado antes de entrar na plataforma."
+          : "Cadastro aprovado. Você já pode entrar na plataforma com o e-mail e a senha cadastrados.",
       };
     }),
 });

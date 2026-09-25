@@ -14,6 +14,7 @@ const TenantPublicPage = lazy(() => import("./pages/TenantPublicPage"));
 const DevocionalDiario = lazy(() => import("./pages/DevocionalDiario"));
 const LoginIgreja = lazy(() => import("./pages/LoginIgreja"));
 const RedefinirSenha = lazy(() => import("./pages/RedefinirSenha"));
+const ConfirmarEmail = lazy(() => import("./pages/ConfirmarEmail"));
 const CadastroIgreja = lazy(() => import("./pages/CadastroIgreja"));
 const CadastroDiscipulo = lazy(() => import("./pages/CadastroDiscipulo"));
 const CadastroPublico = lazy(() => import("./pages/CadastroPublico"));
@@ -128,6 +129,7 @@ function Router() {
       {/* ── Login e Portal da Igreja ── */}
       <Route path="/login" component={LoginIgreja} />
       <Route path="/redefinir-senha" component={RedefinirSenha} />
+      <Route path="/confirmar-email" component={ConfirmarEmail} />
       <Route path="/cadastro" component={CadastroDiscipulo} />
       {/* Links antigos de QR Code continuam abrindo o cadastro completo com senha. */}
       <Route path="/cadastro-publico" component={CadastroDiscipulo} />

@@ -27,14 +27,20 @@ const churchUser = {
   updatedAt: new Date("2026-01-01"),
 };
 
+const unverifiedChurchUser = {
+  ...churchUser,
+  emailVerificationRequired: true,
+  emailVerifiedAt: null,
+};
+
 function updateChain() {
   const updateWhere = vi.fn().mockResolvedValue(undefined);
   const set = vi.fn(() => ({ where: updateWhere }));
   return { update: vi.fn(() => ({ set })) };
 }
 
-function emailDatabase() {
-  const limit = vi.fn().mockResolvedValue([churchUser]);
+function emailDatabase(user: typeof churchUser | typeof unverifiedChurchUser = churchUser) {
+  const limit = vi.fn().mockResolvedValue([user]);
   const where = vi.fn(() => ({ limit }));
   const from = vi.fn(() => ({ where }));
   return { ...updateChain(), select: vi.fn(() => ({ from })) };
@@ -87,12 +93,24 @@ describe("login por e-mail ou telefone", () => {
     expect(result?.user).toMatchObject({ id: churchUser.id, email: churchUser.email, churchId: churchUser.churchId });
   });
 
+  it("bloqueia o login por e-mail até a confirmação", async () => {
+    vi.mocked(getDb).mockResolvedValue(emailDatabase(unverifiedChurchUser) as never);
+
+    await expect(loginChurchUser("joao@example.com", password, 34)).resolves.toEqual({ kind: "email_verification_required" });
+  });
+
   it("encontra a conta pelo telefone da Pessoa dentro do tenant", async () => {
     vi.mocked(getDb).mockResolvedValue(phoneDatabase([{ id: churchUser.personId }], [churchUser]) as never);
 
     const result = await loginChurchUser("(11) 99999-8888", password, 34);
 
     expect(result?.user).toMatchObject({ id: churchUser.id, churchId: churchUser.churchId });
+  });
+
+  it("bloqueia o login por telefone até a confirmação", async () => {
+    vi.mocked(getDb).mockResolvedValue(phoneDatabase([{ id: unverifiedChurchUser.personId }], [unverifiedChurchUser]) as never);
+
+    await expect(loginChurchUser("(11) 99999-8888", password, 34)).resolves.toEqual({ kind: "email_verification_required" });
   });
 
   it("não escolhe uma conta quando o telefone é compartilhado", async () => {

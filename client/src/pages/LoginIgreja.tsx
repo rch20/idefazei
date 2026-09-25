@@ -61,6 +61,9 @@ export default function LoginIgreja() {
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
+  const [resendDialogOpen, setResendDialogOpen] = useState(false);
+  const [resendEmail, setResendEmail] = useState("");
+  const [resendSubmitted, setResendSubmitted] = useState(false);
 
   const { register, handleSubmit, getValues, formState: { errors } } = useForm<LoginData>({
     resolver: zodResolver(loginSchema),
@@ -69,6 +72,11 @@ export default function LoginIgreja() {
   const passwordResetMutation = trpc.churchAuth.requestPasswordReset.useMutation({
     onSuccess: () => setForgotSubmitted(true),
     onError: () => setForgotSubmitted(true),
+  });
+
+  const resendVerificationMutation = trpc.churchAuth.resendEmailVerification.useMutation({
+    onSuccess: () => setResendSubmitted(true),
+    onError: () => setResendSubmitted(true),
   });
 
   const loginMutation = trpc.churchAuth.login.useMutation({
@@ -230,6 +238,36 @@ export default function LoginIgreja() {
                     "Entrar na Plataforma"
                   )}
                 </Button>
+
+                <Dialog open={resendDialogOpen} onOpenChange={(open) => { setResendDialogOpen(open); if (!open) setResendSubmitted(false); }}>
+                  <DialogTrigger asChild>
+                    <button type="button" className="w-full text-sm text-[var(--tenant-login-accent)] hover:opacity-80 transition-opacity" onClick={() => { setResendSubmitted(false); const identifier = getValues("identifier") ?? ""; setResendEmail(identifier.includes("@") ? identifier : ""); }}>
+                      Ainda não confirmei meu e-mail
+                    </button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle className="font-display text-navy">Reenviar confirmação</DialogTitle>
+                      <DialogDescription>
+                        Informe o e-mail usado no cadastro. Se houver um cadastro pendente nesta igreja, enviaremos um novo link.
+                      </DialogDescription>
+                    </DialogHeader>
+                    {resendSubmitted ? (
+                      <div className="space-y-4 pt-2">
+                        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-800">Se houver um cadastro pendente, enviaremos o link. Verifique também a pasta de spam.</p>
+                        <div className="flex justify-end"><Button type="button" className="bg-navy text-white" onClick={() => setResendSubmitted(false)}>Enviar outro</Button></div>
+                      </div>
+                    ) : (
+                      <form className="space-y-4 pt-2" onSubmit={(event) => { event.preventDefault(); if (!resendEmail.trim()) return; resendVerificationMutation.mutate({ email: resendEmail.trim() }); }}>
+                        <div>
+                          <Label htmlFor="resend-email">E-mail</Label>
+                          <Input id="resend-email" type="email" autoComplete="email" value={resendEmail} onChange={(event) => setResendEmail(event.target.value)} placeholder="seu@email.com" required className="mt-1" />
+                        </div>
+                        <div className="flex justify-end"><Button type="submit" className="bg-navy text-white" disabled={resendVerificationMutation.isPending}>{resendVerificationMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando...</> : "Reenviar link"}</Button></div>
+                      </form>
+                    )}
+                  </DialogContent>
+                </Dialog>
               </form>
 
               {/* Perfis disponíveis */}
