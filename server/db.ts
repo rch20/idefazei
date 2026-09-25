@@ -1692,6 +1692,43 @@ export async function createPerson(data: typeof people.$inferInsert) {
   return getPersonById(personId, data.churchId);
 }
 
+export async function updatePersonContact(
+  churchId: number,
+  personId: number,
+  data: { phone: string | null; whatsapp: string | null },
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  const contactValues = [data.phone, data.whatsapp].filter((value): value is string => Boolean(value));
+  if (contactValues.length > 0) {
+    const contactExpressions = contactValues.flatMap((value) => {
+      const normalized = value.replace(/\D/g, "");
+      return [
+        sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${people.phone}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', ''), '.', '') = ${normalized}`,
+        sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${people.whatsapp}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', ''), '.', '') = ${normalized}`,
+      ];
+    });
+    const duplicate = await db
+      .select({ id: people.id })
+      .from(people)
+      .where(and(
+        eq(people.churchId, churchId),
+        eq(people.active, true),
+        ne(people.id, personId),
+        or(...contactExpressions),
+      ))
+      .limit(1);
+    if (duplicate.length > 0) throw new Error("PERSON_CONTACT_ALREADY_IN_USE");
+  }
+
+  await db
+    .update(people)
+    .set(data)
+    .where(and(eq(people.id, personId), eq(people.churchId, churchId)));
+  return getPersonById(personId, churchId);
+}
+
 export async function updatePerson(id: number, churchId: number, data: Partial<typeof people.$inferInsert>) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");

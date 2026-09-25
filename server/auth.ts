@@ -62,7 +62,8 @@ export type ChurchLoginIdentifier =
 
 /**
  * Normaliza o único campo de login sem transformar contato em uma nova identidade.
- * O telefone é resolvido dentro da igreja do host para preservar o isolamento tenant.
+ * O telefone/WhatsApp é resolvido nos dados da Pessoa dentro da igreja do host;
+ * assim, uma alteração de contato passa a valer no login sem duplicar identidade.
  */
 export function normalizeChurchLoginIdentifier(value: string): ChurchLoginIdentifier {
   const trimmed = value.trim();
@@ -80,7 +81,7 @@ export function normalizeChurchLoginIdentifier(value: string): ChurchLoginIdenti
 }
 
 function normalizedPhoneExpression(column: any, normalizedPhone: string) {
-  return sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') = ${normalizedPhone}`;
+  return sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', ''), '.', '') = ${normalizedPhone}`;
 }
 
 export async function loginChurchUser(identifier: string, password: string, tenantChurchId?: number | null) {

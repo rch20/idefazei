@@ -248,6 +248,7 @@ import {
   finalizeConsolidationReferral,
   linkSoulToPerson,
   setCurrentCareAssignment,
+  updatePersonContact,
   updatePerson,
   getDiscipleshipStageProgress,
   getDiscipleshipStageEvents,
@@ -1543,6 +1544,47 @@ const peopleRouter = router({
         throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso a esta Pessoa." });
       }
       return getPersonById(input.id, input.churchId);
+    }),
+
+  updateMyContact: tenantProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      phone: z.string().trim().max(20).nullable(),
+      whatsapp: z.string().trim().max(20).nullable(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.tenantChurchId !== null && ctx.tenantChurchId !== input.churchId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "O tenant da sessão não corresponde à igreja informada." });
+      }
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Sua conta ainda não está vinculada a uma Pessoa." });
+      }
+
+      const normalizeContact = (value: string | null) => {
+        const normalized = value?.trim() ?? "";
+        if (!normalized) return null;
+        const digits = normalized.replace(/\D/g, "");
+        if (digits.length < 10 || digits.length > 15) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Informe um telefone válido com DDD." });
+        }
+        return normalized;
+      };
+
+      try {
+        const person = await updatePersonContact(input.churchId, actor.personId, {
+          phone: normalizeContact(input.phone),
+          whatsapp: normalizeContact(input.whatsapp),
+        });
+        if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Sua ficha não foi encontrada nesta igreja." });
+        return person;
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        if (error instanceof Error && error.message === "PERSON_CONTACT_ALREADY_IN_USE") {
+          throw new TRPCError({ code: "CONFLICT", message: "Este telefone já está cadastrado para outra Pessoa nesta igreja." });
+        }
+        throw error;
+      }
     }),
 
   journey: protectedProcedure

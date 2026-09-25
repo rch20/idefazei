@@ -5,12 +5,16 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  User, Heart, BookOpen, MapPin, Calendar, Bell, Star,
+  User, Heart, BookOpen, MapPin, Calendar, Bell, Star, Pencil,
   Phone, Mail, Home, Church, CheckCircle2, Clock, AlertCircle
 } from "lucide-react";
+import { toast } from "sonner";
 
 const DISCIPLESHIP_STAGES = [
   "Nova Alma", "Consolidação", "Fundamentos", "Célula",
@@ -20,15 +24,32 @@ const DISCIPLESHIP_STAGES = [
 export default function AreaMembro() {
   const { churchId, accessSummary } = useChurch();
   const [activeTab, setActiveTab] = useState("perfil");
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactForm, setContactForm] = useState({ phone: "", whatsapp: "" });
+  const personId = accessSummary?.actorPersonId ?? 0;
+  const utils = trpc.useUtils();
 
   const { data: member, isLoading: loadingPeople } = trpc.people.getById.useQuery(
-    { churchId: churchId!, id: accessSummary?.actorPersonId ?? 0 },
-    { enabled: Boolean(churchId && accessSummary?.actorPersonId) },
+    { churchId: churchId!, id: personId },
+    { enabled: Boolean(churchId && personId) },
   );
   const { data: events, isLoading: loadingEvents } = trpc.events.list.useQuery({ churchId: churchId! }, { enabled: !!churchId });
   const { data: publicSite, isLoading: loadingAnnouncements } = trpc.tenantPublic.current.useQuery(undefined, { enabled: !!churchId, staleTime: 60_000 });
   const announcements = publicSite?.publicAnnouncements ?? [];
   const { data: prayers, isLoading: loadingPrayers } = trpc.prayer.mine.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const updateContact = trpc.people.updateMyContact.useMutation({
+    onSuccess: () => {
+      if (churchId && personId) void utils.people.getById.invalidate({ churchId, id: personId });
+      setContactOpen(false);
+      toast.success("Contato atualizado. O telefone já pode ser usado no login desta igreja.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const openContactEditor = () => {
+    setContactForm({ phone: member?.phone ?? "", whatsapp: member?.whatsapp ?? "" });
+    setContactOpen(true);
+  };
 
   const currentStageIndex = member?.discipleshipStage
     ? DISCIPLESHIP_STAGES.indexOf(member.discipleshipStage)
@@ -107,12 +128,18 @@ export default function AreaMembro() {
         <TabsContent value="perfil" className="mt-4">
           <div className="grid md:grid-cols-2 gap-4">
             <Card className="border-[#1e3a5f]/10">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-[#1e3a5f] font-serif text-base flex items-center gap-2">
-                  <User className="w-4 h-4 text-[#c9a84c]" />
-                  Dados Pessoais
-                </CardTitle>
-              </CardHeader>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between gap-3">
+              <CardTitle className="text-[#1e3a5f] font-serif text-base flex items-center gap-2">
+                <User className="w-4 h-4 text-[#c9a84c]" />
+                Dados Pessoais
+              </CardTitle>
+              {member && personId > 0 && (
+                <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={openContactEditor}>
+                  <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                  Editar contato
+                </Button>
+              )}
+            </CardHeader>
               <CardContent className="space-y-3">
                 {loadingPeople ? (
                   Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)
@@ -120,8 +147,9 @@ export default function AreaMembro() {
                   <>
                     {[
                       { icon: User, label: "Nome", value: member.fullName },
-                      { icon: Mail, label: "Email", value: member.email ?? "—" },
-                      { icon: Phone, label: "Telefone", value: member.phone ?? "—" },
+                      { icon: Mail, label: "E-mail", value: member.email ?? "—" },
+                      { icon: Phone, label: "Telefone para login", value: member.phone ?? "—" },
+                      { icon: Phone, label: "WhatsApp para login", value: member.whatsapp ?? "—" },
                       { icon: Home, label: "Bairro", value: member.neighborhood ?? "—" },
                     ].map(({ icon: Icon, label, value }) => (
                       <div key={label} className="flex items-center gap-3">
@@ -311,6 +339,67 @@ export default function AreaMembro() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={contactOpen} onOpenChange={setContactOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-[#1e3a5f]">Editar contato</DialogTitle>
+            <DialogDescription>
+              Cadastre ou corrija seu telefone. O número salvo em Telefone ou WhatsApp poderá ser usado para entrar nesta igreja junto com sua senha.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!churchId || !personId) return;
+              updateContact.mutate({
+                churchId,
+                phone: contactForm.phone.trim() || null,
+                whatsapp: contactForm.whatsapp.trim() || null,
+              });
+            }}
+            className="space-y-4"
+          >
+            <div className="space-y-2">
+              <Label htmlFor="member-phone">Telefone</Label>
+              <Input
+                id="member-phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                maxLength={20}
+                placeholder="(00) 00000-0000"
+                value={contactForm.phone}
+                onChange={(event) => setContactForm((current) => ({ ...current, phone: event.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">Este número será aceito como identificador de login.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="member-whatsapp">WhatsApp</Label>
+              <Input
+                id="member-whatsapp"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                maxLength={20}
+                placeholder="(00) 00000-0000"
+                value={contactForm.whatsapp}
+                onChange={(event) => setContactForm((current) => ({ ...current, whatsapp: event.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">O WhatsApp também pode ser usado no login. Deixe em branco se não quiser cadastrá-lo.</p>
+            </div>
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              O e-mail continua sendo o mesmo. Para alterá-lo, procure a liderança da igreja.
+            </p>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => setContactOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={updateContact.isPending}>
+                {updateContact.isPending ? "Salvando..." : "Salvar contato"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
