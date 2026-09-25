@@ -51,4 +51,16 @@ describe("churchAuth.login", () => {
 
     expect(loginChurchUser).toHaveBeenCalledWith("joao@example.com", "SenhaSegura123", 34);
   });
+
+  it("informa que a confirmação de e-mail é necessária antes do acesso", async () => {
+    vi.mocked(loginChurchUser).mockResolvedValue({ kind: "email_verification_required" });
+
+    await expect(appRouter.createCaller(createContext()).churchAuth.login({
+      identifier: "joao@example.com",
+      password: "SenhaSegura123",
+    })).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+      message: expect.stringContaining("Confirme seu e-mail"),
+    });
+  });
 });

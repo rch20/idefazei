@@ -112,8 +112,10 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(cadastroSource).toContain("trpc.tenantPublic.current.useQuery");
     expect(cadastroSource).toContain("registration.enabled");
     expect(cadastroSource).toContain("TenantPublicShell");
-    expect(cadastroSource).toContain("Cadastro aprovado");
-    expect(cadastroSource).toContain("aprovado automaticamente pelo link oficial");
+    expect(cadastroSource).toContain("Confirme seu e-mail");
+    expect(cadastroSource).toContain("emailConfirmation");
+    expect(cadastroSource).toContain("emailVerificationPending");
+    expect(cadastroSource).toContain("O link é válido por 24 horas");
     expect(cadastroSource).toContain("Data de nascimento");
     expect(cadastroSource).toContain("Confirme sua senha");
     expect(cadastroSource).toContain("As senhas não coincidem");
@@ -122,6 +124,8 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(cadastroSource).toContain("https://viacep.com.br/ws/");
     expect(cadastroSource).toContain("Endereço preenchido");
     expect(cadastroSource).toContain("postal-code");
+    expect(loginIgrejaSource).toContain("resendEmailVerification");
+    expect(loginIgrejaSource).toContain("Ainda não confirmei meu e-mail");
     expect(cadastroPublicoSource).toContain("trpc.publicRegistration.submit.useMutation");
     expect(cadastroPublicoSource).toContain("consentAccepted");
     expect(cadastroPublicoSource).toContain("Cadastro recebido");
@@ -137,6 +141,7 @@ describe("Fluxo estrutural da Configuração da Igreja", () => {
     expect(appSource).toContain('<Route path="/cadastro" component={CadastroDiscipulo} />');
     expect(appSource).toContain('<Route path="/cadastro-publico" component={CadastroDiscipulo} />');
     expect(appSource).toContain('<Route path="/cadastro-interesse" component={CadastroPublico} />');
+    expect(appSource).toContain('<Route path="/confirmar-email" component={ConfirmarEmail} />');
   });
 
   it("oferece configuração de redes sociais oficiais por tenant", () => {

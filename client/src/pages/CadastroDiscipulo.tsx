@@ -9,6 +9,7 @@ import { TenantPublicShell } from "@/components/TenantPublicShell";
 type RegistrationForm = {
   name: string;
   email: string;
+  emailConfirmation: string;
   password: string;
   passwordConfirmation: string;
   birthDate: string;
@@ -34,6 +35,7 @@ type ViaCepResponse = {
 const INITIAL_FORM: RegistrationForm = {
   name: "",
   email: "",
+  emailConfirmation: "",
   password: "",
   passwordConfirmation: "",
   birthDate: "",
@@ -63,6 +65,7 @@ export default function CadastroDiscipulo() {
   const [form, setForm] = useState<RegistrationForm>(INITIAL_FORM);
   const [sent, setSent] = useState(false);
   const [passwordError, setPasswordError] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [cepStatus, setCepStatus] = useState<"idle" | "loading" | "found" | "not-found">("idle");
   const [cepError, setCepError] = useState("");
   const lookupSequence = useRef(0);
@@ -125,6 +128,11 @@ export default function CadastroDiscipulo() {
   };
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (form.email.trim().toLowerCase() !== form.emailConfirmation.trim().toLowerCase()) {
+      setEmailError("Os e-mails não coincidem. Confira os dois campos antes de continuar.");
+      return;
+    }
+    setEmailError("");
     if (form.password !== form.passwordConfirmation) {
       setPasswordError("As senhas não coincidem. Confira os dois campos antes de continuar.");
       return;
@@ -134,6 +142,7 @@ export default function CadastroDiscipulo() {
       churchSlug: slug,
       name: form.name.trim(),
       email: form.email.trim(),
+      emailConfirmation: form.emailConfirmation.trim(),
       password: form.password,
       birthDate: form.birthDate,
       phone: optionalValue(form.phone),
@@ -160,17 +169,19 @@ export default function CadastroDiscipulo() {
       <main className="tenant-registration-main">
         {sent ? <section className="tenant-registration-card tenant-registration-success" aria-live="polite">
           <div className="tenant-registration-icon"><CheckCircle2 aria-hidden="true" /></div>
-          <p className="tenant-registration-kicker">Cadastro aprovado</p>
-          <h1>Que bom ter você por perto</h1>
-          <p>Seu cadastro na {church.name} foi aprovado automaticamente pelo link oficial da igreja. Você já pode entrar na plataforma com o e-mail e a senha cadastrados.</p>
-          <div className="tenant-registration-actions"><Link href="/" className="tenant-registration-primary-link">Voltar para a página inicial</Link><Link href="/login" className="tenant-registration-secondary-link">Já tenho acesso</Link></div>
+          <p className="tenant-registration-kicker">Cadastro recebido</p>
+          <h1>Confirme seu e-mail</h1>
+          <p>{register.data?.emailVerificationPending ? `Enviamos um link de confirmação para ${form.email.trim()}. Abra sua caixa de entrada e confirme o endereço antes de entrar na plataforma.` : `Seu cadastro na ${church.name} foi aprovado automaticamente. Você já pode entrar na plataforma com o e-mail e a senha cadastrados.`}</p>
+          {register.data?.emailVerificationPending && <p className="mt-3 text-sm text-muted-foreground">Se não encontrar a mensagem, confira a pasta de spam. O link é válido por 24 horas.</p>}
+          <div className="tenant-registration-actions"><Link href="/" className="tenant-registration-primary-link">Voltar para a página inicial</Link><Link href="/login" className="tenant-registration-secondary-link">Ir para o login</Link></div>
         </section> : <section className="tenant-registration-card">
           <div className="tenant-registration-card-heading"><div className="tenant-registration-icon"><UserPlus aria-hidden="true" /></div><div><p className="tenant-registration-kicker">Ambiente oficial da igreja</p><h1>{registration.title}</h1></div></div>
           <p className="tenant-registration-message">{registration.message}</p>
-          <div className="tenant-registration-trust"><LockKeyhole aria-hidden="true" /><span>Este é o link oficial da igreja. Após o envio, seu cadastro de membro será liberado imediatamente.</span></div>
+          <div className="tenant-registration-trust"><LockKeyhole aria-hidden="true" /><span>Este é o link oficial da igreja. Sua ficha será criada após o envio, e o acesso será liberado depois da confirmação do e-mail.</span></div>
           <form onSubmit={submit} className="tenant-registration-form">
             <label><span>Nome completo *</span><input required minLength={2} maxLength={255} type="text" autoComplete="name" value={form.name} onChange={(event) => updateField("name", event.target.value)} /></label>
-            <div className="tenant-registration-form-grid"><label><span>E-mail *</span><input required type="email" autoComplete="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} /></label><label><span>Data de nascimento *</span><span className="tenant-registration-input-icon"><CalendarDays aria-hidden="true" /><input required type="date" max={today} autoComplete="bday" value={form.birthDate} onChange={(event) => updateField("birthDate", event.target.value)} /></span></label></div>
+            <div className="tenant-registration-form-grid"><label><span>E-mail *</span><input required type="email" autoComplete="email" value={form.email} onChange={(event) => { updateField("email", event.target.value); setEmailError(""); }} /></label><label><span>Confirme seu e-mail *</span><input required type="email" autoComplete="email" value={form.emailConfirmation} onChange={(event) => { updateField("emailConfirmation", event.target.value); setEmailError(""); }} />{(emailError || (form.emailConfirmation && form.email.trim().toLowerCase() !== form.emailConfirmation.trim().toLowerCase())) && <small className="tenant-registration-field-error" role="alert">{emailError || "Os e-mails não coincidem."}</small>}</label></div>
+            <label><span>Data de nascimento *</span><span className="tenant-registration-input-icon"><CalendarDays aria-hidden="true" /><input required type="date" max={today} autoComplete="bday" value={form.birthDate} onChange={(event) => updateField("birthDate", event.target.value)} /></span></label>
             <div className="tenant-registration-form-grid"><label><span>Telefone</span><input type="tel" inputMode="tel" autoComplete="tel" maxLength={20} value={form.phone} onChange={(event) => updateField("phone", event.target.value)} /></label><label><span>WhatsApp *</span><input required type="tel" inputMode="tel" autoComplete="tel" minLength={10} maxLength={20} value={form.whatsapp} onChange={(event) => updateField("whatsapp", event.target.value)} placeholder="(00) 00000-0000" /><small>Usaremos este número para contato da igreja.</small></label></div>
 
             <div className="tenant-registration-section-heading"><div><p><MapPin aria-hidden="true" />Seu endereço</p><small>Informe o CEP primeiro para preencher o endereço automaticamente.</small></div></div>
@@ -179,9 +190,9 @@ export default function CadastroDiscipulo() {
             <div className="tenant-registration-form-grid"><label><span>Bairro</span><input type="text" autoComplete="address-level3" maxLength={100} value={form.neighborhood} onChange={(event) => updateField("neighborhood", event.target.value)} /></label><label><span>Cidade</span><input type="text" autoComplete="address-level2" maxLength={100} value={form.city} onChange={(event) => updateField("city", event.target.value)} /></label></div>
             <div className="tenant-registration-form-grid"><label><span>Estado</span><input type="text" autoComplete="address-level1" maxLength={2} placeholder="UF" value={form.state} onChange={(event) => updateField("state", event.target.value.toUpperCase().slice(0, 2))} /></label><div /></div>
 
-            <div className="tenant-registration-form-grid"><label><span>Crie uma senha *</span><input required minLength={8} type="password" autoComplete="new-password" value={form.password} onChange={(event) => { updateField("password", event.target.value); setPasswordError(""); }} /><small>Use pelo menos 8 caracteres. Você usará esta senha para entrar assim que o cadastro for enviado.</small></label><label><span>Confirme sua senha *</span><input required minLength={8} type="password" autoComplete="new-password" value={form.passwordConfirmation} onChange={(event) => { updateField("passwordConfirmation", event.target.value); setPasswordError(""); }} />{(passwordError || (form.passwordConfirmation && form.password !== form.passwordConfirmation)) && <small className="tenant-registration-field-error" role="alert">{passwordError || "As senhas não coincidem."}</small>}</label></div>
+            <div className="tenant-registration-form-grid"><label><span>Crie uma senha *</span><input required minLength={8} type="password" autoComplete="new-password" value={form.password} onChange={(event) => { updateField("password", event.target.value); setPasswordError(""); }} /><small>Use pelo menos 8 caracteres. Você usará esta senha depois de confirmar o e-mail.</small></label><label><span>Confirme sua senha *</span><input required minLength={8} type="password" autoComplete="new-password" value={form.passwordConfirmation} onChange={(event) => { updateField("passwordConfirmation", event.target.value); setPasswordError(""); }} />{(passwordError || (form.passwordConfirmation && form.password !== form.passwordConfirmation)) && <small className="tenant-registration-field-error" role="alert">{passwordError || "As senhas não coincidem."}</small>}</label></div>
             {register.error && <p className="tenant-registration-error" role="alert">{register.error.message}</p>}
-            <button type="submit" disabled={register.isPending || !form.passwordConfirmation || form.password !== form.passwordConfirmation}>{register.isPending ? "Enviando cadastro..." : "Enviar cadastro"}</button>
+            <button type="submit" disabled={register.isPending || !form.emailConfirmation || form.email.trim().toLowerCase() !== form.emailConfirmation.trim().toLowerCase() || !form.passwordConfirmation || form.password !== form.passwordConfirmation}>{register.isPending ? "Enviando cadastro..." : "Enviar cadastro"}</button>
           </form>
           <p className="tenant-registration-login">Já possui acesso? <Link href="/login">Entrar na plataforma</Link></p>
         </section>}

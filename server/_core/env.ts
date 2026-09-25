@@ -19,6 +19,7 @@ export const ENV = {
   securityAlertWebhookToken: process.env.SECURITY_ALERT_WEBHOOK_TOKEN ?? "",
   securityAlertTimeoutMs: process.env.SECURITY_ALERT_TIMEOUT_MS ?? "5000",
   passwordResetEmailEnabled: process.env.PASSWORD_RESET_EMAIL_ENABLED === "true",
+  emailVerificationEnabled: process.env.EMAIL_VERIFICATION_ENABLED === "true",
   mailFrom: process.env.MAIL_FROM ?? "noreply.idefazei@gmail.com",
   smtpHost: process.env.SMTP_HOST ?? "smtp.gmail.com",
   smtpPort: process.env.SMTP_PORT ?? "465",
