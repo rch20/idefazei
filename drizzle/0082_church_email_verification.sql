@@ -2,13 +2,13 @@
 -- Contas existentes permanecem liberadas: emailVerificationRequired começa false.
 
 ALTER TABLE church_users
-  ADD COLUMN IF NOT EXISTS emailVerificationRequired BOOLEAN NOT NULL DEFAULT FALSE;
+  ADD COLUMN emailVerificationRequired BOOLEAN NOT NULL DEFAULT FALSE;
 
 ALTER TABLE church_users
-  ADD COLUMN IF NOT EXISTS emailVerifiedAt TIMESTAMP NULL;
+  ADD COLUMN emailVerifiedAt TIMESTAMP NULL;
 
 ALTER TABLE church_users
-  ADD COLUMN IF NOT EXISTS emailVerificationSentAt TIMESTAMP NULL;
+  ADD COLUMN emailVerificationSentAt TIMESTAMP NULL;
 
 CREATE TABLE IF NOT EXISTS church_email_verification_tokens (
   id INT NOT NULL AUTO_INCREMENT,
