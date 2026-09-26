@@ -102,6 +102,39 @@ describe("Governança de casos modernos de Consolidação", () => {
     expect(block).toContain("eq(careAssignments.role, data.role)");
   });
 
+  it("mantém o discipulador fora da consulta de cuidado operacional", () => {
+    const start = dbSource.indexOf("export async function getCurrentOperationalCareAssignment");
+    const end = dbSource.indexOf("export async function getCareHistoryByPerson", start);
+    const block = dbSource.slice(start, end);
+    expect(block).toContain('ne(careAssignments.role, "discipulador")');
+    expect(routersSource).toContain("return getCurrentOperationalCareAssignment(input.personId, input.churchId);");
+  });
+
+  it("projeta os vínculos operacionais e o discipulador principal separadamente na fila", () => {
+    const start = dbSource.indexOf("export async function getCareAttentionByChurch");
+    const end = dbSource.indexOf("export type SpiritualRadarPriority", start);
+    const block = dbSource.slice(start, end);
+    expect(block).toContain("careAssignmentsByPerson");
+    expect(block).toContain("careAssignments: enrichedCareAssignments");
+    expect(block).toContain("primaryDiscipler");
+    expect(block).toContain("responsiblePersonName");
+    expect(block).toContain('const leftRoleRank = left.role === "discipulador" ? 1 : 0;');
+    expect(block).toContain("return rightStartedAt - leftStartedAt || right.id - left.id;");
+  });
+
+  it("inclui o discipulador principal no escopo pastoral da própria Pessoa", () => {
+    const permissionStart = dbSource.indexOf("export async function canChurchUserManageJourney");
+    const managedStart = dbSource.indexOf("export async function getJourneyManagedPersonIds");
+    const permissionBlock = dbSource.slice(permissionStart, managedStart);
+    const managedBlock = dbSource.slice(managedStart, dbSource.indexOf("export async function getActiveSuperAdminById", managedStart));
+    expect(permissionBlock).toContain("eq(people.discipledById, input.actorPersonId)");
+    expect(permissionBlock).toContain("eq(people.churchId, input.churchId)");
+    expect(permissionBlock).toContain("eq(people.active, true)");
+    expect(managedBlock).toContain("eq(people.discipledById, input.actorPersonId)");
+    expect(managedBlock).toContain("eq(people.churchId, input.churchId)");
+    expect(managedBlock).toContain("eq(people.active, true)");
+  });
+
   it("expõe uma mutation explícita e remove discipledById dos CRUDs genéricos", () => {
     const block = routerBlock("peopleRouter", "soulsRouter");
     expect(block).toContain("setPrimaryDiscipler: protectedProcedure");

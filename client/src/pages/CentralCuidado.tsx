@@ -2,6 +2,7 @@ import { useChurch } from "@/components/ChurchLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
+import { getCareRoleLabel } from "@/lib/careLabels";
 import { AlertTriangle, CheckCircle2, ChevronRight, Clock3, HeartHandshake, MapPinned, PhoneCall, Users } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -160,6 +161,14 @@ export default function CentralCuidado() {
           {items.map((item) => {
             const config = priorityConfig[item.priority];
             const canRegisterContact = item.nextStep === "Registrar primeiro contato";
+            const careAssignments = item.careAssignments ?? (item.careAssignment ? [item.careAssignment] : []);
+            const operationalAssignments = careAssignments.filter((assignment) => assignment.role !== "discipulador");
+            const operationalSummary = operationalAssignments
+              .map((assignment) => `${assignment.responsiblePersonName ?? "Responsável definido"} · ${getCareRoleLabel(assignment.role)}`)
+              .join(" · ");
+            const consolidationSummary = item.consolidation
+              ? item.consolidation.callMade ? "Em acompanhamento" : "Primeiro contato pendente"
+              : item.soul ? "Ainda não iniciada" : null;
             return (
               <article
                 key={item.person.id}
@@ -187,7 +196,9 @@ export default function CentralCuidado() {
                     <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       {item.person.phone && <span>{item.person.phone}</span>}
                       {item.cell?.cellName && <span>Célula: {item.cell.cellName}</span>}
-                      {item.careAssignment && <span>Responsável definido</span>}
+                      {item.primaryDiscipler ? <span>Discipulador: {item.primaryDiscipler.name ?? "Definido"}</span> : <span>Sem discipulador principal</span>}
+                      {operationalSummary ? <span>Cuidado operacional: {operationalSummary}</span> : <span>Sem cuidado operacional</span>}
+                      {consolidationSummary && <span>Consolidação: {consolidationSummary}</span>}
                     </div>
                     <div className="mt-3 rounded-lg border border-white/60 bg-white/65 p-3">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Próximo passo</p>

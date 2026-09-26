@@ -77,7 +77,7 @@ describe("Fluxo estrutural do Radar Espiritual", () => {
     expect(careQueueSource).toContain("getPastorCandidatesByChurch(churchId)");
     expect(careQueueSource).toContain("eq(pastoralCoverages.churchId, churchId)");
     expect(careQueueSource).toContain("const hasPastoralCoverage = isPastor && coveredPastoralPersonIds.has(person.id);");
-    expect(careQueueSource).toContain("if (!careAssignment && !hasPastoralCoverage)");
+    expect(careQueueSource).toContain("if (careAssignmentsForPerson.length === 0 && !hasPastoralCoverage)");
     expect(careQueueSource).toContain("if (!isPastor && soul && !consolidation)");
     expect(careQueueSource).toContain("if (!isPastor && consolidation && !consolidation.callMade)");
   });

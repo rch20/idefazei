@@ -21,6 +21,7 @@ import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
 import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";
 import { PersonSectionState, resolvePersonSectionState } from "@/components/PersonSectionState";
 import { ConfirmDestructiveActionDialog } from "@/components/ConfirmDestructiveActionDialog";
+import { CARE_ROLE_LABELS, getCareRoleLabel } from "@/lib/careLabels";
 
 const STAGES_LABELS: Record<string, string> = DISCIPLESHIP_STAGE_LABELS;
 
@@ -96,14 +97,6 @@ const JOURNEY_STATUS_BADGE_CLASS: Record<JourneyStatus, string> = {
   concluida: "border-emerald-200 bg-emerald-100 text-emerald-800",
   pendente: "border-rose-200 bg-rose-100 text-rose-800",
   nao_registrada: "border-slate-200 bg-white/80 text-slate-600",
-};
-
-const CARE_ROLE_LABELS: Record<string, string> = {
-  quem_ganhou: "Quem ganhou",
-  consolidador: "Consolidador",
-  lider_celula: "Líder de célula",
-  discipulador: "Discipulador",
-  pastor: "Pastor",
 };
 
 const CONSOLIDATION_STATUS_LABELS: Record<string, string> = {
@@ -378,7 +371,10 @@ export default function Pessoas() {
   });
   const assignCare = trpc.care.assign.useMutation({
     onSuccess: async (result) => {
-      toast.success(result?.accessReleased ? "Responsável atualizado e acesso liberado." : "Responsável pelo cuidado atualizado.");
+      const isPrimaryDiscipler = Boolean(result && "disciplerPersonId" in result);
+      toast.success(isPrimaryDiscipler
+        ? "Discipulador principal atualizado."
+        : result?.accessReleased ? "Cuidado operacional atualizado e acesso liberado." : "Cuidado operacional atualizado.");
       if (result && "disciplerPersonId" in result) {
         setSelectedPerson((current: any) => current ? { ...current, discipledById: result.disciplerPersonId } : current);
       }
@@ -389,7 +385,7 @@ export default function Pessoas() {
   });
   const startConsolidation = trpc.consolidation.create.useMutation({
     onSuccess: async () => {
-      toast.success("Consolidação iniciada e responsável atualizado.");
+      toast.success("Consolidação iniciada. O discipulador principal permanece o mesmo.");
       await Promise.all([
         currentCare.refetch(),
         careHistory.refetch(),
@@ -1581,13 +1577,16 @@ export default function Pessoas() {
               {!canManagePrimaryDiscipler && <p className="mt-3 text-[11px] text-muted-foreground">Somente Pastores ou Supervisores podem definir o discipulador principal.</p>}
             </section>
             <section className="rounded-xl border border-border p-4">
-              <h3 className="text-sm font-semibold text-navy">Responsável atual</h3>
-              {currentCareState === "loading" ? <PersonSectionState kind="loading" title="Carregando responsável…" className="mt-3 border-0 bg-transparent p-0" /> : currentCareState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar o responsável" onRetry={currentCare.refetch} retrying={currentCare.isFetching} className="mt-3" /> : currentCareState === "unavailable" ? <PersonSectionState kind="unavailable" title="Responsável indisponível" className="mt-3" /> : currentCare.data ? (
+              <div>
+                <h3 className="text-sm font-semibold text-navy">Cuidado operacional</h3>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Este cartão mostra um apoio operacional por papel, quando houver. Consolidação e Célula mantêm seus próprios registros e não substituem o discipulador principal.</p>
+              </div>
+              {currentCareState === "loading" ? <PersonSectionState kind="loading" title="Carregando cuidado operacional…" className="mt-3 border-0 bg-transparent p-0" /> : currentCareState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar o cuidado operacional" onRetry={currentCare.refetch} retrying={currentCare.isFetching} className="mt-3" /> : currentCareState === "unavailable" ? <PersonSectionState kind="unavailable" title="Cuidado operacional indisponível" className="mt-3" /> : currentCare.data ? (
                 <div className="mt-3 space-y-1">
                   <p className="font-medium text-navy">{currentResponsible?.fullName ?? "Pessoa vinculada"}</p>
-                  <Badge variant="outline" className="text-xs">{CARE_ROLE_LABELS[currentCare.data.role] ?? currentCare.data.role}</Badge>
+                  <Badge variant="outline" className="text-xs">{getCareRoleLabel(currentCare.data.role)}</Badge>
                 </div>
-              ) : <PersonSectionState kind="empty" title="Nenhum responsável definido" description="A ausência de responsável é válida e pode ser atualizada pela liderança." className="mt-3" />}
+              ) : <PersonSectionState kind="empty" title="Nenhum cuidado operacional definido" description="Isso é válido quando o discipulador principal conduz o acompanhamento sem apoio adicional." className="mt-3" />}
             </section>
             <section className="rounded-xl border border-border p-4">
               <h3 className="text-sm font-semibold text-navy">Histórico de cuidado</h3>
@@ -1611,11 +1610,11 @@ export default function Pessoas() {
 
           {effectivePersonSection === "cuidado" && (isPrimaryDisciplerFocus ? canManagePrimaryDiscipler : canManageJourney) && (
             <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
-              <h3 className="text-sm font-semibold text-navy">{isPrimaryDisciplerFocus ? "Definir discipulador principal" : "Definir responsável pelo cuidado"}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{isPrimaryDisciplerFocus ? "Esta ação altera somente o discipulador principal. Ela não encerra a Consolidação nem altera a participação em Célula." : "Ao atualizar, o responsável anterior é preservado no histórico e deixa de ficar ativo."}</p>
+            <h3 className="text-sm font-semibold text-navy">{isPrimaryDisciplerFocus ? "Definir discipulador principal" : "Definir cuidado operacional"}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{isPrimaryDisciplerFocus ? "Esta ação altera somente o discipulador principal. Ela não encerra a Consolidação nem altera a participação em Célula." : "Este apoio é independente do discipulador principal. Ao atualizar o mesmo papel, o vínculo anterior é preservado no histórico."}</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div>
-                <Label htmlFor="care-responsible">Responsável *</Label>
+                <Label htmlFor="care-responsible">Pessoa responsável pelo apoio *</Label>
                 <Select value={careForm.responsiblePersonId} onValueChange={(value) => setCareForm((current) => ({ ...current, responsiblePersonId: value }))}>
                   <SelectTrigger id="care-responsible" className="mt-1 bg-background"><SelectValue placeholder="Selecione uma pessoa" /></SelectTrigger>
                   <SelectContent>{(people ?? []).filter((person) => person.id !== selectedPerson?.id).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
@@ -1623,9 +1622,9 @@ export default function Pessoas() {
               </div>
               {!isPrimaryDisciplerFocus ? <div>
                 <Label htmlFor="care-role">Função no cuidado *</Label>
-                <Select value={careForm.role} onValueChange={(value) => setCareForm((current) => ({ ...current, role: value }))}>
-                  <SelectTrigger id="care-role" className="mt-1 bg-background"><SelectValue /></SelectTrigger>
-                  <SelectContent>{Object.entries(CARE_ROLE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
+                  <Select value={careForm.role} onValueChange={(value) => setCareForm((current) => ({ ...current, role: value }))}>
+                    <SelectTrigger id="care-role" className="mt-1 bg-background"><SelectValue /></SelectTrigger>
+                  <SelectContent>{Object.entries(CARE_ROLE_LABELS).filter(([value]) => value !== "discipulador").map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
                 </Select>
               </div> : <div className="rounded-lg border border-indigo-100 bg-background/80 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Função</p><p className="mt-1 text-sm font-medium text-navy">Discipulador principal</p><p className="mt-1 text-xs text-muted-foreground">A Consolidação e a Célula permanecem independentes.</p></div>}
             </div>
@@ -1647,7 +1646,7 @@ export default function Pessoas() {
             </div>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
               {selectedAttention?.nextStep === "Iniciar consolidação" && !isPrimaryDisciplerFocus && <Button type="button" variant="outline" onClick={handleStartConsolidation} disabled={startConsolidation.isPending}>Iniciar consolidação</Button>}
-              <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={saveCareAssignment} disabled={assignCare.isPending || !canManagePrimaryDiscipler && isPrimaryDisciplerFocus}>{assignCare.isPending ? "Salvando…" : isPrimaryDisciplerFocus ? "Salvar discipulador" : "Atualizar responsável"}</Button>
+              <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={saveCareAssignment} disabled={assignCare.isPending || !canManagePrimaryDiscipler && isPrimaryDisciplerFocus}>{assignCare.isPending ? "Salvando…" : isPrimaryDisciplerFocus ? "Salvar discipulador" : "Salvar cuidado operacional"}</Button>
             </div>
             </section>
           )}
