@@ -137,6 +137,7 @@ vi.mock("./db", () => ({
   createPerson: vi.fn().mockResolvedValue({ id: 1 }),
   updatePerson: vi.fn().mockResolvedValue({ id: 1 }),
   getCurrentCareAssignment: vi.fn().mockResolvedValue(null),
+  getCurrentOperationalCareAssignment: vi.fn().mockResolvedValue(null),
   getCareHistoryByPerson: vi.fn().mockResolvedValue([]),
   getCareAttentionByChurch: vi.fn().mockResolvedValue([]),
   setCurrentCareAssignment: vi.fn().mockResolvedValue({ id: 1, personId: 1, responsiblePersonId: 10 }),
@@ -694,6 +695,29 @@ describe("Fluxo completo de discipulado", () => {
       expect(getDiscipleshipStageEvents).toHaveBeenCalledWith(CHURCH_ID, 10);
     });
 
+    it("permite ao discipulador principal ler a própria Jornada sem outro cargo formal", async () => {
+      (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+        id: 41,
+        userId: 10,
+        churchId: CHURCH_ID,
+        personId: 10,
+        role: "membro",
+        active: true,
+      });
+      (canChurchUserManageJourney as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
+      (getJourneyManagedPersonIds as ReturnType<typeof vi.fn>).mockResolvedValueOnce([10]);
+      (getDiscipleshipStageProgress as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+      (getDiscipleshipStageEvents as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+      const caller = appRouter.createCaller(createMemberContext());
+
+      await expect(caller.people.journey({ churchId: CHURCH_ID, id: 10 })).resolves.toMatchObject({ personId: 10 });
+      expect(canChurchUserManageJourney).toHaveBeenCalledWith(expect.objectContaining({
+        churchId: CHURCH_ID,
+        actorPersonId: 10,
+        targetPersonId: 10,
+      }));
+    });
+
     it("rejeita a leitura de uma Pessoa fora da Célula do líder", async () => {
       (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValue({
         id: 31,
@@ -719,6 +743,7 @@ describe("Fluxo completo de discipulado", () => {
         role: "membro",
         active: true,
       });
+      (canChurchUserManageJourney as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
       const caller = appRouter.createCaller(createMemberContext());
 
       await expect(caller.people.journey({ churchId: CHURCH_ID, id: 10 })).rejects.toThrow("Ficha do discípulo é restrita");

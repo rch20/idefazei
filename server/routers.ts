@@ -233,7 +233,7 @@ import {
   getPrayerRequestsByChurch,
   getPrayerRequestsByPerson,
   getCareHistoryByPerson,
-  getCurrentCareAssignment,
+  getCurrentOperationalCareAssignment,
   getRadarEspiritual,
   getSpiritualRadarByChurch,
   getSoulById,
@@ -942,7 +942,14 @@ async function requireScopedPersonRead(userId: number, churchId: number, personI
 async function requireJourneyReadPermission(userId: number, churchId: number, personId: number) {
   const actor = await requireChurchMember(userId, churchId);
   const roles = await getEffectiveChurchRoles(userId, churchId, actor);
-  if (!roles.some((role) => PASTOR_ROLES.has(role) || ["lider", "supervisor", "consolidador"].includes(role))) {
+  const hasLeadershipReadRole = roles.some((role) => PASTOR_ROLES.has(role) || ["lider", "supervisor", "consolidador"].includes(role));
+  const isPrimaryDiscipler = !hasLeadershipReadRole && await canChurchUserManageJourney({
+    churchId,
+    actorPersonId: actor.personId ?? null,
+    actorRoles: roles,
+    targetPersonId: personId,
+  });
+  if (!hasLeadershipReadRole && !isPrimaryDiscipler) {
     throw new TRPCError({ code: "FORBIDDEN", message: "A Ficha do discípulo é restrita à liderança e aos responsáveis pelo cuidado." });
   }
   await requireScopedPersonRead(userId, churchId, personId);
@@ -2843,6 +2850,7 @@ const careRouter = router({
           (item) =>
             canManageAll ||
             managedPersonIds.has(item.person.id) ||
+            item.careAssignments?.some((assignment) => assignment.responsiblePersonId === actor.personId) ||
             item.careAssignment?.responsiblePersonId === actor.personId
         )
         .sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
@@ -2879,7 +2887,7 @@ const careRouter = router({
       await requireScopedPersonRead(ctx.user.id, input.churchId, input.personId);
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
-      return getCurrentCareAssignment(input.personId, input.churchId);
+      return getCurrentOperationalCareAssignment(input.personId, input.churchId);
     }),
 
   history: protectedProcedure
