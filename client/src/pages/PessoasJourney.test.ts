@@ -241,7 +241,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
 
   it("prioriza cuidado no resumo e retira dados técnicos de acesso", () => {
     expect(summarySource).toContain('>Próximo passo</p>');
-    expect(summarySource).toContain('>Acompanhado por</p>');
+    expect(summarySource).toContain('responsibleLabel = "Cuidado operacional"');
     expect(summarySource).not.toContain('>Responsabilidade</p>');
     expect(summarySource).not.toContain('>Acesso</p>');
     expect(summarySource).toContain('Acompanhamento em dia');
@@ -257,7 +257,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("const personMembershipsState = resolvePersonSectionState");
     expect(pageSource).toContain("const pastoralCoverageState = resolvePersonSectionState");
     expect(pageSource).toContain('title="Não foi possível carregar a participação em Célula"');
-    expect(pageSource).toContain('title="Nenhum responsável definido"');
+    expect(pageSource).toContain('title="Nenhum cuidado operacional definido"');
     expect(pageSource).toContain("Atualização parcial do histórico");
     expect(pageSource).not.toContain('currentCare.isLoading ? <p className="mt-2 text-sm text-muted-foreground">Carregando…</p>');
   });

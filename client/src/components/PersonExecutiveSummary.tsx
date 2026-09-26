@@ -17,6 +17,7 @@ export type PersonExecutiveSummaryProps = {
   cellStatus?: string | null;
   hasCellHistory?: boolean;
   responsibleName?: string | null;
+  responsibleLabel?: string;
   attention?: PersonExecutiveSummaryAttention | null;
   attentionState?: PersonSectionStateKind | "ready";
   onAttentionRetry?: () => void;
@@ -61,6 +62,7 @@ export function PersonExecutiveSummary({
   cellStatus,
   hasCellHistory = false,
   responsibleName,
+  responsibleLabel = "Cuidado operacional",
   attention,
   attentionState,
   onAttentionRetry,
@@ -148,9 +150,9 @@ export function PersonExecutiveSummary({
           <p className="mt-1 text-[11px] text-muted-foreground">{isCellIntegrated ? "Participação integrada" : "Participação pendente"}</p>
         </article>
         <article className="col-span-2 min-w-0 rounded-lg border border-border bg-muted/30 p-3 sm:col-span-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Acompanhado por</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{responsibleLabel}</p>
           <p className="mt-1 truncate text-sm font-semibold text-navy" title={responsibleName ?? "Não definido"}>{responsibleName ?? "Não definido"}</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">Responsável pelo cuidado</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">Apoio independente do discipulador</p>
         </article>
       </div>
 

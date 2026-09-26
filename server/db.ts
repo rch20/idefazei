@@ -1316,6 +1316,20 @@ export async function canChurchUserManageJourney(input: {
   const db = await getDb();
   if (!db) return false;
 
+  const primaryDiscipler = await db
+    .select({ id: people.id })
+    .from(people)
+    .where(
+      and(
+        eq(people.id, input.targetPersonId),
+        eq(people.churchId, input.churchId),
+        eq(people.discipledById, input.actorPersonId),
+        eq(people.active, true)
+      )
+    )
+    .limit(1);
+  if (primaryDiscipler.length > 0) return true;
+
   if (input.actorRoles.includes("consolidador")) {
     const assignment = await getCurrentCareAssignment(input.targetPersonId, input.churchId);
     if (assignment?.responsiblePersonId === input.actorPersonId && assignment.role === "consolidador") return true;
@@ -1354,6 +1368,18 @@ export async function getJourneyManagedPersonIds(input: {
   if (!db) return [];
 
   const personIds = new Set<number>();
+
+  const primaryDisciples = await db
+    .select({ personId: people.id })
+    .from(people)
+    .where(
+      and(
+        eq(people.churchId, input.churchId),
+        eq(people.discipledById, input.actorPersonId),
+        eq(people.active, true)
+      )
+    );
+  primaryDisciples.forEach((row) => personIds.add(row.personId));
 
   if (input.actorRoles.includes("consolidador")) {
     const rows = await db
@@ -2228,6 +2254,26 @@ export async function getCurrentCareAssignment(personId: number, churchId: numbe
   return rows[0] ?? null;
 }
 
+/** Retorna apenas o cuidado operacional; o discipulador principal é exibido separadamente. */
+export async function getCurrentOperationalCareAssignment(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(careAssignments)
+    .where(
+      and(
+        eq(careAssignments.personId, personId),
+        eq(careAssignments.churchId, churchId),
+        eq(careAssignments.active, true),
+        ne(careAssignments.role, "discipulador")
+      )
+    )
+    .orderBy(desc(careAssignments.startedAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 export async function getCareHistoryByPerson(personId: number, churchId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -2263,13 +2309,31 @@ export async function getCareAttentionByChurch(churchId: number) {
   const coveredPastoralPersonIds = new Set(pastoralCoverageRows.map((item) => item.pastorPersonId));
   const soulByPerson = new Map(churchSouls.filter((soul) => soul.personId).map((soul) => [soul.personId!, soul]));
   const consolidationBySoul = new Map(churchConsolidations.map((item) => [item.soulId, item]));
-  const careByPerson = new Map(activeAssignments.map((item) => [item.personId, item]));
+  const careAssignmentsByPerson = new Map<number, typeof activeAssignments>();
+  for (const assignment of activeAssignments) {
+    const current = careAssignmentsByPerson.get(assignment.personId) ?? [];
+    current.push(assignment);
+    careAssignmentsByPerson.set(assignment.personId, current);
+  }
   const cellByPerson = new Map(activeMemberships.map((item) => [item.personId, item]));
+  const personById = new Map(persons.map((person) => [person.id, person]));
 
   return persons.map((person) => {
     const soul = soulByPerson.get(person.id);
     const consolidation = soul ? consolidationBySoul.get(soul.id) : undefined;
-    const careAssignment = careByPerson.get(person.id);
+    const careAssignmentsForPerson = [...(careAssignmentsByPerson.get(person.id) ?? [])].sort((left, right) => {
+      const leftRoleRank = left.role === "discipulador" ? 1 : 0;
+      const rightRoleRank = right.role === "discipulador" ? 1 : 0;
+      if (leftRoleRank !== rightRoleRank) return leftRoleRank - rightRoleRank;
+      const leftStartedAt = left.startedAt ? new Date(left.startedAt).getTime() : 0;
+      const rightStartedAt = right.startedAt ? new Date(right.startedAt).getTime() : 0;
+      return rightStartedAt - leftStartedAt || right.id - left.id;
+    });
+    const enrichedCareAssignments = careAssignmentsForPerson.map((assignment) => ({
+      ...assignment,
+      responsiblePersonName: personById.get(assignment.responsiblePersonId)?.fullName ?? null,
+    }));
+    const careAssignment = enrichedCareAssignments[0];
     const cell = cellByPerson.get(person.id);
     const reasons: string[] = [];
     let nextStep = "Acompanhamento em dia";
@@ -2277,7 +2341,7 @@ export async function getCareAttentionByChurch(churchId: number) {
     const isPastor = pastoralPersonIds.has(person.id);
     const hasPastoralCoverage = isPastor && coveredPastoralPersonIds.has(person.id);
 
-    if (!careAssignment && !hasPastoralCoverage) {
+    if (careAssignmentsForPerson.length === 0 && !hasPastoralCoverage) {
       reasons.push("Sem responsável pelo cuidado");
       nextStep = "Definir responsável";
       priority = "alta";
@@ -2301,6 +2365,13 @@ export async function getCareAttentionByChurch(churchId: number) {
       soul: soul ?? null,
       consolidation: consolidation ?? null,
       careAssignment: careAssignment ?? null,
+      careAssignments: enrichedCareAssignments,
+      primaryDiscipler: person.discipledById
+        ? {
+            id: person.discipledById,
+            name: personById.get(person.discipledById)?.fullName ?? null,
+          }
+        : null,
       cell: cell ?? null,
       nextStep,
       priority,
