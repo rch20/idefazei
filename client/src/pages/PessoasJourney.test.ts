@@ -153,7 +153,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("trpc.people.getById.useQuery");
     expect(pageSource).toContain("const person = linkedPersonQuery.data ?? (people ?? []).find((candidate) => candidate.id === routePersonId);");
     expect(pageSource).toContain("const requestedPersonSection");
-    expect(pageSource).toContain("openPersonJourney(person, requestedPersonSection);");
+    expect(pageSource).toContain("openPersonJourney(person, requestedPersonSection, requestedCareFocus);");
     expect(pageSource).toContain("<Dialog open={Boolean(selectedPerson)}");
   });
 
@@ -186,10 +186,19 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(dashboardSource).not.toContain('href="/app/pessoas" className="w-fit rounded-lg border border-navy/20');
   });
 
+  it("abre o foco do Radar para definir o discipulador sem misturar Consolidação ou Célula", () => {
+    expect(pageSource).toContain('const requestedCareFocus: PersonCareFocus = routeParams.get("focus") === "discipulador" ? "discipulador" : null;');
+    expect(pageSource).toContain('careFocus === "discipulador" ? "discipulador" : "consolidador"');
+    expect(pageSource).toContain("Discipulador principal");
+    expect(pageSource).toContain("A Consolidação e a Célula permanecem independentes.");
+    expect(pageSource).toContain("Somente Pastores ou Supervisores podem definir o discipulador principal.");
+    expect(routerSource).toContain("setPrimaryDiscipler: protectedProcedure");
+  });
+
   it("não expõe ações pastorais ministeriais para perfis não pastorais", () => {
     expect(pageSource).toContain("const canManageMinistryFunctions = isPastor;");
     expect(pageSource).toContain('effectivePersonSection === "participacoes" && canManageMinistryFunctions');
-    expect(pageSource).toContain('effectivePersonSection === "cuidado" && canManageJourney');
+    expect(pageSource).toContain('effectivePersonSection === "cuidado" && (isPrimaryDisciplerFocus ? canManagePrimaryDiscipler : canManageJourney)');
   });
 
   it("mantém participação em Célula como consulta ou ação contextual", () => {

@@ -30,10 +30,19 @@ describe("Fluxo estrutural do Radar Espiritual", () => {
     expect(pageSource).toContain("signal.evidence");
     expect(pageSource).toContain("Registrar contato");
     expect(pageSource).toContain("Central de Cuidado");
+    expect(pageSource).toContain("Definir discipulador");
+    expect(pageSource).toContain("focus=discipulador");
+    expect(pageSource).toContain("não altera a Consolidação nem a participação atual em Célula");
   });
 
   it("abre a ficha central no Resumo quando o Radar não exige outra seção", () => {
     expect(pageSource).toContain("navigate(`/app/pessoas?personId=${personId}&section=resumo`)");
+  });
+
+  it("direciona o sinal sem discipulador para a definição da relação principal", () => {
+    expect(pageSource).toContain('key === "sem_discipulador"');
+    expect(pageSource).toContain("section=cuidado&focus=discipulador");
+    expect(pageSource).toContain("getPrimarySignalKey");
   });
 
   it("deixa explícito que sinais não são diagnóstico e protege a privacidade", () => {
