@@ -230,9 +230,10 @@ import {
   getPeopleDirectoryByChurch,
   getBirthdaysByChurch,
   getPersonById,
+  getPrimaryDisciplerHistory,
   getPrayerRequestsByChurch,
   getPrayerRequestsByPerson,
-  getCareHistoryByPerson,
+  getOperationalCareHistoryByPerson,
   getCurrentOperationalCareAssignment,
   getRadarEspiritual,
   getSpiritualRadarByChurch,
@@ -1855,8 +1856,17 @@ const peopleRouter = router({
       notes: z.string().trim().max(1000).optional(),
     }))
     .mutation(async ({ input, ctx }) => {
-      await requirePrimaryDisciplerPermission(ctx.user.id, input.churchId);
-      return setPrimaryDiscipler(input);
+      const actor = await requirePrimaryDisciplerPermission(ctx.user.id, input.churchId);
+      return setPrimaryDiscipler({ ...input, changedByChurchUserId: actor.id });
+    }),
+
+  primaryDisciplerHistory: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), personId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireScopedPersonRead(ctx.user.id, input.churchId, input.personId);
+      const person = await getPersonById(input.personId, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada nesta igreja." });
+      return getPrimaryDisciplerHistory(input.personId, input.churchId);
     }),
 
   journeyScope: protectedProcedure
@@ -2896,7 +2906,7 @@ const careRouter = router({
       await requireScopedPersonRead(ctx.user.id, input.churchId, input.personId);
       const person = await getPersonById(input.personId, input.churchId);
       if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada." });
-      return getCareHistoryByPerson(input.personId, input.churchId);
+      return getOperationalCareHistoryByPerson(input.personId, input.churchId);
     }),
 
   assign: protectedProcedure
@@ -2920,12 +2930,13 @@ const careRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou responsável inválido para esta igreja." });
       }
       if (input.role === "discipulador") {
-        await requirePrimaryDisciplerPermission(ctx.user.id, input.churchId);
+        const actor = await requirePrimaryDisciplerPermission(ctx.user.id, input.churchId);
         const result = await setPrimaryDiscipler({
           churchId: input.churchId,
           personId: input.personId,
           disciplerPersonId: input.responsiblePersonId,
           notes: input.notes,
+          changedByChurchUserId: actor.id,
         });
         return { ...result, accessReleased: false };
       }

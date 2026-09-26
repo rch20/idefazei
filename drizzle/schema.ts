@@ -538,6 +538,25 @@ export const careAssignments = mysqlTable("care_assignments", {
 
 export type CareAssignment = typeof careAssignments.$inferSelect;
 
+/** Histórico imutável das alterações do discipulador principal da Pessoa. */
+export const primaryDisciplerEvents = mysqlTable("primary_discipler_events", {
+  id: int("id").autoincrement().primaryKey(),
+  churchId: int("churchId").notNull(),
+  personId: int("personId").notNull(),
+  previousDisciplerPersonId: int("previousDisciplerPersonId"),
+  nextDisciplerPersonId: int("nextDisciplerPersonId"),
+  action: mysqlEnum("action", ["definido", "alterado", "removido"]).notNull(),
+  reason: text("reason").notNull(),
+  changedByChurchUserId: int("changedByChurchUserId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("primary_discipler_events_church_person_created_idx").on(table.churchId, table.personId, table.createdAt),
+  index("primary_discipler_events_church_actor_created_idx").on(table.churchId, table.changedByChurchUserId, table.createdAt),
+]);
+
+export type PrimaryDisciplerEvent = typeof primaryDisciplerEvents.$inferSelect;
+export type InsertPrimaryDisciplerEvent = typeof primaryDisciplerEvents.$inferInsert;
+
 // ─── CÉLULAS ──────────────────────────────────────────────────────────────────
 
 export const cells = mysqlTable("cells", {

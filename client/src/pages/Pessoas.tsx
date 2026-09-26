@@ -288,6 +288,10 @@ export default function Pessoas() {
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id) }
   );
+  const primaryDisciplerHistory = trpc.people.primaryDisciplerHistory.useQuery(
+    { churchId, personId: selectedPerson?.id ?? 0 },
+    { enabled: Boolean(selectedPerson?.id) }
+  );
   const cellsQuery = trpc.cells.list.useQuery({ churchId });
   const effectiveRolesQuery = trpc.churchAuth.effectiveRoles.useQuery({ churchId });
   const effectiveRoles = effectiveRolesQuery.data ?? [];
@@ -690,6 +694,14 @@ export default function Pessoas() {
           title: item.active ? "Responsável pelo cuidado definido" : "Responsável anterior pelo cuidado",
           detail: `${CARE_ROLE_LABELS[item.role] ?? item.role}${item.notes ? ` · ${item.notes}` : ""}`,
         })),
+        ...(primaryDisciplerHistory.data ?? []).map((event) => ({
+          id: `primary-discipler-${event.id}`,
+          date: event.createdAt,
+          category: "cuidado" as const,
+          source: "moderno" as const,
+          title: event.action === "definido" ? "Discipulador principal definido" : event.action === "removido" ? "Discipulador principal removido" : "Discipulador principal alterado",
+          detail: `De ${event.previousDisciplerName ?? "Sem discipulador"} para ${event.nextDisciplerName ?? "Sem discipulador"} · ${event.changedByName ?? "Usuário da igreja"} · ${event.reason}`,
+        })),
         ...(hasModernConsolidationHistory
           ? modernConsolidationTimeline
           : [
@@ -727,7 +739,7 @@ export default function Pessoas() {
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .map((item, index) => ({ ...item, isLatest: index === 0 }))
     : [];
-  const historyQueries = [careHistory, journeyQuery, cellHistory, ...(canManageJourney ? [consolidationHistoryQuery] : [])];
+  const historyQueries = [careHistory, primaryDisciplerHistory, journeyQuery, cellHistory, ...(canManageJourney ? [consolidationHistoryQuery] : [])];
   const historyHasError = historyQueries.some((query) => query.isError);
   const historyIsLoading = historyQueries.some((query) => query.isLoading);
   const historyIsFetching = historyQueries.some((query) => query.isFetching);
@@ -1570,6 +1582,7 @@ export default function Pessoas() {
                 <div className="mt-3 rounded-lg border border-indigo-100 bg-background/80 p-3">
                   <p className="font-medium text-navy">{primaryDiscipler?.fullName ?? "Pessoa vinculada"}</p>
                   <p className="mt-1 text-xs text-muted-foreground">Discipulador definido pela liderança.</p>
+                  {primaryDisciplerHistory.data && <p className="mt-2 text-[11px] text-muted-foreground">{primaryDisciplerHistory.data.length} alteração(ões) registrada(s) na linha do tempo.</p>}
                 </div>
               ) : (
                 <PersonSectionState kind="empty" title="Nenhum discipulador definido" description="A ausência é válida até que a liderança escolha uma pessoa responsável." className="mt-3" />
