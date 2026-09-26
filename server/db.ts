@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, count, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import { alias } from "drizzle-orm/mysql-core";
 import {
   announcements,
   baptismClasses,
@@ -96,6 +97,7 @@ import {
   discipleshipStageEvents,
   pastoralCoverages,
   pastoralCoverageEvents,
+  primaryDisciplerEvents,
   prayerRequests,
   scheduleItems,
   startupDiagnostics,
@@ -1673,6 +1675,7 @@ export async function setPrimaryDiscipler(data: {
   personId: number;
   disciplerPersonId: number | null;
   notes?: string | null;
+  changedByChurchUserId: number;
 }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -1731,7 +1734,30 @@ export async function setPrimaryDiscipler(data: {
       });
     }
 
-    return { personId: data.personId, previousDisciplerId, disciplerPersonId: data.disciplerPersonId, changed: true };
+    const action = previousDisciplerId === null
+      ? "definido" as const
+      : data.disciplerPersonId === null
+        ? "removido" as const
+        : "alterado" as const;
+    const eventInserted = await tx.insert(primaryDisciplerEvents).values({
+      churchId: data.churchId,
+      personId: data.personId,
+      previousDisciplerPersonId: previousDisciplerId,
+      nextDisciplerPersonId: data.disciplerPersonId,
+      action,
+      reason: data.notes?.trim() || (
+        action === "definido"
+          ? "Discipulador principal definido pela liderança."
+          : action === "removido"
+            ? "Discipulador principal removido pela liderança."
+            : "Discipulador principal atualizado pela liderança."
+      ),
+      changedByChurchUserId: data.changedByChurchUserId,
+      createdAt: now,
+    });
+    const eventId = Number((eventInserted[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+
+    return { personId: data.personId, previousDisciplerId, disciplerPersonId: data.disciplerPersonId, changed: true, eventId };
   });
 }
 
@@ -2282,6 +2308,60 @@ export async function getCareHistoryByPerson(personId: number, churchId: number)
     .from(careAssignments)
     .where(and(eq(careAssignments.personId, personId), eq(careAssignments.churchId, churchId)))
     .orderBy(desc(careAssignments.startedAt));
+}
+
+export async function getOperationalCareHistoryByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(careAssignments)
+    .where(and(
+      eq(careAssignments.personId, personId),
+      eq(careAssignments.churchId, churchId),
+      ne(careAssignments.role, "discipulador"),
+    ))
+    .orderBy(desc(careAssignments.startedAt));
+}
+
+export async function getPrimaryDisciplerHistory(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const previousDiscipler = alias(people, "previous_primary_discipler");
+  const nextDiscipler = alias(people, "next_primary_discipler");
+  return db
+    .select({
+      id: primaryDisciplerEvents.id,
+      churchId: primaryDisciplerEvents.churchId,
+      personId: primaryDisciplerEvents.personId,
+      previousDisciplerPersonId: primaryDisciplerEvents.previousDisciplerPersonId,
+      nextDisciplerPersonId: primaryDisciplerEvents.nextDisciplerPersonId,
+      previousDisciplerName: previousDiscipler.fullName,
+      nextDisciplerName: nextDiscipler.fullName,
+      action: primaryDisciplerEvents.action,
+      reason: primaryDisciplerEvents.reason,
+      changedByChurchUserId: primaryDisciplerEvents.changedByChurchUserId,
+      changedByName: churchUsers.name,
+      createdAt: primaryDisciplerEvents.createdAt,
+    })
+    .from(primaryDisciplerEvents)
+    .leftJoin(previousDiscipler, and(
+      eq(previousDiscipler.id, primaryDisciplerEvents.previousDisciplerPersonId),
+      eq(previousDiscipler.churchId, churchId),
+    ))
+    .leftJoin(nextDiscipler, and(
+      eq(nextDiscipler.id, primaryDisciplerEvents.nextDisciplerPersonId),
+      eq(nextDiscipler.churchId, churchId),
+    ))
+    .leftJoin(churchUsers, and(
+      eq(churchUsers.id, primaryDisciplerEvents.changedByChurchUserId),
+      eq(churchUsers.churchId, churchId),
+    ))
+    .where(and(
+      eq(primaryDisciplerEvents.churchId, churchId),
+      eq(primaryDisciplerEvents.personId, personId),
+    ))
+    .orderBy(desc(primaryDisciplerEvents.createdAt), desc(primaryDisciplerEvents.id));
 }
 
 /** Retorna a fila objetiva de pessoas que demandam uma ação pastoral. */

@@ -294,6 +294,9 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("const historyTimeline: PersonHistoryEvent[]");
     expect(pageSource).toContain('category: "jornada" as const');
     expect(pageSource).toContain('category: "cuidado" as const');
+    expect(pageSource).toContain("trpc.people.primaryDisciplerHistory.useQuery");
+    expect(pageSource).toContain("primary-discipler-${event.id}");
+    expect(pageSource).toContain("Discipulador principal alterado");
     expect(pageSource).toContain('category: "consolidacao" as const');
     expect(pageSource).toContain('category: "celula" as const');
     expect(pageSource).toContain('source: "anterior" as const');
