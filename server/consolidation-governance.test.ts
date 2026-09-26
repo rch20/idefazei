@@ -44,25 +44,69 @@ describe("Governança de casos modernos de Consolidação", () => {
     expect(dbSource).toContain("Esta Pessoa já possui um caso ativo na Consolidação.");
   });
 
-  it("mantém atribuição, vínculo de cuidado e histórico na mesma transação", () => {
+  it("mantém atribuição e histórico do caso na mesma transação, sem substituir o discipulador", () => {
     const start = dbSource.indexOf("export async function assignConsolidationCase");
     const end = dbSource.indexOf("export async function acceptConsolidationCase", start);
     const block = dbSource.slice(start, end);
     expect(block).toContain("return db.transaction(async (tx) => {");
     expect(block).toContain("assignedToPersonId: data.toPersonId");
     expect(block).toContain("acceptedByChurchUserId: null");
-    expect(block).toContain("tx.update(careAssignments).set({ active: false, endedAt: now })");
     expect(block).toContain("tx.insert(consolidationCaseAssignments).values");
+    expect(block).not.toContain("tx.update(careAssignments)");
   });
 
-  it("finaliza o caso e encerra o vínculo ativo de cuidado atomicamente", () => {
+  it("finaliza o caso sem encerrar o vínculo de discipulador", () => {
     const start = dbSource.indexOf("export async function finalizeConsolidationReferral");
     const end = dbSource.indexOf("export async function getConsolidationFollowUpsByReferral", start);
     const block = dbSource.slice(start, end);
     expect(block).toContain("return db.transaction(async (tx) => {");
     expect(block).toContain('status: data.status');
-    expect(block).toContain("closeNotes: data.closeNotes");
-    expect(block).toContain("tx.update(careAssignments).set({ active: false, endedAt: now })");
+    expect(block).toContain('closeNotes: data.closeNotes');
+    expect(block).not.toContain("tx.update(careAssignments)");
+  });
+
+  it("não deixa aceite, assunção ou integração em Célula substituir o cuidado principal", () => {
+    const blocks = [
+      ["acceptConsolidationCase", "assumeConsolidationCaseByChurchUser"],
+      ["assumeConsolidationCaseByChurchUser", "approveConsolidationCase"],
+      ["integrateConsolidationReferralIntoCell", "// ─── EVENTS"],
+    ].map(([name, nextName]) => {
+      const start = dbSource.indexOf(`export async function ${name}`);
+      const end = dbSource.indexOf(nextName.startsWith("//") ? nextName : `export async function ${nextName}`, start);
+      expect(start, `${name} precisa existir`).toBeGreaterThanOrEqual(0);
+      expect(end, `${name} precisa ter fim identificável`).toBeGreaterThan(start);
+      return dbSource.slice(start, end);
+    });
+
+    for (const block of blocks) {
+      expect(block).not.toContain("tx.update(careAssignments)");
+      expect(block).not.toContain("tx.insert(careAssignments)");
+    }
+  });
+
+  it("define o discipulador em operação própria, com lock e histórico por papel", () => {
+    const start = dbSource.indexOf("export async function setPrimaryDiscipler");
+    const end = dbSource.indexOf("export async function findPossiblePeopleByIdentity", start);
+    const block = dbSource.slice(start, end);
+    expect(block).toContain("return db.transaction(async (tx) => {");
+    expect(block).toContain('.for("update")');
+    expect(block).toContain("eq(careAssignments.role, \"discipulador\")");
+    expect(block).toContain("discipledById: data.disciplerPersonId");
+    expect(block).toContain("data.disciplerPersonId === data.personId");
+  });
+
+  it("mantém o helper legado limitado ao papel solicitado", () => {
+    const start = dbSource.indexOf("export async function setCurrentCareAssignment");
+    const end = dbSource.indexOf("// ─── CONSOLIDATIONS", start);
+    const block = dbSource.slice(start, end);
+    expect(block).toContain("eq(careAssignments.role, data.role)");
+  });
+
+  it("expõe uma mutation explícita e remove discipledById dos CRUDs genéricos", () => {
+    const block = routerBlock("peopleRouter", "soulsRouter");
+    expect(block).toContain("setPrimaryDiscipler: protectedProcedure");
+    expect(block).toContain("requirePrimaryDisciplerPermission(ctx.user.id, input.churchId)");
+    expect(block).not.toContain("discipledById: z.number().optional()");
   });
 
   it("usa o referral como autoridade do responsável e não a preferência como atribuição ativa", () => {

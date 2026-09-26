@@ -131,7 +131,12 @@ describe("Fluxo estrutural do Ministério de Consolidação e Visitas", () => {
     expect(routerSource).toContain("integrateReferralIntoCell");
     expect(dbSource).toContain("export async function integrateConsolidationReferralIntoCell");
     expect(dbSource).toContain('status: "encerrado"');
-    expect(dbSource).toContain("Cuidado transferido após integração");
+    const integrationStart = dbSource.indexOf("export async function integrateConsolidationReferralIntoCell");
+    const integrationEnd = dbSource.indexOf("// ─── EVENTS", integrationStart);
+    const integrationBlock = dbSource.slice(integrationStart, integrationEnd);
+    expect(integrationBlock).toContain('status: "encerrado"');
+    expect(integrationBlock).not.toContain("Cuidado transferido após integração");
+    expect(integrationBlock).not.toContain("tx.insert(careAssignments)");
     expect(consolidationSource).toContain("Próximo destino da Pessoa");
     expect(consolidationSource).toContain("Concluir e integrar");
     expect(consolidationSource).toContain("Histórico legado de Consolidação");

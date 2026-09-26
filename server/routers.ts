@@ -248,6 +248,7 @@ import {
   finalizeConsolidationReferral,
   linkSoulToPerson,
   setCurrentCareAssignment,
+  setPrimaryDiscipler,
   updatePersonContact,
   updatePerson,
   getDiscipleshipStageProgress,
@@ -1264,6 +1265,18 @@ async function requireJourneyStagePermission(userId: number, churchId: number, t
   return actor;
 }
 
+async function requirePrimaryDisciplerPermission(userId: number, churchId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const actorRoles = await getEffectiveChurchRoles(userId, churchId, actor);
+  if (!actorRoles.some((role) => PASTOR_ROLES.has(role) || role === "supervisor")) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Somente Pastores ou Supervisores podem definir o discipulador principal.",
+    });
+  }
+  return actor;
+}
+
 async function requireParallelJourneyPermission(userId: number, churchId: number) {
   const actor = await requireChurchMember(userId, churchId);
   const actorRoles = await getEffectiveChurchRoles(userId, churchId, actor);
@@ -1784,7 +1797,6 @@ const peopleRouter = router({
           ])
           .optional(),
         wonById: z.number().optional(),
-        discipledById: z.number().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -1816,7 +1828,6 @@ const peopleRouter = router({
           .optional(),
         pastoralNotes: z.string().optional(),
         wonById: z.number().optional(),
-        discipledById: z.number().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -1827,6 +1838,18 @@ const peopleRouter = router({
         await requireChurchAdministrator(ctx.user.id, churchId);
       }
       return updatePerson(id, churchId, data as any);
+    }),
+
+  setPrimaryDiscipler: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      personId: z.number().int().positive(),
+      disciplerPersonId: z.number().int().positive().nullable(),
+      notes: z.string().trim().max(1000).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      await requirePrimaryDisciplerPermission(ctx.user.id, input.churchId);
+      return setPrimaryDiscipler(input);
     }),
 
   journeyScope: protectedProcedure
@@ -1969,16 +1992,14 @@ const soulsRouter = router({
         throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível registrar a Nova Alma." });
       }
       await linkSoulToPerson(soul.id, input.churchId, person.id);
-      const careAssignment = winner
-        ? await setCurrentCareAssignment({
-            churchId: input.churchId,
-            personId: person.id,
-            responsiblePersonId: winner.id,
-            role: "quem_ganhou",
-            notes: isSelfIndication ? "Indicação registrada pelo próprio membro; aguarda cuidado da liderança." : "Responsável inicial definido no registro da Nova Alma.",
-          })
-        : null;
-      return { soul, person, careAssignment, createdPerson: !input.existingPersonId, needsConsolidator: !winner };
+      return {
+        soul,
+        person,
+        careAssignment: null,
+        createdPerson: !input.existingPersonId,
+        needsConsolidator: !winner,
+        needsDiscipler: person.discipledById == null,
+      };
     }),
 
   updateStatus: protectedProcedure
@@ -2889,6 +2910,16 @@ const careRouter = router({
       ]);
       if (!person || !responsible) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Pessoa ou responsável inválido para esta igreja." });
+      }
+      if (input.role === "discipulador") {
+        await requirePrimaryDisciplerPermission(ctx.user.id, input.churchId);
+        const result = await setPrimaryDiscipler({
+          churchId: input.churchId,
+          personId: input.personId,
+          disciplerPersonId: input.responsiblePersonId,
+          notes: input.notes,
+        });
+        return { ...result, accessReleased: false };
       }
       return setCurrentCareAssignment({
         ...input,

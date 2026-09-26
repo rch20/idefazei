@@ -1641,6 +1641,74 @@ export async function getPersonById(id: number, churchId: number) {
   return result[0] ?? null;
 }
 
+/** Define o discipulador principal sem encerrar atribuições de apoio ou de Célula. */
+export async function setPrimaryDiscipler(data: {
+  churchId: number;
+  personId: number;
+  disciplerPersonId: number | null;
+  notes?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  return db.transaction(async (tx) => {
+    const targetRows = await tx
+      .select({ id: people.id, discipledById: people.discipledById })
+      .from(people)
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1)
+      .for("update");
+    const target = targetRows[0];
+    if (!target) throw new Error("Pessoa não encontrada nesta igreja.");
+
+    if (data.disciplerPersonId !== null) {
+      if (data.disciplerPersonId === data.personId) {
+        throw new Error("A Pessoa não pode ser seu próprio discipulador.");
+      }
+      const disciplerRows = await tx
+        .select({ id: people.id })
+        .from(people)
+        .where(and(eq(people.id, data.disciplerPersonId), eq(people.churchId, data.churchId), eq(people.active, true)))
+        .limit(1);
+      if (disciplerRows.length === 0) throw new Error("Discipulador inválido para esta igreja.");
+    }
+
+    const previousDisciplerId = target.discipledById ?? null;
+    const changed = previousDisciplerId !== data.disciplerPersonId;
+    if (!changed) {
+      return { personId: data.personId, previousDisciplerId, disciplerPersonId: data.disciplerPersonId, changed: false };
+    }
+
+    const now = new Date();
+    await tx
+      .update(people)
+      .set({ discipledById: data.disciplerPersonId })
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)));
+    await tx
+      .update(careAssignments)
+      .set({ active: false, endedAt: now })
+      .where(and(
+        eq(careAssignments.personId, data.personId),
+        eq(careAssignments.churchId, data.churchId),
+        eq(careAssignments.role, "discipulador"),
+        eq(careAssignments.active, true),
+      ));
+    if (data.disciplerPersonId !== null) {
+      await tx.insert(careAssignments).values({
+        churchId: data.churchId,
+        personId: data.personId,
+        responsiblePersonId: data.disciplerPersonId,
+        role: "discipulador",
+        notes: data.notes ?? "Discipulador principal definido pela liderança.",
+        active: true,
+        startedAt: now,
+      });
+    }
+
+    return { personId: data.personId, previousDisciplerId, disciplerPersonId: data.disciplerPersonId, changed: true };
+  });
+}
+
 /** Sugere fichas existentes, sem vincular automaticamente pessoas homônimas. */
 export async function findPossiblePeopleByIdentity(
   churchId: number,
@@ -2475,7 +2543,7 @@ export async function getSpiritualRadarByChurch(churchId: number) {
   };
 }
 
-/** Encerra o responsável anterior, define o atual e pode liberar a conta pendente da Pessoa. */
+/** Encerra apenas o responsável anterior do mesmo papel e pode liberar a conta pendente da Pessoa. */
 export async function setCurrentCareAssignment(data: {
   churchId: number;
   personId: number;
@@ -2496,6 +2564,7 @@ export async function setCurrentCareAssignment(data: {
         and(
           eq(careAssignments.personId, data.personId),
           eq(careAssignments.churchId, data.churchId),
+          eq(careAssignments.role, data.role),
           eq(careAssignments.active, true)
         )
       );
@@ -2619,9 +2688,6 @@ export async function startConsolidationWorkflow(data: { churchId: number; soulI
 
     await tx.update(souls).set({ status: "em_consolidacao" }).where(and(eq(souls.id, data.soulId), eq(souls.churchId, data.churchId)));
     await tx.update(people).set({ discipleshipStage: "consolidacao" }).where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId)));
-    const now = new Date();
-    await tx.update(careAssignments).set({ active: false, endedAt: now }).where(and(eq(careAssignments.personId, data.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.active, true)));
-    await tx.insert(careAssignments).values({ churchId: data.churchId, personId: data.personId, responsiblePersonId: data.consolidatorId, role: "consolidador", notes: "Responsável atualizado ao iniciar a consolidação.", active: true, startedAt: now });
 
     const rows = await tx.select().from(consolidations).where(and(eq(consolidations.id, consolidationId), eq(consolidations.churchId, data.churchId))).limit(1);
     return rows[0] ?? null;
@@ -2828,9 +2894,6 @@ export async function assignConsolidationCase(data: { churchId: number; referral
       acceptedAt: keepsCurrentResponsibility ? referral.acceptedAt : null,
       status: keepsCurrentResponsibility ? referral.status : referral.status === "aprovado" ? "aprovado" : "pendente",
     }).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
-    if (!keepsCurrentResponsibility) {
-      await tx.update(careAssignments).set({ active: false, endedAt: now }).where(and(eq(careAssignments.personId, referral.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.active, true)));
-    }
     await tx.insert(consolidationCaseAssignments).values({ churchId: data.churchId, referralId: data.referralId, action, fromPersonId, toPersonId: data.toPersonId, performedByChurchUserId: data.performedByChurchUserId, notes: data.notes ?? null });
     const updated = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1);
     return updated[0] ?? null;
@@ -2848,8 +2911,6 @@ export async function acceptConsolidationCase(data: { churchId: number; referral
     if (referral.assignedToPersonId && referral.assignedToPersonId !== data.personId) throw new Error("Este caso está atribuído a outro Consolidador.");
     const now = new Date();
     await tx.update(consolidationReferrals).set({ assignedToPersonId: data.personId, assignedByChurchUserId: referral.assignedByChurchUserId ?? data.churchUserId, assignedAt: referral.assignedAt ?? now, acceptedByPersonId: data.personId, acceptedByChurchUserId: null, acceptedAt: now, status: "aceito" }).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId), or(eq(consolidationReferrals.status, "pendente"), eq(consolidationReferrals.status, "aprovado"))));
-    await tx.update(careAssignments).set({ active: false, endedAt: now }).where(and(eq(careAssignments.personId, referral.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.active, true)));
-    await tx.insert(careAssignments).values({ churchId: data.churchId, personId: referral.personId, responsiblePersonId: data.personId, role: "consolidador", notes: `Caso de Consolidação aceito: ${referral.reason}`, active: true, startedAt: now });
     await tx.insert(consolidationCaseAssignments).values({ churchId: data.churchId, referralId: data.referralId, action: "aceito", fromPersonId: referral.assignedToPersonId, toPersonId: data.personId, performedByChurchUserId: data.churchUserId });
     const updated = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1);
     return updated[0] ?? null;
@@ -2879,7 +2940,6 @@ export async function assumeConsolidationCaseByChurchUser(data: { churchId: numb
       acceptedAt: now,
       status: "aceito",
     }).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId), or(eq(consolidationReferrals.status, "pendente"), eq(consolidationReferrals.status, "aprovado"))));
-    await tx.update(careAssignments).set({ active: false, endedAt: now }).where(and(eq(careAssignments.personId, referral.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.active, true)));
     await tx.insert(consolidationCaseAssignments).values({
       churchId: data.churchId,
       referralId: data.referralId,
@@ -2953,7 +3013,6 @@ export async function finalizeConsolidationReferral(data: {
 
     const now = new Date();
     await tx.update(consolidationReferrals).set({ status: data.status, closedAt: now, closeNotes: data.closeNotes }).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
-    await tx.update(careAssignments).set({ active: false, endedAt: now }).where(and(eq(careAssignments.personId, referral.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.active, true)));
 
     const updated = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1);
     return updated[0] ?? null;
@@ -3699,8 +3758,6 @@ export async function integrateConsolidationReferralIntoCell(data: { churchId: n
     }
 
     await tx.update(consolidationReferrals).set({ status: "encerrado", closedAt: now, closeNotes: data.closeNotes }).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
-    await tx.update(careAssignments).set({ active: false, endedAt: now }).where(and(eq(careAssignments.personId, referral.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.active, true)));
-    await tx.insert(careAssignments).values({ churchId: data.churchId, personId: referral.personId, responsiblePersonId: targetCell.leaderId, role: "lider_celula", notes: `Cuidado transferido após integração na ${targetCell.name}.`, active: true, startedAt: now });
 
     const updatedRows = await tx.select().from(consolidationReferrals).where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId))).limit(1);
     return { referral: updatedRows[0] ?? null, membership, cellName: targetCell.name };
