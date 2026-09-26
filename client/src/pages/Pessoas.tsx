@@ -39,6 +39,7 @@ const JOURNEY_STAGES = [
 type JourneyStage = typeof JOURNEY_STAGES[number];
 type JourneyStatus = "concluida" | "pendente" | "nao_registrada";
 type DirectoryFilter = "todas" | JourneyStage | "sem_responsavel" | "atencao";
+type PersonCareFocus = "discipulador" | null;
 type PendingDestructiveAction =
   | { kind: "cell-removal"; personId: number; personName: string; cellId: number; cellName: string }
   | { kind: "pastoral-coverage-removal"; pastorPersonId: number; personName: string }
@@ -274,8 +275,9 @@ export default function Pessoas() {
   const requestedPersonSection = PERSON_SECTIONS.includes(routeSection as PersonSection)
     ? routeSection as PersonSection
     : "resumo";
+  const requestedCareFocus: PersonCareFocus = routeParams.get("focus") === "discipulador" ? "discipulador" : null;
   const personDeepLinkKey = Number.isInteger(routePersonId) && routePersonId > 0
-    ? `${routePersonId}:${requestedPersonSection}`
+    ? `${routePersonId}:${requestedPersonSection}:${requestedCareFocus ?? ""}`
     : null;
   const linkedPersonQuery = trpc.people.getById.useQuery(
     { churchId, id: routePersonId },
@@ -298,6 +300,7 @@ export default function Pessoas() {
   const effectiveRoles = effectiveRolesQuery.data ?? [];
   const isPastorPresident = effectiveRoles.includes("pastor_presidente");
   const isPastor = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+  const canManagePrimaryDiscipler = isPastor || effectiveRoles.includes("supervisor");
   const canReadExecutiveAttention = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local", "secretario"].includes(role));
   const careAttention = trpc.dashboard.careAttention.useQuery(
     { churchId },
@@ -308,6 +311,11 @@ export default function Pessoas() {
   const canManageCellParticipation = isPastor || effectiveRoles.some((role) => ["lider", "supervisor"].includes(role));
   const canCreateReferral = canManageJourney;
   const canManageMinistryFunctions = isPastor;
+  const primaryDisciplerQuery = trpc.people.getById.useQuery(
+    { churchId, id: selectedPerson?.discipledById ?? 0 },
+    { enabled: Boolean(selectedPerson?.discipledById) },
+  );
+  const primaryDiscipler = primaryDisciplerQuery.data;
   const personMembershipsQuery = trpc.ministries.personMemberships.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
@@ -332,6 +340,7 @@ export default function Pessoas() {
     accessPending: pastoralCoverageAccessPending,
   });
   const effectivePersonSection = resolvedRequestedSection ?? "resumo";
+  const isPrimaryDisciplerFocus = effectivePersonSection === "cuidado" && requestedCareFocus === "discipulador";
   const personFunctionsQuery = trpc.ministries.personFunctions.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageMinistryFunctions) }
@@ -370,6 +379,9 @@ export default function Pessoas() {
   const assignCare = trpc.care.assign.useMutation({
     onSuccess: async (result) => {
       toast.success(result?.accessReleased ? "Responsável atualizado e acesso liberado." : "Responsável pelo cuidado atualizado.");
+      if (result && "disciplerPersonId" in result) {
+        setSelectedPerson((current: any) => current ? { ...current, discipledById: result.disciplerPersonId } : current);
+      }
       setCareForm((current) => ({ ...current, notes: "" }));
       await Promise.all([currentCare.refetch(), careHistory.refetch(), refreshCareAttention(), directoryQuery.refetch()]);
     },
@@ -610,11 +622,11 @@ export default function Pessoas() {
     if (!person) return;
     consumedPersonDeepLinkRef.current = personDeepLinkKey;
     if (selectedPerson?.id !== person.id) {
-      openPersonJourney(person, requestedPersonSection);
+      openPersonJourney(person, requestedPersonSection, requestedCareFocus);
     } else if (personSection !== requestedPersonSection) {
       setPersonSection(requestedPersonSection);
     }
-  }, [linkedPersonQuery.data, people, personDeepLinkKey, requestedPersonSection, routePersonId, selectedPerson?.id]);
+  }, [linkedPersonQuery.data, people, personDeepLinkKey, requestedCareFocus, requestedPersonSection, routePersonId, selectedPerson?.id]);
 
   useEffect(() => {
     if (requestedPersonSection !== "cobertura" || !selectedPerson?.id || resolvedRequestedSection !== "resumo") return;
@@ -738,6 +750,7 @@ export default function Pessoas() {
     const params = new URLSearchParams(queryString ?? "");
     params.set("personId", String(personId));
     params.set("section", section);
+    if (section !== "cuidado") params.delete("focus");
     return `${path}?${params.toString()}`;
   }
 
@@ -749,12 +762,12 @@ export default function Pessoas() {
     }
   }
 
-  function openPersonJourney(person: any, section: PersonSection = "resumo") {
+  function openPersonJourney(person: any, section: PersonSection = "resumo", careFocus: PersonCareFocus = null) {
     setSelectedPerson(person);
     setPersonSection(section);
     setJourneyNoteStage(null);
     setJourneyNote("");
-    setCareForm({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
+    setCareForm({ responsiblePersonId: "", role: careFocus === "discipulador" ? "discipulador" : "consolidador", notes: "", releaseAccess: true });
     setSelectedCellId("");
     setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "", idempotencyKey: createIdempotencyKey() });
     setCoverageForm(defaultCoverageForm);
@@ -772,6 +785,7 @@ export default function Pessoas() {
     const params = new URLSearchParams(queryString ?? "");
     params.delete("personId");
     params.delete("section");
+    params.delete("focus");
     const query = params.toString();
     if (queryString?.includes("personId") || queryString?.includes("section")) navigate(`${path}${query ? `?${query}` : ""}`);
   }
@@ -1548,6 +1562,24 @@ export default function Pessoas() {
           )}
 
           {effectivePersonSection === "cuidado" && <div className="grid gap-4 md:grid-cols-2">
+            <section className={`rounded-xl border p-4 ${isPrimaryDisciplerFocus ? "border-indigo-200 bg-indigo-50/40" : "border-border"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-navy">Discipulador principal</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">É o vínculo principal de acompanhamento da Pessoa. Consolidação e Célula podem apoiar sem substituí-lo.</p>
+                </div>
+                <Badge variant="outline" className="shrink-0 border-indigo-200 bg-indigo-50 text-[10px] text-indigo-800">Relação principal</Badge>
+              </div>
+              {selectedPerson?.discipledById ? (
+                <div className="mt-3 rounded-lg border border-indigo-100 bg-background/80 p-3">
+                  <p className="font-medium text-navy">{primaryDiscipler?.fullName ?? "Pessoa vinculada"}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Discipulador definido pela liderança.</p>
+                </div>
+              ) : (
+                <PersonSectionState kind="empty" title="Nenhum discipulador definido" description="A ausência é válida até que a liderança escolha uma pessoa responsável." className="mt-3" />
+              )}
+              {!canManagePrimaryDiscipler && <p className="mt-3 text-[11px] text-muted-foreground">Somente Pastores ou Supervisores podem definir o discipulador principal.</p>}
+            </section>
             <section className="rounded-xl border border-border p-4">
               <h3 className="text-sm font-semibold text-navy">Responsável atual</h3>
               {currentCareState === "loading" ? <PersonSectionState kind="loading" title="Carregando responsável…" className="mt-3 border-0 bg-transparent p-0" /> : currentCareState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar o responsável" onRetry={currentCare.refetch} retrying={currentCare.isFetching} className="mt-3" /> : currentCareState === "unavailable" ? <PersonSectionState kind="unavailable" title="Responsável indisponível" className="mt-3" /> : currentCare.data ? (
@@ -1577,27 +1609,27 @@ export default function Pessoas() {
             )
           )}
 
-          {effectivePersonSection === "cuidado" && canManageJourney && (
+          {effectivePersonSection === "cuidado" && (isPrimaryDisciplerFocus ? canManagePrimaryDiscipler : canManageJourney) && (
             <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
-              <h3 className="text-sm font-semibold text-navy">Definir responsável pelo cuidado</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Ao atualizar, o responsável anterior é preservado no histórico e deixa de ficar ativo.</p>
+              <h3 className="text-sm font-semibold text-navy">{isPrimaryDisciplerFocus ? "Definir discipulador principal" : "Definir responsável pelo cuidado"}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{isPrimaryDisciplerFocus ? "Esta ação altera somente o discipulador principal. Ela não encerra a Consolidação nem altera a participação em Célula." : "Ao atualizar, o responsável anterior é preservado no histórico e deixa de ficar ativo."}</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="care-responsible">Responsável *</Label>
                 <Select value={careForm.responsiblePersonId} onValueChange={(value) => setCareForm((current) => ({ ...current, responsiblePersonId: value }))}>
                   <SelectTrigger id="care-responsible" className="mt-1 bg-background"><SelectValue placeholder="Selecione uma pessoa" /></SelectTrigger>
-                  <SelectContent>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                  <SelectContent>{(people ?? []).filter((person) => person.id !== selectedPerson?.id).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div>
+              {!isPrimaryDisciplerFocus ? <div>
                 <Label htmlFor="care-role">Função no cuidado *</Label>
                 <Select value={careForm.role} onValueChange={(value) => setCareForm((current) => ({ ...current, role: value }))}>
                   <SelectTrigger id="care-role" className="mt-1 bg-background"><SelectValue /></SelectTrigger>
                   <SelectContent>{Object.entries(CARE_ROLE_LABELS).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
                 </Select>
-              </div>
+              </div> : <div className="rounded-lg border border-indigo-100 bg-background/80 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Função</p><p className="mt-1 text-sm font-medium text-navy">Discipulador principal</p><p className="mt-1 text-xs text-muted-foreground">A Consolidação e a Célula permanecem independentes.</p></div>}
             </div>
-            <label className="mt-3 flex items-start gap-3 rounded-lg border border-border/70 bg-background/70 p-3 text-sm">
+            {!isPrimaryDisciplerFocus && <label className="mt-3 flex items-start gap-3 rounded-lg border border-border/70 bg-background/70 p-3 text-sm">
               <input
                 type="checkbox"
                 checked={careForm.releaseAccess}
@@ -1608,14 +1640,14 @@ export default function Pessoas() {
                 <span className="block font-medium text-navy">Liberar acesso ao login após salvar</span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">A conta pendente desta Pessoa será aprovada e ativada. Desmarque para apenas registrar o responsável.</span>
               </span>
-            </label>
+            </label>}
             <div className="mt-3">
               <Label htmlFor="care-notes">Observação</Label>
               <Textarea id="care-notes" className="mt-1 bg-background" rows={2} value={careForm.notes} onChange={(event) => setCareForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Ex.: responsável definido após primeiro contato" />
             </div>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
-              {selectedAttention?.nextStep === "Iniciar consolidação" && <Button type="button" variant="outline" onClick={handleStartConsolidation} disabled={startConsolidation.isPending}>Iniciar consolidação</Button>}
-              <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={saveCareAssignment} disabled={assignCare.isPending}>{assignCare.isPending ? "Salvando…" : "Atualizar responsável"}</Button>
+              {selectedAttention?.nextStep === "Iniciar consolidação" && !isPrimaryDisciplerFocus && <Button type="button" variant="outline" onClick={handleStartConsolidation} disabled={startConsolidation.isPending}>Iniciar consolidação</Button>}
+              <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={saveCareAssignment} disabled={assignCare.isPending || !canManagePrimaryDiscipler && isPrimaryDisciplerFocus}>{assignCare.isPending ? "Salvando…" : isPrimaryDisciplerFocus ? "Salvar discipulador" : "Atualizar responsável"}</Button>
             </div>
             </section>
           )}

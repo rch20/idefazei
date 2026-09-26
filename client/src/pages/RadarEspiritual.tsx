@@ -2,7 +2,7 @@ import { useChurch } from "@/components/ChurchLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { trpc } from "@/lib/trpc";
-import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, CircleAlert, Clock3, HeartHandshake, PhoneCall, RefreshCw, ShieldCheck, Users, Zap } from "lucide-react";
+import { AlertTriangle, ArrowRight, BookOpen, CheckCircle2, CircleAlert, Clock3, HeartHandshake, PhoneCall, RefreshCw, ShieldCheck, UserRound, Users, Zap } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -38,6 +38,10 @@ const signalIcons: Record<string, typeof Users> = {
   pedido_oracao_pendente: HeartHandshake,
   sem_formacao: BookOpen,
 };
+
+function getPrimarySignalKey(item: { signals: Array<{ key: string; severity: string }> }) {
+  return item.signals.find((signal) => signal.severity === "alta")?.key ?? item.signals[0]?.key;
+}
 
 type SignalFilter = "todos" | "consolidacao_pendente" | "primeiro_contato_pendente" | "visita_pendente" | "follow_up_vencido" | "sem_responsavel" | "sem_celula" | "sem_discipulador" | "ausencias_recentes" | "pedido_oracao_pendente" | "sem_formacao";
 type PriorityFilter = "todas" | "alta" | "media" | "normal";
@@ -79,11 +83,13 @@ export default function RadarEspiritual() {
   }
 
   function openAction(item: (typeof items)[number]) {
-    const key = item.signals.find((signal) => signal.severity === "alta")?.key ?? item.signals[0]?.key;
+    const key = getPrimarySignalKey(item);
     if (key === "consolidacao_pendente" || key === "primeiro_contato_pendente" || key === "follow_up_vencido" || key === "visita_pendente") {
       navigate("/app/consolidacao");
     } else if (key === "sem_celula") {
       navigate("/app/celulas");
+    } else if (key === "sem_discipulador") {
+      navigate(`/app/pessoas?personId=${item.person.id}&section=cuidado&focus=discipulador`);
     } else {
       openPerson(item.person.id);
     }
@@ -169,15 +175,16 @@ export default function RadarEspiritual() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2"><h2 className="font-display text-lg font-bold text-navy">{item.person.fullName}</h2><Badge variant="outline" className={config.badge}>{config.label}</Badge><Badge variant="outline" className="border-slate-200 bg-white/70 text-slate-700">Pontuação {item.score}</Badge></div>
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>Etapa: {stageLabels[item.person.discipleshipStage ?? ""] ?? "Não informada"}</span>{item.cell && <span>Célula: {item.cell.name}</span>}{item.careAssignment && <span>Responsável definido</span>}</div>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>Etapa: {stageLabels[item.person.discipleshipStage ?? ""] ?? "Não informada"}</span>{item.cell && <span>Célula: {item.cell.name}</span>}{item.careAssignment && <span>Cuidado definido</span>}</div>
                     <div className="mt-4 grid gap-2 sm:grid-cols-2">
                       {item.signals.map((signal) => { const Icon = signalIcons[signal.key] ?? CircleAlert; return <div key={signal.key} className="rounded-xl border border-white/70 bg-white/75 p-3"><div className="flex items-start gap-2"><Icon className={`mt-0.5 h-4 w-4 shrink-0 ${priorityConfig[signal.severity].icon}`} /><div className="min-w-0"><p className="text-sm font-semibold text-navy">{signal.label}</p><p className="mt-1 text-xs leading-relaxed text-muted-foreground">{signal.evidence}</p></div></div></div>; })}
                     </div>
+                    {item.signals.some((signal) => signal.key === "sem_discipulador") && <p className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50/70 px-3 py-2 text-xs leading-relaxed text-indigo-950">Definir o discipulador principal é uma ação própria. Isso não altera a Consolidação nem a participação atual em Célula.</p>}
                   </div>
                   <div className="flex w-full flex-col gap-2 lg:w-48 lg:shrink-0">
                     <div className="rounded-xl border border-white/70 bg-white/70 p-3"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Próximo passo</p><p className="mt-1 text-sm font-semibold text-navy">{item.nextAction}</p></div>
                     {item.signals.some((signal) => signal.key === "primeiro_contato_pendente") && <Button className="gap-2 bg-navy text-white hover:bg-navy-light" onClick={() => { const idempotencyKey = firstContactKeys[item.person.id] ?? createIdempotencyKey(); setFirstContactKeys((current) => ({ ...current, [item.person.id]: idempotencyKey })); registerFirstContact.mutate({ churchId, personId: item.person.id, idempotencyKey }); }} disabled={registerFirstContact.isPending}><PhoneCall className="h-4 w-4" />{registerFirstContact.isPending ? "Registrando…" : "Registrar contato"}</Button>}
-                    <Button variant="outline" className="gap-2" onClick={() => openAction(item)}>Abrir ação <ArrowRight className="h-4 w-4" /></Button>
+                    <Button variant="outline" className="gap-2" onClick={() => openAction(item)}>{getPrimarySignalKey(item) === "sem_discipulador" ? <UserRound className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}{getPrimarySignalKey(item) === "sem_discipulador" ? "Definir discipulador" : "Abrir ação"}{getPrimarySignalKey(item) === "sem_discipulador" && <ArrowRight className="h-4 w-4" />}</Button>
                     <Button variant="ghost" className="gap-2" onClick={() => openPerson(item.person.id)}>Abrir ficha <ArrowRight className="h-4 w-4" /></Button>
                   </div>
                 </div>
