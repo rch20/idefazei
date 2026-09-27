@@ -790,8 +790,11 @@ export default function Pessoas() {
   }
 
   function closePersonJourney() {
-    const nextLocation = getPersonListLocation(location);
-    if (nextLocation !== location) navigate(nextLocation, { replace: true });
+    const currentBrowserLocation = typeof window !== "undefined"
+      ? `${window.location.pathname}${window.location.search}`
+      : location;
+    const nextLocation = getPersonListLocation(currentBrowserLocation);
+    if (nextLocation !== currentBrowserLocation) navigate(nextLocation, { replace: true });
     setSelectedPerson(null);
     setPendingDestructiveAction(null);
     setJourneyNoteStage(null);
