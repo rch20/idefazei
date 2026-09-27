@@ -8,6 +8,20 @@ export type PersonSectionAccess = {
 };
 
 /**
+ * Returns the current page location without the person-profile deep-link
+ * parameters. Other query parameters, such as filters, remain intact.
+ */
+export function getPersonListLocation(location: string): string {
+  const [path, queryString] = location.split("?");
+  const params = new URLSearchParams(queryString ?? "");
+  params.delete("personId");
+  params.delete("section");
+  params.delete("focus");
+  const query = params.toString();
+  return `${path}${query ? `?${query}` : ""}`;
+}
+
+/**
  * Resolves a requested profile section without allowing a pastoral deep link
  * to bypass the access state already established by the page queries.
  *
