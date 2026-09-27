@@ -22,3 +22,29 @@ export function resolvePersonSection(
   if (access.accessPending) return null;
   return access.canManagePastoralCoverage ? "cobertura" : "resumo";
 }
+
+/**
+ * Keeps the tab responsive while wouter commits the URL change. Before a
+ * person is selected, the URL is the only available source for a deep link;
+ * once the modal is open, the local selection must win for the current render.
+ */
+export function getVisiblePersonSection({
+  requestedSection,
+  localSection,
+  isSameSelectedPerson,
+  canManagePastoralCoverage,
+  accessPending,
+}: PersonSectionAccess & {
+  requestedSection: PersonSection;
+  localSection: PersonSection;
+  isSameSelectedPerson: boolean;
+}): PersonSection {
+  const resolvedRequestedSection = resolvePersonSection(requestedSection, {
+    canManagePastoralCoverage,
+    accessPending,
+  });
+
+  if (requestedSection === "cobertura") return resolvedRequestedSection ?? "resumo";
+  if (isSameSelectedPerson) return localSection;
+  return resolvedRequestedSection ?? "resumo";
+}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { resolvePersonSection } from "../lib/personSection";
+import { getVisiblePersonSection, resolvePersonSection } from "../lib/personSection";
 import { resolvePersonSectionState } from "../components/PersonSectionState";
 
 const root = resolve(__dirname, "../../..");
@@ -21,6 +21,37 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(resolvePersonSection("cobertura", { canManagePastoralCoverage: false, accessPending: false })).toBe("resumo");
     expect(resolvePersonSection("cobertura", { canManagePastoralCoverage: false, accessPending: true })).toBeNull();
     expect(resolvePersonSection("jornada", { canManagePastoralCoverage: false, accessPending: true })).toBe("jornada");
+  });
+
+  it("mantém a aba clicada durante a troca de URL e abre a aba pedida por deep link", () => {
+    expect(getVisiblePersonSection({
+      requestedSection: "resumo",
+      localSection: "cuidado",
+      isSameSelectedPerson: true,
+      canManagePastoralCoverage: false,
+      accessPending: false,
+    })).toBe("cuidado");
+    expect(getVisiblePersonSection({
+      requestedSection: "cuidado",
+      localSection: "cuidado",
+      isSameSelectedPerson: true,
+      canManagePastoralCoverage: false,
+      accessPending: false,
+    })).toBe("cuidado");
+    expect(getVisiblePersonSection({
+      requestedSection: "historico",
+      localSection: "resumo",
+      isSameSelectedPerson: false,
+      canManagePastoralCoverage: false,
+      accessPending: false,
+    })).toBe("historico");
+    expect(getVisiblePersonSection({
+      requestedSection: "jornada",
+      localSection: "cuidado",
+      isSameSelectedPerson: false,
+      canManagePastoralCoverage: false,
+      accessPending: false,
+    })).toBe("jornada");
   });
 
   it("deriva estados de leitura sem confundir erro, vazio e indisponibilidade", () => {
@@ -49,7 +80,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
 
   it("mantém uma navegação única com apresentação compacta no mobile", () => {
     expect(pageSource).toContain("const PERSON_SECTION_OPTIONS");
-    expect(pageSource).toContain('import { PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";');
+    expect(pageSource).toContain('import { getVisiblePersonSection, PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";');
     expect(pageSource).toContain('aria-label="Navegação da ficha no celular"');
     expect(pageSource).toContain('id="person-section-mobile"');
     expect(pageSource).toContain('onValueChange={(value) => selectPersonSection(value as PersonSection)}');
@@ -63,7 +94,9 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
   it("normaliza a seção pastoral e preserva o contexto da Pessoa", () => {
     expect(pageSource).toContain("const pastoralCoverageAccessPending = effectiveRolesQuery.isLoading || pastoralCoverageQuery.isLoading;");
     expect(pageSource).toContain("const resolvedRequestedSection = resolvePersonSection(requestedPersonSection");
-    expect(pageSource).toContain('const effectivePersonSection = resolvedRequestedSection ?? "resumo";');
+    expect(pageSource).toContain("const effectivePersonSection = getVisiblePersonSection({");
+    expect(pageSource).toContain("isSameSelectedPerson: selectedPerson?.id === routePersonId");
+    expect(pageSource).toContain("localSection: personSection");
     expect(pageSource).toContain('if (requestedPersonSection !== "cobertura" || !selectedPerson?.id || resolvedRequestedSection !== "resumo") return;');
     expect(pageSource).toContain('navigate(nextLocation, { replace: true });');
     expect(pageSource).toContain("effectivePersonSection === \"resumo\"");
@@ -163,6 +196,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("function selectPersonSection(section: PersonSection)");
     expect(pageSource).toContain("const nextLocation = getPersonHref(person.id, section);");
     expect(pageSource).toContain("if (location !== nextLocation) navigate(nextLocation);");
+    expect(pageSource).toContain("personSection, requestedCareFocus");
     expect(pageSource).toContain("aria-label={`Abrir ficha de ${person.fullName}`}");
     expect(pageSource).toContain("<span className=\"hidden shrink-0 text-xs font-semibold text-navy sm:inline\">Abrir ficha</span>");
     expect(pageSource).toContain("sm:max-w-4xl lg:max-w-5xl");

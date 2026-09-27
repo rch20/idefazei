@@ -16,7 +16,7 @@ import { useLocation } from "wouter";
 import { civilDateParts, currentCivilDateKey, currentCivilDateParts } from "@/lib/civilDate";
 import { DISCIPLESHIP_STAGE_LABELS } from "@/lib/discipleshipState";
 import { createIdempotencyKey } from "@/lib/idempotency";
-import { PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";
+import { getVisiblePersonSection, PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";
 import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
 import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";
 import { PersonSectionState, resolvePersonSectionState } from "@/components/PersonSectionState";
@@ -336,7 +336,13 @@ export default function Pessoas() {
     canManagePastoralCoverage,
     accessPending: pastoralCoverageAccessPending,
   });
-  const effectivePersonSection = resolvedRequestedSection ?? "resumo";
+  const effectivePersonSection = getVisiblePersonSection({
+    requestedSection: requestedPersonSection,
+    localSection: personSection,
+    isSameSelectedPerson: selectedPerson?.id === routePersonId,
+    canManagePastoralCoverage,
+    accessPending: pastoralCoverageAccessPending,
+  });
   const isPrimaryDisciplerFocus = effectivePersonSection === "cuidado" && requestedCareFocus === "discipulador";
   const personFunctionsQuery = trpc.ministries.personFunctions.useQuery(
     { churchId, personId: selectedPerson?.id ?? 0 },
@@ -626,7 +632,7 @@ export default function Pessoas() {
     } else if (personSection !== requestedPersonSection) {
       setPersonSection(requestedPersonSection);
     }
-  }, [linkedPersonQuery.data, people, personDeepLinkKey, requestedCareFocus, requestedPersonSection, routePersonId, selectedPerson?.id]);
+  }, [linkedPersonQuery.data, people, personDeepLinkKey, personSection, requestedCareFocus, requestedPersonSection, routePersonId, selectedPerson?.id]);
 
   useEffect(() => {
     if (requestedPersonSection !== "cobertura" || !selectedPerson?.id || resolvedRequestedSection !== "resumo") return;
