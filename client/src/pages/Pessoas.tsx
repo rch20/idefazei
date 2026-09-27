@@ -16,7 +16,7 @@ import { useLocation } from "wouter";
 import { civilDateParts, currentCivilDateKey, currentCivilDateParts } from "@/lib/civilDate";
 import { DISCIPLESHIP_STAGE_LABELS } from "@/lib/discipleshipState";
 import { createIdempotencyKey } from "@/lib/idempotency";
-import { getVisiblePersonSection, PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";
+import { getPersonListLocation, getVisiblePersonSection, PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";
 import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
 import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";
 import { PersonSectionState, resolvePersonSectionState } from "@/components/PersonSectionState";
@@ -790,18 +790,14 @@ export default function Pessoas() {
   }
 
   function closePersonJourney() {
+    const nextLocation = getPersonListLocation(location);
+    if (nextLocation !== location) navigate(nextLocation, { replace: true });
     setSelectedPerson(null);
     setPendingDestructiveAction(null);
     setJourneyNoteStage(null);
     setJourneyNote("");
     setCoverageForm(defaultCoverageForm);
-    const [path, queryString] = location.split("?");
-    const params = new URLSearchParams(queryString ?? "");
-    params.delete("personId");
-    params.delete("section");
-    params.delete("focus");
-    const query = params.toString();
-    if (queryString?.includes("personId") || queryString?.includes("section")) navigate(`${path}${query ? `?${query}` : ""}`);
+    setPersonSection("resumo");
   }
 
   function saveCareAssignment() {

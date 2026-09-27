@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { getVisiblePersonSection, resolvePersonSection } from "../lib/personSection";
+import { getPersonListLocation, getVisiblePersonSection, PERSON_SECTION_VALUES, resolvePersonSection } from "../lib/personSection";
 import { resolvePersonSectionState } from "../components/PersonSectionState";
 
 const root = resolve(__dirname, "../../..");
 const pageSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
+const personSectionSource = readFileSync(resolve(root, "client/src/lib/personSection.ts"), "utf8");
 const destructiveDialogSource = readFileSync(resolve(root, "client/src/components/ConfirmDestructiveActionDialog.tsx"), "utf8");
 const summarySource = readFileSync(resolve(root, "client/src/components/PersonExecutiveSummary.tsx"), "utf8");
 const historySource = readFileSync(resolve(root, "client/src/components/PersonHistoryTimeline.tsx"), "utf8");
@@ -54,6 +55,27 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     })).toBe("jornada");
   });
 
+  it("remove o deep link ao fechar a ficha sem apagar outros parâmetros da lista", () => {
+    expect(getPersonListLocation("/app/pessoas?personId=12&section=historico&search=Carla&focus=discipulador"))
+      .toBe("/app/pessoas?search=Carla");
+    expect(getPersonListLocation("/app/pessoas?personId=12&section=cuidado"))
+      .toBe("/app/pessoas");
+    expect(getPersonListLocation("/app/pessoas?search=Carla"))
+      .toBe("/app/pessoas?search=Carla");
+  });
+
+  it("percorre todas as seções da ficha sem perder o deep link solicitado", () => {
+    for (const section of PERSON_SECTION_VALUES) {
+      expect(getVisiblePersonSection({
+        requestedSection: section,
+        localSection: "resumo",
+        isSameSelectedPerson: false,
+        canManagePastoralCoverage: true,
+        accessPending: false,
+      })).toBe(section);
+    }
+  });
+
   it("deriva estados de leitura sem confundir erro, vazio e indisponibilidade", () => {
     expect(resolvePersonSectionState({ isLoading: true })).toBe("loading");
     expect(resolvePersonSectionState({ isError: true })).toBe("error");
@@ -80,7 +102,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
 
   it("mantém uma navegação única com apresentação compacta no mobile", () => {
     expect(pageSource).toContain("const PERSON_SECTION_OPTIONS");
-    expect(pageSource).toContain('import { getVisiblePersonSection, PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";');
+    expect(pageSource).toContain('import { getPersonListLocation, getVisiblePersonSection, PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";');
     expect(pageSource).toContain('aria-label="Navegação da ficha no celular"');
     expect(pageSource).toContain('id="person-section-mobile"');
     expect(pageSource).toContain('onValueChange={(value) => selectPersonSection(value as PersonSection)}');
@@ -103,6 +125,12 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("effectivePersonSection === \"cobertura\" && canManagePastoralCoverage");
     expect(pageSource).toContain("returnSection=${effectivePersonSection}");
     expect(routerSource).toContain("async function requirePastorPresident");
+  });
+
+  it("limpa a URL antes de desmontar a ficha e restaura a seção padrão", () => {
+    expect(pageSource).toContain("const nextLocation = getPersonListLocation(location);");
+    expect(pageSource).toContain('navigate(nextLocation, { replace: true });');
+    expect(pageSource).toContain('setPersonSection("resumo");');
   });
 
   it("organiza os cards da Jornada com conteúdo e ações separados no desktop", () => {
@@ -176,8 +204,9 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(leaderSource).toContain(">\n                          Ficha\n");
     expect(pageSource).toContain('const routeSection = routeParams.get("section");');
     expect(pageSource).toContain("function closePersonJourney()");
-    expect(pageSource).toContain('params.delete("personId")');
-    expect(pageSource).toContain('params.delete("section")');
+    expect(pageSource).toContain("getPersonListLocation(location)");
+    expect(personSectionSource).toContain('params.delete("personId")');
+    expect(personSectionSource).toContain('params.delete("section")');
   });
 
   it("busca a Pessoa pelo personId da URL e abre a ficha diretamente", () => {
