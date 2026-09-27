@@ -259,10 +259,8 @@ export default function Pessoas() {
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId, search: search || undefined });
   const directoryQuery = trpc.people.directory.useQuery({ churchId, search: search || undefined });
-  const routeParams = useMemo(() => {
-    const search = typeof window !== "undefined" ? window.location.search : location.split("?")[1] ?? "";
-    return new URLSearchParams(search);
-  }, [location]);
+  const routeSearch = typeof window !== "undefined" ? window.location.search : location.split("?")[1] ?? "";
+  const routeParams = useMemo(() => new URLSearchParams(routeSearch), [routeSearch]);
   const routePersonId = Number(routeParams.get("personId"));
   const routeSection = routeParams.get("section");
   const requestedPersonSection = PERSON_SECTIONS.includes(routeSection as PersonSection)

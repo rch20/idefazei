@@ -213,7 +213,8 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
   });
 
   it("busca a Pessoa pelo personId da URL e abre a ficha diretamente", () => {
-    expect(pageSource).toContain("const search = typeof window !== \"undefined\" ? window.location.search");
+    expect(pageSource).toContain("const routeSearch = typeof window !== \"undefined\" ? window.location.search");
+    expect(pageSource).toContain("new URLSearchParams(routeSearch)");
     expect(pageSource).toContain("const routePersonId = Number(routeParams.get(\"personId\"));");
     expect(pageSource).toContain("trpc.people.getById.useQuery");
     expect(pageSource).toContain("const person = linkedPersonQuery.data ?? (people ?? []).find((candidate) => candidate.id === routePersonId);");
