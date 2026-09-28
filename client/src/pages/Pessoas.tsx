@@ -17,6 +17,7 @@ import { civilDateParts, currentCivilDateKey, currentCivilDateParts } from "@/li
 import { DISCIPLESHIP_STAGE_LABELS } from "@/lib/discipleshipState";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { getPersonListLocation, getVisiblePersonSection, PERSON_SECTION_VALUES, resolvePersonSection, type PersonSection } from "@/lib/personSection";
+import { toggleJourneyNoteStage } from "@/lib/journeyNote";
 import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
 import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";
 import { PersonSectionState, resolvePersonSectionState } from "@/components/PersonSectionState";
@@ -1365,8 +1366,9 @@ export default function Pessoas() {
                                   variant="ghost"
                                   className="h-9 text-[11px] text-navy"
                                   onClick={() => {
-                                    setJourneyNoteStage(stage);
-                                    setJourneyNote(progress?.notes ?? "");
+                                    const nextNoteState = toggleJourneyNoteStage(journeyNoteStage, stage, progress?.notes ?? "");
+                                    setJourneyNoteStage(nextNoteState.stage);
+                                    setJourneyNote(nextNoteState.note);
                                   }}
                                 >
                                   {journeyNoteStage === stage ? "Fechar nota" : "Observação"}

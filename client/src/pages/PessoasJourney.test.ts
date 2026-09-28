@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { toggleJourneyNoteStage } from "../lib/journeyNote";
 import { getPersonListLocation, getVisiblePersonSection, PERSON_SECTION_VALUES, resolvePersonSection } from "../lib/personSection";
 import { resolvePersonSectionState } from "../components/PersonSectionState";
 
@@ -53,6 +54,14 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
       canManagePastoralCoverage: false,
       accessPending: false,
     })).toBe("jornada");
+  });
+
+  it("alterna a observação da Jornada e conecta a ficha ao helper de toggle", () => {
+    expect(toggleJourneyNoteStage(null, "fundamentos", "Nota existente")).toEqual({ stage: "fundamentos", note: "Nota existente" });
+    expect(toggleJourneyNoteStage("fundamentos", "fundamentos", "Rascunho")).toEqual({ stage: null, note: "" });
+    expect(pageSource).toContain("toggleJourneyNoteStage(journeyNoteStage, stage, progress?.notes ?? \"\")");
+    expect(pageSource).toContain("setJourneyNoteStage(nextNoteState.stage)");
+    expect(pageSource).toContain("{journeyNoteStage === stage ? \"Fechar nota\" : \"Observação\"}");
   });
 
   it("remove o deep link ao fechar a ficha sem apagar outros parâmetros da lista", () => {
