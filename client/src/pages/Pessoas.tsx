@@ -259,10 +259,8 @@ export default function Pessoas() {
 
   const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId, search: search || undefined });
   const directoryQuery = trpc.people.directory.useQuery({ churchId, search: search || undefined });
-  const routeParams = useMemo(() => {
-    const search = typeof window !== "undefined" ? window.location.search : location.split("?")[1] ?? "";
-    return new URLSearchParams(search);
-  }, [location]);
+  const routeSearch = typeof window !== "undefined" ? window.location.search : location.split("?")[1] ?? "";
+  const routeParams = useMemo(() => new URLSearchParams(routeSearch), [routeSearch]);
   const routePersonId = Number(routeParams.get("personId"));
   const routeSection = routeParams.get("section");
   const requestedPersonSection = PERSON_SECTIONS.includes(routeSection as PersonSection)
@@ -790,8 +788,11 @@ export default function Pessoas() {
   }
 
   function closePersonJourney() {
-    const nextLocation = getPersonListLocation(location);
-    if (nextLocation !== location) navigate(nextLocation, { replace: true });
+    const currentBrowserLocation = typeof window !== "undefined"
+      ? `${window.location.pathname}${window.location.search}`
+      : location;
+    const nextLocation = getPersonListLocation(currentBrowserLocation);
+    if (nextLocation !== currentBrowserLocation) navigate(nextLocation, { replace: true });
     setSelectedPerson(null);
     setPendingDestructiveAction(null);
     setJourneyNoteStage(null);

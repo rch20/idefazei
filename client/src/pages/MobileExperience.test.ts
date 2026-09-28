@@ -54,6 +54,7 @@ describe("Experiência mobile e estados vazios", () => {
     expect(peopleSource).toContain('className={`hidden gap-1 rounded-xl bg-muted p-1 sm:grid');
     expect(peopleSource).toContain("const effectivePersonSection = getVisiblePersonSection({");
     expect(peopleSource).toContain("getPersonListLocation");
+    expect(peopleSource).toContain("window.location.pathname");
     expect(peopleSource).toContain("isSameSelectedPerson: selectedPerson?.id === routePersonId");
     expect(peopleSource).toContain("PERSON_SECTION_OPTIONS.filter((option) => !option.pastoralOnly || canManagePastoralCoverage)");
     expect(peopleSource).toContain('navigate(nextLocation, { replace: true });');

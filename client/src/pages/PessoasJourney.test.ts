@@ -128,7 +128,10 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
   });
 
   it("limpa a URL antes de desmontar a ficha e restaura a seção padrão", () => {
-    expect(pageSource).toContain("const nextLocation = getPersonListLocation(location);");
+    expect(pageSource).toContain('const currentBrowserLocation = typeof window !== "undefined"');
+    expect(pageSource).toContain("`${window.location.pathname}${window.location.search}`");
+    expect(pageSource).toContain("const nextLocation = getPersonListLocation(currentBrowserLocation);");
+    expect(getPersonListLocation("/app/pessoas?personId=12&section=cuidado")).toBe("/app/pessoas");
     expect(pageSource).toContain('navigate(nextLocation, { replace: true });');
     expect(pageSource).toContain('setPersonSection("resumo");');
   });
@@ -204,13 +207,14 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(leaderSource).toContain(">\n                          Ficha\n");
     expect(pageSource).toContain('const routeSection = routeParams.get("section");');
     expect(pageSource).toContain("function closePersonJourney()");
-    expect(pageSource).toContain("getPersonListLocation(location)");
+    expect(pageSource).toContain("getPersonListLocation(currentBrowserLocation)");
     expect(personSectionSource).toContain('params.delete("personId")');
     expect(personSectionSource).toContain('params.delete("section")');
   });
 
   it("busca a Pessoa pelo personId da URL e abre a ficha diretamente", () => {
-    expect(pageSource).toContain("const search = typeof window !== \"undefined\" ? window.location.search");
+    expect(pageSource).toContain("const routeSearch = typeof window !== \"undefined\" ? window.location.search");
+    expect(pageSource).toContain("new URLSearchParams(routeSearch)");
     expect(pageSource).toContain("const routePersonId = Number(routeParams.get(\"personId\"));");
     expect(pageSource).toContain("trpc.people.getById.useQuery");
     expect(pageSource).toContain("const person = linkedPersonQuery.data ?? (people ?? []).find((candidate) => candidate.id === routePersonId);");
