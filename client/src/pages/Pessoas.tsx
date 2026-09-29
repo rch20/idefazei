@@ -760,12 +760,13 @@ export default function Pessoas() {
   });
   const refreshHistory = () => Promise.all(historyQueries.map((query) => query.refetch()));
 
-  function getPersonHref(personId: number, section: PersonSection) {
+  function getPersonHref(personId: number, section: PersonSection, careFocus: PersonCareFocus = null) {
     const [path, queryString] = location.split("?");
     const params = new URLSearchParams(queryString ?? "");
     params.set("personId", String(personId));
     params.set("section", section);
-    if (section !== "cuidado") params.delete("focus");
+    if (section === "cuidado" && careFocus === "discipulador") params.set("focus", "discipulador");
+    else params.delete("focus");
     return `${path}?${params.toString()}`;
   }
 
@@ -777,16 +778,36 @@ export default function Pessoas() {
     }
   }
 
+  function openPrimaryDisciplerForm() {
+    if (!selectedPerson?.id || !canManagePrimaryDiscipler) return;
+    setCareForm((current) => ({
+      ...current,
+      responsiblePersonId: selectedPerson.discipledById ? String(selectedPerson.discipledById) : "",
+      role: "discipulador",
+      notes: "",
+      releaseAccess: false,
+    }));
+    const nextLocation = getPersonHref(selectedPerson.id, "cuidado", "discipulador");
+    if (location !== nextLocation) navigate(nextLocation);
+  }
+
+  function cancelPrimaryDisciplerForm() {
+    if (!selectedPerson?.id) return;
+    setCareForm((current) => ({ ...current, responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true }));
+    const nextLocation = getPersonHref(selectedPerson.id, "cuidado");
+    if (location !== nextLocation) navigate(nextLocation);
+  }
+
   function openPersonJourney(person: any, section: PersonSection = "resumo", careFocus: PersonCareFocus = null) {
     setSelectedPerson(person);
     setPersonSection(section);
     setJourneyNoteStage(null);
     setJourneyNote("");
-    setCareForm({ responsiblePersonId: "", role: careFocus === "discipulador" ? "discipulador" : "consolidador", notes: "", releaseAccess: true });
+    setCareForm({ responsiblePersonId: "", role: careFocus === "discipulador" ? "discipulador" : "consolidador", notes: "", releaseAccess: careFocus !== "discipulador" });
     setSelectedCellId("");
     setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "", idempotencyKey: createIdempotencyKey() });
     setCoverageForm(defaultCoverageForm);
-    const nextLocation = getPersonHref(person.id, section);
+    const nextLocation = getPersonHref(person.id, section, careFocus);
     if (location !== nextLocation) navigate(nextLocation);
   }
 
@@ -815,7 +836,7 @@ export default function Pessoas() {
       responsiblePersonId: Number(careForm.responsiblePersonId),
       role: careForm.role as "quem_ganhou" | "consolidador" | "lider_celula" | "discipulador" | "pastor",
       notes: careForm.notes.trim() || undefined,
-      releaseAccess: careForm.releaseAccess,
+      releaseAccess: isPrimaryDisciplerFocus ? false : careForm.releaseAccess,
     });
   }
 
@@ -1562,7 +1583,18 @@ export default function Pessoas() {
                   <h3 className="text-sm font-semibold text-navy">Discipulador principal</h3>
                   <p className="mt-1 text-xs leading-relaxed text-muted-foreground">É o vínculo principal de acompanhamento da Pessoa. Consolidação e Célula podem apoiar sem substituí-lo.</p>
                 </div>
-                <Badge variant="outline" className="shrink-0 border-indigo-200 bg-indigo-50 text-[10px] text-indigo-800">Relação principal</Badge>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-[10px] text-indigo-800">Relação principal</Badge>
+                  {canManagePrimaryDiscipler && <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="border-indigo-200 text-indigo-900 hover:bg-indigo-50"
+                    onClick={isPrimaryDisciplerFocus ? cancelPrimaryDisciplerForm : openPrimaryDisciplerForm}
+                  >
+                    {isPrimaryDisciplerFocus ? "Cancelar" : selectedPerson?.discipledById ? "Trocar discipulador" : "Definir discipulador"}
+                  </Button>}
+                </div>
               </div>
               {selectedPerson?.discipledById ? (
                 <div className="mt-3 rounded-lg border border-indigo-100 bg-background/80 p-3">
@@ -1573,6 +1605,23 @@ export default function Pessoas() {
               ) : (
                 <PersonSectionState kind="empty" title="Nenhum discipulador definido" description="A ausência é válida até que a liderança escolha uma pessoa responsável." className="mt-3" />
               )}
+              {isPrimaryDisciplerFocus && canManagePrimaryDiscipler && <div className="mt-3 rounded-lg border border-indigo-100 bg-background/80 p-3">
+                <Label htmlFor="primary-discipler-responsible">Discipulador principal *</Label>
+                <Select value={careForm.responsiblePersonId} onValueChange={(value) => setCareForm((current) => ({ ...current, responsiblePersonId: value, role: "discipulador" }))}>
+                  <SelectTrigger id="primary-discipler-responsible" className="mt-1 bg-background"><SelectValue placeholder="Selecione uma pessoa" /></SelectTrigger>
+                  <SelectContent>{(people ?? []).filter((person) => person.id !== selectedPerson?.id).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                </Select>
+                <p className="mt-2 text-xs text-muted-foreground">Esta ação altera somente o discipulador principal. Ela não encerra a Consolidação nem altera a participação em Célula.</p>
+                <div className="mt-3">
+                  <Label htmlFor="primary-discipler-notes">Observação</Label>
+                  <Textarea id="primary-discipler-notes" className="mt-1 bg-background" rows={2} value={careForm.notes} onChange={(event) => setCareForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Ex.: discipulador definido pela liderança" />
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={saveCareAssignment} disabled={assignCare.isPending || !careForm.responsiblePersonId}>
+                    {assignCare.isPending ? "Salvando…" : "Salvar discipulador"}
+                  </Button>
+                </div>
+              </div>}
               {!canManagePrimaryDiscipler && <p className="mt-3 text-[11px] text-muted-foreground">Somente Pastores ou Supervisores podem definir o discipulador principal.</p>}
             </section>
             <section className="rounded-xl border border-border p-4">
@@ -1607,10 +1656,10 @@ export default function Pessoas() {
             )
           )}
 
-          {effectivePersonSection === "cuidado" && (isPrimaryDisciplerFocus ? canManagePrimaryDiscipler : canManageJourney) && (
+          {effectivePersonSection === "cuidado" && !isPrimaryDisciplerFocus && canManageJourney && (
             <section className="rounded-xl border border-gold/25 bg-gold/5 p-4">
-            <h3 className="text-sm font-semibold text-navy">{isPrimaryDisciplerFocus ? "Definir discipulador principal" : "Definir cuidado operacional"}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{isPrimaryDisciplerFocus ? "Esta ação altera somente o discipulador principal. Ela não encerra a Consolidação nem altera a participação em Célula." : "Este apoio é independente do discipulador principal. Ao atualizar o mesmo papel, o vínculo anterior é preservado no histórico."}</p>
+            <h3 className="text-sm font-semibold text-navy">Definir cuidado operacional</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Este apoio é independente do discipulador principal. Ao atualizar o mesmo papel, o vínculo anterior é preservado no histórico.</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="care-responsible">Pessoa responsável pelo apoio *</Label>
@@ -1619,15 +1668,15 @@ export default function Pessoas() {
                   <SelectContent>{(people ?? []).filter((person) => person.id !== selectedPerson?.id).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              {!isPrimaryDisciplerFocus ? <div>
+              <div>
                 <Label htmlFor="care-role">Função no cuidado *</Label>
                   <Select value={careForm.role} onValueChange={(value) => setCareForm((current) => ({ ...current, role: value }))}>
                     <SelectTrigger id="care-role" className="mt-1 bg-background"><SelectValue /></SelectTrigger>
                   <SelectContent>{Object.entries(CARE_ROLE_LABELS).filter(([value]) => value !== "discipulador").map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent>
                 </Select>
-              </div> : <div className="rounded-lg border border-indigo-100 bg-background/80 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-indigo-900">Função</p><p className="mt-1 text-sm font-medium text-navy">Discipulador principal</p><p className="mt-1 text-xs text-muted-foreground">A Consolidação e a Célula permanecem independentes.</p></div>}
+              </div>
             </div>
-            {!isPrimaryDisciplerFocus && <label className="mt-3 flex items-start gap-3 rounded-lg border border-border/70 bg-background/70 p-3 text-sm">
+            <label className="mt-3 flex items-start gap-3 rounded-lg border border-border/70 bg-background/70 p-3 text-sm">
               <input
                 type="checkbox"
                 checked={careForm.releaseAccess}
@@ -1638,14 +1687,14 @@ export default function Pessoas() {
                 <span className="block font-medium text-navy">Liberar acesso ao login após salvar</span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">A conta pendente desta Pessoa será aprovada e ativada. Desmarque para apenas registrar o responsável.</span>
               </span>
-            </label>}
+            </label>
             <div className="mt-3">
               <Label htmlFor="care-notes">Observação</Label>
               <Textarea id="care-notes" className="mt-1 bg-background" rows={2} value={careForm.notes} onChange={(event) => setCareForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Ex.: responsável definido após primeiro contato" />
             </div>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
-              {selectedAttention?.nextStep === "Iniciar consolidação" && !isPrimaryDisciplerFocus && <Button type="button" variant="outline" onClick={handleStartConsolidation} disabled={startConsolidation.isPending}>Iniciar consolidação</Button>}
-              <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={saveCareAssignment} disabled={assignCare.isPending || !canManagePrimaryDiscipler && isPrimaryDisciplerFocus}>{assignCare.isPending ? "Salvando…" : isPrimaryDisciplerFocus ? "Salvar discipulador" : "Salvar cuidado operacional"}</Button>
+              {selectedAttention?.nextStep === "Iniciar consolidação" && <Button type="button" variant="outline" onClick={handleStartConsolidation} disabled={startConsolidation.isPending}>Iniciar consolidação</Button>}
+              <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={saveCareAssignment} disabled={assignCare.isPending}>{assignCare.isPending ? "Salvando…" : "Salvar cuidado operacional"}</Button>
             </div>
             </section>
           )}

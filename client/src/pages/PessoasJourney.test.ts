@@ -265,9 +265,9 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
 
   it("trata a ficha como destino central e sincroniza abertura e seção com a URL", () => {
     expect(pageSource).toContain("const PERSON_SECTIONS =");
-    expect(pageSource).toContain("function getPersonHref(personId: number, section: PersonSection)");
+    expect(pageSource).toContain("function getPersonHref(personId: number, section: PersonSection, careFocus: PersonCareFocus = null)");
     expect(pageSource).toContain("function selectPersonSection(section: PersonSection)");
-    expect(pageSource).toContain("const nextLocation = getPersonHref(person.id, section);");
+    expect(pageSource).toContain("const nextLocation = getPersonHref(person.id, section, careFocus);");
     expect(pageSource).toContain("if (location !== nextLocation) navigate(nextLocation);");
     expect(pageSource).toContain("personSection, requestedCareFocus");
     expect(pageSource).toContain("aria-label={`Abrir ficha de ${person.fullName}`}");
@@ -297,15 +297,25 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('const requestedCareFocus: PersonCareFocus = routeParams.get("focus") === "discipulador" ? "discipulador" : null;');
     expect(pageSource).toContain('careFocus === "discipulador" ? "discipulador" : "consolidador"');
     expect(pageSource).toContain("Discipulador principal");
-    expect(pageSource).toContain("A Consolidação e a Célula permanecem independentes.");
+    expect(pageSource).toContain("Esta ação altera somente o discipulador principal. Ela não encerra a Consolidação nem altera a participação em Célula.");
     expect(pageSource).toContain("Somente Pastores ou Supervisores podem definir o discipulador principal.");
     expect(routerSource).toContain("setPrimaryDiscipler: protectedProcedure");
+  });
+
+  it("permite atribuir o discipulador principal dentro do próprio card de Cuidado", () => {
+    expect(pageSource).toContain("function openPrimaryDisciplerForm()");
+    expect(pageSource).toContain("function cancelPrimaryDisciplerForm()");
+    expect(pageSource).toContain('selectedPerson?.discipledById ? "Trocar discipulador" : "Definir discipulador"');
+    expect(pageSource).toContain('id="primary-discipler-responsible"');
+    expect(pageSource).toContain('id="primary-discipler-notes"');
+    expect(pageSource).toContain('"Salvar discipulador"');
+    expect(pageSource).toContain('effectivePersonSection === "cuidado" && !isPrimaryDisciplerFocus && canManageJourney');
   });
 
   it("não expõe ações pastorais ministeriais para perfis não pastorais", () => {
     expect(pageSource).toContain("const canManageMinistryFunctions = isPastor;");
     expect(pageSource).toContain('effectivePersonSection === "participacoes" && canManageMinistryFunctions');
-    expect(pageSource).toContain('effectivePersonSection === "cuidado" && (isPrimaryDisciplerFocus ? canManagePrimaryDiscipler : canManageJourney)');
+    expect(pageSource).toContain('effectivePersonSection === "cuidado" && !isPrimaryDisciplerFocus && canManageJourney');
   });
 
   it("mantém participação em Célula como consulta ou ação contextual", () => {
