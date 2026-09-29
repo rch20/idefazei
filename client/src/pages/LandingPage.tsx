@@ -13,7 +13,6 @@ const FUNNEL_STEPS = [
   { label: "Nova Alma", color: "#e8d5b7", icon: "✦" },
   { label: "Consolidação", color: "#d4c4a0", icon: "✦" },
   { label: "Fundamentos", color: "#c9a84c", icon: "✦" },
-  { label: "Célula", color: "#b8943e", icon: "✦" },
   { label: "Batismo", color: "#1e3a5f", icon: "✦" },
   { label: "Encontro com Deus", color: "#162d4a", icon: "✦" },
   { label: "Escola de Líderes", color: "#0f2035", icon: "✦" },
@@ -52,7 +51,7 @@ const PLANS = [
 ];
 
 const FEATURES = [
-  { icon: GitBranch, title: "Funil de Discipulado", desc: "Kanban visual com 9 etapas do ciclo completo: da Nova Alma ao Multiplicador." },
+  { icon: GitBranch, title: "Funil de Discipulado", desc: "Kanban visual com 8 etapas de formação, da Nova Alma ao Multiplicador. A participação em Célula é acompanhada à parte." },
   { icon: Users, title: "Gestão de Membros", desc: "Cadastro completo com dados pessoais, espirituais, familiares e histórico." },
   { icon: MapPin, title: "Inteligência Geográfica", desc: "Mapa interativo de células, áreas descobertas e sugestões de expansão." },
   { icon: BarChart3, title: "Dashboard Executivo", desc: "KPIs em tempo real, Radar Espiritual e Árvore de Discipulado visual." },
@@ -191,7 +190,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 relative z-10">
           <div className="text-center mb-12">
             <h2 className="font-serif text-4xl font-bold text-white mb-4">O Funil de Discipulado</h2>
-            <p className="font-serif text-[#c9a84c]/80 italic text-lg">Da Nova Alma ao Multiplicador — 9 etapas de transformação espiritual</p>
+            <p className="font-serif text-[#c9a84c]/80 italic text-lg">Da Nova Alma ao Multiplicador — 8 etapas de formação</p>
           </div>
 
           <div className="flex flex-wrap justify-center gap-2 md:gap-0">

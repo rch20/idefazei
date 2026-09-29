@@ -24,7 +24,7 @@ type CategoryConfig = {
 
 const CATEGORY_CONFIG: Record<PersonHistoryCategory, CategoryConfig> = {
   jornada: {
-    label: "Jornada",
+    label: "Formação",
     icon: BookOpen,
     marker: "bg-gold",
     badge: "border-gold/40 bg-gold/10 text-navy",
@@ -77,13 +77,13 @@ export function PersonHistoryTimeline({ events }: PersonHistoryTimelineProps) {
         <History className="mt-0.5 h-5 w-5 shrink-0 text-navy" aria-hidden="true" />
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-navy">Linha do tempo histórica</h3>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Registros anteriores da Jornada, do cuidado, da Consolidação e das Células. Esta linha do tempo não substitui os estados atuais do Resumo.</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Registros anteriores da formação, do cuidado, da Consolidação e das Células. Esta linha do tempo não substitui os estados atuais do Resumo.</p>
         </div>
       </div>
 
       {events.length === 0 ? (
         <div className="mt-4 rounded-lg border border-dashed border-border bg-muted/20 p-3 text-sm text-muted-foreground">
-          Ainda não há atividades históricas registradas. A situação atual da Pessoa está disponível no Resumo, na Jornada e em Participações.
+          Ainda não há atividades históricas registradas. A situação atual da Pessoa está disponível no Resumo, no percurso de formação e em Participações.
         </div>
       ) : (
         <>

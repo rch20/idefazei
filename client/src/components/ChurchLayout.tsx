@@ -162,7 +162,7 @@ function getVisibleQuickAccess(accessSummary: ChurchAccessSummary | null, items:
 
 const groups = [
   { key: "principal", label: "Início" },
-  { key: "discipulado", label: "Jornada" },
+  { key: "discipulado", label: "Formação" },
   { key: "membros", label: "Discípulos" },
   { key: "celulas", label: "Células" },
   { key: "ministerio", label: "Atuação" },

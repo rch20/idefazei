@@ -137,7 +137,7 @@ export function PersonExecutiveSummary({
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label="Indicadores principais da Pessoa">
         <article className="min-w-0 rounded-lg border border-border bg-muted/30 p-3">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Jornada</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Etapa de formação</p>
           <p className="mt-1 truncate text-sm font-semibold text-navy" title={stageLabel}>{stageLabel}</p>
           <p className="mt-1 text-[11px] text-muted-foreground">Etapa principal</p>
         </article>
@@ -147,7 +147,7 @@ export function PersonExecutiveSummary({
             <UsersRound className="h-4 w-4 shrink-0 text-indigo-700" aria-hidden="true" />
           </div>
           <p className="mt-1 truncate text-sm font-semibold text-navy" title={cellLabel}>{cellLabel}</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">{isCellIntegrated ? "Participação integrada" : "Participação pendente"}</p>
+          <p className="mt-1 text-[11px] text-muted-foreground">{isCellIntegrated ? "Participação integrada" : "Sem Célula atualmente"}</p>
         </article>
         <article className="col-span-2 min-w-0 rounded-lg border border-border bg-muted/30 p-3 sm:col-span-1">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{responsibleLabel}</p>
@@ -171,8 +171,8 @@ export function PersonExecutiveSummary({
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent id={contextId} className="border-t border-border px-3.5 pb-3.5 pt-3 text-xs leading-relaxed text-muted-foreground sm:px-4 sm:pb-4">
-          <p>Jornada representa o progresso geral da Pessoa. Participação em Célula representa a integração comunitária atual e não altera a etapa principal.</p>
-          <p className="mt-2">Pendente significa apenas que não há vínculo ativo no momento; não altera nem retrocede a Jornada.</p>
+          <p>Formação representa o progresso geral da Pessoa. Participação em Célula representa a integração comunitária atual e não altera a etapa principal.</p>
+          <p className="mt-2">Sem Célula significa apenas que não há vínculo ativo no momento; não altera nem retrocede a formação.</p>
           <p className="mt-2">{isCellIntegrated ? `A Pessoa participa atualmente da Célula ${cellLabel}.` : hasCellHistory ? "A Pessoa está sem Célula no momento, mas o histórico de participações anteriores foi preservado." : "A Pessoa ainda não possui uma Célula atual. Isso é uma situação válida e não representa erro no cadastro."}</p>
           {reasons.length > 0 && (
             <div className="mt-3 rounded-lg border border-border/70 bg-muted/30 p-2.5">

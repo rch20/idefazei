@@ -11,7 +11,7 @@ const MODULES = [
     items: [
       { icon: Heart, name: "Ganhar Almas", desc: "Registre novas conversões com origem, quem ganhou a pessoa, data e status inicial. Acompanhe cada nova alma desde o primeiro contato." },
       { icon: BookOpen, name: "Consolidação", desc: "Checklist interativo de acompanhamento: ligação, visita, Bíblia, célula, oração. Controle de datas e status de cada etapa." },
-      { icon: BarChart3, name: "Funil de Discipulado", desc: "Kanban visual com 9 etapas: Nova Alma → Consolidação → Fundamentos → Célula → Batismo → Encontro com Deus → Escola de Líderes → Liderança → Multiplicador." },
+      { icon: BarChart3, name: "Funil de Discipulado", desc: "Kanban visual com 8 etapas de formação: Nova Alma → Consolidação → Fundamentos → Batismo → Encontro com Deus → Escola de Líderes → Liderança → Multiplicador. Células são acompanhadas à parte." },
     ],
   },
   {

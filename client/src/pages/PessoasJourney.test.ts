@@ -16,6 +16,10 @@ const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 const leaderSource = readFileSync(resolve(root, "client/src/pages/AppLider.tsx"), "utf8");
 const centralCareSource = readFileSync(resolve(root, "client/src/pages/CentralCuidado.tsx"), "utf8");
 const dashboardSource = readFileSync(resolve(root, "client/src/pages/Dashboard.tsx"), "utf8");
+const funnelSource = readFileSync(resolve(root, "client/src/pages/FunilDiscipulado.tsx"), "utf8");
+const landingSource = readFileSync(resolve(root, "client/src/pages/LandingPage.tsx"), "utf8");
+const homeSource = readFileSync(resolve(root, "client/src/pages/Home.tsx"), "utf8");
+const memberAreaSource = readFileSync(resolve(root, "client/src/pages/AreaMembro.tsx"), "utf8");
 
 describe("Ficha da Pessoa — jornada e escopo", () => {
   it("resolve deep links pastorais sem substituir a autorização server-side", () => {
@@ -97,7 +101,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
   it("separa a ficha em resumo, jornada, participações, cuidado e histórico", () => {
     expect(pageSource).toContain('aria-label="Seções da ficha da Pessoa"');
     expect(pageSource).toContain('{ value: "resumo", label: "Resumo"');
-    expect(pageSource).toContain('{ value: "jornada", label: "Jornada"');
+    expect(pageSource).toContain('{ value: "jornada", label: "Formação"');
     expect(pageSource).toContain('{ value: "participacoes", label: "Participações"');
     expect(pageSource).toContain('{ value: "cuidado", label: "Cuidado"');
     expect(pageSource).toContain('{ value: "cobertura", label: "Cobertura espiritual"');
@@ -162,18 +166,21 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("JOURNEY_STAGE_DESCRIPTIONS");
     expect(pageSource).toContain("journeyProgressPercent");
     expect(pageSource).toContain('role="progressbar"');
+    expect(pageSource).toContain("Percurso de formação");
     expect(pageSource).toContain('isCurrent ? "border-gold/70');
     expect(pageSource).toContain("Etapa principal");
     expect(pageSource).toContain("Concluir etapa");
-    expect(pageSource).toContain("A etapa principal é alterada em Acompanhamento da Jornada");
+    expect(pageSource).toContain("Acompanhe as etapas de formação sem misturar a participação em Célula");
     expect(pageSource).not.toContain("Tornar atual");
     expect(pageSource).toContain("Observação desta atualização");
   });
 
   it("separa etapa principal de frentes atuais e limita a gestão ao pastor", () => {
     expect(pageSource).toContain("const parallelJourneyStages");
-    expect(pageSource).toContain("Frentes atuais");
-    expect(pageSource).toContain("Participações formativas que acontecem em paralelo à etapa principal.");
+    expect(pageSource).toContain("Formações paralelas");
+    expect(pageSource).toContain("Formações que acontecem em paralelo à etapa principal.");
+    expect(pageSource).not.toContain("Frentes atuais");
+    expect(pageSource).not.toContain("Nenhuma frente paralela ativa");
     expect(pageSource).toContain("isParallelCurrent");
     expect(pageSource).toContain("Tornar frente atual");
     expect(pageSource).toContain("Remover frente atual");
@@ -183,6 +190,30 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(routerSource).toContain("Somente o Pastor Presidente ou Pastor Local pode definir frentes paralelas");
     expect(dbSource).toContain("setParallelJourneyStage");
     expect(dbSource).toContain("discipleshipStageProgress.isCurrent");
+  });
+
+  it("mantém Célula fora do percurso de formação e identifica registros legados", () => {
+    const journeyStagesStart = pageSource.indexOf("const JOURNEY_STAGES");
+    const journeyStagesEnd = pageSource.indexOf("] as const;", journeyStagesStart);
+    expect(journeyStagesStart).toBeGreaterThanOrEqual(0);
+    expect(pageSource.slice(journeyStagesStart, journeyStagesEnd)).not.toContain('"celula"');
+    expect(pageSource).toContain('filter(([key]) => key !== "celula")');
+    expect(pageSource).toContain("getFormationStageLabel");
+    expect(pageSource).toContain("Registro antigo de Célula");
+    expect(pageSource).toContain("Consulte Participações para a Célula atual.");
+    expect(pageSource).not.toContain("Participação em Célula</p>");
+  });
+
+  it("não apresenta Célula como etapa do Funil ou da área do membro", () => {
+    const funnelStagesStart = funnelSource.indexOf("const STAGES");
+    const funnelStagesEnd = funnelSource.indexOf("] as const;", funnelStagesStart);
+    expect(funnelSource.slice(funnelStagesStart, funnelStagesEnd)).not.toContain('key: "celula"');
+    expect(funnelSource).toContain("Registros antigos de Célula");
+    expect(funnelSource).toContain("A participação atual deve ser consultada e administrada em Células.");
+    expect(landingSource).toContain("8 etapas de formação");
+    expect(homeSource).toContain("8 etapas de formação");
+    expect(memberAreaSource).not.toContain('"Nova Alma", "Consolidação", "Fundamentos", "Célula"');
+    expect(memberAreaSource).toContain("Célula (registro anterior)");
   });
 
   it("preserva eventos auditáveis e mantém a proteção server-side", () => {
@@ -284,8 +315,9 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain("trpc.cells.personParticipation.useQuery");
     expect(pageSource).toContain('status === "integrada"');
     expect(pageSource).toContain("Célula atual: Sem Célula");
+    expect(pageSource).toContain("Esta Pessoa não possui um vínculo ativo.");
     expect(pageSource).toContain("Sair da Célula");
-    expect(pageSource).toContain("A Jornada principal foi preservada");
+    expect(pageSource).toContain("A formação principal foi preservada");
     expect(routerSource).toContain("personParticipation: protectedProcedure");
     expect(routerSource).toContain("removePerson: protectedProcedure");
     expect(dbSource).toContain("export async function removePersonFromCell");
@@ -299,7 +331,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('title={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Remover cobertura espiritual?" : "Retirar da Célula?"}');
     expect(pageSource).toContain('cancelLabel={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Manter cobertura" : "Manter na Célula"}');
     expect(pageSource).toContain('confirmLabel={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Remover cobertura" : "Retirar da Célula"}');
-    expect(pageSource).toContain("O histórico da participação será preservado e a Jornada principal não será alterada.");
+    expect(pageSource).toContain("O histórico da participação será preservado e a Formação principal não será alterada.");
     expect(pageSource).toContain("O histórico da cobertura será preservado.");
     expect(pageSource).toContain("onConfirm={confirmPendingDestructiveAction}");
     expect(pageSource).toContain("setPendingDestructiveAction(null)");
@@ -341,14 +373,16 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
   it("usa um resumo executivo único para Jornada, Célula e cuidado", () => {
     expect(pageSource).toContain('import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";');
     expect(pageSource).toContain("<PersonExecutiveSummary");
-    expect(pageSource).toContain('stageLabel={STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}');
+    expect(pageSource).toContain('stageLabel={getFormationStageLabel(selectedPerson.discipleshipStage)}');
     expect(pageSource).toContain("currentCellName={currentCell?.cellName}");
     expect(pageSource).toContain("hasCellHistory={Boolean(cellParticipationQuery.data?.hasHistory)}");
     expect(pageSource).not.toContain("participationCount");
     expect(summarySource).toContain('aria-label="Resumo executivo da ficha da Pessoa"');
     expect(summarySource).toContain('aria-label="Próximo passo da Pessoa"');
+    expect(summarySource).toContain("Etapa de formação");
     expect(summarySource).toContain("Célula atual");
-    expect(summarySource).toContain("Pendente significa apenas");
+    expect(summarySource).toContain("Sem Célula atualmente");
+    expect(summarySource).toContain("Sem Célula significa apenas");
     expect(summarySource).not.toContain("Acessos efetivos");
   });
 
@@ -438,7 +472,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(pageSource).toContain('"sem_responsavel"');
     expect(pageSource).toContain('"atencao"');
     expect(pageSource).toContain("aria-pressed={directoryFilter === filter}");
-    expect(pageSource).toContain('aria-label="Filtros de Jornada"');
+    expect(pageSource).toContain('aria-label="Filtros de Formação"');
     expect(pageSource).toContain("DIRECTORY_CARE_LABELS[care.status]");
   });
 

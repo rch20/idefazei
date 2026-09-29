@@ -30,7 +30,7 @@ describe("Responsabilidade única da Jornada", () => {
   it("mantém Avançar/Retornar no Funil e remove Tornar atual da ficha", () => {
     expect(funnelSource).toContain("handleMoveForward");
     expect(funnelSource).toContain("handleMoveBackward");
-    expect(peopleSource).toContain("A etapa principal é alterada em Acompanhamento da Jornada");
+    expect(peopleSource).toContain("Acompanhe as etapas de formação sem misturar a participação em Célula");
     expect(peopleSource).not.toContain("Tornar atual");
   });
 });
