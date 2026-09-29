@@ -3770,7 +3770,7 @@ export async function getCellMembershipHistory(personId: number, churchId: numbe
     .orderBy(desc(cellMembers.joinedAt));
 }
 
-/** Encerra qualquer vínculo ativo antes de inserir a nova Célula da Pessoa. A Jornada principal não é alterada aqui. */
+/** Encerra qualquer vínculo ativo antes de inserir a nova Célula da Pessoa. A formação principal não é alterada aqui. */
 export async function assignPersonToCell(data: { churchId: number; personId: number; cellId: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");

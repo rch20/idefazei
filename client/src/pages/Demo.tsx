@@ -68,7 +68,7 @@ const STEPS: { id: number; icon: any; title: string; subtitle: string; descripti
         { name: "Maria Santos", date: "Hoje", origin: "Culto Domingo", status: "Nova Alma" },
         { name: "Carlos Oliveira", date: "Ontem", origin: "Célula Zona Norte", status: "Consolidação" },
         { name: "Ana Lima", date: "3 dias", origin: "Evento Jovens", status: "Fundamentos" },
-        { name: "Pedro Costa", date: "1 semana", origin: "Culto Quarta", status: "Célula" },
+        { name: "Pedro Costa", date: "1 semana", origin: "Culto Quarta", status: "Batismo" },
       ],
     },
   },
@@ -76,9 +76,9 @@ const STEPS: { id: number; icon: any; title: string; subtitle: string; descripti
     id: 4,
     icon: GitBranch,
     title: "Funil de Discipulado",
-    subtitle: "Kanban visual com 9 etapas",
+    subtitle: "Kanban visual com 8 etapas",
     description:
-      "Acompanhe cada pessoa em sua jornada espiritual com um Kanban visual. Arraste e solte para mover entre as etapas: Nova Alma → Consolidação → Fundamentos → Célula → Batismo → Encontro com Deus → Escola de Líderes → Liderança → Multiplicador.",
+      "Acompanhe cada pessoa em sua formação com um Kanban visual. Avance entre as etapas: Nova Alma → Consolidação → Fundamentos → Batismo → Encontro com Deus → Escola de Líderes → Liderança → Multiplicador. A participação em Célula é acompanhada separadamente.",
     color: "#1e3a5f",
     accent: "#c9a84c",
     preview: {
@@ -87,7 +87,6 @@ const STEPS: { id: number; icon: any; title: string; subtitle: string; descripti
         { name: "Nova Alma", count: 18, color: "#e8f4f8" },
         { name: "Consolidação", count: 12, color: "#f0f8e8" },
         { name: "Fundamentos", count: 9, color: "#f8f4e8" },
-        { name: "Célula", count: 24, color: "#f4e8f8" },
         { name: "Batismo", count: 7, color: "#e8f0f8" },
       ],
     },

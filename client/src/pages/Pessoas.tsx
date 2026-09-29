@@ -30,7 +30,6 @@ const JOURNEY_STAGES = [
   "nova_alma",
   "consolidacao",
   "fundamentos",
-  "celula",
   "batismo",
   "encontro_com_deus",
   "escola_de_lideres",
@@ -49,7 +48,7 @@ type PendingDestructiveAction =
 const PERSON_SECTIONS = PERSON_SECTION_VALUES;
 const PERSON_SECTION_OPTIONS: Array<{ value: PersonSection; label: string; description: string; pastoralOnly?: boolean }> = [
   { value: "resumo", label: "Resumo", description: "Visão geral, próximo passo e situação atual." },
-  { value: "jornada", label: "Jornada", description: "Etapa principal, frentes paralelas e progresso." },
+  { value: "jornada", label: "Formação", description: "Percurso de formação e progresso." },
   { value: "cuidado", label: "Cuidado", description: "Responsável, acompanhamento e encaminhamentos." },
   { value: "participacoes", label: "Participações", description: "Célula atual, histórico e atuações ministeriais." },
   { value: "cobertura", label: "Cobertura espiritual", description: "Vínculo pastoral administrativo.", pastoralOnly: true },
@@ -80,13 +79,16 @@ const JOURNEY_STAGE_DESCRIPTIONS: Record<JourneyStage, string> = {
   nova_alma: "Primeiro registro e acolhimento da pessoa.",
   consolidacao: "Contato, cuidado inicial e acompanhamento próximo.",
   fundamentos: "Formação básica da fé e dos fundamentos cristãos.",
-  celula: "Integração em uma Célula e vida em comunidade.",
   batismo: "Preparação e acompanhamento para o Batismo.",
   encontro_com_deus: "Participação e acompanhamento no Encontro com Deus.",
   escola_de_lideres: "Formação para servir e desenvolver liderança.",
   lideranca: "Exercício de liderança com responsabilidade e cuidado.",
   multiplicador: "Formação de novos discípulos e multiplicação do cuidado.",
 };
+
+function getFormationStageLabel(stage: string | null | undefined) {
+  return stage === "celula" ? "Registro antigo de Célula" : STAGES_LABELS[stage ?? "nova_alma"];
+}
 
 const JOURNEY_STATUS_CLASS: Record<JourneyStatus, string> = {
   concluida: "border-emerald-200 bg-emerald-50 text-emerald-900",
@@ -457,7 +459,7 @@ export default function Pessoas() {
   });
   const removeCell = trpc.cells.removePerson.useMutation({
     onSuccess: async () => {
-      toast.success("Pessoa retirada da Célula. A Jornada principal foi preservada.");
+      toast.success("Pessoa retirada da Célula. A formação principal foi preservada.");
       setPendingDestructiveAction(null);
       await Promise.all([cellParticipationQuery.refetch(), cellHistory.refetch(), currentCare.refetch(), refreshCareAttention(), refetch(), directoryQuery.refetch()]);
     },
@@ -728,8 +730,8 @@ export default function Pessoas() {
           date: event.createdAt,
           category: "jornada" as const,
           source: "jornada" as const,
-          title: `${STAGES_LABELS[event.stage] ?? event.stage}: ${event.status === "concluida" ? "Concluída" : event.status === "pendente" ? "Pendente" : "Não registrada"}`,
-          detail: `${event.actorName ?? "Usuário da igreja"}${event.notes ? ` · ${event.notes}` : ""}`,
+          title: `${event.stage === "celula" ? "Registro antigo de Célula" : STAGES_LABELS[event.stage] ?? event.stage}: ${event.status === "concluida" ? "Concluída" : event.status === "pendente" ? "Pendente" : "Não registrada"}`,
+          detail: `${event.actorName ?? "Usuário da igreja"}${event.stage === "celula" ? " · Consulte Participações para a Célula atual." : ""}${event.notes ? ` · ${event.notes}` : ""}`,
         })),
         ...(cellHistory.data ?? []).map((membership) => ({
           id: `cell-${membership.id}`,
@@ -737,7 +739,7 @@ export default function Pessoas() {
           category: "celula" as const,
           source: "moderno" as const,
           title: membership.active ? `Entrada na Célula ${membership.cellName}` : `Saída da Célula ${membership.cellName}`,
-          detail: membership.active ? "Participação atual preservada na seção Participações." : "Participação encerrada; a Jornada principal não foi alterada.",
+          detail: membership.active ? "Participação atual preservada na seção Participações." : "Participação encerrada; a formação principal não foi alterada.",
         })),
       ]
         .filter((item) => item.date)
@@ -990,8 +992,8 @@ export default function Pessoas() {
         ))}
       </section>
 
-      <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1" aria-label="Filtros de Jornada">
-        {(Object.entries(STAGES_LABELS) as Array<[JourneyStage, string]>).map(([key, label]) => (
+      <div className="flex min-w-0 items-center gap-2 overflow-x-auto pb-1" aria-label="Filtros de Formação">
+        {(Object.entries(STAGES_LABELS).filter(([key]) => key !== "celula") as Array<[JourneyStage, string]>).map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -1045,7 +1047,7 @@ export default function Pessoas() {
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <p className="truncate font-semibold text-navy">{person.fullName}</p>
-                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${STAGE_BADGE[person.discipleshipStage ?? "nova_alma"]}`}>{STAGES_LABELS[person.discipleshipStage ?? "nova_alma"]}</span>
+                  <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${STAGE_BADGE[person.discipleshipStage ?? "nova_alma"]}`}>{getFormationStageLabel(person.discipleshipStage)}</span>
                 </div>
                 <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
                   {cell && <span className="truncate">Célula: {cell.name}</span>}
@@ -1194,11 +1196,11 @@ export default function Pessoas() {
                     <Input value={form.previousChurch} onChange={(e) => setForm({ ...form, previousChurch: e.target.value })} />
                   </div>
                   <div className="col-span-2">
-                    <Label>Jornada atual</Label>
+                    <Label>Etapa de formação</Label>
                     <Select value={form.discipleshipStage} onValueChange={(v) => setForm({ ...form, discipleshipStage: v as any })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {Object.entries(STAGES_LABELS).map(([v, l]) => (
+                        {Object.entries(STAGES_LABELS).filter(([v]) => v !== "celula").map(([v, l]) => (
                           <SelectItem key={v} value={v}>{l}</SelectItem>
                         ))}
                       </SelectContent>
@@ -1276,57 +1278,36 @@ export default function Pessoas() {
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-base font-semibold text-navy">Jornada do discípulo</h3>
+                    <h3 className="text-base font-semibold text-navy">Percurso de formação</h3>
                     <Badge variant="outline" className="border-navy/15 bg-background text-[10px] text-navy">{journeyProgressPercent}% concluída</Badge>
                   </div>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Consulte o caminho de formação sem perder o histórico. A etapa principal é alterada em Acompanhamento da Jornada; aqui você registra progresso, observações e histórico de cada etapa.</p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Acompanhe as etapas de formação sem misturar a participação em Célula. O progresso e as observações ficam registrados nesta área.</p>
                 </div>
                 <div className="w-full shrink-0 sm:w-64">
-                  <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground"><span>Progresso da jornada</span><span>{journeyCompletedCount}/{JOURNEY_STAGES.length}</span></div>
-                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-200" aria-label={`${journeyProgressPercent}% da Jornada concluída`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={journeyProgressPercent}><div className="h-full rounded-full bg-gradient-to-r from-navy to-gold transition-all" style={{ width: `${journeyProgressPercent}%` }} /></div>
-                  <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground"><span>{journeyPendingCount} pendente{journeyPendingCount === 1 ? "" : "s"}</span><span>Etapa principal: {STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}</span></div>
+                  <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground"><span>Progresso da formação</span><span>{journeyCompletedCount}/{JOURNEY_STAGES.length}</span></div>
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-200" aria-label={`${journeyProgressPercent}% da formação concluída`} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={journeyProgressPercent}><div className="h-full rounded-full bg-gradient-to-r from-navy to-gold transition-all" style={{ width: `${journeyProgressPercent}%` }} /></div>
+                  <div className="mt-1.5 flex justify-between text-[10px] text-muted-foreground"><span>{journeyPendingCount} pendente{journeyPendingCount === 1 ? "" : "s"}</span><span>Etapa principal: {getFormationStageLabel(selectedPerson.discipleshipStage)}</span></div>
                 </div>
               </div>
-              <div className="mt-4 rounded-lg border border-gold/25 bg-gold/5 px-3 py-2.5 text-xs text-navy">
+              {parallelJourneyStages.length > 0 && <div className="mt-4 rounded-lg border border-gold/25 bg-gold/5 px-3 py-2.5 text-xs text-navy">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="font-semibold">Frentes atuais</p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">Participações formativas que acontecem em paralelo à etapa principal.</p>
+                    <p className="font-semibold">Formações paralelas</p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">Formações que acontecem em paralelo à etapa principal.</p>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {parallelJourneyStages.length > 0 ? parallelJourneyStages.map((stage) => <Badge key={stage} variant="outline" className="border-gold/40 bg-background text-[10px] text-navy">{STAGES_LABELS[stage]}</Badge>) : <span className="text-[11px] text-muted-foreground">Nenhuma frente paralela ativa</span>}
+                    {parallelJourneyStages.map((stage) => <Badge key={stage} variant="outline" className="border-gold/40 bg-background text-[10px] text-navy">{STAGES_LABELS[stage]}</Badge>)}
                   </div>
                 </div>
-              </div>
-              <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50/45 px-3 py-2.5 text-xs text-navy">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold">Participação em Célula</p>
-                    <p className="mt-0.5 text-[11px] text-muted-foreground">Independente da etapa principal da Jornada.</p>
-                  </div>
-                  <Badge variant="outline" className={(cellParticipationState === "ready" || cellParticipationState === "refreshing") && cellParticipationQuery.data?.status === "integrada" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}>
-                    {cellParticipationState === "loading" ? "Carregando…" : cellParticipationState === "error" ? "Não disponível" : cellParticipationState === "unavailable" ? "Indisponível" : cellParticipationQuery.data?.status === "integrada" ? "Integrada" : "Pendente"}
-                  </Badge>
-                </div>
-                {cellParticipationState === "loading" ? <PersonSectionState kind="loading" title="Carregando vínculo de Célula…" className="mt-3 border-0 bg-transparent p-0" /> : cellParticipationState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar a participação em Célula" onRetry={cellParticipationQuery.refetch} retrying={cellParticipationQuery.isFetching} className="mt-3" /> : cellParticipationState === "unavailable" ? <PersonSectionState kind="unavailable" title="Participação em Célula indisponível" className="mt-3" /> : (
-                  <>
-                    {cellParticipationState === "refreshing" && <PersonSectionState kind="refreshing" title="Atualizando participação…" description="O vínculo atual continua visível." className="mt-3 border-0 bg-transparent p-0" />}
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      <p><span className="font-medium">Célula atual:</span> {currentCell?.cellName ?? "Sem Célula"}</p>
-                      <p className="text-muted-foreground">{cellParticipationQuery.data?.hasHistory ? `${cellParticipationQuery.data.previousCount} participação(ões) anterior(es) no histórico.` : "Nenhuma participação anterior registrada."}</p>
-                    </div>
-                    <p className="mt-2 text-[11px] text-muted-foreground">Pendente significa apenas que não há vínculo ativo no momento; não altera nem retrocede a Jornada.</p>
-                  </>
-                )}
-              </div>
+              </div>}
 
               {journeyState === "loading" ? <div className="mt-5 space-y-2">{JOURNEY_STAGES.slice(0, 5).map((stage) => <div key={stage} className="h-16 animate-pulse rounded-xl bg-background/70" />)}</div> : journeyState === "error" ? (
-                <div className="mt-5"><PersonSectionState kind="error" title="Não foi possível carregar a Jornada" onRetry={journeyQuery.refetch} retrying={journeyQuery.isFetching} /></div>
+                <div className="mt-5"><PersonSectionState kind="error" title="Não foi possível carregar o percurso de formação" onRetry={journeyQuery.refetch} retrying={journeyQuery.isFetching} /></div>
               ) : journeyState === "unavailable" ? (
-                <div className="mt-5"><PersonSectionState kind="unavailable" title="Jornada indisponível" /></div>
+                <div className="mt-5"><PersonSectionState kind="unavailable" title="Percurso de formação indisponível" /></div>
               ) : (
                 <>
-                {journeyState === "refreshing" && <PersonSectionState kind="refreshing" title="Atualizando Jornada…" description="O progresso atual continua visível." className="mt-5" />}
+                {journeyState === "refreshing" && <PersonSectionState kind="refreshing" title="Atualizando formação…" description="O progresso atual continua visível." className="mt-5" />}
                 <div className="mt-5 space-y-3">
                   {JOURNEY_STAGES.map((stage: JourneyStage) => {
                     const progress = journeyProgressByStage.get(stage);
@@ -1430,13 +1411,13 @@ export default function Pessoas() {
                 </div>
                 </>
               )}
-              {!canManageJourney && <p className="mt-3 text-xs text-muted-foreground">Você pode consultar esta jornada, mas a atualização é feita pela liderança responsável.</p>}
+              {!canManageJourney && <p className="mt-3 text-xs text-muted-foreground">Você pode consultar este percurso de formação, mas a atualização é feita pela liderança responsável.</p>}
             </section>
           )}
 
           {effectivePersonSection === "resumo" && selectedPerson && (
             <PersonExecutiveSummary
-              stageLabel={STAGES_LABELS[selectedPerson.discipleshipStage ?? "nova_alma"]}
+              stageLabel={getFormationStageLabel(selectedPerson.discipleshipStage)}
               currentCellName={currentCell?.cellName}
               cellStatus={cellParticipationQuery.data?.status}
               hasCellHistory={Boolean(cellParticipationQuery.data?.hasHistory)}
@@ -1618,7 +1599,7 @@ export default function Pessoas() {
           </div>}
 
           {effectivePersonSection === "historico" && (
-            historyState === "loading" ? <PersonSectionState kind="loading" title="Carregando histórico…" /> : historyState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar o histórico" onRetry={refreshHistory} retrying={historyIsFetching} /> : historyState === "unavailable" ? <PersonSectionState kind="unavailable" title="Histórico indisponível" /> : historyState === "empty" ? <PersonSectionState kind="empty" title="Ainda não há atividades históricas registradas" description="A situação atual da Pessoa continua disponível no Resumo, na Jornada e em Participações." /> : (
+            historyState === "loading" ? <PersonSectionState kind="loading" title="Carregando histórico…" /> : historyState === "error" ? <PersonSectionState kind="error" title="Não foi possível carregar o histórico" onRetry={refreshHistory} retrying={historyIsFetching} /> : historyState === "unavailable" ? <PersonSectionState kind="unavailable" title="Histórico indisponível" /> : historyState === "empty" ? <PersonSectionState kind="empty" title="Ainda não há atividades históricas registradas" description="A situação atual da Pessoa continua disponível no Resumo, na Formação e em Participações." /> : (
               <div className="space-y-3">
                 {(historyState === "refreshing" || historyHasError) && <PersonSectionState kind={historyHasError ? "error" : "refreshing"} title={historyHasError ? "Atualização parcial do histórico" : "Atualizando histórico…"} description={historyHasError ? "Algumas fontes não responderam. Os eventos já carregados continuam visíveis." : "Os eventos atuais continuam visíveis."} onRetry={historyHasError ? refreshHistory : undefined} retrying={historyIsFetching} />}
                 <PersonHistoryTimeline events={historyTimeline} />
@@ -1675,7 +1656,7 @@ export default function Pessoas() {
                 <BriefcaseBusiness className="mt-0.5 h-5 w-5 shrink-0 text-indigo-700" />
                 <div>
                   <h3 className="text-sm font-semibold text-navy">Participações e atuações</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">A Jornada é a etapa principal. A Pessoa pode participar de vários Ministérios e cursos paralelamente, sem criar uma segunda etapa principal.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">A Formação é o percurso principal. A Pessoa pode participar de uma Célula, Ministérios e cursos paralelamente, sem criar uma segunda etapa principal.</p>
                 </div>
               </div>
 
@@ -1778,10 +1759,10 @@ export default function Pessoas() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-semibold text-navy">Participação em Célula</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">A participação comunitária é independente da etapa principal da Jornada.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">A participação comunitária é independente da etapa principal de formação.</p>
                 </div>
                 <Badge variant="outline" className={cellParticipationState === "ready" && cellParticipationQuery.data?.status === "integrada" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}>
-                  {cellParticipationState === "loading" ? "Carregando…" : cellParticipationState === "error" ? "Não disponível" : cellParticipationState === "unavailable" ? "Indisponível" : cellParticipationQuery.data?.status === "integrada" ? "Integrada" : "Pendente"}
+                  {cellParticipationState === "loading" ? "Carregando…" : cellParticipationState === "error" ? "Não disponível" : cellParticipationState === "unavailable" ? "Indisponível" : cellParticipationQuery.data?.status === "integrada" ? "Integrada" : "Sem Célula"}
                 </Badge>
               </div>
             {cellParticipationState === "loading" ? (
@@ -1815,7 +1796,7 @@ export default function Pessoas() {
             ) : (
               <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/70 p-3">
                 <p className="text-sm font-medium text-amber-900">Célula atual: Sem Célula</p>
-                <p className="mt-1 text-xs text-amber-800">Participação: Pendente. Isso é válido para quem nunca participou ou para quem saiu de uma Célula.</p>
+                <p className="mt-1 text-xs text-amber-800">Esta Pessoa não possui um vínculo ativo. Isso é válido para quem nunca participou ou para quem saiu de uma Célula.</p>
               </div>
             )}
             {canManageCellParticipation ? (
@@ -1849,7 +1830,7 @@ export default function Pessoas() {
         description={pendingDestructiveAction?.kind === "pastoral-coverage-removal"
           ? `A cobertura espiritual atual de ${pendingDestructiveAction.personName} será removida desta ficha. O histórico da cobertura será preservado.`
           : pendingDestructiveAction
-            ? `Você está prestes a retirar ${pendingDestructiveAction.personName} da Célula ${pendingDestructiveAction.cellName}. O histórico da participação será preservado e a Jornada principal não será alterada.`
+            ? `Você está prestes a retirar ${pendingDestructiveAction.personName} da Célula ${pendingDestructiveAction.cellName}. O histórico da participação será preservado e a Formação principal não será alterada.`
             : "Confirme a ação para continuar."}
         cancelLabel={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Manter cobertura" : "Manter na Célula"}
         confirmLabel={pendingDestructiveAction?.kind === "pastoral-coverage-removal" ? "Remover cobertura" : "Retirar da Célula"}

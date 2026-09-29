@@ -935,7 +935,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
         open={Boolean(pendingMemberRemoval)}
         title="Retirar da Célula?"
         description={pendingMemberRemoval
-          ? `Você está prestes a retirar ${pendingMemberRemoval.personName} da Célula ${pendingMemberRemoval.cellName}. O histórico da participação será preservado e a Jornada principal não será alterada.`
+          ? `Você está prestes a retirar ${pendingMemberRemoval.personName} da Célula ${pendingMemberRemoval.cellName}. O histórico da participação será preservado e a formação principal não será alterada.`
           : "Confirme a ação para continuar."}
         cancelLabel="Manter na Célula"
         confirmLabel="Retirar da Célula"

@@ -17,7 +17,7 @@ import {
 import { toast } from "sonner";
 
 const DISCIPLESHIP_STAGES = [
-  "Nova Alma", "Consolidação", "Fundamentos", "Célula",
+  "Nova Alma", "Consolidação", "Fundamentos",
   "Batismo", "Encontro com Deus", "Escola de Líderes", "Liderança", "Multiplicador"
 ];
 
@@ -51,9 +51,13 @@ export default function AreaMembro() {
     setContactOpen(true);
   };
 
-  const currentStageIndex = member?.discipleshipStage
-    ? DISCIPLESHIP_STAGES.indexOf(member.discipleshipStage)
-    : 0;
+  const isLegacyCellStage = member?.discipleshipStage === "celula";
+  const currentStageIndex = isLegacyCellStage
+    ? DISCIPLESHIP_STAGES.indexOf("Fundamentos")
+    : member?.discipleshipStage
+      ? DISCIPLESHIP_STAGES.indexOf(member.discipleshipStage)
+      : 0;
+  const currentStageLabel = isLegacyCellStage ? "Célula (registro anterior)" : member?.discipleshipStage;
 
   return (
     <div className="space-y-6">
@@ -75,7 +79,7 @@ export default function AreaMembro() {
           </div>
           {member?.discipleshipStage && (
             <Badge className="bg-[#c9a84c]/20 text-[#c9a84c] border-[#c9a84c]/30 text-xs">
-              {member.discipleshipStage}
+              {currentStageLabel}
             </Badge>
           )}
         </div>
@@ -83,7 +87,7 @@ export default function AreaMembro() {
         {/* Progresso no funil */}
         {member?.discipleshipStage && (
           <div className="mt-5">
-            <p className="text-white/50 text-xs mb-2 uppercase tracking-wider">Jornada de Discipulado</p>
+            <p className="text-white/50 text-xs mb-2 uppercase tracking-wider">Percurso de formação</p>
             <div className="flex gap-1">
               {DISCIPLESHIP_STAGES.map((stage, i) => (
                 <div

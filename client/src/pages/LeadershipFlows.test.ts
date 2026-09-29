@@ -50,7 +50,7 @@ describe("Fluxos de liderança — contratos da interface", () => {
     expect(source).toContain("setPendingMemberRemoval");
     expect(source).toContain("Manter na Célula");
     expect(source).toContain("Retirar da Célula");
-    expect(source).toContain("O histórico da participação será preservado e a Jornada principal não será alterada.");
+    expect(source).toContain("O histórico da participação será preservado e a formação principal não será alterada.");
     expect(source).toContain("onConfirm={confirmMemberRemoval}");
     expect(source).not.toContain("window.confirm");
     expect(source).toContain("selectedCell?.canManage");

@@ -7,7 +7,6 @@ const STAGES = [
   { key: "nova_alma", label: "Nova Alma", color: "#3b82f6", bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700" },
   { key: "consolidacao", label: "Consolidação", color: "#f59e0b", bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700" },
   { key: "fundamentos", label: "Fundamentos", color: "#8b5cf6", bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-700" },
-  { key: "celula", label: "Célula", color: "#22c55e", bg: "bg-green-50", border: "border-green-200", text: "text-green-700" },
   { key: "batismo", label: "Batismo", color: "#06b6d4", bg: "bg-cyan-50", border: "border-cyan-200", text: "text-cyan-700" },
   { key: "encontro_com_deus", label: "Encontro com Deus", color: "#f43f5e", bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-700" },
   { key: "escola_de_lideres", label: "Escola de Líderes", color: "#f97316", bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-700" },
@@ -31,6 +30,7 @@ export default function FunilDiscipulado() {
     ...stage,
     people: (people ?? []).filter((p) => p.discipleshipStage === stage.key),
   }));
+  const legacyCellPeople = (people ?? []).filter((person) => person.discipleshipStage === "celula");
   const selectedStage = grouped.find((stage) => stage.key === activeDesktopStage) ?? grouped[0];
   const canMovePerson = (personId: number) => Boolean(journeyScope?.canManageAll || journeyScope?.personIds.includes(personId));
 
@@ -53,9 +53,9 @@ export default function FunilDiscipulado() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold font-display text-navy">Acompanhamento da jornada</h1>
+        <h1 className="text-2xl font-bold font-display text-navy">Acompanhamento da formação</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Veja a etapa principal de cada Discípulo e avance somente quando o próximo passo fizer sentido
+          Veja a etapa de formação de cada Discípulo e avance somente quando o próximo passo fizer sentido. A participação em Célula é acompanhada à parte.
         </p>
       </div>
 
@@ -66,7 +66,7 @@ export default function FunilDiscipulado() {
       )}
 
       {/* Pipeline arrow */}
-      <div className="hidden rounded-2xl border border-border bg-card p-2 md:grid md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9">
+      <div className="hidden rounded-2xl border border-border bg-card p-2 md:grid md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-8">
         {grouped.map((stage, index) => {
           const isActive = stage.key === activeDesktopStage;
           return (
@@ -226,6 +226,18 @@ export default function FunilDiscipulado() {
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {!isLoading && legacyCellPeople.length > 0 && (
+        <section className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4" aria-labelledby="legacy-cell-records">
+          <div className="flex items-start gap-3">
+            <div className="mt-1 h-3 w-3 shrink-0 rounded-full bg-indigo-500" aria-hidden="true" />
+            <div>
+              <h2 id="legacy-cell-records" className="text-sm font-semibold text-navy">Registros antigos de Célula</h2>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{legacyCellPeople.length} registro{legacyCellPeople.length === 1 ? "" : "s"} antigo{legacyCellPeople.length === 1 ? "" : "s"} de Célula foi{legacyCellPeople.length === 1 ? "" : "ram"} preservado{legacyCellPeople.length === 1 ? "" : "s"}. A participação atual deve ser consultada e administrada em Células.</p>
+            </div>
+          </div>
         </section>
       )}
     </div>

@@ -13,7 +13,7 @@ describe("Células — participação e histórico", () => {
     expect(pageSource).toContain("selectedCell?.canManage");
     expect(pageSource).toContain("ConfirmDestructiveActionDialog");
     expect(pageSource).toContain("Retirar da Célula");
-    expect(pageSource).toContain("O histórico da participação será preservado e a Jornada principal não será alterada.");
+    expect(pageSource).toContain("O histórico da participação será preservado e a formação principal não será alterada.");
     expect(routerSource).toContain("removePerson: protectedProcedure");
     expect(routerSource).toContain("requireCellManagementPermission(ctx.user.id, input.churchId, input.cellId)");
   });
@@ -23,7 +23,7 @@ describe("Células — participação e histórico", () => {
     expect(dbSource).toContain("db.transaction(async (tx)");
     expect(dbSource).toContain("eq(cellMembers.active, true)");
     expect(dbSource).toContain("active: false, leftAt: now");
-    expect(dbSource).toContain("A Jornada principal não é alterada aqui.");
+    expect(dbSource).toContain("A formação principal não é alterada aqui.");
   });
 });
 

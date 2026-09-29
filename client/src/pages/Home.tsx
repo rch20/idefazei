@@ -36,7 +36,7 @@ const FEATURES = [
   {
     icon: Layers,
     title: "Funil de Discipulado",
-    desc: "Kanban visual com 9 etapas: Nova Alma → Consolidação → Fundamentos → ... → Multiplicador.",
+    desc: "Kanban visual com 8 etapas de formação: Nova Alma → Consolidação → Fundamentos → ... → Multiplicador. Células são acompanhadas à parte.",
     color: "#6366f1",
     bg: "bg-indigo-50",
   },
@@ -81,7 +81,6 @@ const FUNNEL_STAGES = [
   { label: "Nova Alma", color: "#3b82f6" },
   { label: "Consolidação", color: "#f59e0b" },
   { label: "Fundamentos", color: "#8b5cf6" },
-  { label: "Célula", color: "#22c55e" },
   { label: "Batismo", color: "#06b6d4" },
   { label: "Encontro com Deus", color: "#f43f5e" },
   { label: "Escola de Líderes", color: "#f97316" },
@@ -198,7 +197,7 @@ export default function Home() {
               O Funil de Discipulado
             </h2>
             <p className="text-white/60 font-serif italic">
-              Da Nova Alma ao Multiplicador — 9 etapas de transformação espiritual
+              Da Nova Alma ao Multiplicador — 8 etapas de formação
             </p>
           </div>
           <div className="flex items-center justify-center gap-2 flex-wrap">
