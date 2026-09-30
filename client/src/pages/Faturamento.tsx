@@ -74,7 +74,7 @@ export default function Faturamento() {
   const [interval, setInterval] = useState<"month" | "year">("month");
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 
-  const { data: subscription, isLoading } = trpc.stripe.getSubscription.useQuery(
+  const { data: subscription, isLoading, isError: subscriptionError, isFetching: subscriptionFetching, refetch: refetchSubscription } = trpc.stripe.getSubscription.useQuery(
     { churchId },
     { enabled: !!churchId }
   );
@@ -145,8 +145,20 @@ export default function Faturamento() {
         <p className="text-muted-foreground mt-1">Gerencie sua assinatura e plano da plataforma Ide Fazei</p>
       </div>
 
+      {subscriptionError && (
+        <Card className="border-rose-200 bg-rose-50" role="alert">
+          <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-medium text-rose-900">Não foi possível consultar a assinatura.</p>
+              <p className="mt-1 text-sm text-rose-800">O estado financeiro não foi confirmado. Tente novamente antes de escolher um plano.</p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => refetchSubscription()} disabled={subscriptionFetching}>Tentar novamente</Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Status da assinatura atual */}
-      {!isLoading && subscription?.hasSubscription && (
+      {!isLoading && !subscriptionError && subscription?.hasSubscription && (
         <Card className="border-l-4 border-l-green-500">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -201,7 +213,7 @@ export default function Faturamento() {
       )}
 
       {/* Sem assinatura */}
-      {!isLoading && !subscription?.hasSubscription && (
+      {!isLoading && !subscriptionError && !subscription?.hasSubscription && (
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="pt-6">
             <div className="flex items-start gap-3">
@@ -287,7 +299,7 @@ export default function Faturamento() {
                   <Button
                     className="w-full"
                     variant={plan.highlight ? "default" : "outline"}
-                    disabled={isCurrent || loadingPlan === plan.key}
+                    disabled={subscriptionError || isLoading || isCurrent || loadingPlan === plan.key}
                     onClick={() => handleSubscribe(plan.key)}
                   >
                     {isCurrent ? (

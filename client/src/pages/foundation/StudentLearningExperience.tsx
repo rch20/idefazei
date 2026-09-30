@@ -185,6 +185,7 @@ export function StudentLearningExperience({ churchId, courseId = null }: { churc
     onError: (error) => toast.error(error.message || "Não foi possível avançar neste bloco."),
   });
   const saveReflection = trpc.escolaFundamentos.saveReflection.useMutation({
+    onSuccess: () => { void invalidateStudentPath(); },
     onError: (error) => toast.error(error.message || "Não foi possível salvar sua reflexão."),
   });
   const completeLesson = trpc.escolaFundamentos.completeLesson.useMutation({

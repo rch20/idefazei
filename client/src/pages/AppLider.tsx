@@ -33,7 +33,7 @@ export default function AppLider() {
   const [activeTab, setActiveTab] = useState("celula");
   const [referralByCell, setReferralByCell] = useState<Record<number, { personId: string; reason: string; priority: "normal" | "alta" | "urgente"; idempotencyKey: string }>>({});
 
-  const { data: overview, isLoading: loadingOverview, refetch: refetchOverview } = trpc.leader.overview.useQuery(
+  const { data: overview, isLoading: loadingOverview, isError: overviewError, refetch: refetchOverview } = trpc.leader.overview.useQuery(
     { churchId: churchId! },
     { enabled: !!churchId }
   );
@@ -66,6 +66,8 @@ export default function AppLider() {
     },
     onError: (error: { message: string }) => toast.error(error.message || "Não foi possível encaminhar o discípulo."),
   });
+
+  if (overviewError) return <div className="mx-auto max-w-xl space-y-3 p-6" role="alert"><h1 className="text-lg font-semibold text-navy">Não foi possível carregar sua equipe.</h1><p className="text-sm text-muted-foreground">Os dados de células e cuidados não foram confirmados. Tente novamente.</p><Button type="button" variant="outline" onClick={() => refetchOverview()}>Tentar novamente</Button></div>;
 
   return (
     <div className="space-y-6">

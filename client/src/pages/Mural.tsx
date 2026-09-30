@@ -100,7 +100,7 @@ export default function Mural() {
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Announcement | null>(null);
 
-  const { data: announcements, isLoading, refetch } = trpc.announcements.list.useQuery({ churchId });
+  const { data: announcements, isLoading, isError: announcementsError, refetch } = trpc.announcements.list.useQuery({ churchId });
   const create = trpc.announcements.create.useMutation({
     onSuccess: () => {
       toast.success(form.publicVisible ? "Aviso salvo e enviado para a fila pública." : "Aviso salvo no mural interno.");
@@ -241,6 +241,8 @@ export default function Mural() {
 
       {isLoading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-28 animate-pulse rounded-xl bg-muted" />)}</div>
+      ) : announcementsError ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-900" role="alert"><p className="font-semibold">Não foi possível carregar o mural.</p><p className="mt-1 text-rose-800">Não é possível concluir que não há avisos enquanto a consulta falha.</p><Button type="button" variant="outline" className="mt-3" onClick={() => refetch()}>Tentar novamente</Button></div>
       ) : (
         <div className="space-y-6">
           {pinned.length > 0 && <AnnouncementGroup title="Fixados" icon={<Pin className="h-3 w-3" />} announcements={pinned} onEdit={openEdit} onPreview={setSelectedAnnouncement} onArchive={(item) => archive.mutate({ churchId, id: item.id })} onDelete={setDeleteTarget} />}

@@ -49,7 +49,7 @@ export default function GestaoLideranca() {
   });
   const utils = trpc.useUtils();
 
-  const { data: history, isLoading } = trpc.lideranca.list.useQuery(
+  const { data: history, isLoading, isError: historyError, refetch: refetchHistory } = trpc.lideranca.list.useQuery(
     { churchId: churchId! },
     { enabled: !!churchId }
   );
@@ -163,7 +163,9 @@ export default function GestaoLideranca() {
         </Dialog>
       </div>
 
-      {isLoading ? (
+      {historyError ? (
+        <Card className="border-rose-200 bg-rose-50" role="alert"><CardContent className="space-y-3 p-6"><div><h3 className="font-semibold text-rose-900">Não foi possível carregar o histórico.</h3><p className="mt-1 text-sm text-rose-800">Nenhum registro foi considerado apagado. Tente novamente.</p></div><Button type="button" variant="outline" onClick={() => refetchHistory()}>Tentar novamente</Button></CardContent></Card>
+      ) : isLoading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => <Card key={i} className="animate-pulse h-32 bg-muted/30" />)}
         </div>

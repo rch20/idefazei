@@ -66,7 +66,7 @@ export default function Onboarding() {
   const { user } = useChurchAuth();
   const churchId = user?.churchId ?? null;
   const [, navigate] = useLocation();
-  const { data: accessSummary, isLoading: accessLoading } = trpc.churchAuth.accessSummary.useQuery(
+  const { data: accessSummary, isLoading: accessLoading, isError: accessError, refetch: refetchAccess } = trpc.churchAuth.accessSummary.useQuery(
     { churchId: churchId ?? 0 },
     { enabled: Boolean(churchId) }
   );
@@ -127,7 +127,9 @@ export default function Onboarding() {
   const completedSteps = STEPS.filter((s) => progress?.[s.key]).length;
   const progressPct = Math.round((completedSteps / STEPS.length) * 100);
 
-  if (!user || accessLoading || !accessSummary?.isPastor) return null;
+  if (!user || accessLoading) return null;
+  if (accessError) return <div className="mx-auto max-w-xl space-y-3 p-6" role="alert"><h1 className="text-lg font-semibold text-navy">Não foi possível carregar o onboarding.</h1><p className="text-sm text-muted-foreground">Verifique sua conexão e tente novamente. Nenhuma etapa foi alterada.</p><Button type="button" variant="outline" onClick={() => refetchAccess()}>Tentar novamente</Button></div>;
+  if (!accessSummary?.isPastor) return null;
 
   function handleCSVUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
