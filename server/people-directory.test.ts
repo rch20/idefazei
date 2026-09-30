@@ -6,6 +6,7 @@ const root = resolve(__dirname, "../");
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
 const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 const pageSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
+const directoryStateSource = readFileSync(resolve(root, "shared/peopleDirectory.ts"), "utf8");
 
 describe("Diretório operacional de Pessoas", () => {
   it("usa procedure protegida e resolve o escopo pela identidade autenticada", () => {
@@ -31,21 +32,29 @@ describe("Diretório operacional de Pessoas", () => {
     expect(block).toContain("eq(careAssignments.churchId, churchId)");
     expect(block).toContain("eq(consolidationReferrals.churchId, churchId)");
     expect(block).toContain("eq(cells.churchId, churchId)");
+    expect(block).toContain("eq(pastoralCoverages.churchId, churchId)");
     expect(block).toContain("inArray(careAssignments.personId, personIds)");
     expect(block).toContain("inArray(consolidationReferrals.personId, personIds)");
+    expect(block).toContain("inArray(pastoralCoverages.pastorPersonId, personIds)");
     expect(block).not.toContain("people.cpf");
     expect(block).not.toContain("people.rg");
     expect(block).not.toContain("people.street");
     expect(block).not.toContain("people.pastoralNotes");
-    expect(block).toContain("sem_responsavel");
-    expect(block).toContain("na_fila");
-    expect(block).toContain("atrasado");
+    expect(block).toContain("resolveDirectoryCareState");
+    expect(directoryStateSource).toContain('"sem_responsavel"');
+    expect(directoryStateSource).toContain('"na_fila"');
+    expect(directoryStateSource).toContain('"atrasado"');
+    expect(directoryStateSource).toContain('"cobertura_pastoral"');
+    expect(block).toContain("responsiblePersonId");
+    expect(block).toContain("pastoralCoverage");
   });
 
   it("deixa a lista compacta e as ações de leitura separadas da ficha única", () => {
     expect(pageSource).toContain("filteredDirectory.map(({ person, care, cell })");
     expect(pageSource).toContain("aria-label={`Abrir ficha de ${person.fullName}`}");
     expect(pageSource).toContain("DIRECTORY_CARE_LABELS[care.status]");
+    expect(pageSource).toContain("Cobertura pastoral");
+    expect(pageSource).toContain("care.pastoralCoverage.coveringPastorName");
     expect(pageSource).toContain("selectPersonSection(\"cuidado\")");
     expect(pageSource).toContain("Uma Pessoa, várias participações e um histórico único de cuidado.");
   });

@@ -73,6 +73,7 @@ const DIRECTORY_CARE_LABELS: Record<string, string> = {
   atrasado: "Cuidado atrasado",
   acompanhamento: "Em acompanhamento",
   em_dia: "Acompanhamento em dia",
+  cobertura_pastoral: "Cobertura pastoral",
 };
 
 const JOURNEY_STAGE_DESCRIPTIONS: Record<JourneyStage, string> = {
@@ -1073,6 +1074,7 @@ export default function Pessoas() {
                 <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
                   {cell && <span className="truncate">Célula: {cell.name}</span>}
                   <span className={`rounded-full border px-2 py-0.5 ${care.priority === "alta" ? "border-rose-200 bg-rose-50 text-rose-700" : care.priority === "media" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{DIRECTORY_CARE_LABELS[care.status]}</span>
+                  {care.pastoralCoverage && <span className="truncate" title={`${care.pastoralCoverage.coveringPastorName} · ${care.pastoralCoverage.coveringChurchName}`}>Cobertura: {care.pastoralCoverage.coveringPastorName}</span>}
                   {care.responsibleName && <span className="hidden truncate sm:inline">Responsável: {care.responsibleName}</span>}
                 </div>
               </div>

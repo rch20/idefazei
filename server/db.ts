@@ -139,6 +139,7 @@ import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
 import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus, shouldFlagLegacyConsolidationPending } from "../shared/consolidation";
+import { resolveDirectoryCareState, type DirectoryCareStatus } from "../shared/peopleDirectory";
 import { FoundationImportError, type FoundationImportPayload, type FoundationImportSummary } from "./foundationImport";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -1483,7 +1484,7 @@ export type PeopleDirectoryPerson = {
 export type PeopleDirectoryEntry = {
   person: PeopleDirectoryPerson;
   care: {
-    status: "sem_responsavel" | "na_fila" | "atrasado" | "acompanhamento" | "em_dia";
+    status: DirectoryCareStatus;
     priority: "alta" | "media" | "normal";
     nextStep: string;
     responsiblePersonId: number | null;
@@ -1492,6 +1493,10 @@ export type PeopleDirectoryEntry = {
     referralId: number | null;
     referralStatus: string | null;
     careDueAt: Date | null;
+    pastoralCoverage: {
+      coveringPastorName: string;
+      coveringChurchName: string;
+    } | null;
   };
   cell: { id: number; name: string } | null;
 };
@@ -1540,7 +1545,7 @@ export async function getPeopleDirectoryByChurch(
   if (persons.length === 0) return [];
 
   const personIds = persons.map((person) => person.id);
-  const [assignments, memberships, referrals] = await Promise.all([
+  const [assignments, memberships, referrals, pastoralCoverageRows] = await Promise.all([
     db
       .select({ personId: careAssignments.personId, responsiblePersonId: careAssignments.responsiblePersonId, role: careAssignments.role })
       .from(careAssignments)
@@ -1563,10 +1568,22 @@ export async function getPeopleDirectoryByChurch(
       })
       .from(consolidationReferrals)
       .where(and(eq(consolidationReferrals.churchId, churchId), inArray(consolidationReferrals.personId, personIds))),
+    db
+      .select({
+        pastorPersonId: pastoralCoverages.pastorPersonId,
+        coveringPastorName: pastoralCoverages.coveringPastorName,
+        coveringChurchName: pastoralCoverages.coveringChurchName,
+      })
+      .from(pastoralCoverages)
+      .where(and(eq(pastoralCoverages.churchId, churchId), inArray(pastoralCoverages.pastorPersonId, personIds))),
   ]);
 
   const assignmentByPerson = new Map(assignments.map((item) => [item.personId, item]));
   const cellByPerson = new Map(memberships.map((item) => [item.personId, { id: item.cellId, name: item.cellName }]));
+  const pastoralCoverageByPerson = new Map(pastoralCoverageRows.map((item) => [item.pastorPersonId, {
+    coveringPastorName: item.coveringPastorName,
+    coveringChurchName: item.coveringChurchName,
+  }]));
   const responsibleIds = Array.from(new Set([
     ...assignments.map((item) => item.responsiblePersonId),
     ...referrals.flatMap((item) => [item.assignedToPersonId, item.acceptedByPersonId]),
@@ -1588,40 +1605,30 @@ export async function getPeopleDirectoryByChurch(
   return persons.map((person) => {
     const assignment = assignmentByPerson.get(person.id);
     const referral = activeReferralByPerson.get(person.id);
-    const hasResponsible = Boolean(assignment || (referral && hasConsolidationResponsible(referral)));
+    const pastoralCoverage = pastoralCoverageByPerson.get(person.id) ?? null;
+    const hasReferralResponsible = Boolean(referral && hasConsolidationResponsible(referral));
     const isOverdue = Boolean(referral?.careDueAt && Number(new Date(referral.careDueAt)) < Date.now());
-    const status: PeopleDirectoryEntry["care"]["status"] = isOverdue
-      ? "atrasado"
-      : referral && !hasResponsible
-        ? "na_fila"
-        : assignment || referral
-          ? "acompanhamento"
-          : "sem_responsavel";
-    const priority: PeopleDirectoryEntry["care"]["priority"] = status === "atrasado" || status === "sem_responsavel"
-      ? "alta"
-      : status === "na_fila"
-        ? "media"
-        : "normal";
-    const nextStep = status === "atrasado"
-      ? "Registrar acompanhamento"
-      : status === "na_fila"
-        ? "Definir responsável"
-        : status === "sem_responsavel"
-          ? "Definir responsável"
-          : "Acompanhamento em dia";
+    const careState = resolveDirectoryCareState({
+      hasAssignment: Boolean(assignment),
+      hasReferral: Boolean(referral),
+      hasReferralResponsible,
+      isOverdue,
+      hasPastoralCoverage: Boolean(pastoralCoverage),
+    });
     const responsiblePersonId = assignment?.responsiblePersonId ?? referral?.assignedToPersonId ?? referral?.acceptedByPersonId ?? null;
     return {
       person,
       care: {
-        status,
-        priority,
-        nextStep,
+        status: careState.status,
+        priority: careState.priority,
+        nextStep: careState.nextStep,
         responsiblePersonId,
         responsibleName: responsiblePersonId ? responsibleById.get(responsiblePersonId) ?? null : null,
         role: assignment?.role ?? null,
         referralId: referral?.id ?? null,
         referralStatus: referral?.status ?? null,
         careDueAt: referral?.careDueAt ?? null,
+        pastoralCoverage,
       },
       cell: cellByPerson.get(person.id) ?? null,
     };
