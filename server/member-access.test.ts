@@ -82,6 +82,8 @@ describe("matriz de acesso do membro", () => {
     const source = onboarding();
     expect(source).toContain('navigate("/login")');
     expect(source).toContain("!accessSummary.isPastor");
-    expect(source).toContain("if (!user || accessLoading || !accessSummary?.isPastor) return null;");
+    expect(source).toContain("if (!user || accessLoading) return null;");
+    expect(source).toContain("if (accessError) return");
+    expect(source).toContain("if (!accessSummary?.isPastor) return null;");
   });
 });

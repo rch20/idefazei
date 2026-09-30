@@ -2,6 +2,7 @@ import { useChurch } from "@/components/ChurchLayout";
 import { trpc } from "@/lib/trpc";
 import { ChevronLeft, ChevronRight, User } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 const STAGES = [
   { key: "nova_alma", label: "Nova Alma", color: "#3b82f6", bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700" },
@@ -20,10 +21,11 @@ export default function FunilDiscipulado() {
   const { churchId } = useChurch();
   const [activeDesktopStage, setActiveDesktopStage] = useState<StageKey>("nova_alma");
 
-  const { data: people, isLoading, refetch } = trpc.people.list.useQuery({ churchId });
+  const { data: people, isLoading, isError: peopleError, refetch } = trpc.people.list.useQuery({ churchId });
   const { data: journeyScope } = trpc.people.journeyScope.useQuery({ churchId });
   const updatePerson = trpc.people.update.useMutation({
     onSuccess: () => refetch(),
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar a etapa."),
   });
 
   const grouped = STAGES.map((stage) => ({
@@ -88,7 +90,13 @@ export default function FunilDiscipulado() {
       <p className="text-xs text-muted-foreground md:hidden">Acompanhe cada etapa em sequência. Toque em uma Pessoa para visualizar seus dados e avance somente quando o próximo passo estiver concluído.</p>
 
       {/* Kanban Board */}
-      {isLoading ? (
+      {peopleError ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-900" role="alert">
+          <p className="font-semibold">Não foi possível carregar o acompanhamento.</p>
+          <p className="mt-1 text-rose-800">A lista de Pessoas não foi alterada. Tente novamente.</p>
+          <button type="button" className="mt-3 rounded-md border border-rose-300 bg-white px-3 py-2 text-sm font-semibold" onClick={() => refetch()}>Tentar novamente</button>
+        </div>
+      ) : isLoading ? (
         <div className="grid grid-cols-1 gap-3 md:hidden">
           {STAGES.map((s) => (
             <div key={s.key} className="kanban-column min-h-0 border-l-2 border-muted pl-3">
@@ -159,12 +167,12 @@ export default function FunilDiscipulado() {
                       {canMovePerson(person.id) ? (
                       <div className="mt-2 flex gap-2">
                         {stage.key !== "nova_alma" && (
-                          <button onClick={() => handleMoveBackward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy" aria-label={`Retornar ${person.fullName} para o momento anterior`}>
+                          <button type="button" disabled={updatePerson.isPending} onClick={() => handleMoveBackward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy disabled:pointer-events-none disabled:opacity-50" aria-label={`Retornar ${person.fullName} para o momento anterior`}>
                             <ChevronLeft className="h-3 w-3" /> Retornar
                           </button>
                         )}
                         {stage.key !== "multiplicador" && (
-                          <button onClick={() => handleMoveForward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy" aria-label={`Avançar ${person.fullName} para o próximo momento`}>
+                          <button type="button" disabled={updatePerson.isPending} onClick={() => handleMoveForward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy disabled:pointer-events-none disabled:opacity-50" aria-label={`Avançar ${person.fullName} para o próximo momento`}>
                             Avançar <ChevronRight className="h-3 w-3" />
                           </button>
                         )}
@@ -181,7 +189,7 @@ export default function FunilDiscipulado() {
         </div>
       )}
 
-      {!isLoading && selectedStage && (
+      {!isLoading && !peopleError && selectedStage && (
         <section className="hidden rounded-2xl border border-border bg-card p-5 md:block" aria-labelledby={`desktop-stage-${selectedStage.key}`}>
           <div className="mb-5 flex items-center justify-between border-b border-border pb-4">
             <div className="flex items-center gap-3">
@@ -209,12 +217,12 @@ export default function FunilDiscipulado() {
                   {canMovePerson(person.id) ? (
                   <div className="mt-2 flex gap-2 border-t border-border pt-2">
                     {selectedStage.key !== "nova_alma" && (
-                      <button onClick={() => handleMoveBackward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy" aria-label={`Retornar ${person.fullName} para o momento anterior`}>
+                      <button type="button" disabled={updatePerson.isPending} onClick={() => handleMoveBackward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy disabled:pointer-events-none disabled:opacity-50" aria-label={`Retornar ${person.fullName} para o momento anterior`}>
                         <ChevronLeft className="h-3 w-3" /> Retornar
                       </button>
                     )}
                     {selectedStage.key !== "multiplicador" && (
-                      <button onClick={() => handleMoveForward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy" aria-label={`Avançar ${person.fullName} para o próximo momento`}>
+                      <button type="button" disabled={updatePerson.isPending} onClick={() => handleMoveForward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy disabled:pointer-events-none disabled:opacity-50" aria-label={`Avançar ${person.fullName} para o próximo momento`}>
                         Avançar <ChevronRight className="h-3 w-3" />
                       </button>
                     )}

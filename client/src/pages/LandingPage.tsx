@@ -362,9 +362,9 @@ export default function LandingPage() {
             <a href="mailto:contato@idefazei.com.br" className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
               <span>✉</span> contato@idefazei.com.br
             </a>
-            <a href="https://wa.me/5511999999999" className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
-              <Phone size={14} /> WhatsApp
-            </a>
+            <Link href="/contato" className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
+              <Phone size={14} /> Falar com a equipe
+            </Link>
           </div>
         </div>
       </section>
@@ -380,8 +380,7 @@ export default function LandingPage() {
           </div>
           <p className="text-sm">© 2026 Ide Fazei Plataforma Ministerial. Todos os direitos reservados.</p>
           <div className="flex gap-4 text-sm">
-            <a href="#" className="hover:text-white transition-colors">Privacidade</a>
-            <a href="#" className="hover:text-white transition-colors">Termos</a>
+            <Link href="/contato" className="hover:text-white transition-colors">Fale conosco</Link>
             <Link href="/admin/login" className="hover:text-white transition-colors">Admin</Link>
           </div>
         </div>

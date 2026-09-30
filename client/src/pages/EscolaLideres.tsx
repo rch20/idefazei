@@ -245,7 +245,7 @@ export default function EscolaLideres() {
   const [form, setForm] = useState({ name: "", period: "", startDate: "", endDate: "", pastor: "", description: "" });
   const utils = trpc.useUtils();
 
-  const { data: classes, isLoading } = trpc.escolaLideres.listClasses.useQuery(
+  const { data: classes, isLoading, isError: classesError, refetch: refetchClasses } = trpc.escolaLideres.listClasses.useQuery(
     { churchId: churchId! },
     { enabled: !!churchId }
   );
@@ -334,6 +334,8 @@ export default function EscolaLideres() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[1, 2].map((i) => <Card key={i} className="animate-pulse h-48 bg-muted/30" />)}
         </div>
+      ) : classesError ? (
+        <Card className="border-rose-200 bg-rose-50" role="alert"><CardContent className="space-y-3 p-6"><div><h3 className="font-semibold text-rose-900">Não foi possível carregar as turmas.</h3><p className="mt-1 text-sm text-rose-800">A lista não foi confirmada. Tente novamente.</p></div><Button type="button" variant="outline" onClick={() => refetchClasses()}>Tentar novamente</Button></CardContent></Card>
       ) : classes && classes.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {classes.map((cls) => (

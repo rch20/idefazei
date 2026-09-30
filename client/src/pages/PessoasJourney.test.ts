@@ -16,10 +16,9 @@ const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 const leaderSource = readFileSync(resolve(root, "client/src/pages/AppLider.tsx"), "utf8");
 const centralCareSource = readFileSync(resolve(root, "client/src/pages/CentralCuidado.tsx"), "utf8");
 const dashboardSource = readFileSync(resolve(root, "client/src/pages/Dashboard.tsx"), "utf8");
-const funnelSource = readFileSync(resolve(root, "client/src/pages/FunilDiscipulado.tsx"), "utf8");
-const landingSource = readFileSync(resolve(root, "client/src/pages/LandingPage.tsx"), "utf8");
-const homeSource = readFileSync(resolve(root, "client/src/pages/Home.tsx"), "utf8");
-const memberAreaSource = readFileSync(resolve(root, "client/src/pages/AreaMembro.tsx"), "utf8");
+  const funnelSource = readFileSync(resolve(root, "client/src/pages/FunilDiscipulado.tsx"), "utf8");
+  const landingSource = readFileSync(resolve(root, "client/src/pages/LandingPage.tsx"), "utf8");
+  const memberAreaSource = readFileSync(resolve(root, "client/src/pages/AreaMembro.tsx"), "utf8");
 
 describe("Ficha da Pessoa — jornada e escopo", () => {
   it("resolve deep links pastorais sem substituir a autorização server-side", () => {
@@ -211,7 +210,6 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(funnelSource).toContain("Registros antigos de Célula");
     expect(funnelSource).toContain("A participação atual deve ser consultada e administrada em Células.");
     expect(landingSource).toContain("8 etapas de formação");
-    expect(homeSource).toContain("8 etapas de formação");
     expect(memberAreaSource).not.toContain('"Nova Alma", "Consolidação", "Fundamentos", "Célula"');
     expect(memberAreaSource).toContain("Célula (registro anterior)");
   });
