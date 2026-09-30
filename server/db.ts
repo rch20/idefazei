@@ -138,7 +138,7 @@ import { currentCivilDateAsUtcNoon, formatCivilDateInput, formatCivilDateValue, 
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
-import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus } from "../shared/consolidation";
+import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus, shouldFlagLegacyConsolidationPending } from "../shared/consolidation";
 import { FoundationImportError, type FoundationImportPayload, type FoundationImportSummary } from "./foundationImport";
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -2368,10 +2368,11 @@ export async function getPrimaryDisciplerHistory(personId: number, churchId: num
 export async function getCareAttentionByChurch(churchId: number) {
   const db = await getDb();
   if (!db) return [];
-  const [persons, churchSouls, churchConsolidations, activeAssignments, activeMemberships, pastoralCandidates, pastoralCoverageRows] = await Promise.all([
+  const [persons, churchSouls, churchConsolidations, referrals, activeAssignments, activeMemberships, pastoralCandidates, pastoralCoverageRows] = await Promise.all([
     getPeopleByChurch(churchId),
     getSoulsByChurch(churchId),
     getConsolidationsByChurch(churchId),
+    getConsolidationReferralsByChurch(churchId),
     db.select().from(careAssignments).where(and(eq(careAssignments.churchId, churchId), eq(careAssignments.active, true))),
     db
       .select({ personId: cellMembers.personId, cellId: cells.id, cellName: cells.name })
@@ -2389,6 +2390,7 @@ export async function getCareAttentionByChurch(churchId: number) {
   const coveredPastoralPersonIds = new Set(pastoralCoverageRows.map((item) => item.pastorPersonId));
   const soulByPerson = new Map(churchSouls.filter((soul) => soul.personId).map((soul) => [soul.personId!, soul]));
   const consolidationBySoul = new Map(churchConsolidations.map((item) => [item.soulId, item]));
+  const activeReferralPersonIds = new Set(referrals.filter((referral) => isActiveConsolidationReferralStatus(referral.status)).map((referral) => referral.personId));
   const careAssignmentsByPerson = new Map<number, typeof activeAssignments>();
   for (const assignment of activeAssignments) {
     const current = careAssignmentsByPerson.get(assignment.personId) ?? [];
@@ -2401,6 +2403,7 @@ export async function getCareAttentionByChurch(churchId: number) {
   return persons.map((person) => {
     const soul = soulByPerson.get(person.id);
     const consolidation = soul ? consolidationBySoul.get(soul.id) : undefined;
+    const hasActiveReferral = activeReferralPersonIds.has(person.id);
     const careAssignmentsForPerson = [...(careAssignmentsByPerson.get(person.id) ?? [])].sort((left, right) => {
       const leftRoleRank = left.role === "discipulador" ? 1 : 0;
       const rightRoleRank = right.role === "discipulador" ? 1 : 0;
@@ -2426,7 +2429,12 @@ export async function getCareAttentionByChurch(churchId: number) {
       nextStep = "Definir responsável";
       priority = "alta";
     }
-    if (!isPastor && soul && !consolidation) {
+    if (!isPastor && shouldFlagLegacyConsolidationPending({
+      soulStatus: soul?.status,
+      discipleshipStage: person.discipleshipStage,
+      hasLegacyConsolidation: Boolean(consolidation),
+      hasActiveReferral,
+    })) {
       reasons.push("Consolidação não iniciada");
       nextStep = "Iniciar consolidação";
       priority = "alta";
@@ -2641,7 +2649,12 @@ export async function getSpiritualRadarByChurch(churchId: number) {
       };
 
       if (!careAssignment && !hasPastoralCoverage) addSignal("sem_responsavel", "Não há responsável ativo registrado para esta Pessoa.");
-      if (!isPastor && soul && !consolidation) addSignal("consolidacao_pendente", "Existe uma Nova Alma sem ficha de Consolidação.", soul.id);
+      if (!isPastor && shouldFlagLegacyConsolidationPending({
+        soulStatus: soul?.status,
+        discipleshipStage: person.discipleshipStage,
+        hasLegacyConsolidation: Boolean(consolidation),
+        hasActiveReferral: Boolean(referral),
+      })) addSignal("consolidacao_pendente", "Existe uma Nova Alma em fase inicial sem ficha de Consolidação.", soul?.id ?? null);
       else if (!isPastor && consolidation && !consolidation.callMade) addSignal("primeiro_contato_pendente", "A Consolidação existe, mas o primeiro contato ainda não foi registrado.", consolidation.id);
       if (visit) {
         const overdue = visit.scheduledAt && Number(new Date(visit.scheduledAt)) < Date.now();
