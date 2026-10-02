@@ -69,6 +69,7 @@ describe("Fluxo estrutural do Radar Espiritual", () => {
     expect(radarSource).toContain("eq(pastoralCoverages.churchId, churchId)");
     expect(radarSource).toContain("const hasPastoralCoverage = isPastor && coveredPastoralPersonIds.has(person.id);");
     expect(radarSource).toContain("shouldFlagLegacyConsolidationPending");
+    expect(radarSource).toContain("shouldFlagModernFirstContactPending");
     expect(radarSource).toContain("if (!careAssignment && !hasPastoralCoverage)");
     expect(radarSource).toContain("if (!isPastor && stage <= 6 && !person.discipledById)");
     expect(radarSource).toContain("if (!isPastor && stage >= 2 && !cell)");
@@ -80,8 +81,10 @@ describe("Fluxo estrutural do Radar Espiritual", () => {
     expect(careQueueSource).toContain("const hasPastoralCoverage = isPastor && coveredPastoralPersonIds.has(person.id);");
     expect(careQueueSource).toContain("if (careAssignmentsForPerson.length === 0 && !hasPastoralCoverage)");
     expect(careQueueSource).toContain("shouldFlagLegacyConsolidationPending");
+    expect(careQueueSource).toContain("shouldFlagModernFirstContactPending");
     expect(careQueueSource).toContain("getConsolidationReferralsByChurch(churchId)");
-    expect(careQueueSource).toContain("if (!isPastor && consolidation && !consolidation.callMade)");
+    expect(careQueueSource).toContain("activeConsolidationReferral");
+    expect(careQueueSource).not.toContain("consolidation && !consolidation.callMade");
   });
 
   it("documenta pontuação transparente e ações da primeira versão", () => {

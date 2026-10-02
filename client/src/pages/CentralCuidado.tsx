@@ -160,15 +160,17 @@ export default function CentralCuidado() {
         <section className="space-y-3">
           {items.map((item) => {
             const config = priorityConfig[item.priority];
-            const canRegisterContact = item.nextStep === "Registrar primeiro contato";
+            const canRegisterContact = Boolean(item.activeConsolidationReferral) && item.nextStep === "Registrar primeiro contato";
             const careAssignments = item.careAssignments ?? (item.careAssignment ? [item.careAssignment] : []);
             const operationalAssignments = careAssignments.filter((assignment) => assignment.role !== "discipulador");
             const operationalSummary = operationalAssignments
               .map((assignment) => `${assignment.responsiblePersonName ?? "Responsável definido"} · ${getCareRoleLabel(assignment.role)}`)
               .join(" · ");
-            const consolidationSummary = item.consolidation
-              ? item.consolidation.callMade ? "Em acompanhamento" : "Primeiro contato pendente"
-              : item.soul ? "Ainda não iniciada" : null;
+            const consolidationSummary = item.activeConsolidationReferral
+              ? item.activeConsolidationReferral.firstContactAt ? "Em acompanhamento" : "Primeiro contato pendente"
+              : item.consolidation
+                ? "Histórico legado · somente consulta"
+                : item.soul ? "Ainda não iniciada" : null;
             return (
               <article
                 key={item.person.id}

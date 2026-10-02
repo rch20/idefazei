@@ -138,7 +138,7 @@ import { currentCivilDateAsUtcNoon, formatCivilDateInput, formatCivilDateValue, 
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
-import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus, shouldFlagLegacyConsolidationPending } from "../shared/consolidation";
+import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus, shouldFlagLegacyConsolidationPending, shouldFlagModernFirstContactPending } from "../shared/consolidation";
 import { resolveDirectoryCareState, type DirectoryCareStatus } from "../shared/peopleDirectory";
 import { FoundationImportError, type FoundationImportPayload, type FoundationImportSummary } from "./foundationImport";
 
@@ -2397,7 +2397,13 @@ export async function getCareAttentionByChurch(churchId: number) {
   const coveredPastoralPersonIds = new Set(pastoralCoverageRows.map((item) => item.pastorPersonId));
   const soulByPerson = new Map(churchSouls.filter((soul) => soul.personId).map((soul) => [soul.personId!, soul]));
   const consolidationBySoul = new Map(churchConsolidations.map((item) => [item.soulId, item]));
-  const activeReferralPersonIds = new Set(referrals.filter((referral) => isActiveConsolidationReferralStatus(referral.status)).map((referral) => referral.personId));
+  const activeReferralByPerson = new Map<number, (typeof referrals)[number]>();
+  referrals
+    .filter((referral) => isActiveConsolidationReferralStatus(referral.status))
+    .sort((left, right) => Number(new Date(right.referredAt)) - Number(new Date(left.referredAt)))
+    .forEach((referral) => {
+      if (!activeReferralByPerson.has(referral.personId)) activeReferralByPerson.set(referral.personId, referral);
+    });
   const careAssignmentsByPerson = new Map<number, typeof activeAssignments>();
   for (const assignment of activeAssignments) {
     const current = careAssignmentsByPerson.get(assignment.personId) ?? [];
@@ -2410,7 +2416,8 @@ export async function getCareAttentionByChurch(churchId: number) {
   return persons.map((person) => {
     const soul = soulByPerson.get(person.id);
     const consolidation = soul ? consolidationBySoul.get(soul.id) : undefined;
-    const hasActiveReferral = activeReferralPersonIds.has(person.id);
+    const activeReferral = activeReferralByPerson.get(person.id) ?? null;
+    const hasActiveReferral = Boolean(activeReferral);
     const careAssignmentsForPerson = [...(careAssignmentsByPerson.get(person.id) ?? [])].sort((left, right) => {
       const leftRoleRank = left.role === "discipulador" ? 1 : 0;
       const rightRoleRank = right.role === "discipulador" ? 1 : 0;
@@ -2445,7 +2452,11 @@ export async function getCareAttentionByChurch(churchId: number) {
       reasons.push("Consolidação não iniciada");
       nextStep = "Iniciar consolidação";
       priority = "alta";
-    } else if (!isPastor && consolidation && !consolidation.callMade) {
+    } else if (!isPastor && shouldFlagModernFirstContactPending({
+      hasActiveReferral,
+      hasResponsible: activeReferral ? hasConsolidationResponsible(activeReferral) : false,
+      firstContactAt: activeReferral?.firstContactAt,
+    })) {
       reasons.push("Sem primeiro contato registrado");
       nextStep = "Registrar primeiro contato";
       priority = "alta";
@@ -2459,6 +2470,7 @@ export async function getCareAttentionByChurch(churchId: number) {
       person,
       soul: soul ?? null,
       consolidation: consolidation ?? null,
+      activeConsolidationReferral: activeReferral,
       careAssignment: careAssignment ?? null,
       careAssignments: enrichedCareAssignments,
       primaryDiscipler: person.discipledById
@@ -2662,7 +2674,11 @@ export async function getSpiritualRadarByChurch(churchId: number) {
         hasLegacyConsolidation: Boolean(consolidation),
         hasActiveReferral: Boolean(referral),
       })) addSignal("consolidacao_pendente", "Existe uma Nova Alma em fase inicial sem ficha de Consolidação.", soul?.id ?? null);
-      else if (!isPastor && consolidation && !consolidation.callMade) addSignal("primeiro_contato_pendente", "A Consolidação existe, mas o primeiro contato ainda não foi registrado.", consolidation.id);
+      else if (!isPastor && shouldFlagModernFirstContactPending({
+        hasActiveReferral: Boolean(referral),
+        hasResponsible: referral ? hasConsolidationResponsible(referral) : false,
+        firstContactAt: referral?.firstContactAt,
+      })) addSignal("primeiro_contato_pendente", "O caso moderno de Consolidação foi assumido, mas o primeiro contato ainda não foi registrado.", referral?.id ?? null);
       if (visit) {
         const overdue = visit.scheduledAt && Number(new Date(visit.scheduledAt)) < Date.now();
         addSignal("visita_pendente", overdue ? "A visita está agendada para uma data já vencida." : "Há uma visita aberta aguardando atribuição ou realização.", visit.id);
