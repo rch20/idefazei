@@ -40,6 +40,18 @@ export function hasConsolidationResponsible(referral: ConsolidationReferralRespo
 }
 
 /**
+ * O primeiro contato é uma ação do fluxo moderno. Um checklist legado incompleto
+ * permanece no histórico e não deve criar uma tarefa operacional atual.
+ */
+export function shouldFlagModernFirstContactPending(input: {
+  hasActiveReferral: boolean;
+  hasResponsible: boolean;
+  firstContactAt?: Date | string | null;
+}): boolean {
+  return input.hasActiveReferral && input.hasResponsible && !input.firstContactAt;
+}
+
+/**
  * Um registro legado de Nova Alma só deve gerar alerta de Consolidação quando
  * ainda representa uma fase inicial da jornada. Registros antigos podem
  * permanecer vinculados a Pessoas que já avançaram para Célula ou liderança.

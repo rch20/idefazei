@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldFlagLegacyConsolidationPending } from "../shared/consolidation";
+import { shouldFlagLegacyConsolidationPending, shouldFlagModernFirstContactPending } from "../shared/consolidation";
 
 describe("pendência legada de Consolidação", () => {
   it("não sinaliza uma Pessoa em Célula com registro histórico de Nova Alma", () => {
@@ -55,6 +55,29 @@ describe("pendência legada de Consolidação", () => {
       discipleshipStage: "nova_alma",
       hasLegacyConsolidation: false,
       hasActiveReferral: true,
+    })).toBe(false);
+  });
+
+  it("só sinaliza primeiro contato para encaminhamento moderno assumido", () => {
+    expect(shouldFlagModernFirstContactPending({
+      hasActiveReferral: true,
+      hasResponsible: true,
+      firstContactAt: null,
+    })).toBe(true);
+    expect(shouldFlagModernFirstContactPending({
+      hasActiveReferral: true,
+      hasResponsible: true,
+      firstContactAt: new Date(),
+    })).toBe(false);
+    expect(shouldFlagModernFirstContactPending({
+      hasActiveReferral: true,
+      hasResponsible: false,
+      firstContactAt: null,
+    })).toBe(false);
+    expect(shouldFlagModernFirstContactPending({
+      hasActiveReferral: false,
+      hasResponsible: true,
+      firstContactAt: null,
     })).toBe(false);
   });
 });

@@ -16,6 +16,11 @@ describe("Central de Cuidado — separação de responsabilidades", () => {
     expect(page).toContain("operationalAssignments");
   });
 
+  it("não oferece ação operacional para checklist legado sem caso moderno", () => {
+    expect(page).toContain('Boolean(item.activeConsolidationReferral) && item.nextStep === "Registrar primeiro contato"');
+    expect(page).toContain("Histórico legado · somente consulta");
+  });
+
   it("não usa a Consolidação para substituir o discipulador na ficha", () => {
     expect(personPage).toContain("Esta ação altera somente o discipulador principal");
     expect(personPage).toContain("O discipulador principal permanece o mesmo.");
