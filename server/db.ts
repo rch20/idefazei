@@ -3549,8 +3549,6 @@ export async function getPublicCellsByChurchId(churchId: number) {
       eq(cells.churchId, churchId),
       eq(cells.active, true),
       eq(cells.publicVisible, true),
-      isNotNull(cells.latitude),
-      isNotNull(cells.longitude),
     ))
     .orderBy(cells.name)
     .limit(100);
@@ -3579,7 +3577,7 @@ export async function getPublicCellsByChurchId(churchId: number) {
         ? (row.leaderWhatsapp?.trim() || row.leaderPhone?.trim() || null)
         : null,
     };
-  }).filter((cell) => cell.latitude !== 0 || cell.longitude !== 0);
+  });
 }
 
 export async function getCellById(id: number, churchId: number) {
