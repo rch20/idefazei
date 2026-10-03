@@ -33,21 +33,24 @@ describe("Visite-nos público", () => {
     expect(pageSource).toContain("distanceInKilometers(visitorLocation");
     expect(pageSource).toContain("Localizando a região da Célula para calcular a proximidade");
     expect(pageSource).toContain("buildMapLocationQuery");
+    expect(pageSource).toContain('coordinatesSource: resolved ? "geocoded" : "address"');
+    expect(pageSource).toContain('cell.coordinatesSource !== "address"');
+    expect(pageSource).toContain("Uma Célula está publicada, mas o ponto do mapa precisa ser revisado");
     expect(pageSource).not.toContain("visitorLocation:");
   });
 
   it("oferece mapa, WhatsApp autorizado e rota sem expor endereço aproximado", () => {
     expect(pageSource).toContain("<OpenStreetMap");
-    expect(pageSource).toContain("const showMapToggle = cellsWithDistance.length > 1;");
+    expect(pageSource).toContain("const mapCells = cellsWithDistance.filter");
     expect(pageSource).toContain("Ver mapa das Células");
     expect(pageSource).toContain("Ocultar mapa");
     expect(pageSource).toContain("lg:block lg:col-start-1 lg:row-start-1");
-    expect(pageSource).toContain("space-y-3 lg:col-start-2 lg:row-start-1");
+    expect(pageSource).toContain("lg:col-start-2 lg:row-start-1");
     expect(pageSource).toContain("function cellMessageName(name: string)");
     expect(pageSource).toContain("replace(/^célula\\s+/i, \"\")");
     expect(pageSource).toContain("getWhatsAppLinkWithMessage(cell.leaderWhatsapp");
     expect(pageSource).toContain("sobre a ${cellMessageName(cell.name)}");
-    expect(pageSource).toContain('cell.locationMode === "exact" ? "Como chegar" : "Ver região"');
+    expect(pageSource).toContain('cell.locationMode === "exact" && cell.coordinatesSource !== "address"');
     expect(pageSource).toContain("function mapsSearchLink(cell: PublicCell)");
     expect(pageSource).toContain("function mapsDestination(cell: PublicCell)");
     expect(pageSource).toContain("function mapsDirectionsLink(cell: PublicCell)");
@@ -60,11 +63,12 @@ describe("Visite-nos público", () => {
     expect(destinationSource).toContain("return [street, postalCode].filter(Boolean).join");
     expect(pageSource).toContain("href={mapsSearchLink(cell)}");
     expect(pageSource).toContain("href={mapsDirectionsLink(cell)}");
+    expect(pageSource).toContain("hasRouteDestination(cell)");
     expect(dbSource).toContain("state: cells.state");
     expect(dbSource).toContain("addressNumber: cells.addressNumber");
     expect(dbSource).toContain("zipCode: cells.zipCode");
     expect(dbSource).toContain("address: exactLocation ? row.address : null");
     expect(dbSource).toContain("Math.round(latitude * 100) / 100");
-    expect(dbSource).toContain("cell.latitude !== 0 || cell.longitude !== 0");
+    expect(dbSource).not.toContain("cell.latitude !== 0 || cell.longitude !== 0");
   });
 });

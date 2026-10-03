@@ -11,6 +11,7 @@ import { buildMapLocationQuery } from "@/lib/maptiler";
 import { Eye, MapPin, MessageCircle, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { isSuspiciousCoordinatePair } from "../../../shared/geo";
 
 const DAYS = [
   { value: "segunda", label: "Segunda-feira" },
@@ -62,7 +63,7 @@ function isMeaningfulCoordinatePair(latitude: string | number | null | undefined
   return Number.isFinite(latitudeNumber) && Number.isFinite(longitudeNumber)
     && latitudeNumber >= -90 && latitudeNumber <= 90
     && longitudeNumber >= -180 && longitudeNumber <= 180
-    && !(latitudeNumber === 0 && longitudeNumber === 0);
+    && !isSuspiciousCoordinatePair(latitudeNumber, longitudeNumber);
 }
 
 export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, onSaved }: CellPublicSettingsDialogProps) {

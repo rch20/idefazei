@@ -8,6 +8,7 @@ import { HERO_PRESET_IDS } from "../shared/publicHero";
 import { MINISTRY_ICON_KEYS, DEFAULT_MINISTRY_ICON_KEY } from "../shared/ministryIcons";
 import { MINISTRY_VICE_LEADER_LABEL, MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
 import { getConsolidationResponsiblePersonId, hasConsolidationResponsible } from "../shared/consolidation";
+import { isSuspiciousCoordinatePair } from "../shared/geo";
 import { getOptimizedMediaUrls } from "./media";
 import { currentCivilDateAsUtcNoon, formatCivilDateValue, normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
 import { FoundationImportError, parseFoundationWorkbook } from "./foundationImport";
@@ -3238,7 +3239,7 @@ const cellsRouter = router({
       await requireChurchPublicSitePublisher(ctx.user.id, input.churchId);
       const cell = await getCellById(input.cellId, input.churchId);
       if (!cell) throw new TRPCError({ code: "NOT_FOUND", message: "Célula não encontrada nesta igreja." });
-      const hasMeaningfulLocation = input.latitude !== null && input.longitude !== null && !(input.latitude === 0 && input.longitude === 0);
+      const hasMeaningfulLocation = input.latitude !== null && input.longitude !== null && !isSuspiciousCoordinatePair(input.latitude, input.longitude);
       if (input.publicVisible && !hasMeaningfulLocation) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Defina uma localização válida no mapa antes de publicar a Célula. A coordenada 0,0 não representa uma localização de encontro." });
       }

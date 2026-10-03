@@ -7,6 +7,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../..");
 const pageSource = readFileSync(resolve(root, "client/src/pages/Celulas.tsx"), "utf8");
 const routerSource = readFileSync(resolve(root, "server/routers.ts"), "utf8");
+const dbSource = readFileSync(resolve(root, "server/db.ts"), "utf8");
 const schemaSource = readFileSync(resolve(root, "drizzle/schema.ts"), "utf8");
 const migrationSource = readFileSync(resolve(root, "drizzle/0056_cell_address_cep.sql"), "utf8");
 
@@ -58,11 +59,11 @@ describe("Cadastro de Células com endereço por CEP", () => {
     expect(pageSource).toContain('latitudeValue === null || latitudeValue === undefined');
     expect(pageSource).toContain('latitude >= -90 && latitude <= 90');
     expect(pageSource).toContain('if (!hasPublicCellLocation(cell)) return [];');
+    expect(pageSource).toContain('isSuspiciousCoordinatePair(latitude, longitude)');
     expect(dialogSource).toContain('rawLatitude < -90 || rawLatitude > 90');
     expect(dialogSource).toContain('rawLongitude < -180 || rawLongitude > 180');
-    expect(pageSource).toContain('!(latitude === 0 && longitude === 0)');
-    expect(dialogSource).toContain('!(latitudeNumber === 0 && longitudeNumber === 0)');
-    expect(routerSource).toContain('!(input.latitude === 0 && input.longitude === 0)');
+    expect(dialogSource).toContain('isSuspiciousCoordinatePair(latitudeNumber, longitudeNumber)');
+    expect(routerSource).toContain('isSuspiciousCoordinatePair(input.latitude, input.longitude)');
   });
 
   it("explica o status público e leva o administrador para Visite-nos", () => {
@@ -73,6 +74,10 @@ describe("Cadastro de Células com endereço por CEP", () => {
     expect(dialogSource).toContain("trpc.tenantPublic.adminPreview.useQuery");
     expect(dialogSource).toContain("A Célula só aparecerá em “Visite-nos”");
     expect(dialogSource).toContain("O CEP preenche o endereço, mas não substitui a localização geográfica.");
+  });
+
+  it("não descarta no backend uma Célula pública antiga que precisa de revisão do mapa", () => {
+    expect(dbSource).not.toContain("cell.latitude !== 0 || cell.longitude !== 0");
   });
 
   it("usa migration nullable para preservar Células existentes", () => {

@@ -227,7 +227,7 @@ describe("Células públicas por tenant", () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it("seleciona apenas células ativas, publicadas e geolocalizadas da própria igreja", () => {
+  it("seleciona apenas células ativas e publicadas da própria igreja, preservando as coordenadas para revisão", () => {
     const helperStart = dbSource.indexOf("export async function getPublicCellsByChurchId");
     const helperEnd = dbSource.indexOf("export async function getCellById", helperStart);
     const helper = dbSource.slice(helperStart, helperEnd);
@@ -240,7 +240,7 @@ describe("Células públicas por tenant", () => {
     expect(helper).toContain("Math.round(latitude * 100) / 100");
     expect(helper).toContain("address: exactLocation ? row.address : null");
     expect(helper).toContain("row.publicLeaderContact");
-    expect(helper).toContain("cell.latitude !== 0 || cell.longitude !== 0");
+    expect(helper).not.toContain("cell.latitude !== 0 || cell.longitude !== 0");
     expect(helper).not.toContain("supervisorId:");
     expect(helper).not.toContain("hostId:");
     expect(helper).not.toContain("pastoralNotes");

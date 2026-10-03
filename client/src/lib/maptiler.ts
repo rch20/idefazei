@@ -1,3 +1,7 @@
+import { isSuspiciousCoordinatePair } from "../../../shared/geo";
+
+export { isSuspiciousCoordinatePair } from "../../../shared/geo";
+
 export type MapLocationInput = {
   address?: string | null;
   addressNumber?: string | null;
@@ -17,10 +21,6 @@ export const MAP_TILE_URL =
 export const MAP_TILE_ATTRIBUTION =
   import.meta.env.VITE_MAP_TILE_ATTRIBUTION?.trim() ||
   '<a href="https://www.maptiler.com/copyright/" target="_blank" rel="noreferrer">&copy; MapTiler</a> <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">&copy; OpenStreetMap contributors</a>';
-
-export function isSuspiciousCoordinatePair(latitude: number, longitude: number) {
-  return Math.abs(latitude) < 1 && Math.abs(longitude) < 1;
-}
 
 export function buildMapLocationQuery(input: MapLocationInput) {
   const addressNumber = input.addressNumber?.trim() ?? "";

@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { currentCivilDateKey } from "@/lib/civilDate";
 import { createIdempotencyKey } from "@/lib/idempotency";
+import { isSuspiciousCoordinatePair } from "../../../shared/geo";
 
 const DAYS = [
   { value: "segunda", label: "Segunda-feira" },
@@ -81,7 +82,7 @@ function hasPublicCellLocation(cell: { latitude?: string | number | null; longit
   if (latitudeValue === "" || longitudeValue === "" || latitudeValue === null || latitudeValue === undefined || longitudeValue === null || longitudeValue === undefined) return false;
   const latitude = Number(latitudeValue);
   const longitude = Number(longitudeValue);
-  return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180 && !(latitude === 0 && longitude === 0);
+  return Number.isFinite(latitude) && Number.isFinite(longitude) && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180 && !isSuspiciousCoordinatePair(latitude, longitude);
 }
 
 type CelulasProps = { initialTab?: "lista" | "mapa" };

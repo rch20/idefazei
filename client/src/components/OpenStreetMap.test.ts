@@ -28,6 +28,7 @@ describe("configuração do provedor de tiles", () => {
     expect(source).toContain("geocodeMapLocation");
     expect(source).toContain("resolvedMarkers");
     expect(source).toContain("Localizando a Célula pela região informada");
+    expect(source).toContain("effectiveMarkers");
   });
 });
 
