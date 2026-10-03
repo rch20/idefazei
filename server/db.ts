@@ -3549,8 +3549,6 @@ export async function getPublicCellsByChurchId(churchId: number) {
       eq(cells.churchId, churchId),
       eq(cells.active, true),
       eq(cells.publicVisible, true),
-      isNotNull(cells.latitude),
-      isNotNull(cells.longitude),
     ))
     .orderBy(cells.name)
     .limit(100);
