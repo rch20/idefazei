@@ -87,7 +87,7 @@ function mapsDirectionsLink(cell: PublicCell) {
 
 function hasRouteDestination(cell: DisplayCell) {
   if (cell.coordinatesSource !== "address") return true;
-  return Boolean([cell.address, cell.addressNumber, cell.addressComplement, cell.zipCode, cell.city, cell.state, cell.neighborhood].some((value) => value?.trim()));
+  return Boolean([cell.address, cell.addressNumber, cell.addressComplement, cell.zipCode].some((value) => value?.trim()));
 }
 
 function meetingLabel(cell: PublicCell) {
