@@ -2309,6 +2309,99 @@ export const financialTransactions = mysqlTable("financial_transactions", {
 
 export type FinancialTransaction = typeof financialTransactions.$inferSelect;
 
+/** Configuração PIX ativa da igreja; uma configuração por tenant. */
+export const treasuryPixSettings = mysqlTable(
+  "treasury_pix_settings",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    pixKeyType: mysqlEnum("pixKeyType", ["cpf", "cnpj", "email", "telefone", "aleatoria", "outro"]).notNull(),
+    pixKey: varchar("pixKey", { length: 255 }).notNull(),
+    recipientName: varchar("recipientName", { length: 255 }).notNull(),
+    institutionName: varchar("institutionName", { length: 160 }),
+    qrCodeFileKey: varchar("qrCodeFileKey", { length: 512 }),
+    qrCodeUrl: varchar("qrCodeUrl", { length: 1024 }),
+    active: boolean("active").default(true).notNull(),
+    version: int("version").default(1).notNull(),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    updatedByChurchUserId: int("updatedByChurchUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("treasury_pix_settings_church_unique").on(table.churchId),
+    index("treasury_pix_settings_church_active_idx").on(table.churchId, table.active),
+  ]
+);
+
+export type TreasuryPixSettings = typeof treasuryPixSettings.$inferSelect;
+export type InsertTreasuryPixSettings = typeof treasuryPixSettings.$inferInsert;
+
+/** Solicitações de contribuição; só a aprovação cria uma entrada no livro-caixa. */
+export const onlineContributions = mysqlTable(
+  "online_contributions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    personId: int("personId").notNull(),
+    submittedByChurchUserId: int("submittedByChurchUserId").notNull(),
+    pixSettingsId: int("pixSettingsId").notNull(),
+    type: mysqlEnum("type", ["dizimo", "oferta", "primicias"]).notNull(),
+    paymentMethod: mysqlEnum("paymentMethod", ["pix"]).default("pix").notNull(),
+    informedAmountCents: int("informedAmountCents").notNull(),
+    confirmedAmountCents: int("confirmedAmountCents"),
+    paymentDate: date("paymentDate"),
+    status: mysqlEnum("status", ["pendente", "aprovada", "recusada"]).default("pendente").notNull(),
+    proofFileKey: varchar("proofFileKey", { length: 512 }).notNull(),
+    proofUrl: varchar("proofUrl", { length: 1024 }).notNull(),
+    proofFileName: varchar("proofFileName", { length: 255 }).notNull(),
+    proofMimeType: varchar("proofMimeType", { length: 100 }).notNull(),
+    proofSizeBytes: int("proofSizeBytes").notNull(),
+    proofSha256: varchar("proofSha256", { length: 64 }).notNull(),
+    pixKeySnapshot: varchar("pixKeySnapshot", { length: 255 }).notNull(),
+    pixKeyTypeSnapshot: mysqlEnum("pixKeyTypeSnapshot", ["cpf", "cnpj", "email", "telefone", "aleatoria", "outro"]).notNull(),
+    pixRecipientNameSnapshot: varchar("pixRecipientNameSnapshot", { length: 255 }).notNull(),
+    pixInstitutionNameSnapshot: varchar("pixInstitutionNameSnapshot", { length: 160 }),
+    rejectionReason: text("rejectionReason"),
+    reviewNotes: text("reviewNotes"),
+    reviewedByChurchUserId: int("reviewedByChurchUserId"),
+    reviewedAt: timestamp("reviewedAt"),
+    financialTransactionId: int("financialTransactionId"),
+    idempotencyKey: varchar("idempotencyKey", { length: 64 }).notNull(),
+    submittedAt: timestamp("submittedAt").defaultNow().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("online_contributions_church_submitter_idempotency_unique").on(
+      table.churchId,
+      table.submittedByChurchUserId,
+      table.idempotencyKey
+    ),
+    uniqueIndex("online_contributions_church_transaction_unique").on(
+      table.churchId,
+      table.financialTransactionId
+    ),
+    index("online_contributions_church_status_submitted_idx").on(
+      table.churchId,
+      table.status,
+      table.submittedAt
+    ),
+    index("online_contributions_church_person_submitted_idx").on(
+      table.churchId,
+      table.personId,
+      table.submittedAt
+    ),
+    index("online_contributions_church_proof_sha256_idx").on(
+      table.churchId,
+      table.proofSha256
+    ),
+  ]
+);
+
+export type OnlineContribution = typeof onlineContributions.$inferSelect;
+export type InsertOnlineContribution = typeof onlineContributions.$inferInsert;
+
 /** Fechamento mensal opcional; preserva a referência do período e quem o bloqueou. */
 export const financialPeriodClosures = mysqlTable(
   "financial_period_closures",
@@ -2384,8 +2477,10 @@ export const financialAuditLogs = mysqlTable("financial_audit_logs", {
   categoryId: int("categoryId"),
   recurringScheduleId: int("recurringScheduleId"),
   serviceId: int("serviceId"),
+  pixSettingsId: int("pixSettingsId"),
+  onlineContributionId: int("onlineContributionId"),
   actorChurchUserId: int("actorChurchUserId").notNull(),
-  action: mysqlEnum("action", ["criado", "atualizado", "confirmado", "estornado", "periodo_fechado", "periodo_reaberto", "reconciliacao_criada", "reconciliacao_atualizada", "comprovante_adicionado", "comprovante_desvinculado", "conta_criada", "conta_atualizada", "categoria_criada", "categoria_atualizada", "categoria_ativada", "programacao_criada", "programacao_atualizada", "programacao_ativada", "servico_criado", "servico_atualizado", "servico_cancelado"])
+  action: mysqlEnum("action", ["criado", "atualizado", "confirmado", "estornado", "periodo_fechado", "periodo_reaberto", "reconciliacao_criada", "reconciliacao_atualizada", "comprovante_adicionado", "comprovante_desvinculado", "conta_criada", "conta_atualizada", "categoria_criada", "categoria_atualizada", "categoria_ativada", "programacao_criada", "programacao_atualizada", "programacao_ativada", "servico_criado", "servico_atualizado", "servico_cancelado", "pix_configurada", "pix_atualizada", "pix_ativada", "pix_desativada", "contribuicao_enviada", "contribuicao_atualizada", "contribuicao_aprovada", "contribuicao_recusada"])
     .notNull(),
   beforeData: json("beforeData"),
   afterData: json("afterData"),
@@ -2397,6 +2492,8 @@ export const financialAuditLogs = mysqlTable("financial_audit_logs", {
     index("financial_audit_logs_category_idx").on(table.churchId, table.categoryId),
     index("financial_audit_logs_schedule_idx").on(table.churchId, table.recurringScheduleId),
     index("financial_audit_logs_service_idx").on(table.churchId, table.serviceId),
+    index("financial_audit_logs_pix_settings_idx").on(table.churchId, table.pixSettingsId),
+    index("financial_audit_logs_online_contribution_idx").on(table.churchId, table.onlineContributionId),
   ]
 );
 

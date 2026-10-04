@@ -96,6 +96,12 @@
       "file": "drizzle/0083_primary_discipler_events.sql",
       "kind": "custom-additive",
       "sha256": "22cde3217f8065a2a88a2e1c6e59acd8c849c6654455743bffdb17a593faaa9c"
+    },
+    {
+      "id": "0084",
+      "file": "drizzle/0084_online_contributions.sql",
+      "kind": "custom-additive",
+      "sha256": "5aca5d75ab3c4b5e5a5677ef90c03fa2410eb8cfa864b26a8a156cc89ab91cb7"
     }
   ]
 }
