@@ -552,6 +552,70 @@ async function startServer() {
     req.pipe(bb);
   });
 
+  // Comprovantes de contribuições: o arquivo é privado e só a contribuição aprovada o referencia.
+  app.post("/api/treasury/online-contribution-proof", async (req, res) => {
+    const authorization = req.headers.authorization;
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+    const payload = token ? await verifyToken(token) : null;
+    if (!payload || payload.type !== "church") return res.status(401).json({ error: "Authentication required" });
+    const churchUser = await getActiveChurchUserById(Number(payload.sub));
+    if (!churchUser || churchUser.churchId !== payload.churchId || churchUser.role !== payload.role) {
+      return res.status(403).json({ error: "Invalid church session" });
+    }
+    if (!(req.headers["content-type"] ?? "").includes("multipart/form-data")) {
+      return res.status(400).json({ error: "Expected multipart/form-data" });
+    }
+
+    const bb = Busboy({ headers: req.headers, limits: { fileSize: 8 * 1024 * 1024, files: 1, fields: 2 } });
+    let fileBuffer: Buffer | null = null;
+    let mimeType = "application/octet-stream";
+    let originalFileName = "comprovante";
+    let limitReached = false;
+    let invalidMimeType = false;
+    let fileCount = 0;
+    bb.on("file", (_field, stream, info) => {
+      fileCount += 1;
+      mimeType = info.mimeType || "application/octet-stream";
+      originalFileName = info.filename || "comprovante";
+      if (!TREASURY_ATTACHMENT_MIME_TYPES.has(mimeType)) {
+        invalidMimeType = true;
+        stream.resume();
+        return;
+      }
+      const chunks: Buffer[] = [];
+      stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+      stream.on("limit", () => { limitReached = true; stream.resume(); });
+      stream.on("end", () => { if (!limitReached) fileBuffer = Buffer.concat(chunks); });
+    });
+    bb.on("finish", async () => {
+      if (fileCount !== 1 || !fileBuffer) return res.status(400).json({ error: "Envie um único comprovante no campo file." });
+      if (limitReached) return res.status(413).json({ error: "O comprovante deve ter no máximo 8 MB." });
+      if (invalidMimeType || !matchesTreasuryAttachmentSignature(fileBuffer, mimeType)) {
+        return res.status(415).json({ error: "Use um comprovante PDF, PNG, JPEG ou WebP válido." });
+      }
+      try {
+        const safeName = safeTreasuryAttachmentName(originalFileName, mimeType);
+        const key = `churches/${churchUser.churchId}/treasury/online-contributions/${churchUser.id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}`;
+        const uploaded = await storagePut(key, fileBuffer, mimeType);
+        return res.json({
+          key: uploaded.key,
+          fileName: safeName,
+          mimeType,
+          sizeBytes: fileBuffer.length,
+          sha256: createHash("sha256").update(fileBuffer).digest("hex"),
+        });
+      } catch (error) {
+        console.error("[OnlineContributionProof] Upload failed:", error);
+        return res.status(500).json({ error: "Não foi possível armazenar o comprovante." });
+      }
+    });
+    bb.on("error", (error) => {
+      console.error("[OnlineContributionProof] Busboy error:", error);
+      if (!res.headersSent) res.status(400).json({ error: "Não foi possível receber o comprovante." });
+    });
+    req.pipe(bb);
+  });
+
   // Gabarito Excel da Escola: o upload apenas cria uma prévia temporária.
   app.post("/api/escola-fundamentos/import/preview", async (req, res) => {
     const requestId = createFoundationImportRequestId();

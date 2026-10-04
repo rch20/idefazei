@@ -10,6 +10,16 @@ import { MINISTRY_VICE_LEADER_LABEL, MINISTRY_VICE_LEADER_ROLE_KEY } from "../sh
 import { getConsolidationResponsiblePersonId, hasConsolidationResponsible } from "../shared/consolidation";
 import { isSuspiciousCoordinatePair } from "../shared/geo";
 import { getOptimizedMediaUrls } from "./media";
+import { storageGetSignedUrl } from "./storage";
+import {
+  approveOnlineContribution,
+  createOnlineContribution,
+  getOnlineContributionById,
+  getOnlineContributionsByChurch,
+  getTreasuryPixSettingsByChurch,
+  rejectOnlineContribution,
+  upsertTreasuryPixSettings,
+} from "./onlineContributions";
 import { currentCivilDateAsUtcNoon, formatCivilDateValue, normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
 import { FoundationImportError, parseFoundationWorkbook } from "./foundationImport";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -7337,6 +7347,34 @@ const treasuryDepositInput = z.object({
   reference: z.string().trim().max(160).optional(),
   notes: z.string().trim().max(2000).optional(),
 });
+
+const onlineContributionTypeInput = z.enum(["dizimo", "oferta", "primicias"]);
+const pixKeyTypeInput = z.enum(["cpf", "cnpj", "email", "telefone", "aleatoria", "outro"]);
+const todayCivilDate = () => new Date().toISOString().slice(0, 10);
+
+async function requireOnlineContributionChurchUser(userId: number, churchId: number) {
+  if (userId >= 0) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Contribuições on-line exigem o login próprio do membro da igreja." });
+  }
+  const actor = await requireChurchMember(userId, churchId);
+  if (!actor.personId) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário ainda não está vinculado a uma Pessoa." });
+  }
+  return { actor, churchUserId: Math.abs(userId), personId: actor.personId };
+}
+
+async function presentOnlineContribution(row: Awaited<ReturnType<typeof getOnlineContributionById>>) {
+  if (!row) return null;
+  let signedProofUrl: string | null = null;
+  try {
+    signedProofUrl = await storageGetSignedUrl(row.contribution.proofFileKey);
+  } catch {
+    // A falha temporária de assinatura não deve impedir a listagem da Tesouraria.
+  }
+  const { proofFileKey: _proofFileKey, proofUrl: _proofUrl, ...contribution } = row.contribution;
+  return { contribution: { ...contribution, signedProofUrl }, person: row.person };
+}
+
 const treasuryRouter = router({
   overview: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), startDate: financialDateInput, endDate: financialDateInput, accountId: z.number().int().positive().optional() }))
@@ -7347,6 +7385,145 @@ const treasuryRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Conta financeira não encontrada nesta igreja." });
       }
       return getTreasuryOverview(input);
+    }),
+
+  pixForMember: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      const settings = await getTreasuryPixSettingsByChurch(input.churchId);
+      if (!settings) return null;
+      return {
+        pixKeyType: settings.pixKeyType,
+        pixKey: settings.pixKey,
+        recipientName: settings.recipientName,
+        institutionName: settings.institutionName,
+        qrCodeUrl: settings.qrCodeUrl,
+        version: settings.version,
+      };
+    }),
+
+  pixSettings: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const settings = await getTreasuryPixSettingsByChurch(input.churchId, true);
+      if (!settings) return null;
+      return { ...settings, qrCodeFileKey: undefined };
+    }),
+
+  savePixSettings: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      pixKeyType: pixKeyTypeInput,
+      pixKey: z.string().trim().min(3).max(255),
+      recipientName: z.string().trim().min(2).max(255),
+      institutionName: z.string().trim().max(160).optional(),
+      qrCodeFileKey: z.string().trim().max(512).optional(),
+      qrCodeUrl: z.string().trim().max(1024).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageStructure) throw new TRPCError({ code: "FORBIDDEN", message: "Somente Pastores podem configurar a chave PIX." });
+      if (input.qrCodeFileKey && !input.qrCodeFileKey.startsWith(`churches/${input.churchId}/treasury/`)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O QR Code não pertence a esta igreja." });
+      }
+      return upsertTreasuryPixSettings({ ...input, actorChurchUserId: access.actor.id });
+    }),
+
+  myOnlineContributions: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), status: z.enum(["pendente", "aprovada", "recusada"]).optional() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireOnlineContributionChurchUser(ctx.user.id, input.churchId);
+      const rows = await getOnlineContributionsByChurch({ churchId: input.churchId, personId: access.personId, status: input.status, limit: 50 });
+      return Promise.all(rows.map((row) => presentOnlineContribution(row)));
+    }),
+
+  onlineContributions: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), status: z.enum(["pendente", "aprovada", "recusada"]).optional() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const rows = await getOnlineContributionsByChurch({ churchId: input.churchId, status: input.status, limit: 200 });
+      return Promise.all(rows.map((row) => presentOnlineContribution(row)));
+    }),
+
+  onlineContribution: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireTreasuryAccess(ctx.user.id, input.churchId);
+      const row = await getOnlineContributionById(input.id, input.churchId);
+      if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Contribuição on-line não encontrada nesta igreja." });
+      return presentOnlineContribution(row);
+    }),
+
+  submitOnlineContribution: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      type: onlineContributionTypeInput,
+      informedAmountCents: z.number().int().positive().max(MAX_FINANCIAL_CENTS),
+      paymentDate: financialDateInput.optional(),
+      proofFileKey: z.string().trim().min(1).max(512),
+      proofFileName: z.string().trim().min(1).max(255),
+      proofMimeType: z.enum(["application/pdf", "image/png", "image/jpeg", "image/webp"]),
+      proofSizeBytes: z.number().int().positive().max(8 * 1024 * 1024),
+      proofSha256: z.string().regex(/^[a-f0-9]{64}$/),
+      idempotencyKey: z.string().trim().regex(/^[A-Za-z0-9_-]{16,64}$/),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireOnlineContributionChurchUser(ctx.user.id, input.churchId);
+      const expectedPrefix = `churches/${input.churchId}/treasury/online-contributions/${access.churchUserId}/`;
+      if (!input.proofFileKey.startsWith(expectedPrefix)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O comprovante não pertence a este envio." });
+      }
+      try {
+        return await createOnlineContribution({ ...input, personId: access.personId, submittedByChurchUserId: access.churchUserId, paymentDate: input.paymentDate ?? todayCivilDate() });
+      } catch (error) {
+        if (isDuplicateFinancialRecord(error)) {
+          const rows = await getOnlineContributionsByChurch({ churchId: input.churchId, personId: access.personId, limit: 50 });
+          const existing = rows.find((row) => row.contribution.idempotencyKey === input.idempotencyKey);
+          if (existing) return existing.contribution;
+          throw new TRPCError({ code: "CONFLICT", message: "Este envio já foi processado. Atualize o histórico." });
+        }
+        const message = error instanceof Error ? error.message : "Não foi possível enviar a contribuição.";
+        throw new TRPCError({ code: "BAD_REQUEST", message });
+      }
+    }),
+
+  approveOnlineContribution: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      id: z.number().int().positive(),
+      accountId: z.number().int().positive().optional(),
+      categoryId: z.number().int().positive().optional(),
+      confirmedAmountCents: z.number().int().positive().max(MAX_FINANCIAL_CENTS),
+      paymentDate: financialDateInput,
+      reviewNotes: z.string().trim().max(2000).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      await ensureTreasuryDefaults(input.churchId);
+      try {
+        const contribution = await approveOnlineContribution({ ...input, actorChurchUserId: access.actor.id });
+        if (!contribution) throw new TRPCError({ code: "NOT_FOUND", message: "Contribuição on-line não encontrada nesta igreja." });
+        return contribution;
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Não foi possível aprovar a contribuição." });
+      }
+    }),
+
+  rejectOnlineContribution: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive(), rejectionReason: z.string().trim().min(5).max(1000), reviewNotes: z.string().trim().max(2000).optional() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      try {
+        const contribution = await rejectOnlineContribution({ ...input, actorChurchUserId: access.actor.id });
+        if (!contribution) throw new TRPCError({ code: "NOT_FOUND", message: "Contribuição on-line não encontrada nesta igreja." });
+        return contribution;
+      } catch (error) {
+        if (error instanceof TRPCError) throw error;
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Não foi possível recusar a contribuição." });
+      }
     }),
 
   services: protectedProcedure
