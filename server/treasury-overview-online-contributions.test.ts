@@ -345,6 +345,61 @@ describe("overview mensal: contribuições on-line aprovadas", () => {
     expect(result.entriesCents).toBe(3_000);
   });
 
+  it("não atravessa o tenant quando contribuição e lançamento estão vinculados a igrejas diferentes", () => {
+    const result = summarizeMockedOverview(
+      [
+        {
+          id: 51,
+          churchId: 1,
+          status: "aprovada",
+          financialTransactionId: 511,
+          confirmedAmountCents: 11_000,
+        },
+        {
+          id: 52,
+          churchId: 2,
+          status: "aprovada",
+          financialTransactionId: 512,
+          confirmedAmountCents: 22_000,
+        },
+      ],
+      [
+        {
+          id: 511,
+          churchId: 2,
+          accountId: 10,
+          type: "entrada",
+          amountCents: 11_000,
+          transactionDate: "2026-08-13",
+          status: "confirmado",
+        },
+        {
+          id: 512,
+          churchId: 1,
+          accountId: 10,
+          type: "entrada",
+          amountCents: 22_000,
+          transactionDate: "2026-08-13",
+          status: "confirmado",
+        },
+        {
+          id: 513,
+          churchId: 1,
+          accountId: 10,
+          type: "entrada",
+          amountCents: 3_500,
+          transactionDate: "2026-08-13",
+          status: "confirmado",
+        },
+      ],
+      period
+    );
+
+    expect(result.approvedOnlineContributionsCents).toBe(0);
+    expect(result.approvedOnlineContributionsCount).toBe(0);
+    expect(result.entriesCents).toBe(25_500);
+  });
+
   it("inclui os limites da competência e exclui datas fora do período", () => {
     const contributions: MockContribution[] = [
       {
@@ -420,6 +475,109 @@ describe("overview mensal: contribuições on-line aprovadas", () => {
     expect(result.approvedOnlineContributionsCents).toBe(3_000);
     expect(result.approvedOnlineContributionsCount).toBe(2);
     expect(result.entriesCents).toBe(3_000);
+  });
+
+  it("trata uma competência de um único dia como intervalo inclusivo", () => {
+    const singleDayPeriod = {
+      churchId: 1,
+      startDate: "2026-08-31",
+      endDate: "2026-08-31",
+    };
+    const result = summarizeMockedOverview(
+      [
+        {
+          id: 65,
+          churchId: 1,
+          status: "aprovada",
+          financialTransactionId: 651,
+          confirmedAmountCents: 6_500,
+        },
+        {
+          id: 66,
+          churchId: 1,
+          status: "aprovada",
+          financialTransactionId: 652,
+          confirmedAmountCents: 6_600,
+        },
+        {
+          id: 67,
+          churchId: 1,
+          status: "aprovada",
+          financialTransactionId: 653,
+          confirmedAmountCents: 6_700,
+        },
+      ],
+      [
+        {
+          id: 651,
+          churchId: 1,
+          accountId: 10,
+          type: "entrada",
+          amountCents: 6_500,
+          transactionDate: "2026-08-30",
+          status: "confirmado",
+        },
+        {
+          id: 652,
+          churchId: 1,
+          accountId: 10,
+          type: "entrada",
+          amountCents: 6_600,
+          transactionDate: "2026-08-31",
+          status: "confirmado",
+        },
+        {
+          id: 653,
+          churchId: 1,
+          accountId: 10,
+          type: "entrada",
+          amountCents: 6_700,
+          transactionDate: "2026-09-01",
+          status: "confirmado",
+        },
+      ],
+      singleDayPeriod
+    );
+
+    expect(result.approvedOnlineContributionsCents).toBe(6_600);
+    expect(result.approvedOnlineContributionsCount).toBe(1);
+    expect(result.entriesCents).toBe(6_600);
+  });
+
+  it("não inclui lançamentos quando a competência está invertida", () => {
+    const result = summarizeMockedOverview(
+      [
+        {
+          id: 68,
+          churchId: 1,
+          status: "aprovada",
+          financialTransactionId: 681,
+          confirmedAmountCents: 6_800,
+        },
+      ],
+      [
+        {
+          id: 681,
+          churchId: 1,
+          accountId: 10,
+          type: "entrada",
+          amountCents: 6_800,
+          transactionDate: "2026-08-15",
+          status: "confirmado",
+        },
+      ],
+      {
+        churchId: 1,
+        startDate: "2026-08-31",
+        endDate: "2026-08-01",
+      }
+    );
+
+    expect(result).toEqual({
+      entriesCents: 0,
+      approvedOnlineContributionsCents: 0,
+      approvedOnlineContributionsCount: 0,
+    });
   });
 
   it("respeita o filtro de conta selecionada", () => {
