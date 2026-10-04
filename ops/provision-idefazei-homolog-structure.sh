@@ -8,7 +8,7 @@ fi
 
 PACKAGE_PATH="${1:-}"
 RELEASE_ID="${2:-homolog-e66d8b8-structure}"
-EXPECTED_PACKAGE_SHA256="baad6eb215669bf90cdfd1055971d927570e165f3a5fde217dc073af303cc1b4"
+EXPECTED_PACKAGE_SHA256="ebebff7ef1071dff9a133ff89b6e9d3bc6923847f465016e2d4bef2d873d3a5b"
 
 if [[ -z "${PACKAGE_PATH}" || ! -f "${PACKAGE_PATH}" ]]; then
   echo "USAGE: provision-idefazei-homolog-structure.sh PACKAGE_PATH [RELEASE_ID]" >&2
@@ -173,10 +173,10 @@ case "${cmd}" in
     printf 'PRODUCTION='; systemctl is-active idefazei
     ;;
   baseline)
-    test -f "${CURRENT_LINK}/drizzle.config.ts"
+    test -f "${CURRENT_LINK}/ops/apply-drizzle-baseline.mjs"
     load_env
-    runuser -u "${APP_USER}" -- env HOME="/var/lib/${APP_USER}" PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" DATABASE_URL="${DATABASE_URL}" \
-      bash -c "cd '${CURRENT_LINK}' && pnpm exec drizzle-kit migrate"
+    runuser -u "${APP_USER}" -- env HOME="/var/lib/${APP_USER}" DATABASE_URL="${DATABASE_URL}" PROJECT_ROOT="${CURRENT_LINK}" \
+      node "${CURRENT_LINK}/ops/apply-drizzle-baseline.mjs"
     ;;
   migrations)
     test -f "${CURRENT_LINK}/ops/apply-custom-migrations.mjs"
