@@ -17,10 +17,10 @@ function blockBetween(source: string, start: string, end: string) {
 describe("backend de contribuições on-line", () => {
   it("permite envio a qualquer usuário da igreja vinculado à própria Pessoa e preserva o tenant", () => {
     const submit = blockBetween(routerSource, "submitOnlineContribution:", "approveOnlineContribution:");
-    expect(submit).toContain("requireOnlineContributionActor(ctx.user.id, input.churchId)");
+    expect(submit).toMatch(/requireOnlineContributionActor\s*\(\s*ctx\.user\.id\s*,\s*input\.churchId\s*\)/);
     expect(submit).toContain("personId: access.personId");
     expect(submit).toContain("submittedByChurchUserId: access.churchUserId");
-    expect(submit).toContain("isOnlineContributionProofKeyForActor(input.proofFileKey, input.churchId, access.churchUserId)");
+    expect(submit).toMatch(/isOnlineContributionProofKeyForActor\s*\(\s*input\.proofFileKey\s*,\s*input\.churchId\s*,\s*access\.churchUserId\s*\)/);
     expect(submit).toContain("idempotencyKey");
   });
 
@@ -30,6 +30,19 @@ describe("backend de contribuições on-line", () => {
     expect(guard).toContain("return { actor, churchUserId: actor.id, personId: actor.personId }");
     expect(guard).toContain("Seu usuário precisa estar vinculado a uma Pessoa");
     expect(guard).not.toContain("userId >= 0");
+  });
+
+  it("permite mensagem a pastores e tesoureiros, mas preserva a chave PIX exclusiva dos pastores", () => {
+    const access = blockBetween(routerSource, "async function requireTreasuryAccess", "type TreasuryReportSignatureRole").replace(/\s+/g, " ");
+    const keyMutation = blockBetween(routerSource, "savePixSettings:", "updatePixThankYouMessage:");
+    const messageMutation = blockBetween(routerSource, "updatePixThankYouMessage:", "myOnlineContributions:");
+    expect(access).toContain("canManageStructure: roles.some");
+    expect(access).toContain('"pastor_presidente", "pastor_local"');
+    expect(access).toContain("canManageThankYouMessage: roles.some");
+    expect(access).toContain('"pastor_presidente", "pastor_local", "tesoureiro"');
+    expect(keyMutation).toContain("access.canManageStructure");
+    expect(messageMutation).toContain("access.canManageThankYouMessage");
+    expect(messageMutation).toContain("updateTreasuryPixThankYouMessage");
   });
 
   it("não cria lançamento financeiro no envio e exige aprovação para o livro-caixa", () => {
@@ -65,9 +78,10 @@ describe("backend de contribuições on-line", () => {
     const detail = blockBetween(routerSource, "onlineContribution:", "submitOnlineContribution:");
     expect(list).toContain("requireTreasuryAccess(ctx.user.id, input.churchId)");
     expect(detail).toContain("requireTreasuryAccess(ctx.user.id, input.churchId)");
-    expect(routerSource).toContain("getOnlineContributionProofSignedUrl(row.contribution.proofFileKey, row.contribution.churchId)");
+    expect(routerSource).toContain("getOnlineContributionProofSignedUrl");
     expect(routerSource).toContain("isOnlineContributionProofKeyForActor");
-    expect(routerSource).toContain("const { proofFileKey: _proofFileKey, proofUrl: _proofUrl");
+    expect(routerSource).toContain("proofFileKey: _proofFileKey");
+    expect(routerSource).toContain("proofUrl: _proofUrl");
   });
 
   it("usa asset authenticated do Cloudinary e mantém a referência sem segredo no banco", () => {

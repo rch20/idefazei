@@ -32,12 +32,14 @@ describe("custom migration ledger", () => {
     expect(ids).toContain("0083");
     expect(ids).toContain("0084");
     expect(ids).toContain("0085");
+    expect(ids).toContain("0086");
   });
 
   it.each([
     ["0082", "drizzle/0082_church_email_verification.sql"],
     ["0084", "drizzle/0084_online_contributions.sql"],
     ["0085", "drizzle/0085_financial_transaction_date_index.sql"],
+    ["0086", "drizzle/0086_online_contribution_thank_you_message.sql"],
   ])("has the recorded checksum for migration %s", (id, file) => {
     const entry = ledger.entries.find(candidate => candidate.id === id);
     expect(entry).toMatchObject({ id, file });

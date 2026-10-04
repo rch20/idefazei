@@ -19,6 +19,7 @@ import {
   Phone, Mail, Home, Church, CheckCircle2, Clock, AlertCircle, CircleDollarSign, Copy, FileCheck2, Upload, Loader2
 } from "lucide-react";
 import { toast } from "sonner";
+import { DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE } from "../../../shared/onlineContribution";
 
 const DISCIPLESHIP_STAGES = [
   "Nova Alma", "Consolidação", "Fundamentos",
@@ -31,6 +32,8 @@ export default function AreaMembro() {
   const [contactOpen, setContactOpen] = useState(false);
   const [contactForm, setContactForm] = useState({ phone: "", whatsapp: "" });
   const [contributionOpen, setContributionOpen] = useState(false);
+  const [contributionThankYouOpen, setContributionThankYouOpen] = useState(false);
+  const [contributionThankYouMessage, setContributionThankYouMessage] = useState(DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE);
   const [contributionForm, setContributionForm] = useState({ type: "dizimo" as "dizimo" | "oferta" | "primicias", amount: "", paymentDate: new Date().toISOString().slice(0, 10) });
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [uploadingProof, setUploadingProof] = useState(false);
@@ -67,7 +70,8 @@ export default function AreaMembro() {
       setContributionError(null);
       setContributionForm({ type: "dizimo", amount: "", paymentDate: new Date().toISOString().slice(0, 10) });
       setIdempotencyKey(createIdempotencyKey());
-      toast.success("Contribuição enviada. A Tesouraria fará a conferência do comprovante.");
+      setContributionThankYouMessage(pixQuery.data?.thankYouMessage?.trim() || DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE);
+      setContributionThankYouOpen(true);
     },
     onError: (error) => setContributionError(error.message),
   });
@@ -327,13 +331,14 @@ export default function AreaMembro() {
                   <div className="space-y-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1e3a5f]/45">Meus envios recentes</p>
                     {contributionHistory.slice(0, 5).map(({ contribution }) => {
-                      const statusLabel = contribution.status === "aprovada" ? "Aprovada" : contribution.status === "recusada" ? "Recusada" : "Em análise";
+                      const statusLabel = contribution.status === "aprovada" ? "Aprovada" : contribution.status === "recusada" ? "Recusada" : "Recebida";
                       const statusClass = contribution.status === "aprovada" ? "bg-green-100 text-green-700" : contribution.status === "recusada" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-800";
                       return (
                         <div key={contribution.id} className="flex items-center justify-between gap-3 rounded-lg border border-[#1e3a5f]/10 px-3 py-2">
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-[#1e3a5f]">{contributionTypeLabels[contribution.type as keyof typeof contributionTypeLabels] ?? contribution.type}</p>
                             <p className="text-[11px] text-[#1e3a5f]/45">Enviado em {new Date(contribution.submittedAt).toLocaleDateString("pt-BR")}</p>
+                            {contribution.status === "pendente" && <p className="text-[11px] text-[#1e3a5f]/55">Aguardando conferência da Tesouraria</p>}
                           </div>
                           <div className="shrink-0 text-right">
                             <p className="text-sm font-semibold text-[#1e3a5f]">{formatBrl(contribution.confirmedAmountCents ?? contribution.informedAmountCents)}</p>
@@ -537,6 +542,27 @@ export default function AreaMembro() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={contributionThankYouOpen} onOpenChange={setContributionThankYouOpen}>
+        <DialogContent className="overflow-hidden border-0 p-0 sm:max-w-md">
+          <div className="bg-gradient-to-br from-[#1e3a5f] via-[#244b76] to-[#c9a84c] px-6 pb-8 pt-7 text-white">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/25">
+              <CheckCircle2 className="h-8 w-8 text-white" aria-hidden="true" />
+            </div>
+            <DialogTitle className="mt-5 text-2xl text-white">Obrigado por sua contribuição</DialogTitle>
+            <DialogDescription className="mt-2 text-sm leading-relaxed text-white/80">Seu comprovante foi recebido com segurança e será conferido pela Tesouraria.</DialogDescription>
+          </div>
+          <div className="space-y-4 px-6 py-5">
+            <p className="text-sm leading-relaxed text-[#1e3a5f]">{contributionThankYouMessage}</p>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-900">
+              A contribuição ficará como <strong>Recebida</strong> até a conferência. Ela só será registrada no relatório financeiro depois da aprovação.
+            </div>
+            <DialogFooter>
+              <Button type="button" className="w-full bg-[#1e3a5f] text-white hover:bg-[#162d4a]" onClick={() => setContributionThankYouOpen(false)}>Concluir</Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 

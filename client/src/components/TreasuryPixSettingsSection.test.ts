@@ -40,8 +40,17 @@ describe("TreasuryPixSettingsSection — configuração PIX do tenant", () => {
     expect(componentSource).toContain("pastores podem alterar a chave PIX.");
     expect(componentSource).toContain("Solicite a um pastor");
     expect(pageSource).toContain(
-      "<TreasuryPixSettingsSection churchId={churchId} canManageStructure={canManageStructure} />"
+      "<TreasuryPixSettingsSection churchId={churchId} canManageStructure={canManageStructure} canManageThankYouMessage="
     );
+  });
+  it("permite editar a mensagem por pastores e tesoureiros sem liberar a chave", () => {
+    expect(componentSource).toContain("canManageThankYouMessage");
+    expect(componentSource).toContain("updatePixThankYouMessage.useMutation");
+    expect(componentSource).toContain('htmlFor="treasury-pix-thank-you-message"');
+    expect(componentSource).toContain("MAX_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE_LENGTH");
+    expect(componentSource).toContain("Prévia para o discípulo");
+    expect(componentSource).toMatch(/Usar mensagem\s+padrão/);
+    expect(componentSource).toMatch(/Somente\s+pastores\s+podem alterar a chave PIX\./);
   });
 
   it("oferece estados claros de carregamento, erro, ausência e sucesso", () => {

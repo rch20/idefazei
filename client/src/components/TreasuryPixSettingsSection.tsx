@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -12,14 +13,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2, KeyRound, Loader2, QrCode } from "lucide-react";
+import {
+  CheckCircle2,
+  KeyRound,
+  Loader2,
+  MessageCircle,
+  QrCode,
+  RotateCcw,
+} from "lucide-react";
 import { toast } from "sonner";
+import {
+  DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE,
+  MAX_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE_LENGTH,
+} from "../../../shared/onlineContribution";
 
 type PixKeyType = "cpf" | "cnpj" | "email" | "telefone" | "aleatoria" | "outro";
 
 type Props = {
   churchId: number;
   canManageStructure: boolean;
+  canManageThankYouMessage: boolean;
 };
 
 type PixForm = {
@@ -52,6 +65,7 @@ function pixKeyTypeLabel(value: PixKeyType) {
 export function TreasuryPixSettingsSection({
   churchId,
   canManageStructure,
+  canManageThankYouMessage,
 }: Props) {
   const utils = trpc.useUtils();
   const pixSettingsQuery = trpc.treasury.pixSettings.useQuery(
@@ -59,11 +73,15 @@ export function TreasuryPixSettingsSection({
     { enabled: Boolean(churchId) }
   );
   const [form, setForm] = useState<PixForm>(EMPTY_FORM);
+  const [thankYouMessage, setThankYouMessage] = useState(
+    DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE
+  );
 
   useEffect(() => {
     const settings = pixSettingsQuery.data;
     if (!settings) {
       setForm(EMPTY_FORM);
+      setThankYouMessage(DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE);
       return;
     }
     setForm({
@@ -72,6 +90,10 @@ export function TreasuryPixSettingsSection({
       recipientName: settings.recipientName,
       institutionName: settings.institutionName ?? "",
     });
+    setThankYouMessage(
+      settings.thankYouMessage?.trim() ||
+        DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE
+    );
   }, [pixSettingsQuery.data]);
 
   const savePixSettings = trpc.treasury.savePixSettings.useMutation({
@@ -82,6 +104,22 @@ export function TreasuryPixSettingsSection({
     onError: error =>
       toast.error(error.message || "Não foi possível salvar a chave PIX."),
   });
+
+  const saveThankYouMessage =
+    trpc.treasury.updatePixThankYouMessage.useMutation({
+      onSuccess: async () => {
+        await Promise.all([
+          utils.treasury.pixSettings.invalidate({ churchId }),
+          utils.treasury.pixForMember.invalidate({ churchId }),
+        ]);
+        toast.success("Mensagem de agradecimento salva para esta igreja.");
+      },
+      onError: error =>
+        toast.error(
+          error.message ||
+            "Não foi possível salvar a mensagem de agradecimento."
+        ),
+    });
 
   function updateForm(patch: Partial<PixForm>) {
     setForm(current => ({ ...current, ...patch }));
@@ -109,7 +147,98 @@ export function TreasuryPixSettingsSection({
     });
   }
 
+  function submitThankYouMessage() {
+    if (!settings) return;
+    saveThankYouMessage.mutate({
+      churchId,
+      thankYouMessage: thankYouMessage.trim() || null,
+    });
+  }
+
   const settings = pixSettingsQuery.data;
+
+  const thankYouEditor =
+    settings && canManageThankYouMessage ? (
+      <section
+        className="mt-5 rounded-2xl border border-gold/25 bg-gold/5 p-4 sm:p-5"
+        aria-labelledby="treasury-pix-thank-you-title"
+      >
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold/15 text-gold">
+            <MessageCircle className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <h3
+              id="treasury-pix-thank-you-title"
+              className="font-semibold text-navy"
+            >
+              Mensagem após o envio
+            </h3>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Esta mensagem aparecerá imediatamente ao discípulo depois que ele
+              enviar o comprovante. A contribuição continuará pendente para a
+              conferência da Tesouraria.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 space-y-2">
+          <Label htmlFor="treasury-pix-thank-you-message">
+            Mensagem de agradecimento
+          </Label>
+          <Textarea
+            id="treasury-pix-thank-you-message"
+            value={thankYouMessage}
+            maxLength={MAX_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE_LENGTH}
+            rows={4}
+            onChange={event => setThankYouMessage(event.target.value)}
+            placeholder={DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE}
+          />
+          <div className="flex flex-col gap-2 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              {thankYouMessage.length}/
+              {MAX_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE_LENGTH} caracteres
+            </span>
+            <span>Texto simples, sem HTML.</span>
+          </div>
+        </div>
+        <div className="mt-4 rounded-xl border border-white/80 bg-white/80 p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-gold">
+            Prévia para o discípulo
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-navy">
+            {thankYouMessage.trim() ||
+              DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE}
+          </p>
+        </div>
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-2 bg-white"
+            onClick={() =>
+              setThankYouMessage(DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE)
+            }
+            disabled={saveThankYouMessage.isPending}
+          >
+            <RotateCcw className="h-4 w-4" aria-hidden="true" /> Usar mensagem
+            padrão
+          </Button>
+          <Button
+            type="button"
+            className="gap-2 bg-navy text-white hover:bg-navy/90"
+            onClick={submitThankYouMessage}
+            disabled={saveThankYouMessage.isPending}
+          >
+            {saveThankYouMessage.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <MessageCircle className="h-4 w-4" aria-hidden="true" />
+            )}
+            {saveThankYouMessage.isPending ? "Salvando..." : "Salvar mensagem"}
+          </Button>
+        </div>
+      </section>
+    ) : null;
 
   return (
     <Card className="border-navy/15 bg-white shadow-sm">
@@ -296,6 +425,7 @@ export function TreasuryPixSettingsSection({
             </p>
           </div>
         )}
+        {thankYouEditor}
       </CardContent>
     </Card>
   );

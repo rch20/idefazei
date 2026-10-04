@@ -550,7 +550,7 @@ export default function Tesouraria() {
             </div>
           </section>
 
-          <TreasuryPixSettingsSection churchId={churchId} canManageStructure={canManageStructure} />
+          <TreasuryPixSettingsSection churchId={churchId} canManageStructure={canManageStructure} canManageThankYouMessage={effectiveRoles.some((role) => ["pastor_presidente", "pastor_local", "tesoureiro"].includes(String(role)))} />
           <OnlineContributionsSection churchId={churchId} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name }))} entryCategories={(categoriesQuery.data ?? []).filter((category) => category.type === "entrada").map((category) => ({ id: category.id, name: category.name, key: category.key }))} />
 
           <TreasuryServiceSection churchId={churchId} canManageStructure={canManageStructure} people={(peopleQuery.data ?? []).map((person) => ({ id: person.id, fullName: person.fullName }))} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name, type: account.type }))} />

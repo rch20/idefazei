@@ -18,6 +18,7 @@ describe("modelo de contribuição online e configuração PIX", () => {
     expect(schemaSource).toContain('pixKeyType: mysqlEnum("pixKeyType", ["cpf", "cnpj", "email", "telefone", "aleatoria", "outro"])');
     expect(schemaSource).toContain('active: boolean("active").default(true).notNull()');
     expect(schemaSource).toContain('updatedByChurchUserId: int("updatedByChurchUserId").notNull()');
+    expect(schemaSource).toContain('thankYouMessage: text("thankYouMessage")');
   });
 
   it("preserva o snapshot da chave PIX usada no envio", () => {
@@ -87,6 +88,27 @@ describe("migration 0084 de contribuição online", () => {
       kind: "custom-additive",
     });
     const checksum = createHash("sha256").update(migrationSource).digest("hex");
+    expect(entry?.sha256).toBe(checksum);
+  });
+});
+
+describe("mensagem de agradecimento da contribuição online", () => {
+  const thankYouMigrationPath = new URL("../drizzle/0086_online_contribution_thank_you_message.sql", import.meta.url);
+  const thankYouMigrationSource = readFileSync(thankYouMigrationPath, "utf8");
+
+  it("é uma alteração aditiva e tenant-aware", () => {
+    expect(thankYouMigrationSource).toContain("ALTER TABLE treasury_pix_settings");
+    expect(thankYouMigrationSource).toContain("ADD COLUMN thankYouMessage TEXT NULL");
+    expect(thankYouMigrationSource).not.toMatch(/^\s*(UPDATE|DELETE|DROP)\s+/im);
+  });
+
+  it("está registrada no ledger com checksum verificável", () => {
+    const entry = ledger.entries.find((candidate) => candidate.id === "0086");
+    expect(entry).toMatchObject({
+      file: "drizzle/0086_online_contribution_thank_you_message.sql",
+      kind: "custom-additive",
+    });
+    const checksum = createHash("sha256").update(thankYouMigrationSource).digest("hex");
     expect(entry?.sha256).toBe(checksum);
   });
 });

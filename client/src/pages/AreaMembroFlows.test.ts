@@ -38,4 +38,12 @@ describe("Área do Membro — contato e login", () => {
     expect(source).toContain("idempotencyKey");
     expect(source).toContain('id="online-contribution-proof"');
   });
+  it("mostra uma confirmação de gratidão após o envio sem expor o status interno Em análise", () => {
+    expect(source).toContain("contributionThankYouOpen");
+    expect(source).toContain("Obrigado por sua contribuição");
+    expect(source).toContain("contributionThankYouMessage");
+    expect(source).toContain("statusLabel");
+    expect(source).toContain('"Recebida"');
+    expect(source).not.toContain('"Em análise"');
+  });
 });

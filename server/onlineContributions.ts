@@ -11,6 +11,7 @@ import {
 } from "../drizzle/schema";
 import { getDb } from "./db";
 import { onlineContributionProofReferenceUrl } from "./onlineContributionProofStorage";
+import { MAX_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE_LENGTH } from "../shared/onlineContribution";
 
 function financialDate(value: string) {
   return new Date(`${value}T12:00:00.000Z`);
@@ -40,6 +41,7 @@ export async function upsertTreasuryPixSettings(data: {
   institutionName?: string | null;
   qrCodeFileKey?: string | null;
   qrCodeUrl?: string | null;
+  thankYouMessage?: string | null;
   actorChurchUserId: number;
 }) {
   const db = await getDb();
@@ -63,6 +65,7 @@ export async function upsertTreasuryPixSettings(data: {
           institutionName: data.institutionName ?? null,
           qrCodeFileKey: data.qrCodeFileKey ?? previous.qrCodeFileKey,
           qrCodeUrl: data.qrCodeUrl ?? previous.qrCodeUrl,
+          thankYouMessage: data.thankYouMessage ?? previous.thankYouMessage,
           active: true,
           version: previous.version + 1,
           updatedByChurchUserId: data.actorChurchUserId,
@@ -77,6 +80,7 @@ export async function upsertTreasuryPixSettings(data: {
         institutionName: data.institutionName ?? null,
         qrCodeFileKey: data.qrCodeFileKey ?? null,
         qrCodeUrl: data.qrCodeUrl ?? null,
+        thankYouMessage: data.thankYouMessage ?? null,
         active: true,
         version: 1,
         createdByChurchUserId: data.actorChurchUserId,
@@ -99,6 +103,54 @@ export async function upsertTreasuryPixSettings(data: {
       action: previous ? "pix_atualizada" : "pix_configurada",
       beforeData: previous,
       afterData: settings,
+    });
+    return settings;
+  });
+}
+
+export async function updateTreasuryPixThankYouMessage(data: {
+  churchId: number;
+  thankYouMessage?: string | null;
+  actorChurchUserId: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const normalizedMessage = data.thankYouMessage?.trim() || null;
+  if (normalizedMessage && normalizedMessage.length > MAX_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE_LENGTH) {
+    throw new Error(`A mensagem deve ter no máximo ${MAX_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE_LENGTH} caracteres.`);
+  }
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(treasuryPixSettings)
+      .where(eq(treasuryPixSettings.churchId, data.churchId))
+      .limit(1)
+      .for("update");
+    const previous = rows[0];
+    if (!previous) throw new Error("Esta igreja ainda não configurou uma chave PIX ativa");
+    await tx
+      .update(treasuryPixSettings)
+      .set({
+        thankYouMessage: normalizedMessage,
+        version: previous.version + 1,
+        updatedByChurchUserId: data.actorChurchUserId,
+      })
+      .where(and(eq(treasuryPixSettings.id, previous.id), eq(treasuryPixSettings.churchId, data.churchId)));
+    const updatedRows = await tx
+      .select()
+      .from(treasuryPixSettings)
+      .where(and(eq(treasuryPixSettings.id, previous.id), eq(treasuryPixSettings.churchId, data.churchId)))
+      .limit(1);
+    const settings = updatedRows[0];
+    if (!settings) throw new Error("Falha ao salvar a mensagem de agradecimento");
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      pixSettingsId: settings.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "pix_atualizada",
+      beforeData: previous,
+      afterData: settings,
+      note: "Mensagem de agradecimento da contribuição on-line atualizada.",
     });
     return settings;
   });

@@ -474,7 +474,7 @@ describe("migration customizada e histórico append-only", () => {
     );
   });
 
-  it("declara a fronteira do journal e as migrations customizadas 0068–0085", () => {
+  it("declara a fronteira do journal e as migrations customizadas 0068–0086", () => {
     expect(customMigrations.drizzleJournalBoundary).toEqual({
       idx: 67,
       tag: "0067_closed_blue_shield",
@@ -498,6 +498,7 @@ describe("migration customizada e histórico append-only", () => {
       "0083",
       "0084",
       "0085",
+      "0086",
     ]);
     expect(
       customMigrations.entries.every(entry => entry.kind === "custom-additive")

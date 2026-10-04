@@ -2323,6 +2323,7 @@ export const treasuryPixSettings = mysqlTable(
     institutionName: varchar("institutionName", { length: 160 }),
     qrCodeFileKey: varchar("qrCodeFileKey", { length: 512 }),
     qrCodeUrl: varchar("qrCodeUrl", { length: 1024 }),
+    thankYouMessage: text("thankYouMessage"),
     active: boolean("active").default(true).notNull(),
     version: int("version").default(1).notNull(),
     createdByChurchUserId: int("createdByChurchUserId").notNull(),

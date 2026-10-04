@@ -11,6 +11,7 @@ import { getConsolidationResponsiblePersonId, hasConsolidationResponsible } from
 import { isSuspiciousCoordinatePair } from "../shared/geo";
 import { getOptimizedMediaUrls } from "./media";
 import { getOnlineContributionProofSignedUrl, isOnlineContributionProofKeyForActor } from "./onlineContributionProofStorage";
+import { DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE, MAX_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE_LENGTH } from "../shared/onlineContribution";
 import {
   approveOnlineContribution,
   createOnlineContribution,
@@ -18,6 +19,7 @@ import {
   getOnlineContributionsByChurch,
   getTreasuryPixSettingsByChurch,
   rejectOnlineContribution,
+  updateTreasuryPixThankYouMessage,
   upsertTreasuryPixSettings,
 } from "./onlineContributions";
 import { currentCivilDateAsUtcNoon, formatCivilDateValue, normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
@@ -828,6 +830,7 @@ async function requireTreasuryAccess(userId: number, churchId: number) {
     actor,
     roles,
     canManageStructure: roles.some((role) => ["pastor_presidente", "pastor_local"].includes(role)),
+    canManageThankYouMessage: roles.some((role) => ["pastor_presidente", "pastor_local", "tesoureiro"].includes(role)),
     canClosePeriod: roles.includes("pastor_presidente"),
   };
 }
@@ -7396,6 +7399,7 @@ const treasuryRouter = router({
         recipientName: settings.recipientName,
         institutionName: settings.institutionName,
         qrCodeUrl: settings.qrCodeUrl,
+        thankYouMessage: settings.thankYouMessage?.trim() || DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE,
         version: settings.version,
       };
     }),
@@ -7426,6 +7430,23 @@ const treasuryRouter = router({
         throw new TRPCError({ code: "BAD_REQUEST", message: "O QR Code não pertence a esta igreja." });
       }
       return upsertTreasuryPixSettings({ ...input, actorChurchUserId: access.actor.id });
+    }),
+
+  updatePixThankYouMessage: protectedProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      thankYouMessage: z.string().trim().max(MAX_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE_LENGTH).nullable(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      if (!access.canManageThankYouMessage) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "A mensagem de agradecimento é restrita à Tesouraria autorizada." });
+      }
+      try {
+        return await updateTreasuryPixThankYouMessage({ ...input, actorChurchUserId: access.actor.id });
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Não foi possível salvar a mensagem de agradecimento." });
+      }
     }),
 
   myOnlineContributions: protectedProcedure
