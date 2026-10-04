@@ -111,14 +111,18 @@ unset DB_PASSWORD JWT_SECRET INTERNAL_JOBS_TOKEN SUPER_ADMIN_SETUP_TOKEN
 tar -xzf "${PACKAGE_PATH}" --no-same-owner -C "${RELEASE_DIR}"
 chown -R "${APP_USER}:${APP_GROUP}" "${RELEASE_DIR}"
 
-runuser -u "${APP_USER}" -- env HOME="/var/lib/${APP_USER}" CI=1 pnpm --dir "${RELEASE_DIR}" install --frozen-lockfile
+runuser -u "${APP_USER}" -- env HOME="/var/lib/${APP_USER}" PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" CI=1 \
+  bash -c "cd '${RELEASE_DIR}' && pnpm install --frozen-lockfile"
 
 set +u
 . "${ENV_FILE}"
 set -u
-runuser -u "${APP_USER}" -- env HOME="/var/lib/${APP_USER}" DATABASE_URL="${DATABASE_URL}" pnpm --dir "${RELEASE_DIR}" exec drizzle-kit migrate
-runuser -u "${APP_USER}" -- env HOME="/var/lib/${APP_USER}" DATABASE_URL="${DATABASE_URL}" PROJECT_ROOT="${RELEASE_DIR}" node "${RELEASE_DIR}/ops/apply-custom-migrations.mjs"
-runuser -u "${APP_USER}" -- env HOME="/var/lib/${APP_USER}" DATABASE_URL="${DATABASE_URL}" PROJECT_ROOT="${RELEASE_DIR}" node "${RELEASE_DIR}/ops/explain-financial-transactions.mjs" > "${BASE_DIR}/shared/explain-after-migrations-${RELEASE_ID}.log"
+runuser -u "${APP_USER}" -- env HOME="/var/lib/${APP_USER}" PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" DATABASE_URL="${DATABASE_URL}" \
+  bash -c "cd '${RELEASE_DIR}' && pnpm exec drizzle-kit migrate"
+runuser -u "${APP_USER}" -- env HOME="/var/lib/${APP_USER}" DATABASE_URL="${DATABASE_URL}" PROJECT_ROOT="${RELEASE_DIR}" \
+  node "${RELEASE_DIR}/ops/apply-custom-migrations.mjs"
+runuser -u "${APP_USER}" -- env HOME="/var/lib/${APP_USER}" DATABASE_URL="${DATABASE_URL}" PROJECT_ROOT="${RELEASE_DIR}" \
+  node "${RELEASE_DIR}/ops/explain-financial-transactions.mjs" > "${BASE_DIR}/shared/explain-after-migrations-${RELEASE_ID}.log"
 unset DATABASE_URL
 
 ln -s "${RELEASE_DIR}" "${CURRENT_LINK}"
