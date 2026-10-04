@@ -136,10 +136,13 @@ describe("overview mensal: contribuições on-line aprovadas", () => {
       "eq(financialTransactions.churchId, data.churchId)"
     );
     expect(summary).toContain(
-      "DATE(${financialTransactions.transactionDate}) >= DATE(${data.startDate})"
+      "gte(financialTransactions.transactionDate, financialDate(data.startDate))"
     );
     expect(summary).toContain(
-      "DATE(${financialTransactions.transactionDate}) <= DATE(${data.endDate})"
+      "lte(financialTransactions.transactionDate, financialDate(data.endDate))"
+    );
+    expect(summary).not.toContain(
+      "DATE(${financialTransactions.transactionDate})"
     );
     expect(summary).toContain(
       "eq(financialTransactions.accountId, data.accountId)"

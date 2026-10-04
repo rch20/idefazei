@@ -8544,10 +8544,10 @@ async function getApprovedOnlineContributionSummary(data: { churchId: number; st
     eq(onlineContributions.status, "aprovada"),
     eq(financialTransactions.status, "confirmado"),
     eq(financialTransactions.type, "entrada"),
-    sql`DATE(${financialTransactions.transactionDate}) >= DATE(${data.startDate})`,
-    sql`DATE(${financialTransactions.transactionDate}) <= DATE(${data.endDate})`,
+    gte(financialTransactions.transactionDate, financialDate(data.startDate)),
+    lte(financialTransactions.transactionDate, financialDate(data.endDate)),
   ];
-  if (data.accountId) conditions.push(eq(financialTransactions.accountId, data.accountId));
+  if (data.accountId !== undefined) conditions.push(eq(financialTransactions.accountId, data.accountId));
   const rows = await db
     .select({
       approvedOnlineContributionsCents: sql<number>`COALESCE(SUM(${financialTransactions.amountCents}), 0)`,
