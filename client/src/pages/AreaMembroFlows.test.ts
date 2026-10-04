@@ -19,4 +19,21 @@ describe("Área do Membro — contato e login", () => {
     expect(source).toContain("O WhatsApp também pode ser usado no login.");
     expect(source).toContain("O e-mail continua sendo o mesmo.");
   });
+
+  it("oferece contribuição on-line somente para a sessão do membro e mostra o histórico pessoal", () => {
+    expect(source).toContain("isMemberSession");
+    expect(source).toContain("treasury.pixForMember.useQuery");
+    expect(source).toContain("treasury.myOnlineContributions.useQuery");
+    expect(source).toContain("Enviar contribuição");
+    expect(source).toContain("Meus envios recentes");
+  });
+
+  it("envia tipo, valor, data, hash do comprovante e chave de idempotência", () => {
+    expect(source).toContain("uploadOnlineContributionProof");
+    expect(source).toContain("treasury.submitOnlineContribution.useMutation");
+    expect(source).toContain("informedAmountCents: amountCents");
+    expect(source).toContain("proofSha256: proof.sha256");
+    expect(source).toContain("idempotencyKey");
+    expect(source).toContain('id="online-contribution-proof"');
+  });
 });

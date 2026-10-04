@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useChurch } from "@/components/ChurchLayout";
 import { trpc } from "@/lib/trpc";
+import { useChurchAuth } from "@/hooks/useChurchAuth";
+import { createIdempotencyKey } from "@/lib/idempotency";
+import { uploadOnlineContributionProof, validateOnlineContributionProof, type OnlineContributionProofUpload } from "@/lib/onlineContributionUpload";
+import { formatBrl, parseBrlToCents } from "@/lib/treasury";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,11 +12,12 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   User, Heart, BookOpen, MapPin, Calendar, Bell, Star, Pencil,
-  Phone, Mail, Home, Church, CheckCircle2, Clock, AlertCircle
+  Phone, Mail, Home, Church, CheckCircle2, Clock, AlertCircle, CircleDollarSign, Copy, FileCheck2, Upload, Loader2
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,11 +28,19 @@ const DISCIPLESHIP_STAGES = [
 
 export default function AreaMembro() {
   const { churchId, accessSummary } = useChurch();
+  const { user } = useChurchAuth();
   const [activeTab, setActiveTab] = useState("perfil");
   const [contactOpen, setContactOpen] = useState(false);
   const [contactForm, setContactForm] = useState({ phone: "", whatsapp: "" });
+  const [contributionOpen, setContributionOpen] = useState(false);
+  const [contributionForm, setContributionForm] = useState({ type: "dizimo" as "dizimo" | "oferta" | "primicias", amount: "", paymentDate: new Date().toISOString().slice(0, 10) });
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [contributionError, setContributionError] = useState<string | null>(null);
+  const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
   const personId = accessSummary?.actorPersonId ?? 0;
   const utils = trpc.useUtils();
+  const isMemberSession = (user?.id ?? 0) < 0;
 
   const { data: member, isLoading: loadingPeople } = trpc.people.getById.useQuery(
     { churchId: churchId!, id: personId },
@@ -37,6 +50,8 @@ export default function AreaMembro() {
   const { data: publicSite, isLoading: loadingAnnouncements } = trpc.tenantPublic.current.useQuery(undefined, { enabled: !!churchId, staleTime: 60_000 });
   const announcements = publicSite?.publicAnnouncements ?? [];
   const { data: prayers, isLoading: loadingPrayers } = trpc.prayer.mine.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const pixQuery = trpc.treasury.pixForMember.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId && isMemberSession) });
+  const contributionsQuery = trpc.treasury.myOnlineContributions.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId && isMemberSession) });
   const updateContact = trpc.people.updateMyContact.useMutation({
     onSuccess: () => {
       if (churchId && personId) void utils.people.getById.invalidate({ churchId, id: personId });
@@ -46,9 +61,72 @@ export default function AreaMembro() {
     onError: (error) => toast.error(error.message),
   });
 
+  const submitContribution = trpc.treasury.submitOnlineContribution.useMutation({
+    onSuccess: async () => {
+      if (churchId) await utils.treasury.myOnlineContributions.invalidate({ churchId });
+      setContributionOpen(false);
+      setProofFile(null);
+      setContributionError(null);
+      setContributionForm({ type: "dizimo", amount: "", paymentDate: new Date().toISOString().slice(0, 10) });
+      setIdempotencyKey(createIdempotencyKey());
+      toast.success("Contribuição enviada. A Tesouraria fará a conferência do comprovante.");
+    },
+    onError: (error) => setContributionError(error.message),
+  });
+
   const openContactEditor = () => {
     setContactForm({ phone: member?.phone ?? "", whatsapp: member?.whatsapp ?? "" });
     setContactOpen(true);
+  };
+
+  const openContributionForm = () => {
+    setContributionError(null);
+    setProofFile(null);
+    setIdempotencyKey(createIdempotencyKey());
+    setContributionOpen(true);
+  };
+
+  const handleProofSelection = (file: File | undefined) => {
+    if (!file) return;
+    try {
+      validateOnlineContributionProof(file);
+      setContributionError(null);
+      setProofFile(file);
+    } catch (error) {
+      setProofFile(null);
+      setContributionError(error instanceof Error ? error.message : "Não foi possível validar o comprovante.");
+    }
+  };
+
+  const submitContributionForm = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!churchId) return;
+    const amountCents = parseBrlToCents(contributionForm.amount);
+    if (!amountCents || amountCents <= 0) return setContributionError("Informe um valor maior que zero.");
+    if (!contributionForm.paymentDate) return setContributionError("Informe a data do pagamento.");
+    if (!proofFile) return setContributionError("Anexe o comprovante do Pix antes de enviar.");
+
+    setContributionError(null);
+    setUploadingProof(true);
+    try {
+      const proof: OnlineContributionProofUpload = await uploadOnlineContributionProof(proofFile);
+      submitContribution.mutate({
+        churchId,
+        type: contributionForm.type,
+        informedAmountCents: amountCents,
+        paymentDate: contributionForm.paymentDate,
+        proofFileKey: proof.key,
+        proofFileName: proof.fileName,
+        proofMimeType: proof.mimeType,
+        proofSizeBytes: proof.sizeBytes,
+        proofSha256: proof.sha256,
+        idempotencyKey,
+      });
+    } catch (error) {
+      setContributionError(error instanceof Error ? error.message : "Não foi possível enviar o comprovante.");
+    } finally {
+      setUploadingProof(false);
+    }
   };
 
   const isLegacyCellStage = member?.discipleshipStage === "celula";
@@ -58,6 +136,8 @@ export default function AreaMembro() {
       ? DISCIPLESHIP_STAGES.indexOf(member.discipleshipStage)
       : 0;
   const currentStageLabel = isLegacyCellStage ? "Célula (registro anterior)" : member?.discipleshipStage;
+  const contributionHistory = (contributionsQuery.data ?? []).filter((item): item is NonNullable<typeof item> => Boolean(item));
+  const contributionTypeLabels = { dizimo: "Dízimo", oferta: "Oferta", primicias: "Primícias" } as const;
 
   return (
     <div className="space-y-6">
@@ -208,6 +288,68 @@ export default function AreaMembro() {
               </CardContent>
             </Card>
           </div>
+
+          {isMemberSession && (
+            <Card className="mt-4 border-[#1e3a5f]/10">
+              <CardHeader className="pb-3 flex flex-row items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-[#1e3a5f] font-serif text-base flex items-center gap-2">
+                    <CircleDollarSign className="w-4 h-4 text-[#c9a84c]" />
+                    Contribuição on-line
+                  </CardTitle>
+                  <p className="mt-1 text-xs text-[#1e3a5f]/55">
+                    Envie seu dízimo, oferta ou primícias pelo Pix e acompanhe a conferência da Tesouraria.
+                  </p>
+                </div>
+                <Button type="button" size="sm" className="shrink-0 bg-[#1e3a5f] text-white hover:bg-[#162d4a]" onClick={openContributionForm} disabled={!pixQuery.data || pixQuery.isLoading}>
+                  <CircleDollarSign className="mr-1.5 h-3.5 w-3.5" />
+                  Enviar contribuição
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {pixQuery.isLoading ? (
+                  <Skeleton className="h-12 w-full" />
+                ) : pixQuery.isError ? (
+                  <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">Não foi possível carregar a configuração de contribuição desta igreja.</p>
+                ) : !pixQuery.data ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">A igreja ainda não configurou uma chave Pix para receber contribuições on-line.</p>
+                ) : (
+                  <div className="rounded-xl border border-[#c9a84c]/25 bg-[#c9a84c]/5 p-3 text-xs text-[#1e3a5f]/70">
+                    <p><span className="font-semibold text-[#1e3a5f]">Pix configurado para:</span> {pixQuery.data.recipientName}{pixQuery.data.institutionName ? ` — ${pixQuery.data.institutionName}` : ""}</p>
+                    <button type="button" className="mt-1 inline-flex items-center gap-1 font-medium text-[#1e3a5f] underline-offset-2 hover:underline" onClick={() => { void navigator.clipboard?.writeText(pixQuery.data?.pixKey ?? ""); toast.success("Chave Pix copiada."); }}>
+                      <Copy className="h-3 w-3" /> Copiar chave Pix
+                    </button>
+                  </div>
+                )}
+
+                {contributionsQuery.isLoading ? (
+                  <Skeleton className="h-16 w-full" />
+                ) : contributionHistory.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1e3a5f]/45">Meus envios recentes</p>
+                    {contributionHistory.slice(0, 5).map(({ contribution }) => {
+                      const statusLabel = contribution.status === "aprovada" ? "Aprovada" : contribution.status === "recusada" ? "Recusada" : "Em análise";
+                      const statusClass = contribution.status === "aprovada" ? "bg-green-100 text-green-700" : contribution.status === "recusada" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-800";
+                      return (
+                        <div key={contribution.id} className="flex items-center justify-between gap-3 rounded-lg border border-[#1e3a5f]/10 px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-[#1e3a5f]">{contributionTypeLabels[contribution.type as keyof typeof contributionTypeLabels] ?? contribution.type}</p>
+                            <p className="text-[11px] text-[#1e3a5f]/45">Enviado em {new Date(contribution.submittedAt).toLocaleDateString("pt-BR")}</p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm font-semibold text-[#1e3a5f]">{formatBrl(contribution.confirmedAmountCents ?? contribution.informedAmountCents)}</p>
+                            <Badge className={`mt-1 text-[10px] ${statusClass}`}>{statusLabel}</Badge>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-[#1e3a5f]/45">Nenhuma contribuição on-line enviada ainda.</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         {/* Eventos */}
@@ -343,6 +485,62 @@ export default function AreaMembro() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={contributionOpen} onOpenChange={(open) => { if (!uploadingProof && !submitContribution.isPending) setContributionOpen(open); }}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-[#1e3a5f]"><CircleDollarSign className="h-5 w-5 text-[#c9a84c]" /> Enviar contribuição</DialogTitle>
+            <DialogDescription>
+              Preencha os dados do Pix e anexe o comprovante. O envio ficará pendente até a conferência da Tesouraria.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submitContributionForm} className="space-y-4">
+            {contributionError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{contributionError}</p>}
+            {pixQuery.data && (
+              <div className="rounded-xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/40 p-3 text-sm text-[#1e3a5f]">
+                <p className="font-semibold">Faça o Pix para {pixQuery.data.recipientName}</p>
+                <p className="mt-1 break-all text-xs text-[#1e3a5f]/65">Chave: {pixQuery.data.pixKey}</p>
+              </div>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="online-contribution-type">Tipo *</Label>
+                <Select value={contributionForm.type} onValueChange={(value) => setContributionForm((current) => ({ ...current, type: value as "dizimo" | "oferta" | "primicias" }))}>
+                  <SelectTrigger id="online-contribution-type" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dizimo">Dízimo</SelectItem>
+                    <SelectItem value="oferta">Oferta</SelectItem>
+                    <SelectItem value="primicias">Primícias</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="online-contribution-amount">Valor *</Label>
+                <Input id="online-contribution-amount" inputMode="decimal" placeholder="0,00" value={contributionForm.amount} onChange={(event) => setContributionForm((current) => ({ ...current, amount: event.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="online-contribution-date">Data do pagamento *</Label>
+              <Input id="online-contribution-date" type="date" value={contributionForm.paymentDate} onChange={(event) => setContributionForm((current) => ({ ...current, paymentDate: event.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="online-contribution-proof">Comprovante do Pix *</Label>
+              <Input id="online-contribution-proof" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" onChange={(event) => handleProofSelection(event.target.files?.[0])} />
+              <p className="text-xs text-[#1e3a5f]/50">PDF, PNG, JPEG ou WebP, até 8 MB. O arquivo ficará privado.</p>
+              {proofFile && <p className="flex items-center gap-1 text-xs text-green-700"><FileCheck2 className="h-3.5 w-3.5" /> {proofFile.name}</p>}
+            </div>
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+              O valor informado será conferido pela Tesouraria. Ele só entrará no relatório financeiro após a aprovação.
+            </p>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => setContributionOpen(false)} disabled={uploadingProof || submitContribution.isPending}>Cancelar</Button>
+              <Button type="submit" className="bg-[#1e3a5f] text-white hover:bg-[#162d4a]" disabled={uploadingProof || submitContribution.isPending || !pixQuery.data}>
+                {uploadingProof || submitContribution.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enviando...</> : <><Upload className="mr-2 h-4 w-4" /> Enviar contribuição</>}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={contactOpen} onOpenChange={setContactOpen}>
         <DialogContent className="sm:max-w-md">
