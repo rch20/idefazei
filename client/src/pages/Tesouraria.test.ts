@@ -46,6 +46,12 @@ describe("Tesouraria — regressões de interface e lógica", () => {
     expect(pageSource).toContain("não é somado novamente");
   });
 
+  it("exibe a configuração da chave PIX no tenant atual", () => {
+    expect(pageSource).toContain("TreasuryPixSettingsSection");
+    expect(pageSource).toContain("churchId={churchId}");
+    expect(pageSource).toContain("canManageStructure={canManageStructure}");
+  });
+
   it("calcula o saldo somente até o fim do período e restringe contas filtradas", () => {
     expect(dbSource).toContain("endDate: data.endDate, accountId: data.accountId");
     expect(dbSource).toContain("const previousPeriodEndDate = previousFinancialDate(data.startDate);");

@@ -15,6 +15,7 @@ import { buildTreasuryReceiptHtml, formatApprovedOnlineContributionsDisclosure, 
 import { TreasuryPdfPreview } from "@/components/TreasuryPdfPreview";
 import { TreasuryServiceSection } from "@/components/TreasuryServiceSection";
 import { OnlineContributionsSection } from "@/components/OnlineContributionsSection";
+import { TreasuryPixSettingsSection } from "@/components/TreasuryPixSettingsSection";
 import { toast } from "sonner";
 import { currentCivilDateKey } from "@/lib/civilDate";
 import {
@@ -549,6 +550,7 @@ export default function Tesouraria() {
             </div>
           </section>
 
+          <TreasuryPixSettingsSection churchId={churchId} canManageStructure={canManageStructure} />
           <OnlineContributionsSection churchId={churchId} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name }))} entryCategories={(categoriesQuery.data ?? []).filter((category) => category.type === "entrada").map((category) => ({ id: category.id, name: category.name, key: category.key }))} />
 
           <TreasuryServiceSection churchId={churchId} canManageStructure={canManageStructure} people={(peopleQuery.data ?? []).map((person) => ({ id: person.id, fullName: person.fullName }))} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name, type: account.type }))} />
