@@ -14,6 +14,7 @@ import { getChurchToken, useChurchAuth } from "@/hooks/useChurchAuth";
 import { buildTreasuryReceiptHtml, formatBrl, formatDatePtBr, openTreasuryPrintDocument, parseBrlToCents } from "@/lib/treasury";
 import { TreasuryPdfPreview } from "@/components/TreasuryPdfPreview";
 import { TreasuryServiceSection } from "@/components/TreasuryServiceSection";
+import { OnlineContributionsSection } from "@/components/OnlineContributionsSection";
 import { toast } from "sonner";
 import { currentCivilDateKey } from "@/lib/civilDate";
 import {
@@ -533,6 +534,8 @@ export default function Tesouraria() {
             <MetricCard icon={ArrowUpCircle} label="Saídas" value={formatBrl(overview?.expensesCents ?? 0)} tone="rose" helper={periodLabel} onClick={() => focusBookFilter("saida")} />
             <MetricCard icon={CircleDollarSign} label="Saldo atual" value={formatBrl(overview?.balanceCents ?? 0)} tone="gold" helper={`Resultado ${formatBrl(overview?.resultCents ?? 0)} · Até ${formatDatePtBr(endDate)}`} />
           </section>
+
+          <OnlineContributionsSection churchId={churchId} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name }))} entryCategories={(categoriesQuery.data ?? []).filter((category) => category.type === "entrada").map((category) => ({ id: category.id, name: category.name, key: category.key }))} />
 
           <TreasuryServiceSection churchId={churchId} canManageStructure={canManageStructure} people={(peopleQuery.data ?? []).map((person) => ({ id: person.id, fullName: person.fullName }))} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name, type: account.type }))} />
 
