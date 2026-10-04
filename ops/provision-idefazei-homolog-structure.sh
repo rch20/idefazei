@@ -8,7 +8,7 @@ fi
 
 PACKAGE_PATH="${1:-}"
 RELEASE_ID="${2:-homolog-e66d8b8-structure}"
-EXPECTED_PACKAGE_SHA256="00b94b9f4a091fd4eceb3e3173330486b5ec8dec401b1a9950cd8d1d6f515de1"
+EXPECTED_PACKAGE_SHA256="391a2aaa1dab3e2e4863e5893be27bed092ea4415e202d97ce50911e426630f0"
 
 if [[ -z "${PACKAGE_PATH}" || ! -f "${PACKAGE_PATH}" ]]; then
   echo "USAGE: provision-idefazei-homolog-structure.sh PACKAGE_PATH [RELEASE_ID]" >&2

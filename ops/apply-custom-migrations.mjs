@@ -77,6 +77,76 @@ function splitSqlStatements(source) {
   return statements;
 }
 
+function stripLeadingComments(statement) {
+  return statement
+    .replace(
+      /^(?:\s*--[^\n]*(?:\n|$)|\s*#[^\n]*(?:\n|$)|\s*\/\*[\s\S]*?\*\/\s*)+/g,
+      ""
+    )
+    .trim();
+}
+
+function unquoteIdentifier(identifier) {
+  const value = identifier.trim();
+  if (value.startsWith("`") && value.endsWith("`")) {
+    return value.slice(1, -1).replaceAll("``", "`");
+  }
+  return value;
+}
+
+function quoteIdentifier(identifier) {
+  return `\`${identifier.replaceAll("`", "``")}\``;
+}
+
+async function executeCompatibleStatement(connection, statement, migrationId) {
+  const normalized = stripLeadingComments(statement);
+
+  const addColumnMatch = normalized.match(
+    /^ALTER\s+TABLE\s+(`[^`]+`|[A-Za-z0-9_]+)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+(`[^`]+`|[A-Za-z0-9_]+)\s+([\s\S]+)$/i
+  );
+  if (addColumnMatch) {
+    const tableName = unquoteIdentifier(addColumnMatch[1]);
+    const columnName = unquoteIdentifier(addColumnMatch[2]);
+    const [rows] = await connection.execute(
+      `SELECT 1 FROM information_schema.columns WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? LIMIT 1`,
+      [tableName, columnName]
+    );
+    if (rows.length > 0) {
+      console.log(
+        `CUSTOM_MIGRATION_${migrationId}_COLUMN_${tableName}_${columnName}_ALREADY_PRESENT`
+      );
+      return;
+    }
+    await connection.query(
+      `ALTER TABLE ${quoteIdentifier(tableName)} ADD COLUMN ${quoteIdentifier(columnName)} ${addColumnMatch[3]}`
+    );
+    return;
+  }
+
+  const indexMatch = normalized.match(
+    /^CREATE\s+(UNIQUE\s+)?INDEX\s+IF\s+NOT\s+EXISTS\s+(`[^`]+`|[A-Za-z0-9_]+)\s+ON\s+(`[^`]+`|[A-Za-z0-9_]+)\s+([\s\S]+)$/i
+  );
+  if (indexMatch) {
+    const indexName = unquoteIdentifier(indexMatch[2]);
+    const tableName = unquoteIdentifier(indexMatch[3]);
+    const [rows] = await connection.execute(
+      `SELECT 1 FROM information_schema.statistics WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ? LIMIT 1`,
+      [tableName, indexName]
+    );
+    if (rows.length > 0) {
+      console.log(
+        `CUSTOM_MIGRATION_${migrationId}_INDEX_${tableName}_${indexName}_ALREADY_PRESENT`
+      );
+      return;
+    }
+    const compatibleSql = normalized.replace(/\s+IF\s+NOT\s+EXISTS\s+/i, " ");
+    await connection.query(compatibleSql);
+    return;
+  }
+
+  await connection.query(statement);
+}
+
 if (!databaseUrl) {
   throw new Error("DATABASE_URL_MISSING_FROM_PROTECTED_RUNTIME");
 }
@@ -153,7 +223,7 @@ try {
       `CUSTOM_MIGRATION_${entry.id}_APPLYING statements=${statements.length}`
     );
     for (const statement of statements) {
-      await connection.query(statement);
+      await executeCompatibleStatement(connection, statement, entry.id);
     }
     await connection.execute(
       "INSERT INTO idefazei_custom_migrations (id, file, sha256) VALUES (?, ?, ?)",
