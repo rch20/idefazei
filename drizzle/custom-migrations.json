@@ -92,6 +92,12 @@
       "sha256": "1676d9a63851d31d9c505c1a9d585160cc81af2540ed3e3cbc921251ff247a09"
     },
     {
+      "id": "0082",
+      "file": "drizzle/0082_church_email_verification.sql",
+      "kind": "custom-additive",
+      "sha256": "2c58cfb150faa97c1523b7bd1cb38581283bd716e65a32ef66cc88b07b153a49"
+    },
+    {
       "id": "0083",
       "file": "drizzle/0083_primary_discipler_events.sql",
       "kind": "custom-additive",
