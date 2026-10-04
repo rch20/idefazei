@@ -1,7 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useChurch } from "@/components/ChurchLayout";
 import { trpc } from "@/lib/trpc";
-import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { uploadOnlineContributionProof, validateOnlineContributionProof, type OnlineContributionProofUpload } from "@/lib/onlineContributionUpload";
 import { formatBrl, parseBrlToCents } from "@/lib/treasury";
@@ -28,7 +27,6 @@ const DISCIPLESHIP_STAGES = [
 
 export default function AreaMembro() {
   const { churchId, accessSummary } = useChurch();
-  const { user } = useChurchAuth();
   const [activeTab, setActiveTab] = useState("perfil");
   const [contactOpen, setContactOpen] = useState(false);
   const [contactForm, setContactForm] = useState({ phone: "", whatsapp: "" });
@@ -40,7 +38,7 @@ export default function AreaMembro() {
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
   const personId = accessSummary?.actorPersonId ?? 0;
   const utils = trpc.useUtils();
-  const isMemberSession = (user?.id ?? 0) < 0;
+  const canSubmitOnlineContribution = Boolean(churchId && personId);
 
   const { data: member, isLoading: loadingPeople } = trpc.people.getById.useQuery(
     { churchId: churchId!, id: personId },
@@ -50,8 +48,8 @@ export default function AreaMembro() {
   const { data: publicSite, isLoading: loadingAnnouncements } = trpc.tenantPublic.current.useQuery(undefined, { enabled: !!churchId, staleTime: 60_000 });
   const announcements = publicSite?.publicAnnouncements ?? [];
   const { data: prayers, isLoading: loadingPrayers } = trpc.prayer.mine.useQuery({ churchId: churchId! }, { enabled: !!churchId });
-  const pixQuery = trpc.treasury.pixForMember.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId && isMemberSession) });
-  const contributionsQuery = trpc.treasury.myOnlineContributions.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId && isMemberSession) });
+  const pixQuery = trpc.treasury.pixForMember.useQuery({ churchId: churchId! }, { enabled: canSubmitOnlineContribution });
+  const contributionsQuery = trpc.treasury.myOnlineContributions.useQuery({ churchId: churchId! }, { enabled: canSubmitOnlineContribution });
   const updateContact = trpc.people.updateMyContact.useMutation({
     onSuccess: () => {
       if (churchId && personId) void utils.people.getById.invalidate({ churchId, id: personId });
@@ -289,8 +287,7 @@ export default function AreaMembro() {
             </Card>
           </div>
 
-          {isMemberSession && (
-            <Card className="mt-4 border-[#1e3a5f]/10">
+          <Card className="mt-4 border-[#1e3a5f]/10">
               <CardHeader className="pb-3 flex flex-row items-start justify-between gap-3">
                 <div>
                   <CardTitle className="text-[#1e3a5f] font-serif text-base flex items-center gap-2">
@@ -298,16 +295,18 @@ export default function AreaMembro() {
                     Contribuição on-line
                   </CardTitle>
                   <p className="mt-1 text-xs text-[#1e3a5f]/55">
-                    Envie seu dízimo, oferta ou primícias pelo Pix e acompanhe a conferência da Tesouraria.
+                    Envie sua própria contribuição pelo Pix e acompanhe a conferência da Tesouraria.
                   </p>
                 </div>
-                <Button type="button" size="sm" className="shrink-0 bg-[#1e3a5f] text-white hover:bg-[#162d4a]" onClick={openContributionForm} disabled={!pixQuery.data || pixQuery.isLoading}>
+                <Button type="button" size="sm" className="shrink-0 bg-[#1e3a5f] text-white hover:bg-[#162d4a]" onClick={openContributionForm} disabled={!canSubmitOnlineContribution || !pixQuery.data || pixQuery.isLoading}>
                   <CircleDollarSign className="mr-1.5 h-3.5 w-3.5" />
                   Enviar contribuição
                 </Button>
               </CardHeader>
               <CardContent className="space-y-3">
-                {pixQuery.isLoading ? (
+                {!personId ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">Seu usuário precisa estar vinculado a uma Pessoa para enviar uma contribuição em seu próprio nome.</p>
+                ) : pixQuery.isLoading ? (
                   <Skeleton className="h-12 w-full" />
                 ) : pixQuery.isError ? (
                   <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">Não foi possível carregar a configuração de contribuição desta igreja.</p>
@@ -322,7 +321,7 @@ export default function AreaMembro() {
                   </div>
                 )}
 
-                {contributionsQuery.isLoading ? (
+                {canSubmitOnlineContribution && (contributionsQuery.isLoading ? (
                   <Skeleton className="h-16 w-full" />
                 ) : contributionHistory.length > 0 ? (
                   <div className="space-y-2">
@@ -346,10 +345,9 @@ export default function AreaMembro() {
                   </div>
                 ) : (
                   <p className="text-xs text-[#1e3a5f]/45">Nenhuma contribuição on-line enviada ainda.</p>
-                )}
+                ))}
               </CardContent>
-            </Card>
-          )}
+          </Card>
         </TabsContent>
 
         {/* Eventos */}

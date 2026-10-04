@@ -20,11 +20,13 @@ describe("Área do Membro — contato e login", () => {
     expect(source).toContain("O e-mail continua sendo o mesmo.");
   });
 
-  it("oferece contribuição on-line somente para a sessão do membro e mostra o histórico pessoal", () => {
-    expect(source).toContain("isMemberSession");
+  it("oferece contribuição on-line a qualquer usuário autenticado com Pessoa vinculada e mostra o histórico pessoal", () => {
+    expect(source).toContain("canSubmitOnlineContribution");
+    expect(source).not.toContain("isMemberSession");
     expect(source).toContain("treasury.pixForMember.useQuery");
     expect(source).toContain("treasury.myOnlineContributions.useQuery");
     expect(source).toContain("Enviar contribuição");
+    expect(source).toContain("Envie sua própria contribuição");
     expect(source).toContain("Meus envios recentes");
   });
 

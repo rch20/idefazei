@@ -7352,15 +7352,12 @@ const onlineContributionTypeInput = z.enum(["dizimo", "oferta", "primicias"]);
 const pixKeyTypeInput = z.enum(["cpf", "cnpj", "email", "telefone", "aleatoria", "outro"]);
 const todayCivilDate = () => new Date().toISOString().slice(0, 10);
 
-async function requireOnlineContributionChurchUser(userId: number, churchId: number) {
-  if (userId >= 0) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Contribuições on-line exigem o login próprio do membro da igreja." });
-  }
+async function requireOnlineContributionActor(userId: number, churchId: number) {
   const actor = await requireChurchMember(userId, churchId);
   if (!actor.personId) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário ainda não está vinculado a uma Pessoa." });
+    throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário precisa estar vinculado a uma Pessoa para enviar uma contribuição em seu próprio nome." });
   }
-  return { actor, churchUserId: Math.abs(userId), personId: actor.personId };
+  return { actor, churchUserId: actor.id, personId: actor.personId };
 }
 
 async function presentOnlineContribution(row: Awaited<ReturnType<typeof getOnlineContributionById>>) {
@@ -7434,7 +7431,7 @@ const treasuryRouter = router({
   myOnlineContributions: protectedProcedure
     .input(z.object({ churchId: z.number().int().positive(), status: z.enum(["pendente", "aprovada", "recusada"]).optional() }))
     .query(async ({ input, ctx }) => {
-      const access = await requireOnlineContributionChurchUser(ctx.user.id, input.churchId);
+      const access = await requireOnlineContributionActor(ctx.user.id, input.churchId);
       const rows = await getOnlineContributionsByChurch({ churchId: input.churchId, personId: access.personId, status: input.status, limit: 50 });
       return Promise.all(rows.map((row) => presentOnlineContribution(row)));
     }),
@@ -7470,7 +7467,7 @@ const treasuryRouter = router({
       idempotencyKey: z.string().trim().regex(/^[A-Za-z0-9_-]{16,64}$/),
     }))
     .mutation(async ({ input, ctx }) => {
-      const access = await requireOnlineContributionChurchUser(ctx.user.id, input.churchId);
+      const access = await requireOnlineContributionActor(ctx.user.id, input.churchId);
       const expectedPrefix = `churches/${input.churchId}/treasury/online-contributions/${access.churchUserId}/`;
       if (!input.proofFileKey.startsWith(expectedPrefix)) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "O comprovante não pertence a este envio." });

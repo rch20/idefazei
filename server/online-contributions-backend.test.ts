@@ -15,13 +15,21 @@ function blockBetween(source: string, start: string, end: string) {
 }
 
 describe("backend de contribuições on-line", () => {
-  it("mantém o envio restrito à sessão própria do membro e ao tenant", () => {
+  it("permite envio a qualquer usuário da igreja vinculado à própria Pessoa e preserva o tenant", () => {
     const submit = blockBetween(routerSource, "submitOnlineContribution:", "approveOnlineContribution:");
-    expect(submit).toContain("requireOnlineContributionChurchUser(ctx.user.id, input.churchId)");
+    expect(submit).toContain("requireOnlineContributionActor(ctx.user.id, input.churchId)");
     expect(submit).toContain("personId: access.personId");
     expect(submit).toContain("submittedByChurchUserId: access.churchUserId");
     expect(submit).toContain("expectedPrefix = `churches/${input.churchId}/treasury/online-contributions/${access.churchUserId}/`");
     expect(submit).toContain("idempotencyKey");
+  });
+
+  it("resolve pastor, líder, tesoureiro e membro pelo mesmo vínculo e rejeita usuário sem Pessoa", () => {
+    const guard = blockBetween(routerSource, "async function requireOnlineContributionActor", "async function presentOnlineContribution");
+    expect(guard).toContain("requireChurchMember(userId, churchId)");
+    expect(guard).toContain("return { actor, churchUserId: actor.id, personId: actor.personId }");
+    expect(guard).toContain("Seu usuário precisa estar vinculado a uma Pessoa");
+    expect(guard).not.toContain("userId >= 0");
   });
 
   it("não cria lançamento financeiro no envio e exige aprovação para o livro-caixa", () => {
