@@ -8503,7 +8503,12 @@ export async function isFinancialPeriodClosed(churchId: number, transactionDate:
   const db = await getDb();
   if (!db) return false;
   const rows = await db.select().from(financialPeriodClosures)
-    .where(and(eq(financialPeriodClosures.churchId, churchId), eq(financialPeriodClosures.status, "fechado"), sql`DATE(${financialPeriodClosures.periodStart}) <= DATE(${transactionDate})`, sql`DATE(${financialPeriodClosures.periodEnd}) >= DATE(${transactionDate})`))
+    .where(and(
+      eq(financialPeriodClosures.churchId, churchId),
+      eq(financialPeriodClosures.status, "fechado"),
+      lte(financialPeriodClosures.periodStart, financialDate(transactionDate)),
+      gte(financialPeriodClosures.periodEnd, financialDate(transactionDate)),
+    ))
     .limit(1);
   return rows.length > 0;
 }
@@ -8522,8 +8527,8 @@ export async function getFinancialTransactions(filters: FinancialTransactionFilt
   const db = await getDb();
   if (!db) return [];
   const conditions = [eq(financialTransactions.churchId, filters.churchId)];
-  if (filters.startDate) conditions.push(sql`DATE(${financialTransactions.transactionDate}) >= DATE(${filters.startDate})`);
-  if (filters.endDate) conditions.push(sql`DATE(${financialTransactions.transactionDate}) <= DATE(${filters.endDate})`);
+  if (filters.startDate) conditions.push(gte(financialTransactions.transactionDate, financialDate(filters.startDate)));
+  if (filters.endDate) conditions.push(lte(financialTransactions.transactionDate, financialDate(filters.endDate)));
   if (filters.accountId) conditions.push(eq(financialTransactions.accountId, filters.accountId));
   if (filters.categoryId) conditions.push(eq(financialTransactions.categoryId, filters.categoryId));
   if (filters.type) conditions.push(eq(financialTransactions.type, filters.type));

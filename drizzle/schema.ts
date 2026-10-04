@@ -2305,7 +2305,9 @@ export const financialTransactions = mysqlTable("financial_transactions", {
   reversalReason: text("reversalReason"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => [
+  index("financial_transactions_church_date_idx").on(table.churchId, table.transactionDate),
+]);
 
 export type FinancialTransaction = typeof financialTransactions.$inferSelect;
 
