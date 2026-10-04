@@ -20,6 +20,10 @@ function cloudinaryKey(overrides: Record<string, unknown> = {}) {
   return `${ONLINE_CONTRIBUTION_PROOF_REFERENCE_PREFIX}${Buffer.from(JSON.stringify(reference), "utf8").toString("base64url")}`;
 }
 
+function privateCloudinaryKey(overrides: Record<string, unknown> = {}) {
+  return cloudinaryKey({ deliveryType: "private", ...overrides });
+}
+
 describe("referência privada de comprovante PIX", () => {
   it("aceita apenas o tenant e usuário que originaram o asset Cloudinary", () => {
     const key = cloudinaryKey();
@@ -37,6 +41,21 @@ describe("referência privada de comprovante PIX", () => {
     ).toBe(false);
   });
 
+  it("aceita a nova referência privada e continua exigindo o prefixo do tenant", () => {
+    const key = privateCloudinaryKey();
+    expect(isOnlineContributionProofKeyForActor(key, 100, 7)).toBe(true);
+    expect(isOnlineContributionProofKeyForActor(key, 101, 7)).toBe(false);
+    expect(
+      isOnlineContributionProofKeyForActor(
+        privateCloudinaryKey({
+          publicId: "idefazei/101/treasury/online-contributions/7/proof-id",
+        }),
+        100,
+        7
+      )
+    ).toBe(false);
+  });
+
   it("mantém compatibilidade somente para referências legadas do mesmo tenant e usuário", () => {
     const legacy = "churches/100/treasury/online-contributions/7/old-proof.png";
     expect(isOnlineContributionProofKeyForActor(legacy, 100, 7)).toBe(true);
@@ -44,8 +63,8 @@ describe("referência privada de comprovante PIX", () => {
     expect(isOnlineContributionProofKeyForActor(legacy, 100, 8)).toBe(false);
   });
 
-  it("não transforma a referência Cloudinary em URL pública sem assinatura", () => {
-    const key = cloudinaryKey();
+  it("não transforma referências Cloudinary em URL pública sem assinatura", () => {
+    const key = privateCloudinaryKey();
     expect(onlineContributionProofReferenceUrl(key)).toBe(
       `cloudinary://${key}`
     );

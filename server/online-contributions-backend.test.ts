@@ -84,12 +84,13 @@ describe("backend de contribuições on-line", () => {
     expect(routerSource).toContain("proofUrl: _proofUrl");
   });
 
-  it("usa asset authenticated do Cloudinary e mantém a referência sem segredo no banco", () => {
+  it("usa asset privado do Cloudinary e mantém a referência sem segredo no banco", () => {
     const proofStorageSource = readFileSync(new URL("./onlineContributionProofStorage.ts", import.meta.url), "utf8");
-    expect(proofStorageSource).toContain('type: "authenticated"');
+    expect(proofStorageSource).toContain('type: "private"');
     expect(proofStorageSource).toContain('resourceType = input.mimeType === "application/pdf" ? "raw" : "image"');
     expect(proofStorageSource).toContain("private_download_url");
     expect(proofStorageSource).toContain("base64url");
     expect(proofStorageSource).toContain("ENV.cloudinaryApiSecret");
+    expect(proofStorageSource).toContain('resourceType === "raw" ? `.${format}` : ""');
   });
 });

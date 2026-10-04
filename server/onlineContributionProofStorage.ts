@@ -10,7 +10,7 @@ type CloudinaryProofReference = {
   v: 1;
   provider: "cloudinary";
   resourceType: "image" | "raw";
-  deliveryType: "authenticated";
+  deliveryType: "private" | "authenticated";
   publicId: string;
   format: string;
   churchId: number;
@@ -61,7 +61,8 @@ function decodeReference(key: string): CloudinaryProofReference | null {
     if (
       value.v !== 1 ||
       value.provider !== "cloudinary" ||
-      value.deliveryType !== "authenticated" ||
+      (value.deliveryType !== "private" &&
+        value.deliveryType !== "authenticated") ||
       (value.resourceType !== "image" && value.resourceType !== "raw") ||
       typeof value.publicId !== "string" ||
       !value.publicId ||
@@ -135,14 +136,14 @@ export async function uploadOnlineContributionProof(input: {
   const client = configureCloudinary();
   const format = extensionForMimeType(input.mimeType);
   const resourceType = input.mimeType === "application/pdf" ? "raw" : "image";
-  const publicId = `${expectedPublicIdPrefix(input.churchId, input.churchUserId)}${randomUUID()}`;
+  const publicId = `${expectedPublicIdPrefix(input.churchId, input.churchUserId)}${randomUUID()}${resourceType === "raw" ? `.${format}` : ""}`;
 
   const result = await new Promise<UploadApiResponse>((resolve, reject) => {
     const stream = client.uploader.upload_stream(
       {
         public_id: publicId,
         resource_type: resourceType,
-        type: "authenticated",
+        type: "private",
         overwrite: false,
         context: {
           church_id: String(input.churchId),
@@ -166,7 +167,7 @@ export async function uploadOnlineContributionProof(input: {
     v: 1,
     provider: "cloudinary",
     resourceType,
-    deliveryType: "authenticated",
+    deliveryType: "private",
     publicId: result.public_id,
     format,
     churchId: input.churchId,
