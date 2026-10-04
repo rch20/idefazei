@@ -8,7 +8,8 @@ const databaseUrl = process.env.DATABASE_URL;
 const migrationsDir = path.join(projectRoot, "drizzle");
 const journalPath = path.join(migrationsDir, "meta", "_journal.json");
 
-if (!databaseUrl) throw new Error("DATABASE_URL_MISSING_FROM_PROTECTED_RUNTIME");
+if (!databaseUrl)
+  throw new Error("DATABASE_URL_MISSING_FROM_PROTECTED_RUNTIME");
 
 function splitSqlStatements(source) {
   const statements = [];
@@ -45,7 +46,14 @@ function splitSqlStatements(source) {
       continue;
     }
 
-    if (char === "-" && next === "-" && (source[index + 2] === " " || source[index + 2] === "\n" || source[index + 2] === "\r" || source[index + 2] === "\t")) {
+    if (
+      char === "-" &&
+      next === "-" &&
+      (source[index + 2] === " " ||
+        source[index + 2] === "\n" ||
+        source[index + 2] === "\r" ||
+        source[index + 2] === "\t")
+    ) {
       lineComment = true;
       index += 1;
       continue;
@@ -88,7 +96,10 @@ for (const entry of journal.entries) {
   knownMigrations.set(hash, { entry, source, filePath });
 }
 
-const connection = await mysql.createConnection({ uri: databaseUrl, multipleStatements: false });
+const connection = await mysql.createConnection({
+  uri: databaseUrl,
+  multipleStatements: false,
+});
 try {
   await connection.query(`
     CREATE TABLE IF NOT EXISTS __drizzle_migrations (
@@ -99,7 +110,7 @@ try {
   `);
 
   const [rows] = await connection.query(
-    "SELECT id, hash, created_at FROM __drizzle_migrations ORDER BY created_at ASC, id ASC",
+    "SELECT id, hash, created_at FROM __drizzle_migrations ORDER BY created_at ASC, id ASC"
   );
   const appliedHashes = new Set();
   for (const row of rows) {
@@ -121,15 +132,18 @@ try {
     const segments = source
       .split("--> statement-breakpoint")
       .flatMap(segment => splitSqlStatements(segment));
-    if (segments.length === 0) throw new Error(`DRIZZLE_BASELINE_EMPTY:${entry.tag}`);
+    if (segments.length === 0)
+      throw new Error(`DRIZZLE_BASELINE_EMPTY:${entry.tag}`);
 
-    console.log(`DRIZZLE_BASELINE_${entry.tag}_APPLYING statements=${segments.length}`);
+    console.log(
+      `DRIZZLE_BASELINE_${entry.tag}_APPLYING statements=${segments.length}`
+    );
     for (const statement of segments) {
       await connection.query(statement);
     }
     await connection.execute(
       "INSERT INTO __drizzle_migrations (`hash`, `created_at`) VALUES (?, ?)",
-      [hash, entry.when],
+      [hash, entry.when]
     );
     appliedHashes.add(hash);
     console.log(`DRIZZLE_BASELINE_${entry.tag}_APPLIED`);
