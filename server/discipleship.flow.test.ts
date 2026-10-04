@@ -187,7 +187,7 @@ vi.mock("./db", () => ({
   getBookBalanceAt: vi.fn().mockResolvedValue(125000),
   saveFinancialReconciliation: vi.fn().mockResolvedValue({ id: 4, churchId: 100, status: "com_divergencia", differenceCents: -5000 }),
   getFinancialTransactionById: vi.fn().mockResolvedValue({ id: 71, churchId: 100, status: "confirmado", transactionDate: new Date("2026-08-01T12:00:00.000Z") }),
-  getTreasuryOverview: vi.fn().mockResolvedValue({ accounts: [], transactions: [], entriesCents: 0, expensesCents: 0, resultCents: 0, balanceCents: 0, accountBalances: [], categories: [] }),
+  getTreasuryOverview: vi.fn().mockResolvedValue({ accounts: [], transactions: [], entriesCents: 0, expensesCents: 0, approvedOnlineContributionsCents: 0, approvedOnlineContributionsCount: 0, resultCents: 0, balanceCents: 0, accountBalances: [], categories: [] }),
   isFinancialPeriodClosed: vi.fn().mockResolvedValue(false),
   createFinancialAccount: vi.fn().mockResolvedValue({ id: 91, churchId: 100, name: "Caixa" }),
   createFinancialCategory: vi.fn().mockResolvedValue({ id: 81, churchId: 100, name: "Dízimo" }),

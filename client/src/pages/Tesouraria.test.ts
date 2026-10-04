@@ -40,6 +40,12 @@ describe("Tesouraria — regressões de interface e lógica", () => {
     expect(pageSource).toContain("reverseTransaction.isPending");
   });
 
+  it("expõe o subtotal de contribuições online como explicação das entradas", () => {
+    expect(pageSource).toContain("formatApprovedOnlineContributionsDisclosure");
+    expect(pageSource).toContain('aria-label="Contribuições on-line aprovadas no relatório"');
+    expect(pageSource).toContain("não é somado novamente");
+  });
+
   it("calcula o saldo somente até o fim do período e restringe contas filtradas", () => {
     expect(dbSource).toContain("endDate: data.endDate, accountId: data.accountId");
     expect(dbSource).toContain("const previousPeriodEndDate = previousFinancialDate(data.startDate);");

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
 import { createTreasuryReportPdf, createTreasurySummaryPdf, treasuryPdfFileName } from "./treasuryPdf";
@@ -12,6 +13,8 @@ function reportInput(transactionCount = 0) {
     data: {
       entriesCents: 20000,
       expensesCents: 5000,
+      approvedOnlineContributionsCents: 12500,
+      approvedOnlineContributionsCount: 2,
       resultCents: 15000,
       balanceCents: 15000,
       accountBalances: [{ account: { id: 1, name: "Caixa" }, balanceCents: 15000 }],
@@ -52,6 +55,13 @@ describe("PDF compartilhável da Tesouraria", () => {
     const blob = await createTreasuryReportPdf(reportInput(80));
     const document = await PDFDocument.load(await blob.arrayBuffer());
     expect(document.getPageCount()).toBeGreaterThan(1);
+  });
+
+  it("inclui o subtotal online nos dois formatos sem substituir as entradas", () => {
+    const source = readFileSync(new URL("./treasuryPdf.ts", import.meta.url), "utf8");
+    expect(source.match(/formatApprovedOnlineContributionsDisclosure\(input\.data\)/g)).toHaveLength(2);
+    expect(source).toContain("formatApprovedOnlineContributionsDisclosure");
+    expect(source).toContain("formatBrl(input.data.entriesCents)");
   });
 
   it("cria nomes distintos, estáveis e seguros por competência", () => {

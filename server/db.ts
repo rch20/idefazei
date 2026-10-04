@@ -67,6 +67,7 @@ import {
   financialReconciliationAttachments,
   financialReconciliations,
   financialTransactions,
+  onlineContributions,
   treasuryServices,
   treasuryRecurringSchedules,
   treasuryCountSheets,
@@ -8535,13 +8536,46 @@ export async function getFinancialTransactions(filters: FinancialTransactionFilt
     .orderBy(desc(financialTransactions.transactionDate), desc(financialTransactions.createdAt));
 }
 
+async function getApprovedOnlineContributionSummary(data: { churchId: number; startDate: string; endDate: string; accountId?: number }) {
+  const db = await getDb();
+  if (!db) return { approvedOnlineContributionsCents: 0, approvedOnlineContributionsCount: 0 };
+  const conditions = [
+    eq(onlineContributions.churchId, data.churchId),
+    eq(onlineContributions.status, "aprovada"),
+    eq(financialTransactions.status, "confirmado"),
+    eq(financialTransactions.type, "entrada"),
+    sql`DATE(${financialTransactions.transactionDate}) >= DATE(${data.startDate})`,
+    sql`DATE(${financialTransactions.transactionDate}) <= DATE(${data.endDate})`,
+  ];
+  if (data.accountId) conditions.push(eq(financialTransactions.accountId, data.accountId));
+  const rows = await db
+    .select({
+      approvedOnlineContributionsCents: sql<number>`COALESCE(SUM(${financialTransactions.amountCents}), 0)`,
+      approvedOnlineContributionsCount: sql<number>`COUNT(*)`,
+    })
+    .from(onlineContributions)
+    .innerJoin(
+      financialTransactions,
+      and(
+        eq(financialTransactions.id, onlineContributions.financialTransactionId),
+        eq(financialTransactions.churchId, data.churchId),
+      ),
+    )
+    .where(and(...conditions));
+  return {
+    approvedOnlineContributionsCents: Number(rows[0]?.approvedOnlineContributionsCents ?? 0),
+    approvedOnlineContributionsCount: Number(rows[0]?.approvedOnlineContributionsCount ?? 0),
+  };
+}
+
 export async function getTreasuryOverview(data: { churchId: number; startDate: string; endDate: string; accountId?: number }) {
   const previousPeriodEndDate = previousFinancialDate(data.startDate);
-  const [allAccounts, periodRows, openingRows, allRows] = await Promise.all([
+  const [allAccounts, periodRows, openingRows, allRows, approvedOnlineContributionSummary] = await Promise.all([
     getFinancialAccountsByChurch(data.churchId),
     getFinancialTransactions({ churchId: data.churchId, startDate: data.startDate, endDate: data.endDate, accountId: data.accountId, includeDrafts: true }),
     getFinancialTransactions({ churchId: data.churchId, endDate: previousPeriodEndDate, accountId: data.accountId }),
     getFinancialTransactions({ churchId: data.churchId, endDate: data.endDate, accountId: data.accountId }),
+    getApprovedOnlineContributionSummary(data),
   ]);
   const accounts = data.accountId ? allAccounts.filter((account) => account.id === data.accountId) : allAccounts;
   const confirmedPeriodRows = periodRows.filter((row) => row.transaction.status === "confirmado");
@@ -8572,6 +8606,7 @@ export async function getTreasuryOverview(data: { churchId: number; startDate: s
     transactions: periodRows,
     entriesCents,
     expensesCents,
+    ...approvedOnlineContributionSummary,
     resultCents: entriesCents - expensesCents,
     openingBalanceCents: openingBalances.reduce((total, item) => total + item.balanceCents, 0),
     openingAccountBalances: openingBalances,

@@ -1,5 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import { formatBrl, formatDatePtBr, type TreasuryReportData } from "./treasury";
+import { formatApprovedOnlineContributionsDisclosure, formatBrl, formatDatePtBr, type TreasuryReportData } from "./treasury";
 import { currentCivilDateKey } from "./civilDate";
 
 export type TreasuryPdfMode = "summary" | "detailed";
@@ -151,7 +151,8 @@ export async function createTreasurySummaryPdf(input: TreasuryPdfInput) {
 
   page.drawText("Resumo executivo", { x: MARGIN, y: 337, size: 12, font: bold, color: NAVY });
   page.drawText(fitText(`No periodo, a igreja registrou ${formatBrl(input.data.entriesCents)} em entradas e ${formatBrl(input.data.expensesCents)} em saidas, com resultado de ${formatBrl(input.data.resultCents)}.`, regular, 8, PAGE_WIDTH - MARGIN * 2), { x: MARGIN, y: 317, size: 8, font: regular, color: MUTED });
-  page.drawText("Este documento apresenta indicadores consolidados. O livro-caixa completo esta disponivel no relatorio detalhado.", { x: MARGIN, y: 302, size: 7, font: regular, color: MUTED });
+  page.drawText(fitText(formatApprovedOnlineContributionsDisclosure(input.data), regular, 8, PAGE_WIDTH - MARGIN * 2), { x: MARGIN, y: 287, size: 8, font: regular, color: NAVY });
+  page.drawText("Este documento apresenta indicadores consolidados. O livro-caixa completo esta disponivel no relatorio detalhado.", { x: MARGIN, y: 272, size: 7, font: regular, color: MUTED });
 
   const signatureY = 218;
   const signatureWidth = 205;
@@ -206,6 +207,7 @@ export async function createTreasuryReportPdf(input: TreasuryPdfInput) {
   drawSummaryPanel(page, { x: MARGIN, y: 500, width: panelWidth, height: 128, title: "Saldos por conta", rows: accountRows, regular, bold, empty: "Nenhuma conta disponivel." });
   drawSummaryPanel(page, { x: MARGIN + panelWidth + panelGap, y: 500, width: panelWidth, height: 128, title: "Categorias no periodo", rows: categoryRows, regular, bold, empty: "Sem movimentos confirmados." });
 
+  page.drawText(fitText(formatApprovedOnlineContributionsDisclosure(input.data), regular, 7.5, PAGE_WIDTH - MARGIN * 2), { x: MARGIN, y: 460, size: 7.5, font: regular, color: NAVY });
   page.drawText("Livro-caixa", { x: MARGIN, y: 475, size: 14, font: bold, color: NAVY });
   let y = 452;
   const columns = {

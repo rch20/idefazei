@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTreasuryReceiptHtml, buildTreasuryReportHtml, escapeTreasuryHtml, formatDateLongPtBr, formatDatePtBr, formatEventTime, formatEventTimeRange, getCivilDateParts, parseBrlToCents } from "./treasury";
+import { buildTreasuryReceiptHtml, buildTreasuryReportHtml, escapeTreasuryHtml, formatApprovedOnlineContributionsDisclosure, formatDateLongPtBr, formatDatePtBr, formatEventTime, formatEventTimeRange, getCivilDateParts, parseBrlToCents } from "./treasury";
 
 describe("utilitários da Tesouraria", () => {
   it("converte valores brasileiros em centavos sem usar ponto flutuante financeiro", () => {
@@ -45,7 +45,7 @@ describe("utilitários da Tesouraria", () => {
     const report = buildTreasuryReportHtml({
       churchName: "Cristã Viver", periodLabel: "agosto de 2026", startDate: "2026-08-01", endDate: "2026-08-31", accountLabel: "Todas as contas",
       data: {
-        entriesCents: 20000, expensesCents: 5000, resultCents: 15000, balanceCents: 15000,
+        entriesCents: 20000, expensesCents: 5000, approvedOnlineContributionsCents: 12500, approvedOnlineContributionsCount: 2, resultCents: 15000, balanceCents: 15000,
         accountBalances: [{ account: { id: 1, name: "Caixa" }, balanceCents: 15000 }],
         categories: [{ categoryId: 1, categoryName: "Oferta", type: "entrada", amountCents: 20000 }],
         transactions: [{ transaction: { id: 1, type: "entrada", amountCents: 20000, transactionDate: "2026-08-10", paymentMethod: "pix", status: "confirmado", description: "Culto" }, account: { name: "Caixa" }, category: { name: "Oferta" } }],
@@ -54,6 +54,11 @@ describe("utilitários da Tesouraria", () => {
     expect(report).toContain("Relatório de Tesouraria");
     expect(report).toContain("Livro-caixa");
     expect(report.replace(/\u00a0/g, " ")).toContain("R$ 200,00");
+    expect(report).toContain("Contribuições on-line aprovadas");
     expect(report).toContain("window.print");
+  });
+
+  it("explica que o subtotal online já está dentro das entradas", () => {
+    expect(formatApprovedOnlineContributionsDisclosure({ approvedOnlineContributionsCents: 12500, approvedOnlineContributionsCount: 2 })).toBe("Contribuições on-line aprovadas: R$ 125,00 (2) — já incluídas nas entradas");
   });
 });

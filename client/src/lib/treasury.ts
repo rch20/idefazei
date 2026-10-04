@@ -18,6 +18,8 @@ export type TreasuryTransactionRow = {
 export type TreasuryReportData = {
   entriesCents: number;
   expensesCents: number;
+  approvedOnlineContributionsCents: number;
+  approvedOnlineContributionsCount: number;
   resultCents: number;
   balanceCents: number;
   transactions: TreasuryTransactionRow[];
@@ -27,6 +29,10 @@ export type TreasuryReportData = {
 
 export function formatBrl(cents: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
+}
+
+export function formatApprovedOnlineContributionsDisclosure(data: Pick<TreasuryReportData, "approvedOnlineContributionsCents" | "approvedOnlineContributionsCount">) {
+  return `Contribuições on-line aprovadas: ${formatBrl(data.approvedOnlineContributionsCents)} (${data.approvedOnlineContributionsCount}) — já incluídas nas entradas`;
 }
 
 /** Converte valores digitados em pt-BR para centavos, sem aceitar texto ou precisão acima de 2 casas. */
@@ -180,6 +186,7 @@ export function buildTreasuryReportHtml(input: {
       <div class="metric"><span>Saídas</span><strong class="negative">${escapeTreasuryHtml(formatBrl(input.data.expensesCents))}</strong></div>
       <div class="metric"><span>Resultado</span><strong class="${input.data.resultCents >= 0 ? "positive" : "negative"}">${escapeTreasuryHtml(formatBrl(input.data.resultCents))}</strong></div>
     </section>
+    <p class="muted">${escapeTreasuryHtml(formatApprovedOnlineContributionsDisclosure(input.data))}</p>
     <section class="two-columns"><div class="panel"><h2>Saldos por conta</h2>${accountRows || '<p class="muted">Sem contas.</p>'}</div><div class="panel"><h2>Categorias no período</h2>${categoryRows || '<p class="muted">Sem movimentos confirmados.</p>'}</div></section>
     <h2>Livro-caixa</h2>
     <table><thead><tr><th>Data</th><th>Categoria e descrição</th><th>Conta</th><th>Forma</th><th>Status</th><th class="amount">Valor</th></tr></thead><tbody>${transactionRows || '<tr><td colspan="6" class="muted">Nenhum lançamento neste período.</td></tr>'}</tbody></table>

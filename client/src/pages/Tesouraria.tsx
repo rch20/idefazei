@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getChurchToken, useChurchAuth } from "@/hooks/useChurchAuth";
-import { buildTreasuryReceiptHtml, formatBrl, formatDatePtBr, openTreasuryPrintDocument, parseBrlToCents } from "@/lib/treasury";
+import { buildTreasuryReceiptHtml, formatApprovedOnlineContributionsDisclosure, formatBrl, formatDatePtBr, openTreasuryPrintDocument, parseBrlToCents } from "@/lib/treasury";
 import { TreasuryPdfPreview } from "@/components/TreasuryPdfPreview";
 import { TreasuryServiceSection } from "@/components/TreasuryServiceSection";
 import { OnlineContributionsSection } from "@/components/OnlineContributionsSection";
@@ -199,6 +199,10 @@ export default function Tesouraria() {
   const accountLabel = selectedAccountId ? selectedAccount?.name ?? "Conta selecionada" : "Todas as contas";
   const reportTitle = reportMode === "summary" ? "Resumo de Tesouraria" : "Relatório detalhado de Tesouraria";
   const overview = overviewQuery.data;
+  const onlineContributionDisclosure = formatApprovedOnlineContributionsDisclosure({
+    approvedOnlineContributionsCents: overview?.approvedOnlineContributionsCents ?? 0,
+    approvedOnlineContributionsCount: overview?.approvedOnlineContributionsCount ?? 0,
+  });
   const bookFilterLabel = bookFilter === "entrada" ? "Entradas" : bookFilter === "saida" ? "Saídas" : "Todos os lançamentos";
   const filteredTransactions = (overview?.transactions ?? []).filter(({ transaction }) => bookFilter === "todos" || transaction.type === bookFilter);
   const focusBookFilter = (filter: Exclude<BookFilter, "todos">) => {
@@ -533,6 +537,16 @@ export default function Tesouraria() {
             <MetricCard icon={ArrowDownCircle} label="Entradas" value={formatBrl(overview?.entriesCents ?? 0)} tone="green" helper={periodLabel} onClick={() => focusBookFilter("entrada")} />
             <MetricCard icon={ArrowUpCircle} label="Saídas" value={formatBrl(overview?.expensesCents ?? 0)} tone="rose" helper={periodLabel} onClick={() => focusBookFilter("saida")} />
             <MetricCard icon={CircleDollarSign} label="Saldo atual" value={formatBrl(overview?.balanceCents ?? 0)} tone="gold" helper={`Resultado ${formatBrl(overview?.resultCents ?? 0)} · Até ${formatDatePtBr(endDate)}`} />
+          </section>
+
+          <section aria-label="Contribuições on-line aprovadas no relatório" className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 shadow-sm sm:p-5">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-700 shadow-sm"><QrCode className="h-5 w-5" aria-hidden="true" /></div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-navy">{onlineContributionDisclosure}</p>
+                <p className="mt-1 text-xs leading-relaxed text-emerald-900/75">O subtotal usa o lançamento financeiro confirmado vinculado à aprovação. Ele é apenas uma explicação das entradas e não é somado novamente.</p>
+              </div>
+            </div>
           </section>
 
           <OnlineContributionsSection churchId={churchId} accounts={(accountsQuery.data ?? []).map((account) => ({ id: account.id, name: account.name }))} entryCategories={(categoriesQuery.data ?? []).filter((category) => category.type === "entrada").map((category) => ({ id: category.id, name: category.name, key: category.key }))} />
