@@ -20,7 +20,7 @@ describe("backend de contribuições on-line", () => {
     expect(submit).toContain("requireOnlineContributionActor(ctx.user.id, input.churchId)");
     expect(submit).toContain("personId: access.personId");
     expect(submit).toContain("submittedByChurchUserId: access.churchUserId");
-    expect(submit).toContain("expectedPrefix = `churches/${input.churchId}/treasury/online-contributions/${access.churchUserId}/`");
+    expect(submit).toContain("isOnlineContributionProofKeyForActor(input.proofFileKey, input.churchId, access.churchUserId)");
     expect(submit).toContain("idempotencyKey");
   });
 
@@ -55,8 +55,8 @@ describe("backend de contribuições on-line", () => {
     const upload = blockBetween(serverSource, 'app.post("/api/treasury/online-contribution-proof"', "// Gabarito Excel");
     expect(upload).toContain("TREASURY_ATTACHMENT_MIME_TYPES");
     expect(upload).toContain("matchesTreasuryAttachmentSignature");
-    expect(upload).toContain("churches/${churchUser.churchId}/treasury/online-contributions/${churchUser.id}/");
-    expect(upload).toContain("createHash(\"sha256\")");
+    expect(upload).toContain("uploadOnlineContributionProof");
+    expect(upload).toContain('createHash("sha256")');
     expect(upload).not.toContain("res.json({ url:");
   });
 
@@ -65,7 +65,17 @@ describe("backend de contribuições on-line", () => {
     const detail = blockBetween(routerSource, "onlineContribution:", "submitOnlineContribution:");
     expect(list).toContain("requireTreasuryAccess(ctx.user.id, input.churchId)");
     expect(detail).toContain("requireTreasuryAccess(ctx.user.id, input.churchId)");
-    expect(routerSource).toContain("storageGetSignedUrl(row.contribution.proofFileKey)");
+    expect(routerSource).toContain("getOnlineContributionProofSignedUrl(row.contribution.proofFileKey, row.contribution.churchId)");
+    expect(routerSource).toContain("isOnlineContributionProofKeyForActor");
     expect(routerSource).toContain("const { proofFileKey: _proofFileKey, proofUrl: _proofUrl");
+  });
+
+  it("usa asset authenticated do Cloudinary e mantém a referência sem segredo no banco", () => {
+    const proofStorageSource = readFileSync(new URL("./onlineContributionProofStorage.ts", import.meta.url), "utf8");
+    expect(proofStorageSource).toContain('type: "authenticated"');
+    expect(proofStorageSource).toContain('resourceType = input.mimeType === "application/pdf" ? "raw" : "image"');
+    expect(proofStorageSource).toContain("private_download_url");
+    expect(proofStorageSource).toContain("base64url");
+    expect(proofStorageSource).toContain("ENV.cloudinaryApiSecret");
   });
 });

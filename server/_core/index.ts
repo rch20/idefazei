@@ -14,6 +14,7 @@ import { scheduleRemindersHandler } from "../scheduleReminders";
 import { securityAuditHoldsExpirationHandler } from "../securityAuditHoldsJob";
 import Busboy from "busboy";
 import { storagePut } from "../storage";
+import { uploadOnlineContributionProof } from "../onlineContributionProofStorage";
 import { getDerivedLogoIconUrls, getOptimizedMediaUrls, getPwaIconUrls, uploadMedia, type MediaPurpose, type MediaResourceType } from "../media";
 import { stripeWebhookHandler } from "../stripe-webhook";
 import { verifyToken } from "../auth";
@@ -595,8 +596,7 @@ async function startServer() {
       }
       try {
         const safeName = safeTreasuryAttachmentName(originalFileName, mimeType);
-        const key = `churches/${churchUser.churchId}/treasury/online-contributions/${churchUser.id}/${Date.now()}-${Math.random().toString(36).slice(2)}-${safeName}`;
-        const uploaded = await storagePut(key, fileBuffer, mimeType);
+        const uploaded = await uploadOnlineContributionProof({ churchId: churchUser.churchId, churchUserId: churchUser.id, data: fileBuffer, mimeType });
         return res.json({
           key: uploaded.key,
           fileName: safeName,

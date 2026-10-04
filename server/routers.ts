@@ -10,7 +10,7 @@ import { MINISTRY_VICE_LEADER_LABEL, MINISTRY_VICE_LEADER_ROLE_KEY } from "../sh
 import { getConsolidationResponsiblePersonId, hasConsolidationResponsible } from "../shared/consolidation";
 import { isSuspiciousCoordinatePair } from "../shared/geo";
 import { getOptimizedMediaUrls } from "./media";
-import { storageGetSignedUrl } from "./storage";
+import { getOnlineContributionProofSignedUrl, isOnlineContributionProofKeyForActor } from "./onlineContributionProofStorage";
 import {
   approveOnlineContribution,
   createOnlineContribution,
@@ -7364,7 +7364,7 @@ async function presentOnlineContribution(row: Awaited<ReturnType<typeof getOnlin
   if (!row) return null;
   let signedProofUrl: string | null = null;
   try {
-    signedProofUrl = await storageGetSignedUrl(row.contribution.proofFileKey);
+    signedProofUrl = await getOnlineContributionProofSignedUrl(row.contribution.proofFileKey, row.contribution.churchId);
   } catch {
     // A falha temporária de assinatura não deve impedir a listagem da Tesouraria.
   }
@@ -7468,8 +7468,7 @@ const treasuryRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const access = await requireOnlineContributionActor(ctx.user.id, input.churchId);
-      const expectedPrefix = `churches/${input.churchId}/treasury/online-contributions/${access.churchUserId}/`;
-      if (!input.proofFileKey.startsWith(expectedPrefix)) {
+      if (!isOnlineContributionProofKeyForActor(input.proofFileKey, input.churchId, access.churchUserId)) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "O comprovante não pertence a este envio." });
       }
       try {

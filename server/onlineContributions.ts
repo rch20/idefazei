@@ -10,6 +10,7 @@ import {
   treasuryPixSettings,
 } from "../drizzle/schema";
 import { getDb } from "./db";
+import { onlineContributionProofReferenceUrl } from "./onlineContributionProofStorage";
 
 function financialDate(value: string) {
   return new Date(`${value}T12:00:00.000Z`);
@@ -191,7 +192,7 @@ export async function createOnlineContribution(data: {
       paymentDate: data.paymentDate ? financialDate(data.paymentDate) : null,
       status: "pendente",
       proofFileKey: data.proofFileKey,
-      proofUrl: `/manus-storage/${data.proofFileKey}`,
+      proofUrl: onlineContributionProofReferenceUrl(data.proofFileKey),
       proofFileName: data.proofFileName,
       proofMimeType: data.proofMimeType,
       proofSizeBytes: data.proofSizeBytes,
