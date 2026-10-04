@@ -49,10 +49,13 @@ fi
 
 actual_package_sha256="$(sha256sum "${PACKAGE_PATH}" | awk '{print $1}')"
 [[ "${actual_package_sha256}" == "${EXPECTED_PACKAGE_SHA256}" ]] || fail "PACKAGE_CHECKSUM_MISMATCH"
-if ! tar -tzf "${PACKAGE_PATH}" | grep -Fxq './patches/exceljs@4.4.0.patch'; then
+PACKAGE_LIST="$(mktemp)"
+trap 'rm -f "${PACKAGE_LIST}"' EXIT
+tar -tzf "${PACKAGE_PATH}" > "${PACKAGE_LIST}"
+if ! grep -Fxq './patches/exceljs@4.4.0.patch' "${PACKAGE_LIST}"; then
   fail "PACKAGE_PATCH_EXCELJS_MISSING"
 fi
-if tar -tzf "${PACKAGE_PATH}" | grep -Eiq '(^|/)(\.env|\.env\.|.*\.env$|uploads/|data/|logs?/|backups?/|id_ed25519|authorized_keys)'; then
+if grep -Eiq '(^|/)(\.env|\.env\.|.*\.env$|uploads/|data/|logs?/|backups?/|id_ed25519|authorized_keys)' "${PACKAGE_LIST}"; then
   fail "PACKAGE_CONTAINS_FORBIDDEN_PATH"
 fi
 
