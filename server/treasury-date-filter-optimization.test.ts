@@ -9,6 +9,11 @@ const migrationSource = readFileSync(
   resolve(root, "drizzle/0085_financial_transaction_date_index.sql"),
   "utf8"
 );
+const migrationLedger = JSON.parse(
+  readFileSync(resolve(root, "drizzle/custom-migrations.json"), "utf8")
+) as {
+  entries: Array<{ id: string; file: string; sha256: string }>;
+};
 
 function functionBody(
   source: string,
@@ -73,6 +78,19 @@ describe("Tesouraria: índice de competência por tenant", () => {
     expect(migrationSource).toContain(
       "ON `financial_transactions` (`churchId`, `transactionDate`)"
     );
+  });
+
+  it("registra a migration 0085 no ledger customizado", () => {
+    const entry = migrationLedger.entries.find(
+      candidate => candidate.id === "0085"
+    );
+
+    expect(entry).toMatchObject({
+      id: "0085",
+      file: "drizzle/0085_financial_transaction_date_index.sql",
+      sha256:
+        "0f5c7b71cc8cab0b0d233145c68f5e156d75216d5204f4328d55b89756fbf540",
+    });
   });
 });
 

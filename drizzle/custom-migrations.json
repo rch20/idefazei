@@ -102,6 +102,12 @@
       "file": "drizzle/0084_online_contributions.sql",
       "kind": "custom-additive",
       "sha256": "5aca5d75ab3c4b5e5a5677ef90c03fa2410eb8cfa864b26a8a156cc89ab91cb7"
+    },
+    {
+      "id": "0085",
+      "file": "drizzle/0085_financial_transaction_date_index.sql",
+      "kind": "custom-additive",
+      "sha256": "0f5c7b71cc8cab0b0d233145c68f5e156d75216d5204f4328d55b89756fbf540"
     }
   ]
 }
