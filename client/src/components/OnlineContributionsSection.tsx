@@ -61,6 +61,7 @@ export function OnlineContributionsSection({ churchId, accounts, entryCategories
   const [statusFilter, setStatusFilter] = useState<ContributionStatus | "todos">("pendente");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [proofPreviewOpen, setProofPreviewOpen] = useState(false);
   const [reviewMode, setReviewMode] = useState<ReviewMode>(null);
   const [confirmedAmount, setConfirmedAmount] = useState("");
   const [paymentDate, setPaymentDate] = useState(currentCivilDateKey());
@@ -127,7 +128,13 @@ export function OnlineContributionsSection({ churchId, accounts, entryCategories
 
   function openDetails(id: number) {
     setSelectedId(id);
+    setProofPreviewOpen(false);
     setReviewMode(null);
+  }
+
+  function openProofPreview() {
+    if (!selected?.contribution.signedProofUrl) return;
+    setProofPreviewOpen(true);
   }
 
   function openReview(mode: Exclude<ReviewMode, null>) {
@@ -235,10 +242,19 @@ export function OnlineContributionsSection({ churchId, accounts, entryCategories
             {selected && <>
               <div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={STATUS_STYLES[selected.contribution.status]}>{STATUS_LABELS[selected.contribution.status]}</Badge><Badge variant="outline">{TYPE_LABELS[selected.contribution.type]}</Badge></div>
               <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 text-sm sm:grid-cols-2"><p><span className="block text-xs text-muted-foreground">Discípulo</span><strong className="text-navy">{selected.person.fullName}</strong></p><p><span className="block text-xs text-muted-foreground">Valor informado</span><strong className="text-navy">{formatBrl(selected.contribution.informedAmountCents)}</strong></p><p><span className="block text-xs text-muted-foreground">Data do pagamento</span>{readableDate(selected.contribution.paymentDate)}</p><p><span className="block text-xs text-muted-foreground">Enviado em</span>{readableDate(selected.contribution.submittedAt)}</p>{selected.contribution.confirmedAmountCents && <p><span className="block text-xs text-muted-foreground">Valor aprovado</span>{formatBrl(selected.contribution.confirmedAmountCents)}</p>}{selected.contribution.rejectionReason && <p className="sm:col-span-2"><span className="block text-xs text-muted-foreground">Motivo da recusa</span>{selected.contribution.rejectionReason}</p>}</div>
-              <div className="rounded-xl border border-gold/30 bg-gold/5 p-4"><p className="text-sm font-semibold text-navy">Comprovante</p><p className="mt-1 text-xs text-muted-foreground">{selected.contribution.proofFileName} · {Math.max(1, Math.round(selected.contribution.proofSizeBytes / 1024))} KB</p>{selected.contribution.signedProofUrl ? <a href={selected.contribution.signedProofUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex min-h-10 items-center gap-2 rounded-md bg-navy px-3 py-2 text-sm font-medium text-white hover:bg-navy/90"><FileText className="h-4 w-4" /> Ver comprovante</a> : <p className="mt-3 flex items-center gap-2 text-sm text-amber-800"><AlertCircle className="h-4 w-4" /> O comprovante está temporariamente indisponível.</p>}</div>
+              <div className="rounded-xl border border-gold/30 bg-gold/5 p-4"><p className="text-sm font-semibold text-navy">Comprovante</p><p className="mt-1 text-xs text-muted-foreground">{selected.contribution.proofFileName} · {Math.max(1, Math.round(selected.contribution.proofSizeBytes / 1024))} KB</p>{selected.contribution.signedProofUrl ? <Button type="button" className="mt-3 gap-2 bg-navy text-white hover:bg-navy/90" onClick={openProofPreview}><Eye className="h-4 w-4" /> Ver comprovante</Button> : <p className="mt-3 flex items-center gap-2 text-sm text-amber-800"><AlertCircle className="h-4 w-4" /> O comprovante está temporariamente indisponível.</p>}</div>
               {selected.contribution.reviewNotes && <div className="rounded-xl border border-slate-200 p-4 text-sm"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Observação da revisão</p><p className="mt-1 text-navy">{selected.contribution.reviewNotes}</p></div>}
               {selected.contribution.status === "pendente" && <div className="flex flex-col gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end"><Button type="button" variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50" onClick={() => openReview("reject")}><XCircle className="mr-2 h-4 w-4" /> Recusar</Button><Button type="button" className="bg-emerald-700 hover:bg-emerald-800" onClick={() => openReview("approve")}><CheckCircle2 className="mr-2 h-4 w-4" /> Conferir e aprovar</Button></div>}
             </>}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={proofPreviewOpen} onOpenChange={setProofPreviewOpen}>
+        <DialogContent className="!flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] min-w-0 flex-col overflow-hidden p-4 sm:max-w-4xl sm:p-6">
+          <DialogHeader className="shrink-0 pr-8"><DialogTitle className="font-display text-2xl text-navy">Prévia do comprovante</DialogTitle><DialogDescription>Confira o documento sem sair da Tesouraria. O arquivo continua protegido por URL temporária.</DialogDescription></DialogHeader>
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-xl border border-slate-200 bg-slate-100 p-2 sm:p-4">
+            {selected?.contribution.signedProofUrl && selected.contribution.proofMimeType?.startsWith("image/") ? <img src={selected.contribution.signedProofUrl} alt={`Comprovante de ${selected.person.fullName}`} className="max-h-[calc(100dvh-12rem)] max-w-full rounded-lg object-contain shadow-sm" /> : selected?.contribution.signedProofUrl && selected.contribution.proofMimeType === "application/pdf" ? <iframe src={selected.contribution.signedProofUrl} title={`Comprovante de ${selected.person.fullName}`} className="h-[calc(100dvh-12rem)] min-h-[24rem] w-full rounded-lg bg-white" /> : <p className="p-6 text-center text-sm text-muted-foreground">O formato deste comprovante não permite prévia.</p>}
           </div>
         </DialogContent>
       </Dialog>

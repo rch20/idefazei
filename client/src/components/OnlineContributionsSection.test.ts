@@ -14,10 +14,14 @@ describe("Tesouraria — contribuições on-line", () => {
     expect(pageSource).toContain("Buscar por nome ou número");
   });
 
-  it("permite visualizar o comprovante por URL assinada e não expõe a chave privada", () => {
+  it("abre o comprovante em uma prévia modal por URL assinada e não expõe a chave privada", () => {
     expect(pageSource).toContain("signedProofUrl");
     expect(pageSource).toContain("Ver comprovante");
-    expect(pageSource).toContain('target="_blank" rel="noreferrer"');
+    expect(pageSource).toContain("proofPreviewOpen");
+    expect(pageSource).toContain("openProofPreview");
+    expect(pageSource).toContain("Prévia do comprovante");
+    expect(pageSource).toContain("iframe");
+    expect(pageSource).not.toContain('target="_blank"');
     expect(pageSource).not.toContain("proofFileKey");
   });
 
