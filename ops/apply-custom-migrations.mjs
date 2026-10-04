@@ -8,6 +8,75 @@ const projectRoot = process.env.PROJECT_ROOT || process.cwd();
 const databaseUrl = process.env.DATABASE_URL;
 const ledgerPath = path.join(projectRoot, "drizzle", "custom-migrations.json");
 
+function splitSqlStatements(source) {
+  const statements = [];
+  let start = 0;
+  let quote = null;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+
+    if (lineComment) {
+      if (char === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (char === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (quote) {
+      if (char === "\\") {
+        index += 1;
+        continue;
+      }
+      if (char === quote && next === quote) {
+        index += 1;
+        continue;
+      }
+      if (char === quote) quote = null;
+      continue;
+    }
+
+    if (
+      char === "-" &&
+      next === "-" &&
+      [" ", "\n", "\r", "\t"].includes(source[index + 2])
+    ) {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === "#") {
+      lineComment = true;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") {
+      quote = char;
+      continue;
+    }
+    if (char === ";") {
+      const statement = source.slice(start, index).trim();
+      if (statement) statements.push(statement);
+      start = index + 1;
+    }
+  }
+
+  const finalStatement = source.slice(start).trim();
+  if (finalStatement) statements.push(finalStatement);
+  return statements;
+}
+
 if (!databaseUrl) {
   throw new Error("DATABASE_URL_MISSING_FROM_PROTECTED_RUNTIME");
 }
@@ -19,7 +88,7 @@ if (!Array.isArray(ledger.entries) || ledger.entries.length === 0) {
 
 const connection = await mysql.createConnection({
   uri: databaseUrl,
-  multipleStatements: true,
+  multipleStatements: false,
 });
 
 try {
@@ -52,7 +121,7 @@ try {
       throw new Error(`CUSTOM_MIGRATION_FILE_MISSING:${entry.file}`);
     }
 
-    const sql = fs.readFileSync(migrationPath);
+    const sql = fs.readFileSync(migrationPath, "utf8");
     const actualSha256 = crypto.createHash("sha256").update(sql).digest("hex");
     if (actualSha256 !== entry.sha256) {
       throw new Error(`CUSTOM_MIGRATION_CHECKSUM_MISMATCH:${entry.id}`);
@@ -73,8 +142,19 @@ try {
       continue;
     }
 
-    console.log(`CUSTOM_MIGRATION_${entry.id}_APPLYING`);
-    await connection.query(sql.toString("utf8"));
+    const statements = sql
+      .split("--> statement-breakpoint")
+      .flatMap(segment => splitSqlStatements(segment));
+    if (statements.length === 0) {
+      throw new Error(`CUSTOM_MIGRATION_EMPTY:${entry.id}`);
+    }
+
+    console.log(
+      `CUSTOM_MIGRATION_${entry.id}_APPLYING statements=${statements.length}`
+    );
+    for (const statement of statements) {
+      await connection.query(statement);
+    }
     await connection.execute(
       "INSERT INTO idefazei_custom_migrations (id, file, sha256) VALUES (?, ?, ?)",
       [entry.id, entry.file, entry.sha256]
