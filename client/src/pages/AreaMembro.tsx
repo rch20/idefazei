@@ -3,7 +3,7 @@ import { useChurch } from "@/components/ChurchLayout";
 import { trpc } from "@/lib/trpc";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { uploadOnlineContributionProof, validateOnlineContributionProof, type OnlineContributionProofUpload } from "@/lib/onlineContributionUpload";
-import { formatBrl, parseBrlToCents } from "@/lib/treasury";
+import { parseBrlToCents } from "@/lib/treasury";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,7 +52,6 @@ export default function AreaMembro() {
   const announcements = publicSite?.publicAnnouncements ?? [];
   const { data: prayers, isLoading: loadingPrayers } = trpc.prayer.mine.useQuery({ churchId: churchId! }, { enabled: !!churchId });
   const pixQuery = trpc.treasury.pixForMember.useQuery({ churchId: churchId! }, { enabled: canSubmitOnlineContribution });
-  const contributionsQuery = trpc.treasury.myOnlineContributions.useQuery({ churchId: churchId! }, { enabled: canSubmitOnlineContribution });
   const updateContact = trpc.people.updateMyContact.useMutation({
     onSuccess: () => {
       if (churchId && personId) void utils.people.getById.invalidate({ churchId, id: personId });
@@ -64,7 +63,6 @@ export default function AreaMembro() {
 
   const submitContribution = trpc.treasury.submitOnlineContribution.useMutation({
     onSuccess: async () => {
-      if (churchId) await utils.treasury.myOnlineContributions.invalidate({ churchId });
       setContributionOpen(false);
       setProofFile(null);
       setContributionError(null);
@@ -138,9 +136,6 @@ export default function AreaMembro() {
       ? DISCIPLESHIP_STAGES.indexOf(member.discipleshipStage)
       : 0;
   const currentStageLabel = isLegacyCellStage ? "Célula (registro anterior)" : member?.discipleshipStage;
-  const contributionHistory = (contributionsQuery.data ?? []).filter((item): item is NonNullable<typeof item> => Boolean(item));
-  const contributionTypeLabels = { dizimo: "Dízimo", oferta: "Oferta", primicias: "Primícias" } as const;
-
   return (
     <div className="space-y-6">
       {/* Header do membro */}
@@ -324,33 +319,6 @@ export default function AreaMembro() {
                     </button>
                   </div>
                 )}
-
-                {canSubmitOnlineContribution && (contributionsQuery.isLoading ? (
-                  <Skeleton className="h-16 w-full" />
-                ) : contributionHistory.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1e3a5f]/45">Meus envios recentes</p>
-                    {contributionHistory.slice(0, 5).map(({ contribution }) => {
-                      const statusLabel = contribution.status === "aprovada" ? "Aprovada" : contribution.status === "recusada" ? "Recusada" : "Recebida";
-                      const statusClass = contribution.status === "aprovada" ? "bg-green-100 text-green-700" : contribution.status === "recusada" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-800";
-                      return (
-                        <div key={contribution.id} className="flex items-center justify-between gap-3 rounded-lg border border-[#1e3a5f]/10 px-3 py-2">
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium text-[#1e3a5f]">{contributionTypeLabels[contribution.type as keyof typeof contributionTypeLabels] ?? contribution.type}</p>
-                            <p className="text-[11px] text-[#1e3a5f]/45">Enviado em {new Date(contribution.submittedAt).toLocaleDateString("pt-BR")}</p>
-                            {contribution.status === "pendente" && <p className="text-[11px] text-[#1e3a5f]/55">Aguardando conferência da Tesouraria</p>}
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <p className="text-sm font-semibold text-[#1e3a5f]">{formatBrl(contribution.confirmedAmountCents ?? contribution.informedAmountCents)}</p>
-                            <Badge className={`mt-1 text-[10px] ${statusClass}`}>{statusLabel}</Badge>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-[#1e3a5f]/45">Nenhuma contribuição on-line enviada ainda.</p>
-                ))}
               </CardContent>
           </Card>
         </TabsContent>

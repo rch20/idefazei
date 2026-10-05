@@ -20,14 +20,14 @@ describe("Área do Membro — contato e login", () => {
     expect(source).toContain("O e-mail continua sendo o mesmo.");
   });
 
-  it("oferece contribuição on-line a qualquer usuário autenticado com Pessoa vinculada e mostra o histórico pessoal", () => {
+  it("oferece contribuição on-line a qualquer usuário autenticado com Pessoa vinculada sem expor histórico pessoal", () => {
     expect(source).toContain("canSubmitOnlineContribution");
     expect(source).not.toContain("isMemberSession");
     expect(source).toContain("treasury.pixForMember.useQuery");
-    expect(source).toContain("treasury.myOnlineContributions.useQuery");
+    expect(source).not.toContain("treasury.myOnlineContributions.useQuery");
     expect(source).toContain("Enviar contribuição");
     expect(source).toContain("Envie sua própria contribuição");
-    expect(source).toContain("Meus envios recentes");
+    expect(source).not.toContain("Meus envios recentes");
   });
 
   it("envia tipo, valor, data, hash do comprovante e chave de idempotência", () => {
@@ -42,8 +42,6 @@ describe("Área do Membro — contato e login", () => {
     expect(source).toContain("contributionThankYouOpen");
     expect(source).toContain("Obrigado por sua contribuição");
     expect(source).toContain("contributionThankYouMessage");
-    expect(source).toContain("statusLabel");
-    expect(source).toContain('"Recebida"');
     expect(source).not.toContain('"Em análise"');
   });
 });
