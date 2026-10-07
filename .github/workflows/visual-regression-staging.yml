@@ -1,0 +1,96 @@
+name: Visual Regression — Staging
+
+on:
+  schedule:
+    # GitHub Actions uses UTC. 09:00 UTC = 06:00 BRT during standard offset.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+    inputs:
+      update_snapshots:
+        description: "Regenerate baselines (manual only; never enable on schedule)"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-regression-staging
+  cancel-in-progress: false
+
+jobs:
+  visual-regression:
+    name: Playwright staging visual regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      STAGING_BASE_URL: https://homolog.idefazei.com.br
+      PW_STORAGE_STATE_PATH: playwright/.auth/pastor-homolog.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Materialize staging-only browser session
+        env:
+          PW_STORAGE_STATE: ${{ secrets.PW_STORAGE_STATE }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$PW_STORAGE_STATE"
+          mkdir -p "$(dirname "$PW_STORAGE_STATE_PATH")"
+          printf '%s' "$PW_STORAGE_STATE" > "$PW_STORAGE_STATE_PATH"
+          chmod 600 "$PW_STORAGE_STATE_PATH"
+          test -s "$PW_STORAGE_STATE_PATH"
+          node -e 'const fs=require("fs"); const p=process.argv[1]; const s=JSON.parse(fs.readFileSync(p,"utf8")); if (!s.cookies && !s.origins) throw new Error("INVALID_PLAYWRIGHT_STORAGE_STATE"); console.log("PW_STORAGE_STATE_VALID=1")' "$PW_STORAGE_STATE_PATH"
+
+      - name: Run visual regression
+        if: ${{ github.event_name != 'workflow_dispatch' || !inputs.update_snapshots }}
+        run: pnpm test:visual
+
+      - name: Regenerate baselines (manual dispatch only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.update_snapshots }}
+        run: pnpm test:visual -- --update-snapshots
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_number }}
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload screenshots and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results-${{ github.run_number }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload regenerated baselines for manual review
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.update_snapshots }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-baselines-${{ github.run_number }}
+          path: tests/visual/__screenshots__/
+          if-no-files-found: ignore
+          retention-days: 7
