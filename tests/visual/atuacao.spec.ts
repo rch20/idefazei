@@ -40,8 +40,8 @@ async function settleFonts(page: Page) {
 
 test.describe("Escalas — regressão visual diária", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/app/escalas", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: "Escalas" })).toBeVisible();
+    await page.goto("/app/escalas", { waitUntil: "commit" });
+    await expect(page.getByRole("main").getByRole("heading", { name: "Escalas" })).toBeVisible();
     await settleFonts(page);
   });
 
@@ -75,8 +75,8 @@ test.describe("Escalas — regressão visual diária", () => {
 
 test.describe("Ministérios — regressão visual diária", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/app/ministerios", { waitUntil: "domcontentloaded" });
-    await expect(page.getByRole("heading", { name: "Ministérios" })).toBeVisible();
+    await page.goto("/app/ministerios", { waitUntil: "commit" });
+    await expect(page.getByRole("main").getByRole("heading", { name: "Ministérios" })).toBeVisible();
     await settleFonts(page);
   });
 
