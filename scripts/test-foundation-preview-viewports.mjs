@@ -6,7 +6,10 @@ import { build } from "esbuild";
 import { chromium } from "@playwright/test";
 const root = process.cwd();
 const temp = await fs.mkdtemp(path.join(os.tmpdir(), "foundation-preview-qa-"));
-const out = path.join(root, "artifacts/phase-two-preview-matrix");
+const out = path.resolve(
+  root,
+  process.env.FOUNDATION_QA_OUTPUT_DIR || "artifacts/phase-two-preview-matrix"
+);
 await fs.mkdir(out, { recursive: true });
 const stub = path.join(temp, "trpc-stub.js");
 await fs.writeFile(
@@ -102,11 +105,16 @@ try {
         return el.getBoundingClientRect().width >= available - 2;
       });
     if (!noteFits) throw Error("ANOTACAO_ESTREITA");
-    await page.getByLabel("Minha anotação em Leia de QA").locator("..").screenshot({path:path.join(out,`anotacao-${width}.png`)});
+    await page
+      .getByLabel("Minha anotação em Leia de QA")
+      .locator("..")
+      .screenshot({ path: path.join(out, `anotacao-${width}.png`) });
     const cases = [];
     for (const stage of ["Leia", "Entenda", "Responda", "Aplique"]) {
       await page.getByRole("button", { name: stage, exact: true }).click();
-      const field = page.getByLabel(`Minha anotação em ${stage}`, { exact: true });
+      const field = page.getByLabel(`Minha anotação em ${stage}`, {
+        exact: true,
+      });
       await field.fill("Nota sintética " + stage);
       if (
         stage === "Entenda" &&
@@ -165,15 +173,31 @@ try {
         .getByRole("button", { name: new RegExp(stage + ".*" + desc) })
         .click();
       const field = page.getByLabel(
-        stage === "Leia" ? "Leitura do aluno" : "Conteúdo da etapa",
+        stage === "Leia"
+          ? "Leitura do aluno"
+          : stage === "Entenda"
+            ? "Explicação para o aluno"
+            : "Conteúdo da etapa",
         { exact: true }
       );
       const prompt = page.locator("#foundation-editor-part-reflection-prompt");
       await field.fill("Rascunho local " + stage);
       await prompt.fill("Reflexão local " + stage);
-      if(stage === "Leia") {
-        if(await page.locator("details").evaluate(el=>el.open)) throw Error("PERSONALIZACAO_NAO_RECOLHIDA");
-        await page.screenshot({path:path.join(out,`leia-${width}.png`),fullPage:true});
+      if (stage === "Leia") {
+        if (await page.locator("details").evaluate(el => el.open))
+          throw Error("PERSONALIZACAO_NAO_RECOLHIDA");
+        await page.screenshot({
+          path: path.join(out, `leia-${width}.png`),
+          animations: "disabled",
+          fullPage: false,
+        });
+      }
+      if (stage === "Entenda") {
+        await page.screenshot({
+          path: path.join(out, `entenda-editor-${width}.png`),
+          animations: "disabled",
+          fullPage: false,
+        });
       }
       if (width >= 1024) {
         await page
@@ -194,6 +218,36 @@ try {
       await modal
         .getByLabel("Minha anotação em " + stage, { exact: true })
         .fill("Nota descartável do professor");
+      if (stage === "Entenda") {
+        await modal
+          .getByText("Reflexão local Entenda", { exact: true })
+          .waitFor();
+        const order = await modal.evaluate(el => {
+          const text = [...el.querySelectorAll("p")];
+          const content = text.find(
+            p => p.textContent === "Rascunho local Entenda"
+          );
+          const prompt = text.find(
+            p => p.textContent === "Reflexão local Entenda"
+          );
+          const note = el.querySelector("textarea");
+          return Boolean(
+            content &&
+              prompt &&
+              note &&
+              content.compareDocumentPosition(prompt) &
+                Node.DOCUMENT_POSITION_FOLLOWING &&
+              prompt.compareDocumentPosition(note) &
+                Node.DOCUMENT_POSITION_FOLLOWING
+          );
+        });
+        if (!order) throw Error("ORDEM_PEDAGOGICA_ENTENDA_INVALIDA");
+        await page.screenshot({
+          path: path.join(out, `entenda-previa-${width}.png`),
+          animations: "disabled",
+          fullPage: false,
+        });
+      }
       const rect = await modal.boundingBox();
       if (rect.width > width + 1) throw Error("OVERFLOW_PREVIA_EDITOR");
       await modal
@@ -226,7 +280,8 @@ try {
     if (titleWidth < width * 0.35) throw Error("TITULO_COMPRIMIDO");
     await page.screenshot({
       path: path.join(out, `preview-${width}.png`),
-      fullPage: true,
+      animations: "disabled",
+      fullPage: false,
     });
     if (writes || errors.length) throw Error("WRITES_OR_RENDER_ERRORS");
     results.push({
@@ -261,7 +316,8 @@ try {
   for (const page of browser.contexts().flatMap(c => c.pages())) {
     await page.screenshot({
       path: path.join(out, "failure.png"),
-      fullPage: true,
+      animations: "disabled",
+      fullPage: false,
     });
     console.log(
       await page.evaluate(() =>

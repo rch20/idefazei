@@ -403,14 +403,23 @@ export function FoundationStudyEditor({
   const [content, setContent] = useState("");
   const [parts, setParts] = useState<FoundationStudyPart[]>([]);
   const [selectedPartId, setSelectedPartId] = useState<number | null>(null);
-  const advanceAfterCreate = useRef(false);
+  const saveIntent = useRef<{
+    stage: EditorStageKey;
+    advance: boolean;
+    publish: boolean;
+  } | null>(null);
+  const dirtyPartIds = useRef(new Set<number>());
+  const [saveFeedback, setSaveFeedback] = useState<{
+    status: "idle" | "pending" | "success" | "error";
+    message: string;
+  }>({ status: "idle", message: "" });
+  const [published, setPublished] = useState(false);
   const [questionEditorOpen, setQuestionEditorOpen] = useState(false);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [completedStages, setCompletedStages] = useState<Set<EditorStageKey>>(
     new Set()
   );
 
-  const activeStudy = studyId && study?.id === studyId ? study : null;
   const { data: loadedParts = EMPTY_PARTS, isLoading: partsLoading } =
     trpc.escolaFundamentos.listQuestionBlocks.useQuery(
       { churchId, studyId: studyId ?? 0 },
@@ -453,7 +462,10 @@ export function FoundationStudyEditor({
     setQuestionEditorOpen(false);
     setPublishConfirmOpen(false);
     setSelectedPartId(null);
-    advanceAfterCreate.current = false;
+    saveIntent.current = null;
+    dirtyPartIds.current.clear();
+    setSaveFeedback({ status: "idle", message: "" });
+    setPublished(nextStudy?.active ?? false);
     setCompletedStages(new Set());
   };
 
@@ -465,7 +477,14 @@ export function FoundationStudyEditor({
   useEffect(() => {
     if (!open) return;
     const typed = loadedParts as FoundationStudyPart[];
-    setParts(typed);
+    // Uma reconsulta não pode apagar alterações locais de outra etapa.
+    setParts(current =>
+      typed.map(part =>
+        dirtyPartIds.current.has(part.id)
+          ? (current.find(local => local.id === part.id) ?? part)
+          : part
+      )
+    );
     setSelectedPartId(current => current ?? typed[0]?.id ?? null);
   }, [open, loadedParts]);
 
@@ -474,46 +493,85 @@ export function FoundationStudyEditor({
     if (block) setSelectedPartId(block.id);
   }, [parts, stageKey]);
 
+  const beginSave = (advance: boolean, publish = false) => {
+    if (saveIntent.current) return false;
+    saveIntent.current = { stage: stageKey, advance, publish };
+    setSaveFeedback({ status: "pending", message: "Salvando no servidor…" });
+    return true;
+  };
+
+  const confirmSave = (message: string) => {
+    const intent = saveIntent.current;
+    if (!intent) return;
+    setCompletedStages(current => new Set(current).add(intent.stage));
+    if (intent.advance) {
+      const index = stageIndexForKey(intent.stage);
+      setStageKey(
+        EDITOR_STAGES[Math.min(index + 1, EDITOR_STAGES.length - 1)].key
+      );
+    }
+    saveIntent.current = null;
+    setSaveFeedback({ status: "success", message });
+    toast.success(message);
+  };
+
+  const failSave = () => {
+    saveIntent.current = null;
+    const message =
+      "Não foi possível confirmar o salvamento. Seu texto continua nesta tela. Tente novamente.";
+    setSaveFeedback({ status: "error", message });
+    toast.error(message);
+  };
+
+  const refreshLists = () => {
+    // Revalidar o cache não faz parte da confirmação da gravação.
+    void Promise.allSettled([
+      utils.escolaFundamentos.listStudies.invalidate(),
+      utils.escolaFundamentos.listModules.invalidate(),
+      Promise.resolve().then(onSaved),
+    ]);
+  };
+
   const createStudy = trpc.escolaFundamentos.createStudy.useMutation({
-    onSuccess: async data => {
+    onSuccess: data => {
       const createdId = Number(data.studyId);
       setStudyId(createdId);
-      setCompletedStages(current => new Set(current).add("info"));
-      if (advanceAfterCreate.current) setStageKey("leia");
-      advanceAfterCreate.current = false;
-      await Promise.all([
-        utils.escolaFundamentos.listStudies.invalidate(),
-        utils.escolaFundamentos.listModules.invalidate(),
-      ]);
-      toast.success("Rascunho salvo.");
-      onSaved();
+      confirmSave("Rascunho salvo.");
+      refreshLists();
     },
-    onError: error => toast.error(error.message),
+    onError: failSave,
   });
   const updateStudy = trpc.escolaFundamentos.updateStudy.useMutation({
-    onSuccess: async () => {
-      await utils.escolaFundamentos.listStudies.invalidate();
-      toast.success("Rascunho salvo.");
-      onSaved();
+    onSuccess: () => {
+      const publishing = saveIntent.current?.publish;
+      if (publishing) setPublished(true);
+      confirmSave(
+        publishing ? "Estudo publicado para os alunos." : "Informações salvas."
+      );
+      refreshLists();
     },
-    onError: error => toast.error(error.message),
+    onError: failSave,
   });
   const updatePart = trpc.escolaFundamentos.updateQuestionBlock.useMutation({
-    onSuccess: async updated => {
+    onSuccess: updated => {
       const next = updated as FoundationStudyPart;
+      dirtyPartIds.current.delete(next.id);
       setParts(current =>
         current.map(part => (part.id === next.id ? next : part))
       );
-      await utils.escolaFundamentos.listQuestionBlocks.invalidate({
-        churchId,
-        studyId: studyId ?? 0,
-      });
-      toast.success("Etapa salva.");
-      onSaved();
+      confirmSave("Etapa salva.");
+      void utils.escolaFundamentos.listQuestionBlocks
+        .invalidate({
+          churchId,
+          studyId: studyId ?? 0,
+        })
+        .catch(() => undefined);
+      refreshLists();
     },
-    onError: error => toast.error(error.message),
+    onError: failSave,
   });
   const isPending =
+    saveFeedback.status === "pending" ||
     createStudy.isPending ||
     updateStudy.isPending ||
     updatePart.isPending ||
@@ -521,10 +579,12 @@ export function FoundationStudyEditor({
     questionsLoading;
 
   const saveInfo = (advance: boolean) => {
+    if (saveIntent.current) return;
     if (!courseId) return toast.error("Selecione a turma do estudo.");
     if (title.trim().length < 3)
       return toast.error("Informe um título com ao menos 3 caracteres.");
     if (!weekStart) return toast.error("Informe o início da semana.");
+    if (!beginSave(advance)) return;
     const payload = {
       churchId,
       moduleId: moduleId === "none" ? null : Number(moduleId),
@@ -534,7 +594,6 @@ export function FoundationStudyEditor({
       content: content || null,
     };
     if (!studyId) {
-      advanceAfterCreate.current = advance;
       createStudy.mutate({
         ...payload,
         courseId: Number(courseId),
@@ -544,16 +603,14 @@ export function FoundationStudyEditor({
       });
     } else {
       updateStudy.mutate({ id: studyId, ...payload });
-      if (advance) {
-        setCompletedStages(current => new Set(current).add("info"));
-        setStageKey("leia");
-      }
     }
   };
 
   const saveCurrentPart = (advance: boolean) => {
+    if (saveIntent.current) return;
     if (!studyId || !selectedPart)
       return toast.error("Salve as informações antes de editar as etapas.");
+    if (!beginSave(advance)) return;
     updatePart.mutate({
       churchId,
       studyId,
@@ -563,16 +620,11 @@ export function FoundationStudyEditor({
       reflectionPrompt: selectedPart.reflectionPrompt ?? null,
       active: selectedPart.active,
     });
-    setCompletedStages(current => new Set(current).add(stageKey));
-    if (advance)
-      setStageKey(
-        EDITOR_STAGES[Math.min(currentStageIndex + 1, EDITOR_STAGES.length - 1)]
-          .key
-      );
   };
 
   const updateSelectedPart = (changes: Partial<FoundationStudyPart>) => {
-    if (!selectedPart) return;
+    if (!selectedPart || saveIntent.current) return;
+    dirtyPartIds.current.add(selectedPart.id);
     setParts(current =>
       current.map(part =>
         part.id === selectedPart.id ? { ...part, ...changes } : part
@@ -593,7 +645,10 @@ export function FoundationStudyEditor({
   };
 
   const publish = () => {
+    if (saveIntent.current) return;
     if (!studyId) return toast.error("Salve o estudo antes de publicar.");
+    if (dirtyPartIds.current.size)
+      return toast.error("Salve as etapas alteradas antes de publicar.");
     if (
       !title.trim() ||
       !weekStart ||
@@ -607,7 +662,7 @@ export function FoundationStudyEditor({
   };
 
   const confirmPublish = () => {
-    if (!studyId) return;
+    if (!studyId || !beginSave(false, true)) return;
     setPublishConfirmOpen(false);
     updateStudy.mutate({
       id: studyId,
@@ -619,11 +674,10 @@ export function FoundationStudyEditor({
       summary: summary || null,
       content: content || null,
     });
-    toast.success("Estudo publicado para os alunos.");
   };
 
   const close = () => {
-    if (isPending) return;
+    if (isPending || saveIntent.current) return;
     onOpenChange(false);
   };
 
@@ -631,12 +685,38 @@ export function FoundationStudyEditor({
     Boolean(studyId) ||
     index <= currentStageIndex ||
     completedStages.has(EDITOR_STAGES[index].key);
-  const statusLabel = activeStudy?.active
+  const statusLabel = published
     ? "Publicado"
     : studyId
       ? "Rascunho"
       : "Novo rascunho";
   const selectedCourse = courses.find(course => String(course.id) === courseId);
+  const partNameEditor = selectedPart ? (
+    <details
+      open={stageKey !== "leia" && stageKey !== "entenda"}
+      className="rounded-xl border p-3"
+    >
+      <summary
+        className="cursor-pointer text-sm font-medium"
+        style={{ color: primaryColor }}
+      >
+        Personalizar nome da etapa
+      </summary>
+      <div className="mt-3 space-y-2">
+        <Label htmlFor="foundation-editor-part-title">Nome da etapa</Label>
+        <Input
+          id="foundation-editor-part-title"
+          value={selectedPart!.title}
+          onChange={event =>
+            updateSelectedPart({
+              title: event.target.value,
+            })
+          }
+          maxLength={160}
+        />
+      </div>
+    </details>
+  ) : null;
   const preview = (
     <PreviewPane
       title={title}
@@ -663,7 +743,7 @@ export function FoundationStudyEditor({
               </DialogTitle>
               <DialogDescription className="mt-1 flex flex-wrap items-center gap-2">
                 Prepare o estudo na mesma ordem em que o aluno vai percorrê-lo.
-                <Badge variant={activeStudy?.active ? "default" : "secondary"}>
+                <Badge variant={published ? "default" : "secondary"}>
                   {statusLabel}
                 </Badge>
               </DialogDescription>
@@ -705,7 +785,7 @@ export function FoundationStudyEditor({
                     <button
                       key={stage.key}
                       type="button"
-                      disabled={!stageIsAvailable(index)}
+                      disabled={isPending || !stageIsAvailable(index)}
                       onClick={() => {
                         setStageKey(stage.key);
                         setMobileStepsOpen(false);
@@ -751,7 +831,7 @@ export function FoundationStudyEditor({
                   <button
                     key={stage.key}
                     type="button"
-                    disabled={!stageIsAvailable(index)}
+                    disabled={isPending || !stageIsAvailable(index)}
                     onClick={() => setStageKey(stage.key)}
                     className="flex min-h-12 w-full items-center gap-2 rounded-xl p-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-40"
                     style={
@@ -798,7 +878,10 @@ export function FoundationStudyEditor({
                   {EDITOR_STAGES[currentStageIndex].description}
                 </p>
               </div>
-              <div className="space-y-5 p-4 sm:p-6">
+              <fieldset
+                disabled={isPending}
+                className="min-w-0 space-y-5 p-4 sm:p-6"
+              >
                 {stageKey === "info" ? (
                   <div className="space-y-5">
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -972,7 +1055,7 @@ export function FoundationStudyEditor({
                   </div>
                 ) : (
                   <div className="space-y-5">
-                    {stageKey !== "leia" ? (
+                    {stageKey !== "leia" && stageKey !== "entenda" ? (
                       <div className="rounded-xl border border-[#c9a84c]/30 bg-[#fdfaf1] p-3 text-sm text-[#1e3a5f]">
                         {stageKey === "responda"
                           ? "Prepare as perguntas nesta etapa. O gabarito continuará protegido para o aluno até a tentativa."
@@ -981,37 +1064,14 @@ export function FoundationStudyEditor({
                     ) : null}
                     {selectedPart ? (
                       <>
-                        <details
-                          open={stageKey !== "leia"}
-                          className="rounded-xl border p-3"
-                        >
-                          <summary
-                            className="cursor-pointer text-sm font-medium"
-                            style={{ color: primaryColor }}
-                          >
-                            Personalizar nome da etapa
-                          </summary>
-                          <div className="mt-3 space-y-2">
-                            <Label htmlFor="foundation-editor-part-title">
-                              Nome da etapa
-                            </Label>
-                            <Input
-                              id="foundation-editor-part-title"
-                              value={selectedPart.title}
-                              onChange={event =>
-                                updateSelectedPart({
-                                  title: event.target.value,
-                                })
-                              }
-                              maxLength={160}
-                            />
-                          </div>
-                        </details>
+                        {stageKey !== "entenda" ? partNameEditor : null}
                         <div className="space-y-2">
                           <Label htmlFor="foundation-editor-part-content">
                             {stageKey === "leia"
                               ? "Leitura do aluno"
-                              : "Conteúdo da etapa"}
+                              : stageKey === "entenda"
+                                ? "Explicação para o aluno"
+                                : "Conteúdo da etapa"}
                           </Label>
                           {stageKey === "leia" ? (
                             <p
@@ -1021,18 +1081,30 @@ export function FoundationStudyEditor({
                               Prepare um trecho por vez, em parágrafos curtos.
                               Inclua a referência bíblica no próprio texto.
                             </p>
+                          ) : stageKey === "entenda" ? (
+                            <p
+                              id="foundation-editor-explanation-help"
+                              className="text-sm text-muted-foreground"
+                            >
+                              Explique uma ideia central e dê um exemplo
+                              concreto.
+                            </p>
                           ) : null}
                           <Textarea
                             id="foundation-editor-part-content"
                             aria-describedby={
                               stageKey === "leia"
                                 ? "foundation-editor-reading-help"
-                                : undefined
+                                : stageKey === "entenda"
+                                  ? "foundation-editor-explanation-help"
+                                  : undefined
                             }
                             placeholder={
                               stageKey === "leia"
                                 ? "Ex.: Leia Efésios 4:29. Observe como nossas palavras podem encorajar outras pessoas."
-                                : undefined
+                                : stageKey === "entenda"
+                                  ? "Retome a ideia de Leia sem repetir todo o texto. Explique com suas palavras e inclua um exemplo do dia a dia."
+                                  : undefined
                             }
                             value={selectedPart.content}
                             onChange={event =>
@@ -1067,7 +1139,9 @@ export function FoundationStudyEditor({
                             placeholder={
                               stageKey === "leia"
                                 ? "Ex.: Qual expressão desta leitura chamou sua atenção?"
-                                : "Ex.: O que Deus está ensinando a você nesta etapa?"
+                                : stageKey === "entenda"
+                                  ? "Ex.: Como você explicaria esta ideia com suas palavras?"
+                                  : "Ex.: O que Deus está ensinando a você nesta etapa?"
                             }
                             aria-describedby="foundation-editor-reflection-help"
                           />
@@ -1077,9 +1151,12 @@ export function FoundationStudyEditor({
                           >
                             {stageKey === "leia"
                               ? "Uma pergunta curta para orientar a leitura. A anotação é escrita pelo aluno."
-                              : "Pergunta-guia exibida antes da anotação individual do aluno. A anotação continua sendo escrita pelo aluno."}
+                              : stageKey === "entenda"
+                                ? "Uma pergunta breve para explicar o que entendeu. A anotação é escrita pelo aluno."
+                                : "Pergunta-guia exibida antes da anotação individual do aluno. A anotação continua sendo escrita pelo aluno."}
                           </p>
                         </div>
+                        {stageKey === "entenda" ? partNameEditor : null}
                         {stageKey === "responda" ? (
                           <section className="space-y-3 rounded-xl border bg-slate-50/60 p-3">
                             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -1121,7 +1198,7 @@ export function FoundationStudyEditor({
                             )}
                           </section>
                         ) : null}
-                        {stageKey !== "leia" ? (
+                        {stageKey !== "leia" && stageKey !== "entenda" ? (
                           <div className="rounded-xl border border-dashed bg-[#fcfbf8] p-3 text-sm text-muted-foreground">
                             <strong style={{ color: primaryColor }}>
                               Minha anotação:
@@ -1140,7 +1217,7 @@ export function FoundationStudyEditor({
                     )}
                   </div>
                 )}
-              </div>
+              </fieldset>
             </main>
             <aside className="hidden rounded-2xl border bg-[#fdfcf8] p-4 shadow-sm lg:block">
               {preview}
@@ -1148,6 +1225,14 @@ export function FoundationStudyEditor({
           </div>
         </AdaptiveFormDialogBody>
         <div className="shrink-0 border-t bg-white px-3 py-3 sm:px-5">
+          {saveFeedback.status !== "idle" ? (
+            <p
+              role={saveFeedback.status === "error" ? "alert" : "status"}
+              className={`mb-2 text-sm ${saveFeedback.status === "error" ? "text-destructive" : "text-muted-foreground"}`}
+            >
+              {saveFeedback.message}
+            </p>
+          ) : null}
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex gap-2">
               <Button
@@ -1167,6 +1252,7 @@ export function FoundationStudyEditor({
                 type="button"
                 variant="outline"
                 className="lg:hidden"
+                disabled={isPending}
                 onClick={() => setPreviewOpen(true)}
               >
                 <Eye className="mr-1 h-4 w-4" />
@@ -1199,7 +1285,9 @@ export function FoundationStudyEditor({
                   onClick={saveAndContinue}
                   style={{ backgroundColor: primaryColor, color: "white" }}
                 >
-                  Salvar e continuar
+                  {saveFeedback.status === "pending"
+                    ? "Salvando…"
+                    : "Salvar e continuar"}
                   <ArrowRight className="ml-1 h-4 w-4" />
                 </Button>
               )}
