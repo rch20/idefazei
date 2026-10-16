@@ -3,6 +3,7 @@ import { createStageNoteQueue, type StageNotePayload } from "./stageNoteQueue";
 const note: StageNotePayload = {
   churchId: 1,
   courseId: 2,
+  enrollmentId: 7,
   studyId: 3,
   blockId: 4,
   reflection: "Leia",

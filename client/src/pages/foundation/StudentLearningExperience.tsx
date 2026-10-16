@@ -6,7 +6,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
   AdaptiveFormDialogBody,
   AdaptiveFormDialogContent,
@@ -50,6 +50,7 @@ type Study = {
 
 type StudentLessonItem = {
   study: Study;
+  enrollmentId: number;
   progress: {
     status: "nao_iniciada" | "em_andamento" | "concluida";
     lastBlockPosition: number;
@@ -61,7 +62,7 @@ type StudentLessonItem = {
 
 type StudentPathResponse = {
   course?: { id: number; name: string } | null;
-  enrollment: unknown | null;
+  enrollment: { id: number } | null;
   items: StudentLessonItem[];
 };
 
@@ -89,6 +90,7 @@ type SessionBlock = {
 };
 
 type StudentSession = {
+  enrollmentId: number;
   study: {
     id: number;
     title: string;
@@ -702,7 +704,6 @@ export function StudentLearningExperience({
   const isLoading = courseId
     ? coursePathQuery.isLoading
     : studentPathQuery.isLoading;
-  const resolvedCourseId = courseId ?? path?.course?.id ?? null;
   const invalidateStudentPath = () =>
     courseId
       ? utils.escolaFundamentos.learningPath.invalidate({ churchId, courseId })
@@ -731,13 +732,22 @@ export function StudentLearningExperience({
   const [studyReadyToComplete, setStudyReadyToComplete] = useState(false);
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
 
+  const resolvedCourseId =
+    courseId ?? selectedLesson?.study.courseId ?? path?.course?.id ?? null;
+  const resolvedEnrollmentId =
+    selectedLesson?.enrollmentId ?? path?.enrollment?.id ?? null;
   const sessionQuery = trpc.escolaFundamentos.studySession.useQuery(
     {
       churchId,
       courseId: resolvedCourseId ?? 0,
       studyId: selectedLesson?.study.id ?? 0,
+      enrollmentId: resolvedEnrollmentId ?? undefined,
     },
-    { enabled: Boolean(selectedLesson && resolvedCourseId) }
+    {
+      enabled: Boolean(
+        selectedLesson && resolvedCourseId && resolvedEnrollmentId
+      ),
+    }
   );
   const session = sessionQuery.data as StudentSession | undefined;
   const blocks = session?.blocks ?? [];
@@ -770,8 +780,18 @@ export function StudentLearningExperience({
       .find(item => item.progress?.status === "concluida")?.study.id ??
     0;
   const studentClassQuery = trpc.escolaFundamentos.studyClass.useQuery(
-    { churchId, courseId: resolvedCourseId ?? 0, studyId: activeStudyId },
-    { enabled: Boolean(resolvedCourseId && activeStudyId), staleTime: 30_000 }
+    {
+      churchId,
+      courseId: resolvedCourseId ?? 0,
+      studyId: activeStudyId,
+      enrollmentId: resolvedEnrollmentId ?? undefined,
+    },
+    {
+      enabled: Boolean(
+        resolvedCourseId && activeStudyId && resolvedEnrollmentId
+      ),
+      staleTime: 30_000,
+    }
   );
   const studentClass = studentClassQuery.data as
     | StudentClassResponse
@@ -857,6 +877,7 @@ export function StudentLearningExperience({
             churchId: variables.churchId,
             courseId: variables.courseId,
             studyId: variables.studyId,
+            enrollmentId: variables.enrollmentId,
           },
           current =>
             current
@@ -885,7 +906,7 @@ export function StudentLearningExperience({
         toast.error(error.message || "Não foi possível salvar sua anotação."),
     });
   const noteKey = (studyId: number, blockId: number | null) =>
-    `${churchId}:${studyId}:${blockId ?? "legacy"}`;
+    `${churchId}:${resolvedEnrollmentId ?? "enrollment"}:${studyId}:${blockId ?? "legacy"}`;
   const savedNoteValue = (block: SessionBlock | undefined) =>
     block
       ? (noteDrafts.current.get(noteKey(selectedLesson!.study.id, block.id)) ??
@@ -903,12 +924,19 @@ export function StudentLearningExperience({
       return saveLegacyReflection.mutateAsync(legacy);
     });
   const flushNote = async () => {
-    if (!selectedLesson || !resolvedCourseId || !reflectionDirty) return true;
+    if (!reflectionDirty) return true;
+    if (!selectedLesson || !resolvedCourseId || !resolvedEnrollmentId) {
+      toast.error(
+        "Não foi possível confirmar a matrícula. Sua anotação continua nesta tela."
+      );
+      return false;
+    }
     setNoteNavigating(true);
     try {
       await persistNote({
         churchId,
         courseId: resolvedCourseId,
+        enrollmentId: resolvedEnrollmentId,
         studyId: selectedLesson.study.id,
         blockId: activeBlock?.id ?? null,
         reflection: reflection.trim() || null,
@@ -952,22 +980,40 @@ export function StudentLearningExperience({
       )
     );
     setStudyReadyToComplete(session.progress?.status === "concluida");
-  }, [session?.study.id, selectedLesson?.study.id]);
-
-  useEffect(() => {
-    if (!selectedLesson || !resolvedCourseId || !activeBlock) return;
-    viewStudyBlock.mutate({
-      churchId,
-      courseId: resolvedCourseId,
-      studyId: selectedLesson.study.id,
-      blockId: activeBlock.id,
-    });
-  }, [activeBlock?.id, selectedLesson?.study.id, resolvedCourseId]);
+  }, [
+    session?.study.id,
+    session?.enrollmentId,
+    selectedLesson?.study.id,
+    selectedLesson?.enrollmentId,
+  ]);
 
   useEffect(() => {
     if (
       !selectedLesson ||
       !resolvedCourseId ||
+      !resolvedEnrollmentId ||
+      !activeBlock
+    )
+      return;
+    viewStudyBlock.mutate({
+      churchId,
+      courseId: resolvedCourseId,
+      enrollmentId: resolvedEnrollmentId,
+      studyId: selectedLesson.study.id,
+      blockId: activeBlock.id,
+    });
+  }, [
+    activeBlock?.id,
+    selectedLesson?.study.id,
+    resolvedCourseId,
+    resolvedEnrollmentId,
+  ]);
+
+  useEffect(() => {
+    if (
+      !selectedLesson ||
+      !resolvedCourseId ||
+      !resolvedEnrollmentId ||
       !reflectionDirty ||
       noteNavigating
     )
@@ -975,6 +1021,7 @@ export function StudentLearningExperience({
     const payload: StageNotePayload = {
       churchId,
       courseId: resolvedCourseId,
+      enrollmentId: resolvedEnrollmentId,
       studyId: selectedLesson.study.id,
       blockId: activeBlock?.id ?? null,
       reflection: reflection.trim() || null,
@@ -989,6 +1036,7 @@ export function StudentLearningExperience({
     activeBlock?.id,
     selectedLesson?.study.id,
     resolvedCourseId,
+    resolvedEnrollmentId,
     noteNavigating,
   ]);
 
@@ -1015,6 +1063,7 @@ export function StudentLearningExperience({
       startLesson.mutate({
         churchId,
         courseId: resolvedCourseId,
+        enrollmentId: item.enrollmentId,
         studyId: item.study.id,
         lastBlockPosition: item.progress?.lastBlockPosition ?? 0,
       });
@@ -1035,7 +1084,7 @@ export function StudentLearningExperience({
     question: SessionQuestion,
     selectedOptionId: string
   ) => {
-    if (!resolvedCourseId || !selectedLesson) return;
+    if (!resolvedCourseId || !resolvedEnrollmentId || !selectedLesson) return;
     setQuestionAnswers(current => ({
       ...current,
       [question.id]: selectedOptionId,
@@ -1043,6 +1092,7 @@ export function StudentLearningExperience({
     answerQuestion.mutate({
       churchId,
       courseId: resolvedCourseId,
+      enrollmentId: resolvedEnrollmentId,
       studyId: selectedLesson.study.id,
       questionId: question.id,
       selectedOptionId,
@@ -1051,7 +1101,13 @@ export function StudentLearningExperience({
   };
 
   const advanceBlock = async () => {
-    if (!selectedLesson || !resolvedCourseId || !activeBlock || noteNavigating)
+    if (
+      !selectedLesson ||
+      !resolvedCourseId ||
+      !resolvedEnrollmentId ||
+      !activeBlock ||
+      noteNavigating
+    )
       return;
     if (!(await flushNote())) return;
     if (activeBlockCompleted) {
@@ -1070,6 +1126,7 @@ export function StudentLearningExperience({
       completeStudyBlock.mutate({
         churchId,
         courseId: resolvedCourseId,
+        enrollmentId: resolvedEnrollmentId,
         studyId: selectedLesson.study.id,
         blockId: activeBlock.id,
       });
@@ -1084,6 +1141,7 @@ export function StudentLearningExperience({
     if (
       !selectedLesson ||
       !resolvedCourseId ||
+      !resolvedEnrollmentId ||
       noteNavigating ||
       !(await flushNote())
     )
@@ -1091,6 +1149,7 @@ export function StudentLearningExperience({
     completeLesson.mutate({
       churchId,
       courseId: resolvedCourseId,
+      enrollmentId: resolvedEnrollmentId,
       studyId: selectedLesson.study.id,
       lastBlockPosition:
         activeBlock?.position ??
@@ -1421,10 +1480,10 @@ export function StudentLearningExperience({
             >
               Minhas anotações
             </DialogTitle>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <DialogDescription className="mt-1 text-sm text-muted-foreground">
               Veja suas anotações por etapa e as anotações antigas, mesmo nos
               estudos em andamento, sem precisar revisar a preparação.
-            </p>
+            </DialogDescription>
           </div>
           <AdaptiveFormDialogBody
             className="space-y-3"
@@ -1534,10 +1593,10 @@ export function StudentLearningExperience({
                 >
                   {selectedLesson?.study.title}
                 </DialogTitle>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <DialogDescription className="mt-1 text-sm text-muted-foreground">
                   Leia com calma. Esta preparação não é uma prova. Volte quando
                   precisar; nada do que você preencheu será perdido.
-                </p>
+                </DialogDescription>
               </div>
               {session?.study.weekStart ? (
                 <Badge variant="outline" className="shrink-0">

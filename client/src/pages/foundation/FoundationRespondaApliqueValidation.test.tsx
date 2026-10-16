@@ -11,7 +11,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FoundationStudyEditor } from "./FoundationStudyEditor";
 
-type Callbacks = { onSuccess?: (data: any) => void; onError?: () => void };
+type Callbacks = {
+  onSuccess?: (data: any) => void;
+  onError?: (error?: unknown) => void;
+};
 const fixture = vi.hoisted(() => ({
   parts: [] as unknown[],
   questions: [] as unknown[],
@@ -335,6 +338,99 @@ describe("Fase 4 — Responda, Aplique e revisão, com API simulada", () => {
     ).toBeTruthy();
     expect(fixture.updateStudy).not.toHaveBeenCalled();
     expect(screen.getByText("Rascunho", { exact: true })).toBeTruthy();
+  });
+  it("falha de Aplique classifica o erro, preserva conteúdo/reflexão e impede publicação", () => {
+    openStage("Aplique", "Prática da semana");
+    fireEvent.change(screen.getByLabelText("Aplicação prática"), {
+      target: { value: "Prática preservada após erro" },
+    });
+    fireEvent.change(screen.getByLabelText(/Para refletir/), {
+      target: { value: "Reflexão preservada após erro" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar e continuar" }));
+    act(() =>
+      fixture.partCallbacks.onError?.({
+        data: { code: "FORBIDDEN" },
+        message: "detalhe interno não exibido",
+      })
+    );
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Aplique" })
+    ).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Aplicação prática") as HTMLTextAreaElement).value
+    ).toBe("Prática preservada após erro");
+    expect(
+      (screen.getByLabelText(/Para refletir/) as HTMLTextAreaElement).value
+    ).toBe("Reflexão preservada após erro");
+    expect(screen.getByRole("alert").textContent).toContain(
+      "não tem permissão"
+    );
+    expect(screen.getByRole("alert").textContent).not.toContain(
+      "detalhe interno"
+    );
+    expect(fixture.success).not.toHaveBeenCalled();
+    go("Revisar e publicar", "Conferência final");
+    fireEvent.click(screen.getByRole("button", { name: "Publicar estudo" }));
+    expect(fixture.updateStudy).not.toHaveBeenCalled();
+  });
+  it("não avança nem limpa o rascunho se a resposta retorna conteúdo antigo ou outro bloco", () => {
+    openStage("Aplique", "Prática da semana");
+    fireEvent.change(screen.getByLabelText("Aplicação prática"), {
+      target: { value: "Texto novo aguardando confirmação" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar e continuar" }));
+    act(() => fixture.partCallbacks.onSuccess?.(fixture.parts[3]));
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Aplique" })
+    ).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Aplicação prática") as HTMLTextAreaElement).value
+    ).toBe("Texto novo aguardando confirmação");
+    expect(screen.getByRole("alert").textContent).toContain(
+      "não confirmou o conteúdo"
+    );
+    expect(fixture.success).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Salvar e continuar" }));
+    const request = fixture.updatePart.mock.calls.at(-1)![0];
+    act(() =>
+      fixture.partCallbacks.onSuccess?.({
+        ...(fixture.parts[3] as object),
+        ...request,
+        id: 999,
+      })
+    );
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Aplique" })
+    ).toBeTruthy();
+    expect(fixture.success).not.toHaveBeenCalled();
+  });
+  it("não envia conteúdo vazio ao servidor e permite corrigir sem perder a reflexão", () => {
+    openStage("Aplique", "Prática da semana");
+    fireEvent.change(screen.getByLabelText("Aplicação prática"), {
+      target: { value: "  " },
+    });
+    fireEvent.change(screen.getByLabelText(/Para refletir/), {
+      target: { value: "Reflexão local" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar e continuar" }));
+    expect(fixture.updatePart).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Preencha o conteúdo"
+    );
+    expect(
+      (screen.getByLabelText(/Para refletir/) as HTMLTextAreaElement).value
+    ).toBe("Reflexão local");
+    fireEvent.change(screen.getByLabelText("Aplicação prática"), {
+      target: { value: "Ação válida" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar e continuar" }));
+    confirmPart();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Revisar e publicar" })
+    ).toBeTruthy();
+    expect(fixture.updatePart).toHaveBeenCalledTimes(1);
+    expect(fixture.updateStudy).not.toHaveBeenCalled();
   });
   it("revisão sinaliza alterações não salvas e bloqueia publicação sem apagar o rascunho", () => {
     openStage("Aplique", "Prática da semana");

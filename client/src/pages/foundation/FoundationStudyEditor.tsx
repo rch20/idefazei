@@ -40,6 +40,12 @@ import { StudyPartQuestions } from "./StudyPartQuestions";
 import { StudyQuestionEditor } from "./StudyQuestionEditor";
 import type { FoundationStudyPart } from "./StudyPartEditor";
 import { getFoundationStageLabel } from "./studyStage";
+import {
+  confirmsStudyPartSave,
+  studySaveErrorMessage,
+  validateStudyPartSave,
+  type StudyPartSavePayload,
+} from "./studyPartSaveConfirmation";
 
 type FoundationCourse = {
   id: number;
@@ -408,6 +414,7 @@ export function FoundationStudyEditor({
     advance: boolean;
     publish: boolean;
   } | null>(null);
+  const pendingPartSave = useRef<StudyPartSavePayload | null>(null);
   const dirtyPartIds = useRef(new Set<number>());
   const [saveFeedback, setSaveFeedback] = useState<{
     status: "idle" | "pending" | "success" | "error";
@@ -476,6 +483,7 @@ export function FoundationStudyEditor({
     setPublishConfirmOpen(false);
     setSelectedPartId(null);
     saveIntent.current = null;
+    pendingPartSave.current = null;
     dirtyPartIds.current.clear();
     setSaveFeedback({ status: "idle", message: "" });
     setPublished(nextStudy?.active ?? false);
@@ -524,14 +532,15 @@ export function FoundationStudyEditor({
       );
     }
     saveIntent.current = null;
+    pendingPartSave.current = null;
     setSaveFeedback({ status: "success", message });
     toast.success(message);
   };
 
-  const failSave = () => {
+  const failSave = (error?: unknown) => {
     saveIntent.current = null;
-    const message =
-      "Não foi possível confirmar o salvamento. Seu texto continua nesta tela. Tente novamente.";
+    pendingPartSave.current = null;
+    const message = studySaveErrorMessage(error);
     setSaveFeedback({ status: "error", message });
     toast.error(message);
   };
@@ -548,6 +557,10 @@ export function FoundationStudyEditor({
   const createStudy = trpc.escolaFundamentos.createStudy.useMutation({
     onSuccess: data => {
       const createdId = Number(data.studyId);
+      if (!Number.isSafeInteger(createdId) || createdId <= 0) {
+        failSave({ data: { code: "SAVE_CONFIRMATION_MISMATCH" } });
+        return;
+      }
       setStudyId(createdId);
       confirmSave("Rascunho salvo.");
       refreshLists();
@@ -567,6 +580,12 @@ export function FoundationStudyEditor({
   });
   const updatePart = trpc.escolaFundamentos.updateQuestionBlock.useMutation({
     onSuccess: updated => {
+      const payload = pendingPartSave.current;
+      if (!payload || !saveIntent.current) return;
+      if (!confirmsStudyPartSave(payload, updated)) {
+        failSave({ data: { code: "SAVE_CONFIRMATION_MISMATCH" } });
+        return;
+      }
       const next = updated as FoundationStudyPart;
       dirtyPartIds.current.delete(next.id);
       setParts(current =>
@@ -625,8 +644,7 @@ export function FoundationStudyEditor({
     if (saveIntent.current) return;
     if (!studyId || !selectedPart)
       return toast.error("Salve as informações antes de editar as etapas.");
-    if (!beginSave(advance)) return;
-    updatePart.mutate({
+    const payload: StudyPartSavePayload = {
       churchId,
       studyId,
       blockId: selectedPart.id,
@@ -634,7 +652,16 @@ export function FoundationStudyEditor({
       content: selectedPart.content,
       reflectionPrompt: selectedPart.reflectionPrompt ?? null,
       active: selectedPart.active,
-    });
+    };
+    const validationError = validateStudyPartSave(payload);
+    if (validationError) {
+      setSaveFeedback({ status: "error", message: validationError });
+      toast.error(validationError);
+      return;
+    }
+    if (!beginSave(advance)) return;
+    pendingPartSave.current = payload;
+    updatePart.mutate(payload);
   };
 
   const updateSelectedPart = (changes: Partial<FoundationStudyPart>) => {

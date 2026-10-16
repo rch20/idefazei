@@ -7138,24 +7138,38 @@ export async function getFoundationWeeklyOverview(churchId: number, courseId: nu
   };
 }
 
-export async function getFoundationEnrollmentForPerson(courseId: number, personId: number, churchId: number) {
-  const db = await getDb();
-  if (!db) return null;
-  const rows = await db
-    .select({ enrollment: courseEnrollments })
-    .from(courseEnrollments)
-    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
-    .innerJoin(people, eq(courseEnrollments.personId, people.id))
-    .where(and(eq(courseEnrollments.courseId, courseId), eq(courseEnrollments.personId, personId), eq(courses.churchId, churchId), eq(people.churchId, churchId)))
-    .limit(1);
-  return rows[0]?.enrollment ?? null;
-}
+export type FoundationEnrollmentResolutionContext = "current" | "historical";
 
-export async function getFoundationActiveEnrollmentForPerson(personId: number, churchId: number, includeCompleted = false) {
+/**
+ * Resolve the one enrollment used by a student journey.
+ *
+ * The enrollment id is only a selector: ownership by Person, church and (when
+ * supplied) course is always checked in the same query.  Current journeys keep
+ * the existing eligibility rule; historical reads may address a completed or
+ * inactive enrollment explicitly without changing any historical rows.
+ */
+export async function resolveFoundationEnrollmentForPerson(data: {
+  personId: number;
+  churchId: number;
+  courseId?: number;
+  enrollmentId?: number;
+  context?: FoundationEnrollmentResolutionContext;
+}) {
   const db = await getDb();
   if (!db) return null;
-  const conditions = [eq(courseEnrollments.personId, personId), eq(courses.churchId, churchId), eq(people.churchId, churchId)];
-  if (!includeCompleted) {
+  const context = data.context ?? "current";
+  const conditions = [
+    eq(courseEnrollments.personId, data.personId),
+    eq(courses.churchId, data.churchId),
+    eq(people.churchId, data.churchId),
+  ];
+  if (data.courseId !== undefined) {
+    conditions.push(eq(courseEnrollments.courseId, data.courseId));
+  }
+  if (context === "historical" && data.enrollmentId !== undefined) {
+    conditions.push(eq(courseEnrollments.id, data.enrollmentId));
+  }
+  if (context === "current") {
     conditions.push(ne(courseEnrollments.status, "concluido"));
     conditions.push(eq(courses.active, true));
   }
@@ -7167,7 +7181,33 @@ export async function getFoundationActiveEnrollmentForPerson(personId: number, c
     .where(and(...conditions))
     .orderBy(desc(courseEnrollments.enrolledAt), desc(courseEnrollments.id))
     .limit(1);
-  return rows[0] ?? null;
+  const resolved = rows[0] ?? null;
+  if (resolved && data.enrollmentId !== undefined && resolved.enrollment.id !== data.enrollmentId) {
+    return null;
+  }
+  return resolved;
+}
+
+/** Legado: mantém a assinatura usada fora da Escola e agora tem ordem/regra única. */
+export async function getFoundationEnrollmentForPerson(courseId: number, personId: number, churchId: number, enrollmentId?: number) {
+  const resolved = await resolveFoundationEnrollmentForPerson({
+    courseId,
+    personId,
+    churchId,
+    ...(enrollmentId === undefined ? {} : { enrollmentId }),
+    context: "current",
+  });
+  return resolved?.enrollment ?? null;
+}
+
+/** Legado: cartão e sessão usam o mesmo resolvedor e a mesma ordenação. */
+export async function getFoundationActiveEnrollmentForPerson(personId: number, churchId: number, includeCompleted = false) {
+  const resolved = await resolveFoundationEnrollmentForPerson({
+    personId,
+    churchId,
+    context: includeCompleted ? "historical" : "current",
+  });
+  return resolved;
 }
 
 export async function getFoundationLearningProgress(churchId: number, enrollmentId: number, courseId: number, includeInactive = false) {

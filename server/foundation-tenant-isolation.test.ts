@@ -8,6 +8,7 @@ const dbMocks = vi.hoisted(() => ({
   getFoundationModulesByCourse: vi.fn(),
   getFoundationEnrollmentForPerson: vi.fn(),
   getFoundationActiveEnrollmentForPerson: vi.fn(),
+  resolveFoundationEnrollmentForPerson: vi.fn(),
   getFoundationLearningProgress: vi.fn(),
   getFoundationStudyQuestions: vi.fn(),
   getFoundationStudyById: vi.fn(),
@@ -107,6 +108,36 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
     dbMocks.getFoundationModulesByCourse.mockResolvedValue([]);
     dbMocks.getFoundationEnrollmentForPerson.mockResolvedValue(null);
     dbMocks.getFoundationActiveEnrollmentForPerson.mockResolvedValue(null);
+    dbMocks.resolveFoundationEnrollmentForPerson.mockImplementation(
+      async input => {
+        if (
+          input.churchId !== CHURCH_A ||
+          input.personId !== 77 ||
+          (input.courseId !== undefined && input.courseId !== COURSE_ID)
+        )
+          return null;
+        if (input.courseId === undefined)
+          return dbMocks.getFoundationActiveEnrollmentForPerson(
+            input.personId,
+            input.churchId
+          );
+        const enrollment = await dbMocks.getFoundationEnrollmentForPerson(
+          input.courseId,
+          input.personId,
+          input.churchId
+        );
+        if (
+          !enrollment ||
+          (input.enrollmentId !== undefined &&
+            input.enrollmentId !== enrollment.id)
+        )
+          return null;
+        return {
+          enrollment,
+          course: { id: COURSE_ID, churchId: CHURCH_A, active: true },
+        };
+      }
+    );
     dbMocks.getFoundationLearningProgress.mockResolvedValue([]);
     dbMocks.getFoundationStudyQuestions.mockResolvedValue([]);
     dbMocks.getFoundationStudyById.mockResolvedValue(null);
@@ -274,6 +305,11 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
       77,
       CHURCH_A
     );
+    expect(dbMocks.resolveFoundationEnrollmentForPerson).toHaveBeenCalledWith({
+      personId: 77,
+      churchId: CHURCH_A,
+      context: "current",
+    });
     expect(dbMocks.getFoundationLearningProgress).toHaveBeenCalledWith(
       CHURCH_A,
       91,

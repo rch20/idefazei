@@ -1,6 +1,7 @@
 export type StageNotePayload = {
   churchId: number;
   courseId: number;
+  enrollmentId: number;
   studyId: number;
   blockId: number | null;
   reflection: string | null;

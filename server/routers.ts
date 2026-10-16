@@ -314,9 +314,9 @@ import {
   isFoundationStudyAdministrator,
   assignFoundationStudyAdministrator,
   removeFoundationStudyAdministrator,
-  getFoundationEnrollmentForPerson,
-  getFoundationActiveEnrollmentForPerson,
+  resolveFoundationEnrollmentForPerson,
   getFoundationLearningProgress,
+  getFoundationStudentHistory,
   getFoundationStudentHistoryForPerson,
   getFoundationStudyQuestions,
   getFoundationStudyBlocks,
@@ -839,16 +839,24 @@ function isFoundationStudyCollectivelyAvailable(study: { weekStart?: string | nu
   return Boolean(study.weekStart && study.weekStart <= today);
 }
 
-async function getFoundationStudentPath(userId: number, churchId: number, courseId: number) {
+async function getFoundationStudentPath(userId: number, churchId: number, courseId: number, enrollmentId?: number) {
   const access = await getFoundationStudyAccess(userId, churchId);
   if (!access.member.personId) return { access, enrollment: null, items: [] as any[] };
-  const enrollment = await getFoundationEnrollmentForPerson(courseId, access.member.personId, churchId);
+  const resolved = await resolveFoundationEnrollmentForPerson({
+    courseId,
+    personId: access.member.personId,
+    churchId,
+    ...(enrollmentId === undefined ? {} : { enrollmentId }),
+    context: "current",
+  });
+  const enrollment = resolved?.enrollment ?? null;
   if (!enrollment) return { access, enrollment: null, items: [] as any[] };
   const rows = await getFoundationLearningProgress(churchId, enrollment.id, courseId);
   const today = formatCivilDateValue(currentCivilDateAsUtcNoon());
   const items = rows.map((row, index) => ({
     study: row.study,
     progress: row.progress,
+    enrollmentId: enrollment.id,
     available: Boolean(row.progress?.status === "concluida") || isFoundationStudyCollectivelyAvailable(row.study, today) || (!row.study.weekStart && (index === 0 || Boolean(rows[index - 1]?.progress?.releasedAt))),
   }));
   return { access, enrollment, items };
@@ -857,13 +865,18 @@ async function getFoundationStudentPath(userId: number, churchId: number, course
 async function getFoundationCurrentStudentPath(userId: number, churchId: number) {
   const access = await getFoundationStudyAccess(userId, churchId);
   if (!access.member.personId) return { access, course: null, enrollment: null, items: [] as any[] };
-  const current = await getFoundationActiveEnrollmentForPerson(access.member.personId, churchId);
+  const current = await resolveFoundationEnrollmentForPerson({
+    personId: access.member.personId,
+    churchId,
+    context: "current",
+  });
   if (!current) return { access, course: null, enrollment: null, items: [] as any[] };
   const rows = await getFoundationLearningProgress(churchId, current.enrollment.id, current.course.id);
   const today = formatCivilDateValue(currentCivilDateAsUtcNoon());
   const items = rows.map((row, index) => ({
     study: row.study,
     progress: row.progress,
+    enrollmentId: current.enrollment.id,
     available: Boolean(row.progress?.status === "concluida") || isFoundationStudyCollectivelyAvailable(row.study, today) || (!row.study.weekStart && (index === 0 || Boolean(rows[index - 1]?.progress?.releasedAt))),
   }));
   return {
@@ -887,8 +900,8 @@ function publicFoundationQuestion(question: { id: number; blockId: number; promp
   };
 }
 
-async function requireFoundationStudentLesson(userId: number, churchId: number, courseId: number, studyId: number) {
-  const path = await getFoundationStudentPath(userId, churchId, courseId);
+async function requireFoundationStudentLesson(userId: number, churchId: number, courseId: number, studyId: number, enrollmentId?: number) {
+  const path = await getFoundationStudentPath(userId, churchId, courseId, enrollmentId);
   const item = path.items.find(candidate => candidate.study.id === studyId);
   if (!path.enrollment || !item)
     throw new TRPCError({
@@ -7860,9 +7873,40 @@ const escolaFundamentosRouter = router({
         availabilityMode: "coletiva" as const,
       };
     }),
-  studentHistory: tenantProcedure.input(z.object({ churchId: z.number().int().positive() })).query(async ({ input, ctx }) => {
+  studentHistory: tenantProcedure.input(z.object({
+    churchId: z.number().int().positive(),
+    enrollmentId: z.number().int().positive().optional(),
+  })).query(async ({ input, ctx }) => {
       const access = await getFoundationStudyAccess(ctx.user.id, input.churchId);
       if (!access.member.personId) return { course: null, items: [] };
+      if (input.enrollmentId !== undefined) {
+        const resolved = await resolveFoundationEnrollmentForPerson({
+          personId: access.member.personId,
+          churchId: input.churchId,
+          enrollmentId: input.enrollmentId,
+          context: "historical",
+        });
+        if (!resolved) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Histórico não encontrado para esta matrícula.",
+          });
+        }
+        const history = await getFoundationStudentHistory(
+          input.churchId,
+          resolved.enrollment.id,
+          resolved.enrollment.courseId,
+          formatCivilDateValue(currentCivilDateAsUtcNoon())
+        );
+        return {
+          course: { id: resolved.course.id, name: resolved.course.name },
+          items: history.map(item => ({
+            ...item,
+            course: { id: resolved.course.id, name: resolved.course.name },
+            enrollmentId: resolved.enrollment.id,
+          })),
+        };
+      }
       const items = await getFoundationStudentHistoryForPerson(input.churchId, access.member.personId, formatCivilDateValue(currentCivilDateAsUtcNoon()));
       return {
         course: items[0]?.course ?? null,
@@ -7875,10 +7919,11 @@ const escolaFundamentosRouter = router({
         churchId: z.number().int().positive(),
         courseId: z.number().int().positive(),
         studyId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive().optional(),
       })
     )
     .query(async ({ input, ctx }) => {
-      await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
       const rows = await getFoundationStudyQuestions(input.churchId, input.studyId);
       return rows.map(({ block, question }) => ({
         block: {
@@ -7896,10 +7941,11 @@ const escolaFundamentosRouter = router({
         churchId: z.number().int().positive(),
         courseId: z.number().int().positive(),
         studyId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive().optional(),
       })
     )
     .query(async ({ input, ctx }) => {
-      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
       const session = await getFoundationStudySession(input.churchId, enrollment.id, input.studyId);
       if (!session.study)
         throw new TRPCError({
@@ -7939,6 +7985,7 @@ const escolaFundamentosRouter = router({
       });
       const currentBlock = blocks.find(block => block.status === "atual") ?? blocks[blocks.length - 1] ?? null;
       return {
+        enrollmentId: enrollment.id,
         study: {
           id: session.study.id,
           title: session.study.title,
@@ -7961,14 +8008,15 @@ const escolaFundamentosRouter = router({
         churchId: z.number().int().positive(),
         courseId: z.number().int().positive(),
         studyId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive().optional(),
       })
     )
     .query(async ({ input, ctx }) => {
-      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
       const foundationClass = await getFoundationClassForStudy(input.churchId, input.studyId);
       if (!foundationClass) return null;
       const attendance = await getFoundationStudentAttendance(input.churchId, foundationClass.id, enrollment.id);
-      return { class: foundationClass, attendance };
+      return { enrollmentId: enrollment.id, class: foundationClass, attendance };
     }),
   answerQuestion: tenantProcedure
     .input(
@@ -7976,13 +8024,14 @@ const escolaFundamentosRouter = router({
         churchId: z.number().int().positive(),
         courseId: z.number().int().positive(),
         studyId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive().optional(),
         questionId: z.number().int().positive(),
         selectedOptionId: z.string().trim().min(1).max(80),
         clientAttemptId: z.string().trim().min(8).max(80).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
       const row = await getFoundationQuestionForAttempt(input.churchId, input.studyId, input.questionId);
       if (!row)
         throw new TRPCError({
@@ -8227,11 +8276,12 @@ const escolaFundamentosRouter = router({
         churchId: z.number().int().positive(),
         courseId: z.number().int().positive(),
         studyId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive().optional(),
         lastBlockPosition: z.number().int().min(0).max(999).default(0),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
       await touchFoundationLessonProgress({
         churchId: input.churchId,
         enrollmentId: enrollment.id,
@@ -8246,11 +8296,12 @@ const escolaFundamentosRouter = router({
         churchId: z.number().int().positive(),
         courseId: z.number().int().positive(),
         studyId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive().optional(),
         blockId: z.number().int().positive(),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
       const session = await getFoundationStudySession(input.churchId, enrollment.id, input.studyId);
       const block = session.blocks.find(item => item.id === input.blockId);
       if (!block)
@@ -8288,11 +8339,12 @@ const escolaFundamentosRouter = router({
         churchId: z.number().int().positive(),
         courseId: z.number().int().positive(),
         studyId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive().optional(),
         blockId: z.number().int().positive(),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
       const session = await getFoundationStudySession(input.churchId, enrollment.id, input.studyId);
       const block = session.blocks.find(item => item.id === input.blockId);
       if (!block)
@@ -8362,11 +8414,12 @@ const escolaFundamentosRouter = router({
         churchId: z.number().int().positive(),
         courseId: z.number().int().positive(),
         studyId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive().optional(),
         reflection: z.string().trim().max(4000).nullable(),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
       await saveFoundationLessonReflection({
         churchId: input.churchId,
         enrollmentId: enrollment.id,
@@ -8381,12 +8434,13 @@ const escolaFundamentosRouter = router({
         churchId: z.number().int().positive(),
         courseId: z.number().int().positive(),
         studyId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive().optional(),
         blockId: z.number().int().positive(),
         reflection: z.string().trim().max(4000).nullable(),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
       const session = await getFoundationStudySession(input.churchId, enrollment.id, input.studyId);
       const block = session.blocks.find(item => item.id === input.blockId);
       if (!block)
@@ -8409,12 +8463,13 @@ const escolaFundamentosRouter = router({
         churchId: z.number().int().positive(),
         courseId: z.number().int().positive(),
         studyId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive().optional(),
         lastBlockPosition: z.number().int().min(0).max(999).default(0),
         reflection: z.string().trim().max(4000).nullable().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId);
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
       if (!(await hasCompletedFoundationQuestions(input.churchId, enrollment.id, input.studyId)))
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
