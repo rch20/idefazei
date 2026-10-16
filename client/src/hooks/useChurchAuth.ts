@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { clearFoundationCreationLocalDatabase } from "@/lib/foundationCreationStorage";
 
 export type ChurchSessionUser = {
   id: number;
@@ -51,14 +52,18 @@ export function clearChurchSession() {
   } catch {
     // Sem sessão persistente disponível, o redirecionamento ao login permanece seguro.
   }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("idefazei:church-logout"));
+  }
+  return clearFoundationCreationLocalDatabase().catch(() => undefined);
 }
 
 /** Sessão própria da igreja, armazenada após churchAuth.login. */
 export function useChurchAuth() {
   const [user, setUser] = useState<ChurchSessionUser | null>(readChurchSession);
 
-  const logout = useCallback(() => {
-    clearChurchSession();
+  const logout = useCallback(async () => {
+    await clearChurchSession();
     setUser(null);
     // O caminho raiz preserva o host atual: tenant vai para sua página pública;
     // domínio comercial retorna à landing da Ide Fazei.

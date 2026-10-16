@@ -1,5 +1,6 @@
 import {
   boolean,
+  char,
   date,
   decimal,
   index,
@@ -1004,11 +1005,15 @@ export const foundationStudies = mysqlTable("foundation_studies", {
   position: int("position").notNull().default(0),
   active: boolean("active").notNull().default(true),
   createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  clientRequestId: varchar("clientRequestId", { length: 36 }),
+  requestHash: char("requestHash", { length: 64 }),
+  requestSchemaVersion: int("requestSchemaVersion"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [
   index("foundation_studies_church_course_position_idx").on(table.churchId, table.courseId, table.position),
   index("foundation_studies_church_module_position_idx").on(table.churchId, table.moduleId, table.position),
+  uniqueIndex("foundation_studies_church_author_request_unique").on(table.churchId, table.createdByChurchUserId, table.clientRequestId),
 ]);
 
 /** Etapas visuais de uma jornada de Fundamentos; cada módulo organiza estudos de uma turma. */
@@ -1128,10 +1133,14 @@ export const foundationQuestions = mysqlTable("foundation_questions", {
   position: int("position").notNull().default(0),
   active: boolean("active").notNull().default(true),
   createdByChurchUserId: int("createdByChurchUserId").notNull(),
+  clientRequestId: varchar("clientRequestId", { length: 36 }),
+  requestHash: char("requestHash", { length: 64 }),
+  requestSchemaVersion: int("requestSchemaVersion"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 }, (table) => [
   index("foundation_questions_church_block_position_idx").on(table.churchId, table.blockId, table.position),
+  uniqueIndex("foundation_questions_church_author_request_unique").on(table.churchId, table.createdByChurchUserId, table.clientRequestId),
 ]);
 
 /** Tentativas append-only de resposta, permitindo erro, explicação e nova tentativa. */

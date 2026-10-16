@@ -17,6 +17,14 @@ import { approvePublicDonation, createPublicDonation, getPublicDonationById, get
 import { currentCivilDateAsUtcNoon, formatCivilDateValue, normalizeCivilTime, parseCivilDateAsUtcNoon } from "./civilDate";
 import { FoundationImportError, parseFoundationWorkbook } from "./foundationImport";
 import { FOUNDATION_STUDY_TEMPLATE_BLOCKS } from "../shared/foundationStudyTemplate";
+import {
+  FOUNDATION_CREATION_MISSING_KEY_MESSAGE,
+  FOUNDATION_CREATION_PAYLOAD_MISMATCH_MESSAGE,
+  FOUNDATION_CREATION_SCHEMA_VERSION,
+  IDEMPOTENCY_PAYLOAD_MISMATCH_REASON,
+  foundationCreationClientRequestIdSchema,
+} from "../shared/foundationCreationContracts";
+import { FoundationCreationPayloadMismatchError } from "./foundationCreationIdempotency";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { ENV } from "./_core/env";
@@ -300,6 +308,7 @@ import {
   getFoundationModuleById,
   createFoundationStudy,
   createFoundationStudyWithBlocks,
+  createIdempotentFoundationStudy,
   createFoundationModule,
   updateFoundationStudy,
   updateFoundationModule,
@@ -326,6 +335,8 @@ import {
   getFoundationStudySession,
   createFoundationStudyBlock,
   createFoundationQuestion,
+  createIdempotentFoundationQuestion,
+  getFoundationCreationStatus,
   getFoundationQuestionForAttempt,
   getFoundationQuestionAttemptByClientId,
   countFoundationQuestionAttempts,
@@ -854,7 +865,7 @@ async function getFoundationStudentPath(userId: number, churchId: number, course
   const rows = await getFoundationLearningProgress(churchId, enrollment.id, courseId);
   const today = formatCivilDateValue(currentCivilDateAsUtcNoon());
   const items = rows.map((row, index) => ({
-    study: row.study,
+    study: publicFoundationStudy(row.study),
     progress: row.progress,
     enrollmentId: enrollment.id,
     available: Boolean(row.progress?.status === "concluida") || isFoundationStudyCollectivelyAvailable(row.study, today) || (!row.study.weekStart && (index === 0 || Boolean(rows[index - 1]?.progress?.releasedAt))),
@@ -874,7 +885,7 @@ async function getFoundationCurrentStudentPath(userId: number, churchId: number)
   const rows = await getFoundationLearningProgress(churchId, current.enrollment.id, current.course.id);
   const today = formatCivilDateValue(currentCivilDateAsUtcNoon());
   const items = rows.map((row, index) => ({
-    study: row.study,
+    study: publicFoundationStudy(row.study),
     progress: row.progress,
     enrollmentId: current.enrollment.id,
     available: Boolean(row.progress?.status === "concluida") || isFoundationStudyCollectivelyAvailable(row.study, today) || (!row.study.weekStart && (index === 0 || Boolean(rows[index - 1]?.progress?.releasedAt))),
@@ -885,6 +896,15 @@ async function getFoundationCurrentStudentPath(userId: number, churchId: number)
     enrollment: current.enrollment,
     items,
   };
+}
+
+function publicFoundationStudy<T extends object>(study: T) {
+  const { clientRequestId: _key, requestHash: _hash, requestSchemaVersion: _version, ...visible } = study as T & {
+    clientRequestId?: string | null;
+    requestHash?: string | null;
+    requestSchemaVersion?: number | null;
+  };
+  return visible;
 }
 
 type FoundationQuestionOption = { id: string; label: string };
@@ -7823,7 +7843,8 @@ const escolaFundamentosRouter = router({
           code: "NOT_FOUND",
           message: "Turma não encontrada nesta igreja.",
         });
-      return getFoundationStudiesByCourse(input.churchId, input.courseId, access.canManageStudies);
+      const studies = await getFoundationStudiesByCourse(input.churchId, input.courseId, access.canManageStudies);
+      return access.canManageStudies ? studies : studies.map(publicFoundationStudy);
     }),
   listModules: tenantProcedure
     .input(
@@ -7902,6 +7923,7 @@ const escolaFundamentosRouter = router({
           course: { id: resolved.course.id, name: resolved.course.name },
           items: history.map(item => ({
             ...item,
+            study: publicFoundationStudy(item.study),
             course: { id: resolved.course.id, name: resolved.course.name },
             enrollmentId: resolved.enrollment.id,
           })),
@@ -7910,7 +7932,7 @@ const escolaFundamentosRouter = router({
       const items = await getFoundationStudentHistoryForPerson(input.churchId, access.member.personId, formatCivilDateValue(currentCivilDateAsUtcNoon()));
       return {
         course: items[0]?.course ?? null,
-        items,
+        items: items.map(item => ({ ...item, study: publicFoundationStudy(item.study) })),
       };
     }),
   studyQuestions: tenantProcedure
@@ -8245,10 +8267,17 @@ const escolaFundamentosRouter = router({
           .max(6),
         correctOptionId: z.string().trim().min(1).max(80),
         explanation: z.string().trim().min(1).max(4000),
+        clientRequestId: z.string().optional().refine(value => value === undefined || foundationCreationClientRequestIdSchema.safeParse(value).success, "clientRequestId deve ser um UUID válido em minúsculas."),
+        requestSchemaVersion: z.literal(FOUNDATION_CREATION_SCHEMA_VERSION).default(FOUNDATION_CREATION_SCHEMA_VERSION),
       })
     )
     .mutation(async ({ input, ctx }) => {
       const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      if (!input.clientRequestId)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: FOUNDATION_CREATION_MISSING_KEY_MESSAGE,
+        });
       if (!(await getFoundationStudyById(input.studyId, input.churchId)))
         throw new TRPCError({
           code: "NOT_FOUND",
@@ -8264,11 +8293,23 @@ const escolaFundamentosRouter = router({
           code: "BAD_REQUEST",
           message: "A resposta correta precisa ser uma das alternativas.",
         });
-      const id = await createFoundationQuestion({
-        ...input,
-        createdByChurchUserId: access.member.id,
-      });
-      return { id };
+      try {
+        const result = await createIdempotentFoundationQuestion({
+          ...input,
+          clientRequestId: input.clientRequestId,
+          requestSchemaVersion: input.requestSchemaVersion,
+          createdByChurchUserId: access.member.id,
+        });
+        return result;
+      } catch (error) {
+        if (error instanceof FoundationCreationPayloadMismatchError)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: FOUNDATION_CREATION_PAYLOAD_MISMATCH_MESSAGE,
+            cause: { reason: IDEMPOTENCY_PAYLOAD_MISMATCH_REASON },
+          });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível confirmar a criação. Verifique o salvamento antes de repetir." });
+      }
     }),
   startLesson: tenantProcedure
     .input(
@@ -8921,6 +8962,20 @@ const escolaFundamentosRouter = router({
       await detachFoundationStudyMaterial(input);
       return { success: true };
     }),
+  getCreationStatus: tenantProcedure
+    .input(z.object({
+      churchId: z.number().int().positive(),
+      operation: z.enum(["study", "question"]),
+      clientRequestId: foundationCreationClientRequestIdSchema,
+    }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      try {
+        return await getFoundationCreationStatus({ ...input, createdByChurchUserId: access.member.id });
+      } catch {
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível consultar o salvamento neste momento." });
+      }
+    }),
   createStudy: tenantProcedure
     .input(
       z.object({
@@ -8933,10 +8988,14 @@ const escolaFundamentosRouter = router({
         content: z.string().trim().max(12000).optional(),
         template: z.enum(["blank", "biblico"]).default("blank"),
       position: z.number().int().min(0).max(999).optional(),
+        clientRequestId: foundationCreationClientRequestIdSchema.optional(),
+        requestSchemaVersion: z.literal(FOUNDATION_CREATION_SCHEMA_VERSION).default(FOUNDATION_CREATION_SCHEMA_VERSION),
       })
     )
     .mutation(async ({ input, ctx }) => {
       const access = await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      if (!input.clientRequestId)
+        throw new TRPCError({ code: "BAD_REQUEST", message: FOUNDATION_CREATION_MISSING_KEY_MESSAGE });
       if (!input.weekStart)
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -8957,24 +9016,22 @@ const escolaFundamentosRouter = router({
             message: "Módulo não encontrado nesta turma.",
           });
       }
-      const existing = await getFoundationStudiesByCourse(input.churchId, input.courseId, true);
-      const { template, ...studyInput } = input;
-      const study =
-        template === "biblico"
-          ? await createFoundationStudyWithBlocks(
-              {
-                ...studyInput,
-                position: input.position ?? existing.length,
-                createdByChurchUserId: access.member.id,
-              },
-              FOUNDATION_STUDY_TEMPLATE_BLOCKS
-            )
-          : await createFoundationStudy({
-              ...studyInput,
-              position: input.position ?? existing.length,
-              createdByChurchUserId: access.member.id,
-            });
-      return { success: true, studyId: study.id };
+      try {
+        const study = await createIdempotentFoundationStudy({
+          ...input,
+          clientRequestId: input.clientRequestId,
+          createdByChurchUserId: access.member.id,
+        });
+        return { success: true, studyId: study.id, replayed: study.replayed };
+      } catch (error) {
+        if (error instanceof FoundationCreationPayloadMismatchError)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: FOUNDATION_CREATION_PAYLOAD_MISMATCH_MESSAGE,
+            cause: { reason: IDEMPOTENCY_PAYLOAD_MISMATCH_REASON },
+          });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível confirmar a criação. Verifique o salvamento antes de repetir." });
+      }
     }),
   updateStudy: tenantProcedure
     .input(

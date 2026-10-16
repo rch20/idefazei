@@ -264,6 +264,7 @@ vi.mock("./db", () => ({
   getFoundationModuleById: vi.fn().mockResolvedValue({ id: 71, churchId: 100, courseId: 55, title: "Alicerces" }),
   createFoundationStudy: vi.fn().mockResolvedValue({ id: 90 }),
   createFoundationStudyWithBlocks: vi.fn().mockResolvedValue({ id: 90 }),
+  createIdempotentFoundationStudy: vi.fn().mockResolvedValue({ id: 90, replayed: false }),
   createFoundationModule: vi.fn().mockResolvedValue({ id: 71 }),
   updateFoundationStudy: vi.fn().mockResolvedValue(undefined),
   updateFoundationModule: vi.fn().mockResolvedValue(undefined),
@@ -2473,19 +2474,19 @@ describe("Fluxo completo de discipulado", () => {
 
   describe("Escola de Fundamentos — estudos e administradores", () => {
     it("permite que o Pastor crie um estudo na turma da própria igreja", async () => {
-      const { createFoundationStudy } = await import("./db");
+      const { createIdempotentFoundationStudy } = await import("./db");
       const caller = appRouter.createCaller(createMemberContext());
 
-      await expect(caller.escolaFundamentos.createStudy({
+      await expect(caller.escolaFundamentos.createStudy({ clientRequestId: "b26ef6b2-6151-4208-a9c7-2c733b7f2b26",
         churchId: CHURCH_ID,
         courseId: 55,
         weekStart: "2026-09-20",
         title: "A graça e a salvação",
         summary: "Compreender a salvação pela graça.",
         content: "Efésios 2:8-9",
-      })).resolves.toEqual({ success: true, studyId: 90 });
+      })).resolves.toEqual({ success: true, studyId: 90, replayed: false });
 
-      expect(createFoundationStudy).toHaveBeenCalledWith(expect.objectContaining({
+      expect(createIdempotentFoundationStudy).toHaveBeenCalledWith(expect.objectContaining({
         churchId: CHURCH_ID,
         courseId: 55,
         createdByChurchUserId: 1,
@@ -2493,23 +2494,26 @@ describe("Fluxo completo de discipulado", () => {
     });
 
     it("cria o estudo com o modelo bíblico e seus blocos na mesma operação", async () => {
-      const { createFoundationStudy, createFoundationStudyWithBlocks } = await import("./db");
+      const { createIdempotentFoundationStudy, createFoundationStudy, createFoundationStudyWithBlocks } = await import("./db");
       const caller = appRouter.createCaller(createMemberContext());
 
-      await expect(caller.escolaFundamentos.createStudy({
+      await expect(caller.escolaFundamentos.createStudy({ clientRequestId: "b26ef6b2-6151-4208-a9c7-2c733b7f2b26",
         churchId: CHURCH_ID,
         courseId: 55,
         weekStart: "2026-09-27",
         title: "Palavras que constroem",
         template: "biblico",
-      })).resolves.toEqual({ success: true, studyId: 90 });
+      })).resolves.toEqual({ success: true, studyId: 90, replayed: false });
 
-      expect(createFoundationStudyWithBlocks).toHaveBeenCalledWith(expect.objectContaining({
+      expect(createIdempotentFoundationStudy).toHaveBeenCalledWith(expect.objectContaining({
         churchId: CHURCH_ID,
         courseId: 55,
         createdByChurchUserId: 1,
-      }), FOUNDATION_STUDY_TEMPLATE_BLOCKS);
+        template: "biblico",
+      }));
+      expect(createIdempotentFoundationStudy).toHaveBeenCalledTimes(1);
       expect(createFoundationStudy).not.toHaveBeenCalled();
+      expect(createFoundationStudyWithBlocks).not.toHaveBeenCalled();
     });
 
     it("permite que o Pastor crie um módulo para organizar a trilha da própria turma", async () => {
@@ -2521,31 +2525,31 @@ describe("Fluxo completo de discipulado", () => {
     });
 
     it("bloqueia a associação de um estudo a módulo de outra turma", async () => {
-      const { getFoundationModuleById, createFoundationStudy } = await import("./db");
+      const { getFoundationModuleById, createIdempotentFoundationStudy } = await import("./db");
       (getFoundationModuleById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 72, churchId: CHURCH_ID, courseId: 999, title: "Outra turma" });
       const caller = appRouter.createCaller(createMemberContext());
 
-      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, moduleId: 72, weekStart: "2026-09-20", title: "Estudo inválido" })).rejects.toThrow("Módulo não encontrado nesta turma");
-      expect(createFoundationStudy).not.toHaveBeenCalled();
+      await expect(caller.escolaFundamentos.createStudy({ clientRequestId: "b26ef6b2-6151-4208-a9c7-2c733b7f2b26", churchId: CHURCH_ID, courseId: 55, moduleId: 72, weekStart: "2026-09-20", title: "Estudo inválido" })).rejects.toThrow("Módulo não encontrado nesta turma");
+      expect(createIdempotentFoundationStudy).not.toHaveBeenCalled();
     });
 
     it("permite que uma conta designada pelo Pastor gerencie estudos", async () => {
-      const { getActiveChurchUserById, isFoundationStudyAdministrator, createFoundationStudy } = await import("./db");
+      const { getActiveChurchUserById, isFoundationStudyAdministrator, createIdempotentFoundationStudy } = await import("./db");
       (getActiveChurchUserById as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 88, churchId: CHURCH_ID, personId: 20, role: "membro", active: true });
       (isFoundationStudyAdministrator as ReturnType<typeof vi.fn>).mockResolvedValueOnce(true);
       const caller = appRouter.createCaller(createMemberContext(-88));
 
-      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, weekStart: "2026-09-20", title: "Vida de oração" })).resolves.toEqual({ success: true, studyId: 90 });
-      expect(createFoundationStudy).toHaveBeenCalledWith(expect.objectContaining({ createdByChurchUserId: 88 }));
+      await expect(caller.escolaFundamentos.createStudy({ clientRequestId: "b26ef6b2-6151-4208-a9c7-2c733b7f2b26", churchId: CHURCH_ID, courseId: 55, weekStart: "2026-09-20", title: "Vida de oração" })).resolves.toEqual({ success: true, studyId: 90, replayed: false });
+      expect(createIdempotentFoundationStudy).toHaveBeenCalledWith(expect.objectContaining({ createdByChurchUserId: 88 }));
     });
 
     it("bloqueia a criação de estudos por membro não designado", async () => {
-      const { getChurchMemberByUserId, createFoundationStudy } = await import("./db");
+      const { getChurchMemberByUserId, createIdempotentFoundationStudy } = await import("./db");
       (getChurchMemberByUserId as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ id: 3, userId: 10, churchId: CHURCH_ID, role: "membro", active: true });
       const caller = appRouter.createCaller(createMemberContext());
 
-      await expect(caller.escolaFundamentos.createStudy({ churchId: CHURCH_ID, courseId: 55, weekStart: "2026-09-20", title: "Estudo sem autorização" })).rejects.toThrow("gestão de estudos é restrita");
-      expect(createFoundationStudy).not.toHaveBeenCalled();
+      await expect(caller.escolaFundamentos.createStudy({ clientRequestId: "b26ef6b2-6151-4208-a9c7-2c733b7f2b26", churchId: CHURCH_ID, courseId: 55, weekStart: "2026-09-20", title: "Estudo sem autorização" })).rejects.toThrow("gestão de estudos é restrita");
+      expect(createIdempotentFoundationStudy).not.toHaveBeenCalled();
     });
 
     it("mantém a definição de administradores restrita à administração autorizada", async () => {

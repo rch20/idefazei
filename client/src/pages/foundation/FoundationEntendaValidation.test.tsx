@@ -10,6 +10,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FoundationStudyEditor } from "./FoundationStudyEditor";
+import {
+  createMemoryFoundationCreationStorage,
+  setFoundationCreationStorageAdapter,
+} from "./foundationCreationOutbox";
 
 type Callbacks = { onSuccess?: (data: any) => void; onError?: () => void };
 const fixture = vi.hoisted(() => ({
@@ -23,6 +27,8 @@ const fixture = vi.hoisted(() => ({
   studyCallbacks: {} as Callbacks,
   createCallbacks: {} as Callbacks,
   invalidate: vi.fn().mockResolvedValue(undefined),
+  creationStatus: vi.fn(),
+  studyFetch: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
 }));
@@ -51,9 +57,10 @@ vi.mock("@/lib/trpc", () => {
     trpc: {
       useUtils: () => ({
         escolaFundamentos: {
-          listStudies: invalidate,
+          listStudies: { ...invalidate, fetch: fixture.studyFetch },
           listModules: invalidate,
           listQuestionBlocks: invalidate,
+          getCreationStatus: { fetch: fixture.creationStatus },
         },
       }),
       escolaFundamentos: {
@@ -77,6 +84,7 @@ vi.mock("@/lib/trpc", () => {
   };
 });
 const props = {
+  creationAccountId: 42,
   open: true,
   study: {
     id: 77,
@@ -127,6 +135,11 @@ function confirmPart() {
   );
 }
 beforeEach(() => {
+  setFoundationCreationStorageAdapter(createMemoryFoundationCreationStorage());
+  fixture.creationStatus.mockResolvedValue({ status: "not_found" });
+  fixture.studyFetch.mockResolvedValue([
+    { ...props.study, id: 78, title: "Título atual confirmado" },
+  ]);
   fixture.parts = ["Leia", "Entenda — A graça", "Responda", "Aplique"].map(
     (title, position) => ({
       id: 81 + position,
@@ -373,8 +386,10 @@ describe("Fase 3 — Entenda e confirmação de salvamento, com API simulada", (
     expect(
       screen.getByRole("heading", { level: 2, name: "Informações" })
     ).toBeTruthy();
-    expect(fixture.createStudy).toHaveBeenCalledTimes(1);
-    act(() => fixture.createCallbacks.onSuccess?.({ studyId: 78 }));
+    await waitFor(() => expect(fixture.createStudy).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      fixture.createCallbacks.onSuccess?.({ studyId: 78, replayed: false });
+    });
     expect(
       screen.getByRole("heading", { level: 2, name: "Leia" })
     ).toBeTruthy();
@@ -417,5 +432,89 @@ describe("Fase 3 — Entenda e confirmação de salvamento, com API simulada", (
       "Salve as etapas alteradas antes de publicar."
     );
     expect(fixture.updateStudy).not.toHaveBeenCalled();
+  });
+});
+
+describe("idempotência de estudo no editor — API e armazenamento simulados", () => {
+  async function start() {
+    const view = render(<FoundationStudyEditor {...props} study={null} />);
+    fireEvent.change(screen.getByLabelText("Título do estudo"), {
+      target: { value: "Criação sintética pendente" },
+    });
+    fireEvent.change(screen.getByLabelText("Início da semana"), {
+      target: { value: "2026-10-19" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar e continuar" }));
+    await waitFor(() => expect(fixture.createStudy).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      fixture.createCallbacks.onError?.();
+    });
+    return view;
+  }
+  it("reenvia a mesma chave e o mesmo snapshot, sem avanço na falha", async () => {
+    await start();
+    const original = fixture.createStudy.mock.calls[0][0];
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Informações" })
+    ).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Título do estudo") as HTMLInputElement).matches(
+        ":disabled"
+      )
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Salvar e continuar" }));
+    await waitFor(() => expect(fixture.createStudy).toHaveBeenCalledTimes(2));
+    expect(fixture.createStudy.mock.calls[1][0]).toEqual(original);
+    expect(original).toMatchObject({
+      clientRequestId: expect.stringMatching(/^[a-f0-9-]{36}$/),
+      requestSchemaVersion: 1,
+    });
+  });
+  it("reabre o estudo incerto com seu título e UUID originais", async () => {
+    const view = await start();
+    const original = fixture.createStudy.mock.calls[0][0];
+    view.unmount();
+    render(<FoundationStudyEditor {...props} study={null} />);
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Título do estudo") as HTMLInputElement).value
+      ).toBe(original.title)
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Salvar e continuar" }));
+    await waitFor(() => expect(fixture.createStudy).toHaveBeenCalledTimes(2));
+    expect(fixture.createStudy.mock.calls[1][0]).toEqual(original);
+  });
+  it("Verificar salvamento recupera o conteúdo atual por ID sem reenviar a criação", async () => {
+    await start();
+    fixture.creationStatus.mockResolvedValue({ status: "confirmed", id: 78 });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Verificar salvamento" })
+    );
+    await waitFor(() =>
+      expect(
+        (screen.getByLabelText("Título do estudo") as HTMLInputElement).value
+      ).toBe("Título atual confirmado")
+    );
+    expect(fixture.createStudy).toHaveBeenCalledTimes(1);
+    expect(fixture.studyFetch).toHaveBeenCalledWith({
+      churchId: 101,
+      courseId: 11,
+    });
+    expect(screen.getByText("Rascunho", { exact: true })).toBeTruthy();
+  });
+  it("not_found mantém a UUID e não cria outro estudo", async () => {
+    await start();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Verificar salvamento" })
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain(
+        "não foi localizado"
+      )
+    );
+    expect(fixture.createStudy).toHaveBeenCalledTimes(1);
+    expect(
+      (screen.getByLabelText("Título do estudo") as HTMLInputElement).value
+    ).toBe("Criação sintética pendente");
   });
 });

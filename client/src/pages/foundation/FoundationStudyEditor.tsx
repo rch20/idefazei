@@ -46,6 +46,22 @@ import {
   validateStudyPartSave,
   type StudyPartSavePayload,
 } from "./studyPartSaveConfirmation";
+import {
+  beginFoundationCreation,
+  confirmAndClearFoundationCreation,
+  fetchFoundationCreationStatus,
+  findFoundationCreation,
+  foundationCreationDiscriminator,
+  foundationCreationErrorMessage,
+  foundationCreationRequest,
+  FOUNDATION_CREATION_AUTH_ERROR_MESSAGE,
+  FOUNDATION_CREATION_CONFLICT_MESSAGE,
+  isFoundationCreationConflict,
+  updateFoundationCreation,
+  useFoundationCreationScope,
+  type FoundationCreationRecord,
+  type FoundationStudyCreationSnapshot,
+} from "./foundationCreationOutbox";
 
 type FoundationCourse = {
   id: number;
@@ -385,6 +401,7 @@ export function FoundationStudyEditor({
   secondaryColor,
   onOpenChange,
   onSaved,
+  creationAccountId,
 }: {
   open: boolean;
   study: FoundationStudy | null;
@@ -395,8 +412,11 @@ export function FoundationStudyEditor({
   secondaryColor: string;
   onOpenChange: (open: boolean) => void;
   onSaved: () => void;
+  /** Harnesses may provide a known account identity; production uses the auth hook. */
+  creationAccountId?: number;
 }) {
   const utils = trpc.useUtils();
+  const creationScope = useFoundationCreationScope(churchId, creationAccountId);
   const [stageKey, setStageKey] = useState<EditorStageKey>("info");
   const [mobileStepsOpen, setMobileStepsOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -430,6 +450,7 @@ export function FoundationStudyEditor({
   const [completedStages, setCompletedStages] = useState<Set<EditorStageKey>>(
     new Set()
   );
+  const creationRecord = useRef<FoundationCreationRecord | null>(null);
 
   const { data: loadedParts = EMPTY_PARTS, isLoading: partsLoading } =
     trpc.escolaFundamentos.listQuestionBlocks.useQuery(
@@ -490,10 +511,89 @@ export function FoundationStudyEditor({
     setCompletedStages(new Set());
   };
 
+  const hydrateRecoveredStudy = async (
+    record: FoundationCreationRecord,
+    id: number
+  ) => {
+    const snapshot = record.snapshot as FoundationStudyCreationSnapshot;
+    const input = { churchId, courseId: snapshot.courseId };
+    await utils.escolaFundamentos.listStudies.invalidate(input);
+    const rows = await utils.escolaFundamentos.listStudies.fetch(input);
+    const current = rows.find(row => row.id === id);
+    if (!current)
+      throw new Error("O estudo confirmado ainda não pôde ser consultado.");
+    setCourseId(String(current.courseId));
+    setModuleId(current.moduleId == null ? "none" : String(current.moduleId));
+    setTitle(current.title);
+    setWeekStart(current.weekStart ?? "");
+    setSummary(current.summary ?? "");
+    setContent(current.content ?? "");
+    setPublished(current.active);
+  };
+
   useEffect(() => {
     if (!open) return;
     resetFromStudy(study);
   }, [open, study?.id]);
+
+  useEffect(() => {
+    if (!open || study || !creationScope) return;
+    let active = true;
+    void findFoundationCreation(
+      creationScope,
+      "study",
+      foundationCreationDiscriminator("study")
+    )
+      .then(record => {
+        if (!active || !record) return;
+        creationRecord.current = record;
+        if (record.state === "confirmed" && record.confirmedId) {
+          void hydrateRecoveredStudy(record, record.confirmedId)
+            .then(() => {
+              if (!active) return;
+              setStudyId(record.confirmedId!);
+              setSaveFeedback({
+                status: "success",
+                message: "Salvamento confirmado e conteúdo atual recuperado.",
+              });
+            })
+            .catch(error => {
+              if (active)
+                setSaveFeedback({
+                  status: "error",
+                  message: foundationCreationErrorMessage(error),
+                });
+            });
+          return;
+        }
+        const snapshot = record.snapshot as FoundationStudyCreationSnapshot;
+        setCourseId(String(snapshot.courseId));
+        setModuleId(
+          snapshot.moduleId == null ? "none" : String(snapshot.moduleId)
+        );
+        setTitle(snapshot.title);
+        setWeekStart(snapshot.weekStart);
+        setSummary(snapshot.summary ?? "");
+        setContent(snapshot.content ?? "");
+        setSaveFeedback({
+          status: "error",
+          message:
+            record.state === "conflict"
+              ? FOUNDATION_CREATION_CONFLICT_MESSAGE
+              : "Há uma tentativa de criação pendente. Verifique o salvamento ou repita a mesma tentativa.",
+        });
+      })
+      .catch(error => {
+        if (active)
+          setSaveFeedback({
+            status: "error",
+            message: foundationCreationErrorMessage(error),
+          });
+      });
+    return () => {
+      active = false;
+    };
+  }, [creationScope?.accountId, creationScope?.churchId, open, study]);
 
   useEffect(() => {
     if (!open) return;
@@ -561,11 +661,45 @@ export function FoundationStudyEditor({
         failSave({ data: { code: "SAVE_CONFIRMATION_MISMATCH" } });
         return;
       }
-      setStudyId(createdId);
-      confirmSave("Rascunho salvo.");
-      refreshLists();
+      const record = creationRecord.current;
+      void (async () => {
+        if (record && data.replayed) {
+          creationRecord.current = await updateFoundationCreation(
+            record,
+            "confirmed",
+            createdId
+          );
+          await hydrateRecoveredStudy(record, createdId);
+        }
+        if (record)
+          await confirmAndClearFoundationCreation(record, createdId).catch(
+            () => undefined
+          );
+        setStudyId(createdId);
+        confirmSave(
+          (data as { replayed?: boolean }).replayed
+            ? "Rascunho recuperado."
+            : "Rascunho salvo."
+        );
+        refreshLists();
+      })().catch(error =>
+        failSave({ message: foundationCreationErrorMessage(error) })
+      );
     },
-    onError: failSave,
+    onError: error => {
+      const record = creationRecord.current;
+      if (record) {
+        void updateFoundationCreation(
+          record,
+          isFoundationCreationConflict(error) ? "conflict" : "unknown"
+        )
+          .then(next => {
+            creationRecord.current = next;
+          })
+          .catch(() => undefined);
+      }
+      failSave({ message: foundationCreationErrorMessage(error) });
+    },
   });
   const updateStudy = trpc.escolaFundamentos.updateStudy.useMutation({
     onSuccess: () => {
@@ -619,25 +753,103 @@ export function FoundationStudyEditor({
       return toast.error("Informe um título com ao menos 3 caracteres.");
     if (!weekStart) return toast.error("Informe o início da semana.");
     if (!beginSave(advance)) return;
-    const payload = {
+    const payload: FoundationStudyCreationSnapshot = {
       churchId,
+      courseId: Number(courseId),
       moduleId: moduleId === "none" ? null : Number(moduleId),
       weekStart,
       title,
       summary: summary || null,
       content: content || null,
+      template: "biblico",
     };
     if (!studyId) {
-      createStudy.mutate({
-        ...payload,
-        courseId: Number(courseId),
-        summary: summary || undefined,
-        content: content || undefined,
-        template: "biblico",
-      });
+      if (!creationScope) {
+        return failSave({ message: FOUNDATION_CREATION_AUTH_ERROR_MESSAGE });
+      }
+      void beginFoundationCreation(
+        creationScope,
+        "study",
+        foundationCreationDiscriminator("study"),
+        {
+          ...payload,
+          summary: summary || undefined,
+          content: content || undefined,
+        }
+      )
+        .then(record => {
+          creationRecord.current = record;
+          createStudy.mutate(foundationCreationRequest(record) as never);
+        })
+        .catch(error =>
+          failSave({ message: foundationCreationErrorMessage(error) })
+        );
     } else {
       updateStudy.mutate({ id: studyId, ...payload });
     }
+  };
+
+  const verifyStudyCreation = () => {
+    if (!creationScope) {
+      setSaveFeedback({
+        status: "error",
+        message: FOUNDATION_CREATION_AUTH_ERROR_MESSAGE,
+      });
+      return;
+    }
+    void (async () => {
+      const record =
+        creationRecord.current ??
+        (await findFoundationCreation(
+          creationScope,
+          "study",
+          foundationCreationDiscriminator("study")
+        ));
+      if (!record) {
+        setSaveFeedback({
+          status: "error",
+          message:
+            "Nenhuma tentativa pendente foi encontrada; não foi criada uma nova chave.",
+        });
+        return;
+      }
+      creationRecord.current = record;
+      try {
+        const status = await fetchFoundationCreationStatus(utils, {
+          churchId,
+          operation: "study",
+          clientRequestId: record.clientRequestId,
+        });
+        if (status.status !== "confirmed" || status.id <= 0) {
+          await updateFoundationCreation(record, "unknown");
+          setSaveFeedback({
+            status: "error",
+            message:
+              "O salvamento ainda não foi localizado. Não gere outra chave; tente verificar novamente.",
+          });
+          return;
+        }
+        creationRecord.current = await updateFoundationCreation(
+          record,
+          "confirmed",
+          status.id
+        );
+        await hydrateRecoveredStudy(record, status.id);
+        await confirmAndClearFoundationCreation(record, status.id);
+        setStudyId(status.id);
+        setSaveFeedback({
+          status: "success",
+          message:
+            "Salvamento confirmado. Revise os dados atuais antes de atualizar o estudo.",
+        });
+        refreshLists();
+      } catch (error) {
+        setSaveFeedback({
+          status: "error",
+          message: foundationCreationErrorMessage(error),
+        });
+      }
+    })();
   };
 
   const saveCurrentPart = (advance: boolean) => {
@@ -918,7 +1130,14 @@ export function FoundationStudyEditor({
                 </p>
               </div>
               <fieldset
-                disabled={isPending}
+                disabled={
+                  isPending ||
+                  Boolean(
+                    !studyId &&
+                      creationRecord.current &&
+                      saveFeedback.status === "error"
+                  )
+                }
                 className="min-w-0 space-y-5 p-4 sm:p-6"
               >
                 {stageKey === "info" ? (
@@ -1219,6 +1438,7 @@ export function FoundationStudyEditor({
                             )}
                             <StudyQuestionEditor
                               inline
+                              creationAccountId={creationAccountId}
                               churchId={churchId}
                               studyId={studyId ?? 0}
                               part={selectedPart}
@@ -1308,6 +1528,28 @@ export function FoundationStudyEditor({
             >
               {saveFeedback.message}
             </p>
+          ) : null}
+          {creationRecord.current &&
+          !studyId &&
+          saveFeedback.status === "error" ? (
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending}
+                onClick={verifyStudyCreation}
+              >
+                Verificar salvamento
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending}
+                onClick={saveDraft}
+              >
+                Repetir mesma tentativa
+              </Button>
+            </div>
           ) : null}
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex gap-2">

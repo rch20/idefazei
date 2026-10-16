@@ -150,6 +150,12 @@
       "file": "drizzle/0095_foundation_stage_reflections.sql",
       "kind": "custom-additive",
       "sha256": "e15de939d4b511882f5094e155a2bd32e9905ec5740b8f0903f79b3b5b3a8479"
+    },
+    {
+      "id": "0096",
+      "file": "drizzle/0096_foundation_creation_idempotency.sql",
+      "kind": "custom-additive",
+      "sha256": "f23d04af8fde76ae385b108e019600e84002edeaeae4f2ad01cc344e693bec85"
     }
   ]
 }

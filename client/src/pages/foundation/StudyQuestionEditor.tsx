@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,22 @@ import {
   validateStudyQuestionDraft,
   type StudyQuestionDraft,
 } from "./studyQuestionDraft";
+import {
+  beginFoundationCreation,
+  confirmAndClearFoundationCreation,
+  fetchFoundationCreationStatus,
+  findFoundationCreation,
+  foundationCreationDiscriminator,
+  foundationCreationErrorMessage,
+  foundationCreationRequest,
+  FOUNDATION_CREATION_AUTH_ERROR_MESSAGE,
+  FOUNDATION_CREATION_CONFLICT_MESSAGE,
+  isFoundationCreationConflict,
+  updateFoundationCreation,
+  useFoundationCreationScope,
+  type FoundationCreationRecord,
+  type FoundationQuestionCreationSnapshot,
+} from "./foundationCreationOutbox";
 
 export type ConfirmedStudyQuestion = {
   block: { id: number };
@@ -50,6 +66,7 @@ export function StudyQuestionEditor({
   onBusyChange,
   inline = false,
   primaryColor = "#1e3a5f",
+  creationAccountId,
 }: {
   churchId: number;
   studyId: number;
@@ -60,8 +77,11 @@ export function StudyQuestionEditor({
   onBusyChange?: (busy: boolean) => void;
   inline?: boolean;
   primaryColor?: string;
+  /** Harnesses may provide a known account identity; never defaults globally. */
+  creationAccountId?: number;
 }) {
   const utils = trpc.useUtils();
+  const creationScope = useFoundationCreationScope(churchId, creationAccountId);
   const [draft, setDraft] = useState<StudyQuestionDraft>(initialDraft);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -70,6 +90,7 @@ export function StudyQuestionEditor({
     blockId: number;
     draft: StudyQuestionDraft;
   } | null>(null);
+  const creationRecord = useRef<FoundationCreationRecord | null>(null);
   const finish = () => {
     pending.current = false;
     setSaving(false);
@@ -79,6 +100,78 @@ export function StudyQuestionEditor({
     setDraft(initialDraft());
     setError(null);
     submitted.current = null;
+    creationRecord.current = null;
+  };
+
+  useEffect(() => {
+    if (!open || !part || !studyId || !creationScope) return;
+    let active = true;
+    void findFoundationCreation(
+      creationScope,
+      "question",
+      foundationCreationDiscriminator("question", {
+        studyId,
+        blockId: part.id,
+      })
+    )
+      .then(record => {
+        if (!active || !record) return;
+        creationRecord.current = record;
+        const snapshot = record.snapshot as FoundationQuestionCreationSnapshot;
+        setDraft({
+          prompt: snapshot.prompt,
+          options: snapshot.options.map(option => ({ ...option })),
+          correctOptionId: snapshot.correctOptionId,
+          explanation: snapshot.explanation,
+        });
+        setError(
+          record.state === "conflict"
+            ? FOUNDATION_CREATION_CONFLICT_MESSAGE
+            : "Há uma tentativa de pergunta pendente. Verifique o salvamento ou repita a mesma tentativa."
+        );
+      })
+      .catch(error => {
+        if (active) setError(foundationCreationErrorMessage(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [
+    creationScope?.accountId,
+    creationScope?.churchId,
+    open,
+    part?.id,
+    studyId,
+  ]);
+
+  const revalidateConfirmedQuestion = async (id: number) => {
+    const query = (
+      utils.escolaFundamentos as unknown as {
+        manageStudyQuestions?: {
+          fetch?: (input: {
+            churchId: number;
+            studyId: number;
+          }) => Promise<unknown>;
+          invalidate?: (input: {
+            churchId: number;
+            studyId: number;
+          }) => Promise<unknown>;
+        };
+      }
+    ).manageStudyQuestions;
+    let rows: unknown;
+    if (query?.fetch) {
+      await query.invalidate?.({ churchId, studyId });
+      rows = await query.fetch({ churchId, studyId });
+    } else if (query?.invalidate) {
+      await query.invalidate({ churchId, studyId });
+    }
+    if (!Array.isArray(rows)) return;
+    const row = rows.find(candidate => {
+      const item = candidate as { question?: { id?: unknown } };
+      return item.question?.id === id;
+    }) as ConfirmedStudyQuestion | undefined;
+    if (row) onCreated?.(row);
   };
   const createQuestion = trpc.escolaFundamentos.createStudyQuestion.useMutation(
     {
@@ -92,29 +185,48 @@ export function StudyQuestionEditor({
           );
           return;
         }
-        onCreated?.({
-          block: { id: attempt.blockId },
-          question: { ...attempt.draft, id: data.id },
+        const confirmedId = data.id;
+        const record = creationRecord.current;
+        void (
+          record
+            ? confirmAndClearFoundationCreation(record, confirmedId).catch(
+                () => undefined
+              )
+            : Promise.resolve()
+        ).then(async () => {
+          if (data.replayed) {
+            await revalidateConfirmedQuestion(confirmedId).catch(
+              () => undefined
+            );
+          } else {
+            onCreated?.({
+              block: { id: attempt.blockId },
+              question: { ...attempt.draft, id: confirmedId },
+            });
+            void utils.escolaFundamentos.manageStudyQuestions
+              .invalidate({ churchId, studyId })
+              .catch(() => undefined);
+          }
+          finish();
+          reset();
+          onOpenChange(false);
+          toast.success("Pergunta criada nesta etapa.");
         });
-        finish();
-        reset();
-        onOpenChange(false);
-        toast.success("Pergunta criada nesta etapa.");
-        // A confirmação vem da gravação; uma falha de cache não permite repetir o cadastro.
-        void Promise.resolve()
-          .then(() =>
-            utils.escolaFundamentos.manageStudyQuestions.invalidate({
-              churchId,
-              studyId,
-            })
-          )
-          .catch(() => undefined);
       },
-      onError: () => {
+      onError: error => {
+        const record = creationRecord.current;
+        if (record) {
+          void updateFoundationCreation(
+            record,
+            isFoundationCreationConflict(error) ? "conflict" : "unknown"
+          )
+            .then(next => {
+              creationRecord.current = next;
+            })
+            .catch(() => undefined);
+        }
         finish();
-        setError(
-          "Não foi possível salvar a pergunta. Os campos continuam preenchidos. Tente novamente."
-        );
+        setError(foundationCreationErrorMessage(error));
       },
     }
   );
@@ -130,7 +242,10 @@ export function StudyQuestionEditor({
     if (problem) return setError(problem);
     if (!part || !studyId)
       return setError("Salve o estudo antes de adicionar uma pergunta.");
-    const payload: StudyQuestionDraft = {
+    const payload: FoundationQuestionCreationSnapshot = {
+      churchId,
+      studyId,
+      blockId: part.id,
       prompt: draft.prompt.trim(),
       options: draft.options.map(option => ({
         ...option,
@@ -139,12 +254,90 @@ export function StudyQuestionEditor({
       correctOptionId: draft.correctOptionId,
       explanation: draft.explanation.trim(),
     };
-    submitted.current = { blockId: part.id, draft: payload };
     pending.current = true;
     setSaving(true);
     setError(null);
     onBusyChange?.(true);
-    createQuestion.mutate({ churchId, studyId, blockId: part.id, ...payload });
+    if (!creationScope) {
+      finish();
+      setError(FOUNDATION_CREATION_AUTH_ERROR_MESSAGE);
+      return;
+    }
+    void beginFoundationCreation(
+      creationScope,
+      "question",
+      foundationCreationDiscriminator("question", {
+        studyId,
+        blockId: part.id,
+      }),
+      payload
+    )
+      .then(record => {
+        creationRecord.current = record;
+        const snapshot = record.snapshot as FoundationQuestionCreationSnapshot;
+        submitted.current = {
+          blockId: snapshot.blockId,
+          draft: {
+            prompt: snapshot.prompt,
+            options: snapshot.options.map(option => ({ ...option })),
+            correctOptionId: snapshot.correctOptionId,
+            explanation: snapshot.explanation,
+          },
+        };
+        createQuestion.mutate(foundationCreationRequest(record) as never);
+      })
+      .catch(error => {
+        finish();
+        setError(foundationCreationErrorMessage(error));
+      });
+  };
+
+  const verifyQuestionCreation = () => {
+    if (!creationScope || !part || !studyId) {
+      setError(FOUNDATION_CREATION_AUTH_ERROR_MESSAGE);
+      return;
+    }
+    void (async () => {
+      const record =
+        creationRecord.current ??
+        (await findFoundationCreation(
+          creationScope,
+          "question",
+          foundationCreationDiscriminator("question", {
+            studyId,
+            blockId: part.id,
+          })
+        ));
+      if (!record) {
+        setError(
+          "Nenhuma tentativa pendente foi encontrada; não foi criada uma nova chave."
+        );
+        return;
+      }
+      creationRecord.current = record;
+      try {
+        const status = await fetchFoundationCreationStatus(utils, {
+          churchId,
+          operation: "question",
+          clientRequestId: record.clientRequestId,
+        });
+        if (status.status !== "confirmed" || status.id <= 0) {
+          await updateFoundationCreation(record, "unknown");
+          setError(
+            "O salvamento ainda não foi localizado. Não gere outra chave; tente verificar novamente."
+          );
+          return;
+        }
+        await confirmAndClearFoundationCreation(record, status.id);
+        await revalidateConfirmedQuestion(status.id).catch(() => undefined);
+        finish();
+        reset();
+        onOpenChange(false);
+        toast.success("Pergunta criada nesta etapa.");
+      } catch (error) {
+        setError(foundationCreationErrorMessage(error));
+      }
+    })();
   };
   const formId = "foundation-study-question-editor";
   const fields = (
@@ -156,7 +349,10 @@ export function StudyQuestionEditor({
         submit();
       }}
     >
-      <fieldset disabled={busy} className="min-w-0 space-y-4">
+      <fieldset
+        disabled={busy || Boolean(creationRecord.current && error)}
+        className="min-w-0 space-y-4"
+      >
         <div className="space-y-2">
           <Label htmlFor="foundation-question-prompt">Pergunta</Label>
           <p
@@ -302,6 +498,20 @@ export function StudyQuestionEditor({
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
+      ) : null}
+      {creationRecord.current && error && !busy ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={verifyQuestionCreation}
+          >
+            Verificar salvamento
+          </Button>
+          <Button type="button" variant="outline" onClick={submit}>
+            Repetir mesma tentativa
+          </Button>
+        </div>
       ) : null}
       {busy ? (
         <p role="status" className="text-sm text-muted-foreground">

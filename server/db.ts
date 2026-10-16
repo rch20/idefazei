@@ -132,6 +132,20 @@ import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
 import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus, shouldFlagLegacyConsolidationPending, shouldFlagModernFirstContactPending } from "../shared/consolidation";
 import { resolveDirectoryCareState, type DirectoryCareStatus } from "../shared/peopleDirectory";
 import { FoundationImportError, type FoundationImportPayload, type FoundationImportSummary } from "./foundationImport";
+import { FOUNDATION_STUDY_TEMPLATE_BLOCKS } from "../shared/foundationStudyTemplate";
+import {
+  FoundationCreationPayloadMismatchError,
+  hashFoundationQuestionCreationPayload,
+  hashFoundationStudyCreationPayload,
+  isFoundationCreationDuplicateKey,
+  runFoundationIdempotentCreation,
+} from "./foundationCreationIdempotency";
+import {
+  assertFoundationCreationClientRequestId,
+  assertFoundationCreationSchemaVersion,
+  FOUNDATION_CREATION_SCHEMA_VERSION,
+  type FoundationCreationOperation,
+} from "../shared/foundationCreationContracts";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -7360,6 +7374,214 @@ export async function createFoundationQuestion(data: { churchId: number; blockId
     .limit(1);
   const result = await db.insert(foundationQuestions).values({ ...data, position: (last[0]?.position ?? -1) + 1 });
   return Number(result[0]?.insertId ?? 0);
+}
+
+type IdempotentFoundationStudyInput = {
+  churchId: number;
+  courseId: number;
+  moduleId?: number | null;
+  title: string;
+  weekStart?: string | null;
+  summary?: string | null;
+  content?: string | null;
+  template: "blank" | "biblico";
+  position?: number;
+  createdByChurchUserId: number;
+  clientRequestId: string;
+  requestSchemaVersion?: number;
+};
+
+export async function createIdempotentFoundationStudy(data: IdempotentFoundationStudyInput) {
+  const clientRequestId = assertFoundationCreationClientRequestId(data.clientRequestId);
+  const requestSchemaVersion = assertFoundationCreationSchemaVersion(data.requestSchemaVersion);
+  const requestHash = hashFoundationStudyCreationPayload({
+    churchId: data.churchId,
+    courseId: data.courseId,
+    moduleId: data.moduleId,
+    title: data.title,
+    weekStart: data.weekStart,
+    summary: data.summary,
+    content: data.content,
+    template: data.template,
+    position: data.position,
+  });
+
+  const readExisting = async () => {
+    const db = await getDb();
+    if (!db) throw new Error("Database not available");
+    const rows = await db
+      .select({ id: foundationStudies.id, requestHash: foundationStudies.requestHash })
+      .from(foundationStudies)
+      .where(
+        and(
+          eq(foundationStudies.churchId, data.churchId),
+          eq(foundationStudies.createdByChurchUserId, data.createdByChurchUserId),
+          eq(foundationStudies.clientRequestId, clientRequestId)
+        )
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  };
+
+  return runFoundationIdempotentCreation({
+    readExisting,
+    requestHash,
+    isArbitrationConflict: error => isFoundationCreationDuplicateKey(error, "study"),
+    create: async () => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      return db.transaction(async tx => {
+        let position = data.position;
+        if (position === undefined) {
+          const last = await tx
+            .select({ position: foundationStudies.position })
+            .from(foundationStudies)
+            .where(and(eq(foundationStudies.churchId, data.churchId), eq(foundationStudies.courseId, data.courseId)))
+            .orderBy(desc(foundationStudies.position), desc(foundationStudies.id))
+            .limit(1);
+          position = (last[0]?.position ?? -1) + 1;
+        }
+        const [result] = await tx.insert(foundationStudies).values({
+          churchId: data.churchId,
+          courseId: data.courseId,
+          moduleId: data.moduleId ?? null,
+          title: data.title.trim(),
+          weekStart: data.weekStart ?? null,
+          summary: data.summary?.trim() || null,
+          content: data.content?.trim() || null,
+          position,
+          active: false,
+          createdByChurchUserId: data.createdByChurchUserId,
+          clientRequestId,
+          requestHash,
+          requestSchemaVersion,
+        });
+        const id = Number(result.insertId);
+        if (!Number.isInteger(id) || id <= 0) throw new Error("Foundation study creation did not return a committed id");
+        if (data.template === "biblico") {
+          await tx.insert(foundationStudyBlocks).values(
+            FOUNDATION_STUDY_TEMPLATE_BLOCKS.map((block, blockPosition) => ({
+              churchId: data.churchId,
+              studyId: id,
+              title: block.title.trim(),
+              content: block.content.trim(),
+              position: blockPosition,
+              active: true,
+              createdByChurchUserId: data.createdByChurchUserId,
+            }))
+          );
+        }
+        return { id };
+      });
+    },
+  });
+}
+
+type IdempotentFoundationQuestionInput = {
+  churchId: number;
+  studyId: number;
+  blockId: number;
+  prompt: string;
+  options: FoundationQuestionOption[];
+  correctOptionId: string;
+  explanation: string;
+  createdByChurchUserId: number;
+  clientRequestId: string;
+  requestSchemaVersion?: number;
+};
+
+export async function createIdempotentFoundationQuestion(data: IdempotentFoundationQuestionInput) {
+  const clientRequestId = assertFoundationCreationClientRequestId(data.clientRequestId);
+  const requestSchemaVersion = assertFoundationCreationSchemaVersion(data.requestSchemaVersion);
+  const requestHash = hashFoundationQuestionCreationPayload({
+    churchId: data.churchId,
+    studyId: data.studyId,
+    blockId: data.blockId,
+    prompt: data.prompt,
+    options: data.options,
+    correctOptionId: data.correctOptionId,
+    explanation: data.explanation,
+  });
+
+  const readExisting = async () => {
+    const db = await getDb();
+    if (!db) throw new Error("Database not available");
+    const rows = await db
+      .select({ id: foundationQuestions.id, requestHash: foundationQuestions.requestHash })
+      .from(foundationQuestions)
+      .where(
+        and(
+          eq(foundationQuestions.churchId, data.churchId),
+          eq(foundationQuestions.createdByChurchUserId, data.createdByChurchUserId),
+          eq(foundationQuestions.clientRequestId, clientRequestId)
+        )
+      )
+      .limit(1);
+    return rows[0] ?? null;
+  };
+
+  return runFoundationIdempotentCreation({
+    readExisting,
+    requestHash,
+    isArbitrationConflict: error => isFoundationCreationDuplicateKey(error, "question"),
+    create: async () => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      return db.transaction(async tx => {
+        const last = await tx
+          .select({ position: foundationQuestions.position })
+          .from(foundationQuestions)
+          .where(and(eq(foundationQuestions.churchId, data.churchId), eq(foundationQuestions.blockId, data.blockId)))
+          .orderBy(desc(foundationQuestions.position), desc(foundationQuestions.id))
+          .limit(1);
+        const [result] = await tx.insert(foundationQuestions).values({
+          churchId: data.churchId,
+          blockId: data.blockId,
+          prompt: data.prompt.trim(),
+          options: data.options.map(option => ({ id: option.id.trim(), label: option.label.trim() })),
+          correctOptionId: data.correctOptionId.trim(),
+          explanation: data.explanation.trim(),
+          position: (last[0]?.position ?? -1) + 1,
+          active: true,
+          createdByChurchUserId: data.createdByChurchUserId,
+          clientRequestId,
+          requestHash,
+          requestSchemaVersion,
+        });
+        const id = Number(result.insertId);
+        if (!Number.isInteger(id) || id <= 0) throw new Error("Foundation question creation did not return a committed id");
+        return { id };
+      });
+    },
+  });
+}
+
+export async function getFoundationCreationStatus(data: {
+  churchId: number;
+  createdByChurchUserId: number;
+  operation: FoundationCreationOperation;
+  clientRequestId: string;
+}) {
+  const clientRequestId = assertFoundationCreationClientRequestId(data.clientRequestId);
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (data.operation === "study") {
+    const rows = await db
+      .select({ id: foundationStudies.id })
+      .from(foundationStudies)
+      .innerJoin(courses, and(eq(courses.id, foundationStudies.courseId), eq(courses.churchId, data.churchId)))
+      .where(and(eq(foundationStudies.churchId, data.churchId), eq(foundationStudies.createdByChurchUserId, data.createdByChurchUserId), eq(foundationStudies.clientRequestId, clientRequestId)))
+      .limit(1);
+    return rows[0] ? { status: "confirmed" as const, id: rows[0].id } : { status: "not_found" as const };
+  }
+  const rows = await db
+    .select({ id: foundationQuestions.id })
+    .from(foundationQuestions)
+    .innerJoin(foundationStudyBlocks, and(eq(foundationStudyBlocks.id, foundationQuestions.blockId), eq(foundationStudyBlocks.churchId, data.churchId)))
+    .innerJoin(foundationStudies, and(eq(foundationStudies.id, foundationStudyBlocks.studyId), eq(foundationStudies.churchId, data.churchId)))
+    .where(and(eq(foundationQuestions.churchId, data.churchId), eq(foundationQuestions.createdByChurchUserId, data.createdByChurchUserId), eq(foundationQuestions.clientRequestId, clientRequestId)))
+    .limit(1);
+  return rows[0] ? { status: "confirmed" as const, id: rows[0].id } : { status: "not_found" as const };
 }
 
 export async function getFoundationQuestionForAttempt(churchId: number, studyId: number, questionId: number) {

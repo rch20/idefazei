@@ -10,6 +10,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FoundationStudyEditor } from "./FoundationStudyEditor";
+import {
+  createMemoryFoundationCreationStorage,
+  setFoundationCreationStorageAdapter,
+} from "./foundationCreationOutbox";
 
 type Callbacks = {
   onSuccess?: (data: any) => void;
@@ -82,6 +86,7 @@ vi.mock("@/lib/trpc", () => {
   };
 });
 const props = {
+  creationAccountId: 42,
   open: true,
   study: {
     id: 77,
@@ -132,6 +137,7 @@ function confirmPart() {
   );
 }
 beforeEach(() => {
+  setFoundationCreationStorageAdapter(createMemoryFoundationCreationStorage());
   fixture.parts = ["Leia", "Entenda — A graça", "Responda", "Aplique"].map(
     (title, position) => ({
       id: 81 + position,
@@ -255,8 +261,10 @@ describe("Fase 4 — Responda, Aplique e revisão, com API simulada", () => {
     fireEvent.click(screen.getByRole("button", { name: "Adicionar pergunta" }));
     fillNewQuestion();
     fireEvent.click(screen.getByRole("button", { name: "Salvar pergunta" }));
-    expect(fixture.otherMutation).toHaveBeenCalledTimes(1);
-    act(() => fixture.questionCallbacks.onSuccess?.({ id: 202 }));
+    await waitFor(() => expect(fixture.otherMutation).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      fixture.questionCallbacks.onSuccess?.({ id: 202, replayed: false });
+    });
     expect(
       within(screen.getByRole("main")).getByText("Como praticar o cuidado?", {
         exact: true,
