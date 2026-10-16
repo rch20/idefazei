@@ -32,6 +32,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { formatCivilDate } from "@/lib/civilDate";
 import { FoundationImportDialog } from "./foundation/FoundationImportDialog";
 import { FoundationStudyEditor } from "./foundation/FoundationStudyEditor";
+import { FoundationStudyHandouts } from "./foundation/FoundationStudyHandouts";
 import {
   FoundationAreaNav,
   FoundationAreaSection,
@@ -1725,6 +1726,9 @@ function StudyManagement({
               Criar estudo
             </Button>
           </div>
+          <FoundationStudyHandouts
+            theme={createFoundationTheme(primaryColor, secondaryColor)}
+          />
           <details className="rounded-xl border border-slate-200 bg-slate-50/60">
             <summary className="cursor-pointer list-none px-3 py-3 text-sm font-semibold text-[#1e3a5f]">
               Opções avançadas: preencher por Excel
