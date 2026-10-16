@@ -44,6 +44,7 @@ const source = [
     "utf8"
   ),
   readFileSync("client/src/pages/foundation/FoundationStageNotes.tsx", "utf8"),
+  readFileSync("client/src/pages/foundation/StudyQuestionEditor.tsx", "utf8"),
 ].join("\n");
 const adaptiveSource = readFileSync(
   resolve(process.cwd(), "client/src/components/AdaptiveFormDialog.tsx"),
@@ -122,7 +123,7 @@ describe("Formação de Fundamentos", () => {
 
   it("mantém perguntas e prévia ligadas à parte e ao estudo atuais", () => {
     expect(source).toContain("questionsByBlock");
-    expect(source).toContain("Perguntas desta parte");
+    expect(source).toContain("Perguntas da parte");
     expect(source).toContain("idefazei-foundation-study-preview-v1");
     expect(source).toContain("Nada nesta tela cria progresso");
   });

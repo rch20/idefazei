@@ -177,7 +177,9 @@ try {
           ? "Leitura do aluno"
           : stage === "Entenda"
             ? "Explicação para o aluno"
-            : "Conteúdo da etapa",
+            : stage === "Responda"
+              ? "Orientação antes das perguntas"
+              : "Aplicação prática",
         { exact: true }
       );
       const prompt = page.locator("#foundation-editor-part-reflection-prompt");
@@ -195,6 +197,74 @@ try {
       if (stage === "Entenda") {
         await page.screenshot({
           path: path.join(out, `entenda-editor-${width}.png`),
+          animations: "disabled",
+          fullPage: false,
+        });
+      }
+      if (stage === "Responda") {
+        await page
+          .getByRole("button", { name: "Adicionar pergunta", exact: true })
+          .click();
+        await page
+          .getByLabel("Pergunta", { exact: true })
+          .fill("Qual atitude encoraja uma pessoa?");
+        await page
+          .getByLabel("Alternativa A", { exact: true })
+          .fill("Ouvir com atenção");
+        await page.getByLabel("Alternativa B", { exact: true }).fill("Ignorar");
+        await page
+          .getByRole("button", { name: "Adicionar alternativa", exact: true })
+          .click();
+        await page
+          .getByLabel("Alternativa C", { exact: true })
+          .fill("Interromper sempre");
+        await page
+          .getByRole("radio", { name: "Resposta correta: alternativa A" })
+          .check();
+        await page
+          .getByLabel("Explicação depois da resposta", { exact: true })
+          .fill(
+            "Ouvir ajuda a perceber a necessidade. Retome o exemplo da leitura."
+          );
+        if (
+          !(await page
+            .getByRole("button", { name: "Salvar e continuar", exact: true })
+            .isDisabled())
+        )
+          throw Error("PERGUNTA_ABERTA_PERMITE_AVANCAR");
+        if ((await page.getByRole("dialog").count()) !== 1)
+          throw Error("PERGUNTA_EMPILHA_MODAL");
+        await page.screenshot({
+          path: path.join(out, `responda-editor-${width}.png`),
+          animations: "disabled",
+          fullPage: false,
+        });
+        if (width < 1024) {
+          await page
+            .getByRole("button", { name: "Visualizar como aluno", exact: true })
+            .click();
+          await page
+            .getByRole("dialog")
+            .last()
+            .getByRole("button", { name: "Voltar à edição", exact: true })
+            .last()
+            .click();
+          if (
+            (await page
+              .getByLabel("Pergunta", { exact: true })
+              .inputValue()) !== "Qual atitude encoraja uma pessoa?"
+          )
+            throw Error("PERGUNTA_PERDIDA_NA_PREVIA");
+        }
+        await page
+          .getByRole("button", { name: "Cancelar", exact: true })
+          .click();
+        if ((await field.inputValue()) !== "Rascunho local Responda")
+          throw Error("ORIENTACAO_PERDIDA_AO_CANCELAR_PERGUNTA");
+      }
+      if (stage === "Aplique") {
+        await page.screenshot({
+          path: path.join(out, `aplique-editor-${width}.png`),
           animations: "disabled",
           fullPage: false,
         });
@@ -289,6 +359,8 @@ try {
       cases,
       editorCases,
       horizontalOverflow: false,
+      contextualQuestionForm: true,
+      applicationFields: true,
       studentNoteFullWidth: true,
       mutations: 0,
       errors: 0,

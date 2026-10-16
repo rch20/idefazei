@@ -37,7 +37,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { StudyPartQuestions } from "./StudyPartQuestions";
-import { StudyQuestionEditor } from "./StudyPartList";
+import { StudyQuestionEditor } from "./StudyQuestionEditor";
 import type { FoundationStudyPart } from "./StudyPartEditor";
 import { getFoundationStageLabel } from "./studyStage";
 
@@ -415,6 +415,10 @@ export function FoundationStudyEditor({
   }>({ status: "idle", message: "" });
   const [published, setPublished] = useState(false);
   const [questionEditorOpen, setQuestionEditorOpen] = useState(false);
+  const [questionSaving, setQuestionSaving] = useState(false);
+  const [confirmedQuestions, setConfirmedQuestions] = useState<
+    StudyQuestionRow[]
+  >([]);
   const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [completedStages, setCompletedStages] = useState<Set<EditorStageKey>>(
     new Set()
@@ -432,7 +436,14 @@ export function FoundationStudyEditor({
     { churchId, studyId: studyId ?? 0 },
     { enabled: open && Boolean(studyId) }
   );
-  const questions = loadedQuestions as StudyQuestionRow[];
+  const serverQuestions = loadedQuestions as StudyQuestionRow[];
+  const questions = [
+    ...serverQuestions,
+    ...confirmedQuestions.filter(
+      row =>
+        !serverQuestions.some(saved => saved.question.id === row.question.id)
+    ),
+  ];
   const selectedPart =
     parts.find(part => part.id === selectedPartId) ??
     currentBlockForStage(parts, stageKey);
@@ -460,6 +471,8 @@ export function FoundationStudyEditor({
     setMobileStepsOpen(false);
     setPreviewOpen(false);
     setQuestionEditorOpen(false);
+    setQuestionSaving(false);
+    setConfirmedQuestions([]);
     setPublishConfirmOpen(false);
     setSelectedPartId(null);
     saveIntent.current = null;
@@ -576,7 +589,9 @@ export function FoundationStudyEditor({
     updateStudy.isPending ||
     updatePart.isPending ||
     partsLoading ||
-    questionsLoading;
+    questionsLoading ||
+    questionSaving;
+  const navigationBlocked = isPending || questionEditorOpen;
 
   const saveInfo = (advance: boolean) => {
     if (saveIntent.current) return;
@@ -677,7 +692,7 @@ export function FoundationStudyEditor({
   };
 
   const close = () => {
-    if (isPending || saveIntent.current) return;
+    if (isPending || saveIntent.current || questionEditorOpen) return;
     onOpenChange(false);
   };
 
@@ -692,10 +707,7 @@ export function FoundationStudyEditor({
       : "Novo rascunho";
   const selectedCourse = courses.find(course => String(course.id) === courseId);
   const partNameEditor = selectedPart ? (
-    <details
-      open={stageKey !== "leia" && stageKey !== "entenda"}
-      className="rounded-xl border p-3"
-    >
+    <details open={false} className="rounded-xl border p-3">
       <summary
         className="cursor-pointer text-sm font-medium"
         style={{ color: primaryColor }}
@@ -785,7 +797,7 @@ export function FoundationStudyEditor({
                     <button
                       key={stage.key}
                       type="button"
-                      disabled={isPending || !stageIsAvailable(index)}
+                      disabled={navigationBlocked || !stageIsAvailable(index)}
                       onClick={() => {
                         setStageKey(stage.key);
                         setMobileStepsOpen(false);
@@ -831,7 +843,7 @@ export function FoundationStudyEditor({
                   <button
                     key={stage.key}
                     type="button"
-                    disabled={isPending || !stageIsAvailable(index)}
+                    disabled={navigationBlocked || !stageIsAvailable(index)}
                     onClick={() => setStageKey(stage.key)}
                     className="flex min-h-12 w-full items-center gap-2 rounded-xl p-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-40"
                     style={
@@ -1019,14 +1031,17 @@ export function FoundationStudyEditor({
                             <div className="mt-2 flex flex-wrap gap-2">
                               <Badge
                                 variant={
-                                  block?.content?.trim()
+                                  block?.content?.trim() &&
+                                  !dirtyPartIds.current.has(block.id)
                                     ? "default"
                                     : "secondary"
                                 }
                               >
-                                {block?.content?.trim()
-                                  ? "Com conteúdo"
-                                  : "Pendente"}
+                                {block && dirtyPartIds.current.has(block.id)
+                                  ? "Alterações não salvas"
+                                  : block?.content?.trim()
+                                    ? "Com conteúdo"
+                                    : "Pendente"}
                               </Badge>
                               {stage.key === "responda" ? (
                                 <Badge variant="outline">
@@ -1055,23 +1070,18 @@ export function FoundationStudyEditor({
                   </div>
                 ) : (
                   <div className="space-y-5">
-                    {stageKey !== "leia" && stageKey !== "entenda" ? (
-                      <div className="rounded-xl border border-[#c9a84c]/30 bg-[#fdfaf1] p-3 text-sm text-[#1e3a5f]">
-                        {stageKey === "responda"
-                          ? "Prepare as perguntas nesta etapa. O gabarito continuará protegido para o aluno até a tentativa."
-                          : `Prepare o conteúdo de ${EDITOR_STAGES[currentStageIndex].label} na mesma ordem em que o aluno verá.`}
-                      </div>
-                    ) : null}
                     {selectedPart ? (
                       <>
-                        {stageKey !== "entenda" ? partNameEditor : null}
+                        {stageKey === "leia" ? partNameEditor : null}
                         <div className="space-y-2">
                           <Label htmlFor="foundation-editor-part-content">
                             {stageKey === "leia"
                               ? "Leitura do aluno"
                               : stageKey === "entenda"
                                 ? "Explicação para o aluno"
-                                : "Conteúdo da etapa"}
+                                : stageKey === "responda"
+                                  ? "Orientação antes das perguntas"
+                                  : "Aplicação prática"}
                           </Label>
                           {stageKey === "leia" ? (
                             <p
@@ -1089,7 +1099,23 @@ export function FoundationStudyEditor({
                               Explique uma ideia central e dê um exemplo
                               concreto.
                             </p>
-                          ) : null}
+                          ) : stageKey === "responda" ? (
+                            <p
+                              id="foundation-editor-question-help"
+                              className="text-sm text-muted-foreground"
+                            >
+                              Diga ao aluno como responder, sem antecipar o
+                              gabarito.
+                            </p>
+                          ) : (
+                            <p
+                              id="foundation-editor-application-help"
+                              className="text-sm text-muted-foreground"
+                            >
+                              Proponha uma ação simples para praticar nesta
+                              semana.
+                            </p>
+                          )}
                           <Textarea
                             id="foundation-editor-part-content"
                             aria-describedby={
@@ -1097,14 +1123,18 @@ export function FoundationStudyEditor({
                                 ? "foundation-editor-reading-help"
                                 : stageKey === "entenda"
                                   ? "foundation-editor-explanation-help"
-                                  : undefined
+                                  : stageKey === "responda"
+                                    ? "foundation-editor-question-help"
+                                    : "foundation-editor-application-help"
                             }
                             placeholder={
                               stageKey === "leia"
                                 ? "Ex.: Leia Efésios 4:29. Observe como nossas palavras podem encorajar outras pessoas."
                                 : stageKey === "entenda"
                                   ? "Retome a ideia de Leia sem repetir todo o texto. Explique com suas palavras e inclua um exemplo do dia a dia."
-                                  : undefined
+                                  : stageKey === "responda"
+                                    ? "Ex.: Leia cada pergunta, escolha uma alternativa e confira a explicação após responder."
+                                    : "Ex.: Nesta semana, procure uma pessoa e ofereça uma palavra concreta de encorajamento."
                             }
                             value={selectedPart.content}
                             onChange={event =>
@@ -1119,6 +1149,71 @@ export function FoundationStudyEditor({
                             {selectedPart.content.length}/12000
                           </p>
                         </div>
+                        {stageKey === "responda" ? (
+                          <section className="space-y-3 rounded-xl border bg-slate-50/60 p-3">
+                            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                              <div>
+                                <p
+                                  className="font-semibold"
+                                  style={{ color: primaryColor }}
+                                >
+                                  Perguntas desta etapa
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  Adicione alternativas, escolha o gabarito e
+                                  escreva a explicação.
+                                </p>
+                              </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={questionEditorOpen}
+                                onClick={() => setQuestionEditorOpen(true)}
+                                style={{
+                                  backgroundColor: primaryColor,
+                                  color: "white",
+                                }}
+                              >
+                                Adicionar pergunta
+                              </Button>
+                            </div>
+                            {selectedPartQuestions.length ? (
+                              <StudyPartQuestions
+                                part={selectedPart}
+                                primaryColor={primaryColor}
+                                questions={selectedPartQuestions.map(
+                                  row => row.question
+                                )}
+                              />
+                            ) : (
+                              <p className="rounded-lg border border-dashed bg-white p-3 text-sm text-muted-foreground">
+                                Nenhuma pergunta cadastrada nesta etapa.
+                              </p>
+                            )}
+                            <StudyQuestionEditor
+                              inline
+                              churchId={churchId}
+                              studyId={studyId ?? 0}
+                              part={selectedPart}
+                              open={questionEditorOpen && Boolean(studyId)}
+                              onOpenChange={setQuestionEditorOpen}
+                              onBusyChange={setQuestionSaving}
+                              onCreated={row =>
+                                setConfirmedQuestions(current => [
+                                  ...current,
+                                  row,
+                                ])
+                              }
+                              primaryColor={primaryColor}
+                            />
+                            {questionEditorOpen ? (
+                              <p className="text-xs text-muted-foreground">
+                                Salve ou cancele a pergunta antes de continuar.
+                                A prévia mostra as perguntas já salvas.
+                              </p>
+                            ) : null}
+                          </section>
+                        ) : null}
                         <div className="space-y-2">
                           <Label htmlFor="foundation-editor-part-reflection-prompt">
                             Para refletir{" "}
@@ -1141,7 +1236,9 @@ export function FoundationStudyEditor({
                                 ? "Ex.: Qual expressão desta leitura chamou sua atenção?"
                                 : stageKey === "entenda"
                                   ? "Ex.: Como você explicaria esta ideia com suas palavras?"
-                                  : "Ex.: O que Deus está ensinando a você nesta etapa?"
+                                  : stageKey === "responda"
+                                    ? "Ex.: O que a explicação da resposta ajudou você a compreender?"
+                                    : "Ex.: Qual ação você pode realizar e o que espera aprender com ela?"
                             }
                             aria-describedby="foundation-editor-reflection-help"
                           />
@@ -1153,60 +1250,12 @@ export function FoundationStudyEditor({
                               ? "Uma pergunta curta para orientar a leitura. A anotação é escrita pelo aluno."
                               : stageKey === "entenda"
                                 ? "Uma pergunta breve para explicar o que entendeu. A anotação é escrita pelo aluno."
-                                : "Pergunta-guia exibida antes da anotação individual do aluno. A anotação continua sendo escrita pelo aluno."}
+                                : stageKey === "responda"
+                                  ? "Uma pergunta breve após as questões e explicações. A anotação é escrita pelo aluno."
+                                  : "Uma pergunta breve para orientar a prática. A anotação é escrita pelo aluno."}
                           </p>
                         </div>
-                        {stageKey === "entenda" ? partNameEditor : null}
-                        {stageKey === "responda" ? (
-                          <section className="space-y-3 rounded-xl border bg-slate-50/60 p-3">
-                            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                              <div>
-                                <p
-                                  className="font-semibold"
-                                  style={{ color: primaryColor }}
-                                >
-                                  Perguntas desta etapa
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  Adicione alternativas, escolha o gabarito e
-                                  escreva a explicação.
-                                </p>
-                              </div>
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={() => setQuestionEditorOpen(true)}
-                                style={{
-                                  backgroundColor: primaryColor,
-                                  color: "white",
-                                }}
-                              >
-                                Adicionar pergunta
-                              </Button>
-                            </div>
-                            {selectedPartQuestions.length ? (
-                              <StudyPartQuestions
-                                part={selectedPart}
-                                questions={selectedPartQuestions.map(
-                                  row => row.question
-                                )}
-                              />
-                            ) : (
-                              <p className="rounded-lg border border-dashed bg-white p-3 text-sm text-muted-foreground">
-                                Nenhuma pergunta cadastrada nesta etapa.
-                              </p>
-                            )}
-                          </section>
-                        ) : null}
-                        {stageKey !== "leia" && stageKey !== "entenda" ? (
-                          <div className="rounded-xl border border-dashed bg-[#fcfbf8] p-3 text-sm text-muted-foreground">
-                            <strong style={{ color: primaryColor }}>
-                              Minha anotação:
-                            </strong>{" "}
-                            será escrita pelo aluno. O professor não precisa
-                            criar esse campo.
-                          </div>
-                        ) : null}
+                        {stageKey !== "leia" ? partNameEditor : null}
                       </>
                     ) : partsLoading ? (
                       <div className="h-48 animate-pulse rounded-xl bg-muted/30" />
@@ -1238,7 +1287,7 @@ export function FoundationStudyEditor({
               <Button
                 type="button"
                 variant="outline"
-                disabled={currentStageIndex === 0 || isPending}
+                disabled={currentStageIndex === 0 || navigationBlocked}
                 onClick={() =>
                   setStageKey(
                     EDITOR_STAGES[Math.max(0, currentStageIndex - 1)].key
@@ -1263,7 +1312,7 @@ export function FoundationStudyEditor({
               <Button
                 type="button"
                 variant="outline"
-                disabled={isPending}
+                disabled={navigationBlocked}
                 onClick={saveDraft}
               >
                 <Save className="mr-1 h-4 w-4" />
@@ -1272,7 +1321,7 @@ export function FoundationStudyEditor({
               {isLastStage ? (
                 <Button
                   type="button"
-                  disabled={isPending || !studyId}
+                  disabled={navigationBlocked || !studyId}
                   onClick={publish}
                   style={{ backgroundColor: primaryColor, color: "white" }}
                 >
@@ -1281,7 +1330,7 @@ export function FoundationStudyEditor({
               ) : (
                 <Button
                   type="button"
-                  disabled={isPending}
+                  disabled={navigationBlocked}
                   onClick={saveAndContinue}
                   style={{ backgroundColor: primaryColor, color: "white" }}
                 >
@@ -1305,15 +1354,6 @@ export function FoundationStudyEditor({
             secondaryColor={secondaryColor}
             modal
             onClose={() => setPreviewOpen(false)}
-          />
-        ) : null}
-        {selectedPart ? (
-          <StudyQuestionEditor
-            churchId={churchId}
-            studyId={studyId ?? 0}
-            part={selectedPart}
-            open={questionEditorOpen && Boolean(studyId)}
-            onOpenChange={setQuestionEditorOpen}
           />
         ) : null}
         <Dialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>

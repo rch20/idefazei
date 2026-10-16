@@ -143,7 +143,7 @@ describe("Escola de Fundamentos", () => {
         ),
         "utf8"
       )
-    ).toContain("Perguntas desta parte");
+    ).toContain("Perguntas da parte");
   });
 
   it("oferece editor contextual das partes sem perder a ordem do estudo", () => {
@@ -165,7 +165,16 @@ describe("Escola de Fundamentos", () => {
     );
 
     expect(partList).toContain("Nova etapa");
-    expect(partList).toContain("Adicionar pergunta");
+    expect(partList).toContain("<StudyQuestionEditor");
+    const questionEditor = readFileSync(
+      resolve(
+        process.cwd(),
+        "client/src/pages/foundation/StudyQuestionEditor.tsx"
+      ),
+      "utf8"
+    );
+    expect(questionEditor).toContain("Adicionar pergunta");
+    expect(questionEditor).toContain("createStudyQuestion.useMutation");
     expect(partList).toContain("updateQuestionBlock");
     expect(partList).toContain("moveQuestionBlock");
     expect(editor).toContain("foundation-study-part-editor");
