@@ -1,0 +1,2469 @@
+import { trpc } from "@/lib/trpc";
+import { useChurch } from "@/components/ChurchLayout";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AdaptiveFormDialogBody,
+  AdaptiveFormDialogContent,
+  AdaptiveFormDialogFooter,
+  adaptiveFormDialogHeaderClassName,
+} from "@/components/AdaptiveFormDialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { formatCivilDate } from "@/lib/civilDate";
+import { FoundationImportDialog } from "./foundation/FoundationImportDialog";
+import { FoundationStudyEditor } from "./foundation/FoundationStudyEditor";
+import {
+  FoundationAreaNav,
+  FoundationAreaSection,
+  type FoundationAdminArea,
+} from "./foundation/FoundationAdminAreas";
+import { StudyTrailItem } from "./foundation/StudyTrailItem";
+import {
+  createFoundationTheme,
+  type FoundationTheme,
+} from "./foundation/FoundationTheme";
+import {
+  ArrowDown,
+  ArrowUp,
+  Award,
+  BookOpen,
+  CalendarDays,
+  CheckCircle,
+  ChevronRight,
+  CircleDot,
+  Clock,
+  ExternalLink,
+  FileText,
+  Flag,
+  GraduationCap,
+  Layers3,
+  LibraryBig,
+  Link2,
+  Loader2,
+  Lock,
+  Pencil,
+  Play,
+  Plus,
+  Route,
+  Save,
+  ShieldCheck,
+  Trash2,
+  UserRoundCog,
+  Users,
+} from "lucide-react";
+
+const StudentLearningExperience = lazy(() =>
+  import("./foundation/StudentLearningExperience").then(module => ({
+    default: module.StudentLearningExperience,
+  }))
+);
+
+function StudentLearningExperienceFallback() {
+  return (
+    <div
+      className="mb-5 h-56 animate-pulse rounded-2xl bg-muted/30"
+      aria-label="Carregando sua preparação"
+    />
+  );
+}
+
+const COURSE_TYPES = [
+  { value: "salvacao", label: "Salvação", icon: "✝️" },
+  { value: "oracao", label: "Oração", icon: "🙏" },
+  { value: "biblia", label: "Bíblia", icon: "📖" },
+  { value: "igreja", label: "Igreja", icon: "⛪" },
+  { value: "espirito_santo", label: "Espírito Santo", icon: "🕊️" },
+  { value: "batismo", label: "Batismo nas Águas", icon: "💧" },
+  { value: "outro", label: "Outro", icon: "📚" },
+] as const;
+
+const STATUS_COLORS: Record<string, string> = {
+  matriculado: "bg-blue-100 text-blue-800",
+  em_andamento: "bg-yellow-100 text-yellow-800",
+  concluido: "bg-green-100 text-green-800",
+};
+const STATUS_LABELS: Record<string, string> = {
+  matriculado: "Matriculado",
+  em_andamento: "Em andamento",
+  concluido: "Concluído",
+};
+const MATERIAL_TYPE_LABELS: Record<string, string> = {
+  pdf: "Documento",
+  video: "Vídeo",
+  apostila: "Apresentação",
+  devocional: "Link",
+};
+
+type Course = {
+  id: number;
+  name: string;
+  type: string;
+  description?: string | null;
+  active: boolean;
+};
+type Person = { id: number; fullName: string };
+type Study = {
+  id: number;
+  courseId: number;
+  moduleId: number | null;
+  title: string;
+  weekStart?: string | null;
+  summary?: string | null;
+  content?: string | null;
+  position: number;
+  active: boolean;
+};
+type FoundationModule = {
+  id: number;
+  courseId: number;
+  title: string;
+  description?: string | null;
+  position: number;
+  active: boolean;
+};
+type WeeklyOverviewData = {
+  study: Study | null;
+  metrics: {
+    enrolled: number;
+    started: number;
+    completed: number;
+    pending: number;
+    startedPercent: number;
+    completedPercent: number;
+    questionErrors: Array<{
+      questionId: number;
+      prompt: string;
+      errors: number;
+    }>;
+  };
+  class: {
+    classDate: string;
+    status: "planejada" | "realizada" | "cancelada";
+    attendance: {
+      total: number;
+      present: number;
+      absent: number;
+      justified: number;
+    };
+  } | null;
+};
+
+function LearningTrail({
+  churchId,
+  courseId,
+  canManage,
+}: {
+  churchId: number;
+  courseId: number;
+  canManage: boolean;
+}) {
+  const { data: modules = [] } = trpc.escolaFundamentos.listModules.useQuery({
+    churchId,
+    courseId,
+  });
+  const { data: studies = [] } = trpc.escolaFundamentos.listStudies.useQuery({
+    churchId,
+    courseId,
+  });
+  const visibleModules = modules as FoundationModule[];
+  const visibleStudies = studies as Study[];
+  const grouped = useMemo(
+    () =>
+      new Map(
+        visibleModules.map(module => [
+          module.id,
+          visibleStudies.filter(study => study.moduleId === module.id),
+        ])
+      ),
+    [visibleModules, visibleStudies]
+  );
+  const ungrouped = visibleStudies.filter(study => !study.moduleId);
+  if (!visibleModules.length && !visibleStudies.length) return null;
+  return (
+    <section className="mb-5 overflow-hidden rounded-2xl border border-[#c9a84c]/25 bg-[linear-gradient(135deg,#fdfaf1_0%,#ffffff_45%,#f7f1e2_100%)] p-4 sm:p-5">
+      <div className="mb-5 flex items-start gap-3">
+        <div className="rounded-xl bg-[#1e3a5f] p-2 text-white">
+          <Route className="h-5 w-5" />
+        </div>
+        <div>
+          <h3 className="font-display text-lg text-[#1e3a5f]">
+            Trilha de aprendizado
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Siga os módulos e abra cada estudo no momento certo.
+          </p>
+        </div>
+      </div>
+      <div className="relative space-y-5 before:absolute before:bottom-2 before:left-5 before:top-2 before:w-px before:bg-[#c9a84c]/35 sm:before:left-6">
+        {visibleModules.map((module, moduleIndex) => {
+          const moduleStudies = grouped.get(module.id) ?? [];
+          return (
+            <div key={module.id} className="relative pl-12 sm:pl-14">
+              <span className="absolute left-0 top-1 flex h-10 w-10 items-center justify-center rounded-full border-4 border-[#fdfaf1] bg-[#c9a84c] text-sm font-bold text-[#1e3a5f] sm:h-12 sm:w-12">
+                {moduleIndex + 1}
+              </span>
+              <div className="rounded-xl border border-[#1e3a5f]/15 bg-white/80 p-3 sm:p-4">
+                <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#c9a84c]">
+                      Módulo {moduleIndex + 1}
+                    </p>
+                    <h4 className="font-semibold text-[#1e3a5f]">
+                      {module.title}
+                    </h4>
+                    {module.description ? (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {module.description}
+                      </p>
+                    ) : null}
+                  </div>
+                  {canManage && !module.active ? (
+                    <Badge variant="secondary">Rascunho</Badge>
+                  ) : null}
+                </div>
+                {moduleStudies.length ? (
+                  <div className="space-y-2">
+                    {moduleStudies.map((study, index) => (
+                      <StudyTrailItem
+                        key={study.id}
+                        churchId={churchId}
+                        study={study}
+                        canManage={canManage}
+                        order={index + 1}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
+                    Ainda não há estudos neste módulo.
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {ungrouped.length ? (
+          <div className="relative pl-12 sm:pl-14">
+            <span className="absolute left-0 top-1 flex h-10 w-10 items-center justify-center rounded-full border-4 border-[#fdfaf1] bg-slate-500 text-white sm:h-12 sm:w-12">
+              <CircleDot className="h-4 w-4" />
+            </span>
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-3 sm:p-4">
+              <p className="mb-2 text-sm font-semibold text-[#1e3a5f]">
+                Estudos sem módulo
+              </p>
+              <div className="space-y-2">
+                {ungrouped.map((study, index) => (
+                  <StudyTrailItem
+                    key={study.id}
+                    churchId={churchId}
+                    study={study}
+                    canManage={canManage}
+                    order={index + 1}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function WeeklyOverview({
+  churchId,
+  courseId,
+}: {
+  churchId: number;
+  courseId: number;
+}) {
+  const { data, isLoading } = trpc.escolaFundamentos.weeklyOverview.useQuery({
+    churchId,
+    courseId,
+  });
+  const overview = data as WeeklyOverviewData | undefined;
+  if (isLoading)
+    return (
+      <Card className="border-[#c9a84c]/25">
+        <CardContent className="h-56 animate-pulse bg-muted/20" />
+      </Card>
+    );
+  if (!overview?.study)
+    return (
+      <Card className="border-dashed border-[#c9a84c]/30">
+        <CardContent className="p-5">
+          <p className="font-semibold text-[#1e3a5f]">
+            Nenhum estudo semanal publicado
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Publique o primeiro tema com uma data de início para acompanhar a
+            turma por semana.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  const metricCards = [
+    {
+      label: "Matriculados",
+      value: overview.metrics.enrolled,
+      tone: "text-[#1e3a5f]",
+      detail: null,
+    },
+    {
+      label: "Iniciaram",
+      value: overview.metrics.started,
+      tone: "text-sky-700",
+      detail: `${overview.metrics.startedPercent}% da turma`,
+    },
+    {
+      label: "Concluíram",
+      value: overview.metrics.completed,
+      tone: "text-emerald-700",
+      detail: `${overview.metrics.completedPercent}% da turma`,
+    },
+    {
+      label: "Ainda pendentes",
+      value: overview.metrics.pending,
+      tone: "text-amber-700",
+      detail: null,
+    },
+  ];
+  return (
+    <Card className="border-[#1e3a5f]/20 bg-[linear-gradient(135deg,#fdfaf1_0%,#ffffff_55%,#f4f8fb_100%)]">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base text-[#1e3a5f]">
+          <Clock className="h-4 w-4 text-[#c9a84c]" />
+          Semana atual
+        </CardTitle>
+        <p className="text-sm font-normal text-muted-foreground">
+          Uma visão rápida para preparar o próximo encontro, sem abrir o
+          acompanhamento individual.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="rounded-xl bg-[#1e3a5f] p-4 text-white">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#f1d98a]">
+            Estudo da semana
+          </p>
+          <p className="mt-1 text-lg font-semibold">{overview.study.title}</p>
+          {overview.study.weekStart ? (
+            <p className="mt-1 text-xs text-white/75">
+              Início: {formatCivilDate(overview.study.weekStart)}
+            </p>
+          ) : null}
+          <p className="mt-2 text-sm text-white/80">
+            {overview.study.summary ||
+              "Acompanhe a preparação e leve os pontos de dificuldade para a aula."}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {metricCards.map(metric => (
+            <div
+              key={metric.label}
+              className="rounded-lg border border-border bg-white p-3"
+            >
+              <p className="text-xs text-muted-foreground">{metric.label}</p>
+              <p className={`mt-1 text-2xl font-semibold ${metric.tone}`}>
+                {metric.value}
+              </p>
+              {metric.detail ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {metric.detail}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border border-[#1e3a5f]/10 bg-white p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Aula presencial
+            </p>
+            {overview.class ? (
+              <>
+                <p className="mt-1 font-semibold text-[#1e3a5f]">
+                  Domingo, {formatCivilDate(overview.class.classDate)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {overview.class.status === "realizada"
+                    ? "Aula realizada"
+                    : overview.class.status === "cancelada"
+                      ? "Aula cancelada"
+                      : "Aula planejada"}{" "}
+                  · {overview.class.attendance.present} presença(s) de{" "}
+                  {overview.class.attendance.total}
+                </p>
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Aula de domingo ainda não registrada.
+              </p>
+            )}
+          </div>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+              Para reforçar no domingo
+            </p>
+            {overview.metrics.questionErrors.length ? (
+              <ul className="mt-2 space-y-1 text-sm text-amber-900">
+                {overview.metrics.questionErrors.slice(0, 3).map(question => (
+                  <li key={question.questionId} className="line-clamp-1">
+                    {question.prompt} · {question.errors} erro(s)
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-sm text-amber-900">
+                Ainda não há erros registrados nas perguntas.
+              </p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TeacherLearningReview({
+  churchId,
+  courseId,
+}: {
+  churchId: number;
+  courseId: number;
+}) {
+  const utils = trpc.useUtils();
+  const { data: rows = [], isLoading } =
+    trpc.escolaFundamentos.courseProgress.useQuery({ churchId, courseId });
+  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState("");
+  const [selectedStudyId, setSelectedStudyId] = useState("");
+  const [reviewStatus, setReviewStatus] = useState<
+    "compreendeu" | "precisa_reforco" | "nao_participou"
+  >("compreendeu");
+  const [reviewNotes, setReviewNotes] = useState("");
+  const [classDate, setClassDate] = useState("");
+  const [classStatus, setClassStatus] = useState<
+    "planejada" | "realizada" | "cancelada"
+  >("planejada");
+  const [classNotes, setClassNotes] = useState("");
+  const [attendanceStatuses, setAttendanceStatuses] = useState<
+    Record<number, "presente" | "ausente" | "justificado">
+  >({});
+  const reviewMutation = trpc.escolaFundamentos.reviewLesson.useMutation({
+    onSuccess: async () => {
+      toast.success("Revisão registrada.");
+      await utils.escolaFundamentos.courseProgress.invalidate({
+        churchId,
+        courseId,
+      });
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const students = useMemo(
+    () =>
+      Array.from(
+        new Map(rows.map(row => [row.enrollment.id, row.person])).entries()
+      ).map(([id, person]) => ({ id, name: person.fullName })),
+    [rows]
+  );
+  const studies = useMemo(
+    () =>
+      Array.from(
+        new Map(rows.map(row => [row.study.id, row.study])).entries()
+      ).map(([, study]) => study),
+    [rows]
+  );
+  useEffect(() => {
+    if (!selectedEnrollmentId && students[0])
+      setSelectedEnrollmentId(String(students[0].id));
+  }, [selectedEnrollmentId, students]);
+  useEffect(() => {
+    if (!selectedStudyId && studies[0])
+      setSelectedStudyId(String(studies[0].id));
+  }, [selectedStudyId, studies]);
+  const selectedRow = rows.find(
+    row =>
+      String(row.enrollment.id) === selectedEnrollmentId &&
+      String(row.study.id) === selectedStudyId
+  );
+  const classManagement = trpc.escolaFundamentos.classManagement.useQuery(
+    { churchId, courseId, studyId: Number(selectedStudyId) || 0 },
+    { enabled: Boolean(selectedStudyId) }
+  );
+  const classData = classManagement.data;
+  const currentClassId = classData?.class?.id ?? 0;
+  useEffect(() => {
+    setReviewStatus(
+      (selectedRow?.progress?.reviewStatus as typeof reviewStatus) ??
+        "compreendeu"
+    );
+    setReviewNotes(selectedRow?.progress?.reviewNotes ?? "");
+  }, [selectedEnrollmentId, selectedStudyId, selectedRow?.progress?.id]);
+  useEffect(() => {
+    setClassDate(
+      classData?.class?.classDate
+        ? String(classData.class.classDate).slice(0, 10)
+        : ""
+    );
+    setClassStatus(classData?.class?.status ?? "planejada");
+    setClassNotes(classData?.class?.notes ?? "");
+    setAttendanceStatuses(
+      Object.fromEntries(
+        (classData?.roster ?? []).map(row => [
+          row.enrollment.id,
+          row.attendance?.status ?? "ausente",
+        ])
+      )
+    );
+  }, [
+    classData?.class?.id,
+    classData?.class?.classDate,
+    classData?.class?.status,
+    classData?.class?.notes,
+    classData?.roster,
+  ]);
+  const saveClassMutation = trpc.escolaFundamentos.saveClass.useMutation({
+    onSuccess: async () => {
+      toast.success("Aula presencial registrada.");
+      await classManagement.refetch();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const attendanceMutation =
+    trpc.escolaFundamentos.recordClassAttendance.useMutation({
+      onSuccess: async () => {
+        toast.success("Presença atualizada.");
+        await classManagement.refetch();
+      },
+      onError: error => toast.error(error.message),
+    });
+  if (isLoading)
+    return <div className="mb-4 h-48 animate-pulse rounded-xl bg-muted/30" />;
+  if (!students.length || !studies.length) return null;
+  return (
+    <div className="mb-4 space-y-4">
+      <Card className="border-[#1e3a5f]/20 bg-[#fdfaf1]/40">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base text-[#1e3a5f]">
+            <Users className="h-4 w-4 text-[#c9a84c]" />
+            Acompanhamento individual
+          </CardTitle>
+          <p className="text-sm font-normal text-muted-foreground">
+            A semana é coletiva. Aqui, o professor registra a compreensão de
+            cada discípulo e acompanha a presença no domingo.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Aluno</Label>
+              <Select
+                value={selectedEnrollmentId}
+                onValueChange={setSelectedEnrollmentId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o aluno" />
+                </SelectTrigger>
+                <SelectContent>
+                  {students.map(student => (
+                    <SelectItem key={student.id} value={String(student.id)}>
+                      {student.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Tema</Label>
+              <Select
+                value={selectedStudyId}
+                onValueChange={setSelectedStudyId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o tema" />
+                </SelectTrigger>
+                <SelectContent>
+                  {studies.map(study => (
+                    <SelectItem key={study.id} value={String(study.id)}>
+                      {study.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {selectedRow ? (
+            <div className="rounded-xl border border-border bg-white p-3">
+              <div className="mb-3 flex flex-wrap gap-2 text-xs">
+                <Badge
+                  variant={
+                    selectedRow.progress?.status === "concluida"
+                      ? "default"
+                      : "secondary"
+                  }
+                >
+                  {selectedRow.progress?.status === "concluida"
+                    ? "Estudo digital concluído"
+                    : "Estudo digital pendente"}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                <Label>Avaliação do professor</Label>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <Button
+                    type="button"
+                    variant={
+                      reviewStatus === "compreendeu" ? "default" : "outline"
+                    }
+                    onClick={() => setReviewStatus("compreendeu")}
+                  >
+                    Compreendeu
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={
+                      reviewStatus === "precisa_reforco" ? "default" : "outline"
+                    }
+                    onClick={() => setReviewStatus("precisa_reforco")}
+                  >
+                    Precisa de reforço
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={
+                      reviewStatus === "nao_participou" ? "default" : "outline"
+                    }
+                    onClick={() => setReviewStatus("nao_participou")}
+                  >
+                    Não participou
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-3 space-y-2">
+                <Label htmlFor="foundation-review-notes">
+                  Observação do professor
+                </Label>
+                <Textarea
+                  id="foundation-review-notes"
+                  value={reviewNotes}
+                  onChange={event => setReviewNotes(event.target.value)}
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="Registre uma observação sobre a conversa..."
+                />
+              </div>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={reviewMutation.isPending}
+                  onClick={() =>
+                    reviewMutation.mutate({
+                      churchId,
+                      enrollmentId: selectedRow.enrollment.id,
+                      studyId: selectedRow.study.id,
+                      reviewStatus,
+                      reviewNotes: reviewNotes || null,
+                    })
+                  }
+                >
+                  {reviewMutation.isPending ? "Salvando…" : "Registrar revisão"}
+                </Button>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                A semana é coletiva: a data do estudo define quando ele fica
+                disponível para todos os discípulos matriculados.
+              </p>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+      <Card className="border-[#c9a84c]/25">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base text-[#1e3a5f]">
+            <Users className="h-4 w-4 text-[#c9a84c]" />
+            Aula presencial da semana
+          </CardTitle>
+          <p className="text-sm font-normal text-muted-foreground">
+            Registre o domingo do mesmo tema e acompanhe presença sem misturar
+            com a preparação digital.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Data do domingo</Label>
+              <Input
+                type="date"
+                value={classDate}
+                onChange={event => setClassDate(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Status da aula</Label>
+              <Select
+                value={classStatus}
+                onValueChange={value =>
+                  setClassStatus(value as typeof classStatus)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="planejada">Planejada</SelectItem>
+                  <SelectItem value="realizada">Realizada</SelectItem>
+                  <SelectItem value="cancelada">Cancelada</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Semana</Label>
+              <div className="flex h-10 items-center rounded-md border bg-muted/30 px-3 text-sm text-muted-foreground">
+                {classData?.study?.weekStart
+                  ? formatCivilDate(classData.study.weekStart)
+                  : "Data ainda não definida"}
+              </div>
+            </div>
+          </div>
+          <Textarea
+            value={classNotes}
+            onChange={event => setClassNotes(event.target.value)}
+            maxLength={2000}
+            rows={2}
+            placeholder="Observação breve para a aula de domingo (opcional)"
+          />
+          <Button
+            type="button"
+            className="bg-[#1e3a5f] text-white"
+            disabled={!classDate || saveClassMutation.isPending}
+            onClick={() =>
+              saveClassMutation.mutate({
+                churchId,
+                courseId,
+                studyId: Number(selectedStudyId),
+                classDate,
+                status: classStatus,
+                notes: classNotes || null,
+              })
+            }
+          >
+            {saveClassMutation.isPending
+              ? "Salvando…"
+              : "Salvar aula presencial"}
+          </Button>
+          {classData?.metrics ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-lg bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Iniciaram</p>
+                <p className="text-lg font-semibold text-[#1e3a5f]">
+                  {classData.metrics.started}
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Concluíram</p>
+                <p className="text-lg font-semibold text-emerald-700">
+                  {classData.metrics.completed}
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Presenças</p>
+                <p className="text-lg font-semibold text-[#1e3a5f]">
+                  {
+                    classData.roster.filter(
+                      row => row.attendance?.status === "presente"
+                    ).length
+                  }
+                </p>
+              </div>
+              <div className="rounded-lg bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">
+                  Questões com erro
+                </p>
+                <p className="text-lg font-semibold text-amber-700">
+                  {classData.metrics.questionErrors.length}
+                </p>
+              </div>
+            </div>
+          ) : null}
+          {classData?.metrics?.questionErrors.length ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm font-semibold text-amber-900">
+                Pontos para reforçar no domingo
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
+                {classData.metrics.questionErrors.map(question => (
+                  <li key={question.questionId}>
+                    {question.prompt} ({question.errors} erro(s))
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {classData?.class ? (
+            <div className="space-y-2 border-t pt-4">
+              <p className="text-sm font-semibold text-[#1e3a5f]">
+                Presença da turma
+              </p>
+              {classData.roster.length ? (
+                classData.roster.map(row => (
+                  <div
+                    key={row.enrollment.id}
+                    className="flex flex-col gap-2 rounded-lg border bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-[#1e3a5f]">
+                        {row.person.fullName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {row.progress?.status === "concluida"
+                          ? "Preparação concluída"
+                          : row.progress?.status === "em_andamento"
+                            ? "Preparação em andamento"
+                            : "Preparação pendente"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={
+                          attendanceStatuses[row.enrollment.id] ?? "ausente"
+                        }
+                        onValueChange={value =>
+                          setAttendanceStatuses(current => ({
+                            ...current,
+                            [row.enrollment.id]: value as
+                              | "presente"
+                              | "ausente"
+                              | "justificado",
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-36 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="presente">Presente</SelectItem>
+                          <SelectItem value="ausente">Ausente</SelectItem>
+                          <SelectItem value="justificado">
+                            Justificado
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={attendanceMutation.isPending}
+                        onClick={() =>
+                          attendanceMutation.mutate({
+                            churchId,
+                            classId: currentClassId,
+                            enrollmentId: row.enrollment.id,
+                            status:
+                              attendanceStatuses[row.enrollment.id] ??
+                              "ausente",
+                            notes: row.attendance?.notes ?? null,
+                          })
+                        }
+                      >
+                        Salvar
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Nenhum aluno matriculado nesta turma.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Salve a data de domingo para abrir a lista de presença.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function CourseCard({
+  course,
+  churchId,
+  people,
+  canManage,
+  theme,
+}: {
+  course: Course;
+  churchId: number;
+  people: Person[];
+  canManage: boolean;
+  theme: FoundationTheme;
+}) {
+  const [selectedPersonId, setSelectedPersonId] = useState("");
+  const [enrollOpen, setEnrollOpen] = useState(false);
+  const [certificateFor, setCertificateFor] = useState<number | null>(null);
+  const utils = trpc.useUtils();
+  const { data: enrollments } = trpc.escolaFundamentos.getEnrollments.useQuery(
+    { courseId: course.id, churchId },
+    { enabled: canManage }
+  );
+  const enrollMutation = trpc.escolaFundamentos.enroll.useMutation({
+    onSuccess: () => {
+      toast.success("Matrícula realizada.");
+      setEnrollOpen(false);
+      setSelectedPersonId("");
+      utils.escolaFundamentos.getEnrollments.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const updateMutation = trpc.escolaFundamentos.updateEnrollment.useMutation({
+    onSuccess: () => {
+      toast.success("Status atualizado.");
+      utils.escolaFundamentos.getEnrollments.invalidate();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const certificateMutation = trpc.certificates.generate.useMutation({
+    onSuccess: data => {
+      window.open(data.url, "_blank");
+      setCertificateFor(null);
+      toast.success("Certificado gerado.");
+    },
+    onError: () => {
+      setCertificateFor(null);
+      toast.error("Não foi possível gerar o certificado.");
+    },
+  });
+  const courseInfo = COURSE_TYPES.find(item => item.value === course.type);
+  const total = enrollments?.length ?? 0;
+  const inProgress =
+    enrollments?.filter(item => item.enrollment.status === "em_andamento")
+      .length ?? 0;
+  const concluded =
+    enrollments?.filter(item => item.enrollment.status === "concluido")
+      .length ?? 0;
+  return (
+    <Card className="border-[#c9a84c]/20">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="text-2xl">{courseInfo?.icon ?? "📚"}</span>
+            <div className="min-w-0">
+              <CardTitle className="truncate text-lg text-[#1e3a5f]">
+                {course.name}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {courseInfo?.label}
+              </p>
+            </div>
+          </div>
+          <Badge variant={course.active ? "default" : "secondary"}>
+            {course.active ? "Ativa" : "Inativa"}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {course.description ? (
+          <p className="mb-4 text-sm text-muted-foreground">
+            {course.description}
+          </p>
+        ) : null}
+        {canManage ? (
+          <div className="mb-4 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+            <span className="flex items-center gap-1 text-muted-foreground">
+              <Users className="h-4 w-4" />
+              {total} matriculados
+            </span>
+            <span className="flex items-center gap-1 text-amber-700">
+              <Clock className="h-4 w-4" />
+              {inProgress} em andamento
+            </span>
+            <span className="flex items-center gap-1 text-green-600">
+              <CheckCircle className="h-4 w-4" />
+              {concluded} concluídos
+            </span>
+          </div>
+        ) : null}
+        {canManage ? (
+          <>
+            <WeeklyOverview churchId={churchId} courseId={course.id} />
+            <details className="group rounded-2xl border border-[#1e3a5f]/15 bg-white">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 sm:p-5">
+                <span>
+                  <span className="block font-semibold text-[#1e3a5f]">
+                    Acompanhamento detalhado
+                  </span>
+                  <span className="mt-1 block text-sm font-normal text-muted-foreground">
+                    Revise discípulos, aula presencial e presença somente quando
+                    precisar.
+                  </span>
+                </span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-[#c9a84c] transition-transform group-open:rotate-90" />
+              </summary>
+              <div className="px-3 pb-1 sm:px-4">
+                <TeacherLearningReview
+                  churchId={churchId}
+                  courseId={course.id}
+                />
+              </div>
+            </details>
+            <details className="group rounded-2xl border border-[#c9a84c]/25 bg-white">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 sm:p-5">
+                <span>
+                  <span className="block font-semibold text-[#1e3a5f]">
+                    Trilha e conteúdo
+                  </span>
+                  <span className="mt-1 block text-sm font-normal text-muted-foreground">
+                    Abra a sequência completa de módulos e estudos.
+                  </span>
+                </span>
+                <ChevronRight className="h-5 w-5 shrink-0 text-[#c9a84c] transition-transform group-open:rotate-90" />
+              </summary>
+              <div className="px-3 pb-1 sm:px-4">
+                <LearningTrail
+                  churchId={churchId}
+                  courseId={course.id}
+                  canManage={canManage}
+                />
+              </div>
+            </details>
+          </>
+        ) : (
+          <Suspense fallback={<StudentLearningExperienceFallback />}>
+            <StudentLearningExperience
+              churchId={churchId}
+              courseId={course.id}
+              theme={theme}
+            />
+          </Suspense>
+        )}
+        {canManage && enrollments?.length ? (
+          <div className="mb-4 max-h-52 space-y-2 overflow-y-auto pr-1">
+            {enrollments.map(({ enrollment, person }) => (
+              <div
+                key={enrollment.id}
+                className="flex flex-col gap-2 rounded-lg bg-muted/30 p-2 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <span className="min-w-0 truncate text-sm font-medium">
+                  {person.fullName}
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs ${STATUS_COLORS[enrollment.status ?? "matriculado"]}`}
+                  >
+                    {STATUS_LABELS[enrollment.status ?? "matriculado"]}
+                  </span>
+                  {enrollment.status !== "concluido" ? (
+                    <Select
+                      value={enrollment.status ?? "matriculado"}
+                      onValueChange={value =>
+                        updateMutation.mutate({
+                          id: enrollment.id,
+                          churchId,
+                          status: value as
+                            | "matriculado"
+                            | "em_andamento"
+                            | "concluido",
+                          completedAt:
+                            value === "concluido" ? new Date() : null,
+                        })
+                      }
+                    >
+                      <SelectTrigger className="h-7 w-32 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="matriculado">Matriculado</SelectItem>
+                        <SelectItem value="em_andamento">
+                          Em andamento
+                        </SelectItem>
+                        <SelectItem value="concluido">Concluído</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 border-[#c9a84c] text-xs text-[#c9a84c]"
+                      disabled={certificateFor === enrollment.id}
+                      onClick={() => {
+                        setCertificateFor(enrollment.id);
+                        certificateMutation.mutate({
+                          type: "fundamentos",
+                          memberName: person.fullName,
+                          churchId,
+                          personId: person.id,
+                          enrollmentId: enrollment.id,
+                          courseName: course.name,
+                        });
+                      }}
+                    >
+                      {certificateFor === enrollment.id ? (
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      ) : (
+                        <Award className="mr-1 h-3 w-3" />
+                      )}
+                      Certificado
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {canManage ? (
+          <Dialog open={enrollOpen} onOpenChange={setEnrollOpen}>
+            <DialogTrigger asChild>
+              <Button
+                size="sm"
+                className="w-full bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90"
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Matricular Pessoa
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Matricular em {course.name}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
+                <Select
+                  value={selectedPersonId}
+                  onValueChange={setSelectedPersonId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a pessoa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {people.map(person => (
+                      <SelectItem key={person.id} value={String(person.id)}>
+                        {person.fullName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  className="w-full bg-[#1e3a5f] text-white"
+                  disabled={!selectedPersonId || enrollMutation.isPending}
+                  onClick={() =>
+                    enrollMutation.mutate({
+                      courseId: course.id,
+                      personId: Number(selectedPersonId),
+                      churchId,
+                    })
+                  }
+                >
+                  {enrollMutation.isPending
+                    ? "Matriculando..."
+                    : "Confirmar matrícula"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function FoundationStudentsArea({
+  churchId,
+  courses,
+}: {
+  churchId: number;
+  courses: Course[];
+}) {
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      {courses.map(course => (
+        <FoundationCourseRoster
+          key={course.id}
+          churchId={churchId}
+          course={course}
+        />
+      ))}
+    </div>
+  );
+}
+
+function FoundationCourseRoster({
+  churchId,
+  course,
+}: {
+  churchId: number;
+  course: Course;
+}) {
+  const utils = trpc.useUtils();
+  const { data: enrollments = [], isLoading } =
+    trpc.escolaFundamentos.getEnrollments.useQuery({
+      courseId: course.id,
+      churchId,
+    });
+  const updateMutation = trpc.escolaFundamentos.updateEnrollment.useMutation({
+    onSuccess: () => {
+      toast.success("Status do aluno atualizado.");
+      utils.escolaFundamentos.getEnrollments.invalidate({
+        churchId,
+        courseId: course.id,
+      });
+    },
+    onError: error => toast.error(error.message),
+  });
+  const rows = enrollments as Array<{
+    enrollment: { id: number; status: string | null };
+    person: { id: number; fullName: string };
+  }>;
+  return (
+    <Card className="border-[#c9a84c]/20">
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base text-[#1e3a5f]">
+          <Users className="h-4 w-4 text-[#c9a84c]" />
+          {course.name}
+        </CardTitle>
+        <p className="text-sm font-normal text-muted-foreground">
+          Acompanhe quem está matriculado e o andamento da preparação.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {isLoading ? (
+          <div className="h-20 animate-pulse rounded-lg bg-muted/30" />
+        ) : rows.length ? (
+          rows.map(({ enrollment, person }) => (
+            <div
+              key={enrollment.id}
+              className="flex flex-col gap-2 rounded-xl border bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-[#1e3a5f]">
+                  {person.fullName}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {enrollment.status === "concluido"
+                    ? "Preparação concluída"
+                    : enrollment.status === "em_andamento"
+                      ? "Preparação em andamento"
+                      : "Ainda não iniciada"}
+                </p>
+              </div>
+              <Select
+                value={enrollment.status ?? "matriculado"}
+                onValueChange={value =>
+                  updateMutation.mutate({
+                    id: enrollment.id,
+                    churchId,
+                    status: value as
+                      | "matriculado"
+                      | "em_andamento"
+                      | "concluido",
+                    completedAt: value === "concluido" ? new Date() : null,
+                  })
+                }
+              >
+                <SelectTrigger className="h-9 w-full text-xs sm:w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="matriculado">Matriculado</SelectItem>
+                  <SelectItem value="em_andamento">Em andamento</SelectItem>
+                  <SelectItem value="concluido">Concluído</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ))
+        ) : (
+          <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+            Nenhum aluno matriculado nesta turma ainda. A matrícula continua
+            disponível em Estudos.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function StudyManagement({
+  churchId,
+  courses,
+  canManageAdministrators,
+  primaryColor,
+  secondaryColor,
+}: {
+  churchId: number;
+  courses: Course[];
+  canManageAdministrators: boolean;
+  primaryColor: string;
+  secondaryColor: string;
+}) {
+  const [courseId, setCourseId] = useState("");
+  const [studyId, setStudyId] = useState("");
+  const [studyModuleId, setStudyModuleId] = useState("none");
+  const [materialId, setMaterialId] = useState("");
+  const [moduleTitle, setModuleTitle] = useState("");
+  const [moduleDescription, setModuleDescription] = useState("");
+  const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
+  const [studyEditorOpen, setStudyEditorOpen] = useState(false);
+  const [studyEditorStudy, setStudyEditorStudy] = useState<Study | null>(null);
+  const [administratorId, setAdministratorId] = useState("");
+  const utils = trpc.useUtils();
+  useEffect(() => {
+    if (!courseId && courses[0]) setCourseId(String(courses[0].id));
+  }, [courseId, courses]);
+  const selectedCourseId = Number(courseId);
+  const { data: modules = [] } = trpc.escolaFundamentos.listModules.useQuery(
+    { churchId, courseId: selectedCourseId },
+    { enabled: Boolean(selectedCourseId) }
+  );
+  const { data: studies = [] } = trpc.escolaFundamentos.listStudies.useQuery(
+    { churchId, courseId: selectedCourseId },
+    { enabled: Boolean(selectedCourseId) }
+  );
+  useEffect(() => {
+    if (studies[0] && !studies.some(study => String(study.id) === studyId))
+      setStudyId(String(studies[0].id));
+  }, [studies, studyId]);
+  const selectedStudyId = Number(studyId);
+  const { data: linkedMaterials } =
+    trpc.escolaFundamentos.listStudyMaterials.useQuery(
+      { churchId, studyId: selectedStudyId },
+      { enabled: Boolean(selectedStudyId) }
+    );
+  const { data: libraryItems } = trpc.library.list.useQuery({ churchId });
+  const { data: accounts } = trpc.churchAuth.listUsers.useQuery(
+    { churchId },
+    { enabled: canManageAdministrators }
+  );
+  const { data: administrators } =
+    trpc.escolaFundamentos.listStudyAdministrators.useQuery(
+      { churchId },
+      { enabled: canManageAdministrators }
+    );
+  const invalidateTrail = () => {
+    utils.escolaFundamentos.listModules.invalidate();
+    utils.escolaFundamentos.listStudies.invalidate();
+  };
+  const createModule = trpc.escolaFundamentos.createModule.useMutation({
+    onSuccess: data => {
+      toast.success("Módulo criado. Ele já está selecionado neste estudo.");
+      setStudyModuleId(String(data.moduleId));
+      setModuleTitle("");
+      setModuleDescription("");
+      setModuleDialogOpen(false);
+      invalidateTrail();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const updateModule = trpc.escolaFundamentos.updateModule.useMutation({
+    onSuccess: () => {
+      toast.success("Módulo atualizado.");
+      invalidateTrail();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const moveModule = trpc.escolaFundamentos.moveModule.useMutation({
+    onSuccess: invalidateTrail,
+    onError: error => toast.error(error.message),
+  });
+  const moveStudy = trpc.escolaFundamentos.moveStudy.useMutation({
+    onSuccess: invalidateTrail,
+    onError: error => toast.error(error.message),
+  });
+  const updateStudy = trpc.escolaFundamentos.updateStudy.useMutation({
+    onSuccess: (_data, variables) => {
+      if (variables.active !== undefined) {
+        toast.success(
+          variables.active
+            ? "Estudo publicado para os alunos."
+            : "Estudo retirado da publicação."
+        );
+      } else {
+        toast.success("Alterações do estudo salvas.");
+      }
+      invalidateTrail();
+    },
+    onError: error => toast.error(error.message),
+  });
+  const attachMaterial = trpc.escolaFundamentos.attachStudyMaterial.useMutation(
+    {
+      onSuccess: () => {
+        toast.success("Material incluído no estudo.");
+        setMaterialId("");
+        utils.escolaFundamentos.listStudyMaterials.invalidate();
+      },
+      onError: error => toast.error(error.message),
+    }
+  );
+  const detachMaterial = trpc.escolaFundamentos.detachStudyMaterial.useMutation(
+    {
+      onSuccess: () => {
+        toast.success("Material removido somente deste estudo.");
+        utils.escolaFundamentos.listStudyMaterials.invalidate();
+      },
+      onError: error => toast.error(error.message),
+    }
+  );
+  const moveMaterial = trpc.escolaFundamentos.moveStudyMaterial.useMutation({
+    onSuccess: () => utils.escolaFundamentos.listStudyMaterials.invalidate(),
+    onError: error => toast.error(error.message),
+  });
+  const assignAdministrator =
+    trpc.escolaFundamentos.assignStudyAdministrator.useMutation({
+      onSuccess: () => {
+        toast.success("Administrador autorizado.");
+        setAdministratorId("");
+        utils.escolaFundamentos.listStudyAdministrators.invalidate();
+      },
+      onError: error => toast.error(error.message),
+    });
+  const removeAdministrator =
+    trpc.escolaFundamentos.removeStudyAdministrator.useMutation({
+      onSuccess: () => {
+        toast.success("Administrador removido.");
+        utils.escolaFundamentos.listStudyAdministrators.invalidate();
+      },
+      onError: error => toast.error(error.message),
+    });
+  const openStudyEditor = (selectedStudy: Study | null) => {
+    setStudyEditorStudy(selectedStudy);
+    setStudyEditorOpen(true);
+  };
+  const linkedIds = new Set(
+    (linkedMaterials ?? []).map(material => material.libraryItemId)
+  );
+  const availableMaterials = (libraryItems ?? []).filter(
+    material => !linkedIds.has(material.id)
+  );
+  const currentAdministrators = new Set(
+    (administrators ?? []).map(administrator => administrator.churchUserId)
+  );
+  const typedModules = modules as FoundationModule[];
+  const typedStudies = studies as Study[];
+  return (
+    <div className="space-y-5">
+      <FoundationStudyEditor
+        open={studyEditorOpen}
+        study={studyEditorStudy}
+        churchId={churchId}
+        courses={courses}
+        modules={typedModules}
+        primaryColor={primaryColor}
+        secondaryColor={secondaryColor}
+        onOpenChange={open => {
+          setStudyEditorOpen(open);
+          if (!open) setStudyEditorStudy(null);
+        }}
+        onSaved={invalidateTrail}
+      />
+      <section className="rounded-2xl border border-[#c9a84c]/25 bg-[#fdfaf1] p-4 sm:p-5">
+        <div className="flex items-start gap-3">
+          <div className="rounded-xl bg-[#c9a84c]/20 p-2 text-[#1e3a5f]">
+            <Layers3 className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-[#1e3a5f]">
+              1. Escolha a turma e o módulo
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              O módulo apenas organiza a trilha. O que será criado e publicado é
+              o estudo.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+          <div className="space-y-2">
+            <Label>Turma</Label>
+            <Select
+              value={courseId}
+              onValueChange={value => {
+                setCourseId(value);
+                setStudyId("");
+                setStudyModuleId("none");
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione uma turma" />
+              </SelectTrigger>
+              <SelectContent>
+                {courses.map(course => (
+                  <SelectItem key={course.id} value={String(course.id)}>
+                    {course.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Módulo do estudo</Label>
+            <Select value={studyModuleId} onValueChange={setStudyModuleId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um módulo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sem módulo por enquanto</SelectItem>
+                {typedModules.map(module => (
+                  <SelectItem key={module.id} value={String(module.id)}>
+                    {module.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Dialog open={moduleDialogOpen} onOpenChange={setModuleDialogOpen}>
+            <DialogTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={!selectedCourseId}
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Novo módulo
+              </Button>
+            </DialogTrigger>
+            <AdaptiveFormDialogContent className="sm:max-w-lg">
+              <DialogHeader className={adaptiveFormDialogHeaderClassName}>
+                <DialogTitle className="font-display text-[#1e3a5f]">
+                  Criar módulo
+                </DialogTitle>
+              </DialogHeader>
+              <AdaptiveFormDialogBody>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Dê apenas um nome para organizar esta sequência de estudos.
+                    Você poderá criar o estudo logo abaixo.
+                  </p>
+                  <div className="space-y-2">
+                    <Label htmlFor="foundation-module-title">
+                      Nome do módulo
+                    </Label>
+                    <Input
+                      id="foundation-module-title"
+                      value={moduleTitle}
+                      onChange={event => setModuleTitle(event.target.value)}
+                      placeholder="Ex.: Alicerces da fé"
+                      maxLength={160}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="foundation-module-description">
+                      Objetivo do módulo (opcional)
+                    </Label>
+                    <Textarea
+                      id="foundation-module-description"
+                      value={moduleDescription}
+                      onChange={event =>
+                        setModuleDescription(event.target.value)
+                      }
+                      placeholder="Ex.: Conhecer os fundamentos da fé cristã."
+                      maxLength={500}
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              </AdaptiveFormDialogBody>
+              <AdaptiveFormDialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setModuleDialogOpen(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  className="bg-[#1e3a5f] text-white"
+                  disabled={
+                    !selectedCourseId ||
+                    moduleTitle.trim().length < 3 ||
+                    createModule.isPending
+                  }
+                  onClick={() =>
+                    createModule.mutate({
+                      churchId,
+                      courseId: selectedCourseId,
+                      title: moduleTitle,
+                      description: moduleDescription || undefined,
+                    })
+                  }
+                >
+                  {createModule.isPending ? "Salvando…" : "Salvar módulo"}
+                </Button>
+              </AdaptiveFormDialogFooter>
+            </AdaptiveFormDialogContent>
+          </Dialog>
+        </div>
+        <details className="mt-4 rounded-xl border border-[#c9a84c]/25 bg-white">
+          <summary className="cursor-pointer list-none px-3 py-3 text-sm font-semibold text-[#1e3a5f]">
+            Organizar módulos existentes
+          </summary>
+          <div className="space-y-2 border-t border-[#c9a84c]/15 p-3">
+            {typedModules.length ? (
+              typedModules.map((module, index) => (
+                <div
+                  key={module.id}
+                  className="flex flex-col gap-2 rounded-lg bg-[#fdfaf1] p-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-[#1e3a5f]">
+                      {index + 1}. {module.title}
+                    </p>
+                    <p className="line-clamp-1 text-sm text-muted-foreground">
+                      {module.description || "Sem descrição"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <Badge variant={module.active ? "default" : "secondary"}>
+                      {module.active ? "Ativo" : "Desativado"}
+                    </Badge>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8"
+                      disabled={index === 0}
+                      onClick={() =>
+                        moveModule.mutate({
+                          churchId,
+                          courseId: selectedCourseId,
+                          id: module.id,
+                          direction: "up",
+                        })
+                      }
+                      aria-label="Mover módulo acima"
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-8 w-8"
+                      disabled={index === typedModules.length - 1}
+                      onClick={() =>
+                        moveModule.mutate({
+                          churchId,
+                          courseId: selectedCourseId,
+                          id: module.id,
+                          direction: "down",
+                        })
+                      }
+                      aria-label="Mover módulo abaixo"
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        updateModule.mutate({
+                          id: module.id,
+                          churchId,
+                          active: !module.active,
+                        })
+                      }
+                    >
+                      {module.active ? "Desativar" : "Ativar"}
+                    </Button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nenhum módulo criado. Use Novo módulo quando quiser organizar a
+                trilha.
+              </p>
+            )}
+          </div>
+        </details>
+      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-[#1e3a5f]">
+            <FileText className="h-5 w-5 text-[#c9a84c]" />
+            Estudos
+          </CardTitle>
+          <p className="text-sm font-normal text-muted-foreground">
+            Crie ou edite um estudo em um único caminho: informações, quatro
+            etapas, revisão e publicação.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-xl border border-[#c9a84c]/25 bg-[#fdfaf1] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-semibold text-[#1e3a5f]">Preparar um estudo</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                O estudo começa como rascunho e já recebe Leia, Entenda,
+                Responda e Aplique.
+              </p>
+            </div>
+            <Button
+              type="button"
+              className="bg-[#1e3a5f] text-white"
+              disabled={!selectedCourseId}
+              onClick={() => openStudyEditor(null)}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Criar estudo
+            </Button>
+          </div>
+          <details className="rounded-xl border border-slate-200 bg-slate-50/60">
+            <summary className="cursor-pointer list-none px-3 py-3 text-sm font-semibold text-[#1e3a5f]">
+              Opções avançadas: preencher por Excel
+            </summary>
+            <div className="border-t border-slate-200 p-3">
+              <div className="flex flex-col gap-3 rounded-xl border border-[#c9a84c]/20 bg-[#fdfaf1] p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-[#1e3a5f]">
+                    Preencher por Excel
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Revise a prévia e confirme sem sobrescrever estudos
+                    existentes.
+                  </p>
+                </div>
+                {selectedCourseId ? (
+                  <FoundationImportDialog
+                    courseId={selectedCourseId}
+                    courseName={
+                      courses.find(course => course.id === selectedCourseId)
+                        ?.name ?? "turma selecionada"
+                    }
+                    onImported={invalidateTrail}
+                  />
+                ) : null}
+              </div>
+            </div>
+          </details>
+          <div className="space-y-3 border-t pt-4">
+            <div>
+              <p className="font-semibold text-[#1e3a5f]">Estudos existentes</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Abra um estudo para continuar o rascunho, revisar a prévia ou
+                publicar.
+              </p>
+            </div>
+            {typedStudies.length ? (
+              typedStudies.map((study, index) => {
+                const sameModule = typedStudies.filter(
+                  item => item.moduleId === study.moduleId
+                );
+                const moduleIndex = sameModule.findIndex(
+                  item => item.id === study.id
+                );
+                return (
+                  <StudyTrailItem
+                    key={study.id}
+                    churchId={churchId}
+                    study={study}
+                    canManage
+                    order={index + 1}
+                    actions={
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openStudyEditor(study)}
+                        >
+                          <Pencil className="mr-1 h-3 w-3" />
+                          Editar estudo
+                        </Button>
+                        <Button
+                          size="sm"
+                          className={
+                            study.active
+                              ? ""
+                              : "bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90"
+                          }
+                          variant={study.active ? "outline" : "default"}
+                          onClick={() =>
+                            updateStudy.mutate({
+                              id: study.id,
+                              churchId,
+                              active: !study.active,
+                            })
+                          }
+                        >
+                          {study.active
+                            ? "Retirar da publicação"
+                            : "Publicar estudo"}
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-8 w-8"
+                          disabled={moduleIndex === 0}
+                          onClick={() =>
+                            moveStudy.mutate({
+                              churchId,
+                              courseId: selectedCourseId,
+                              id: study.id,
+                              moduleId: study.moduleId,
+                              direction: "up",
+                            })
+                          }
+                          aria-label="Mover estudo acima"
+                        >
+                          <ArrowUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-8 w-8"
+                          disabled={moduleIndex === sameModule.length - 1}
+                          onClick={() =>
+                            moveStudy.mutate({
+                              churchId,
+                              courseId: selectedCourseId,
+                              id: study.id,
+                              moduleId: study.moduleId,
+                              direction: "down",
+                            })
+                          }
+                          aria-label="Mover estudo abaixo"
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                        </Button>
+                      </>
+                    }
+                  />
+                );
+              })
+            ) : (
+              <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                Nenhum estudo criado ainda. Clique em Criar estudo para começar.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="border-[#1e3a5f]/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-[#1e3a5f]">
+            <Link2 className="h-5 w-5 text-[#c9a84c]" />
+            Materiais do estudo
+          </CardTitle>
+          <p className="text-sm font-normal text-muted-foreground">
+            Conecte o acervo existente; nenhum arquivo será copiado para a
+            trilha.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <Select value={studyId} onValueChange={setStudyId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o estudo" />
+              </SelectTrigger>
+              <SelectContent>
+                {typedStudies.map(study => (
+                  <SelectItem key={study.id} value={String(study.id)}>
+                    {study.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={materialId}
+              onValueChange={setMaterialId}
+              disabled={!selectedStudyId}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione material do acervo" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableMaterials.map(material => (
+                  <SelectItem key={material.id} value={String(material.id)}>
+                    {material.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              disabled={
+                !selectedStudyId || !materialId || attachMaterial.isPending
+              }
+              onClick={() =>
+                attachMaterial.mutate({
+                  churchId,
+                  studyId: selectedStudyId,
+                  libraryItemId: Number(materialId),
+                })
+              }
+            >
+              <Plus className="mr-1 h-4 w-4" />
+              Adicionar
+            </Button>
+          </div>
+          {linkedMaterials?.length ? (
+            <div className="space-y-2">
+              {linkedMaterials.map((material, index) => (
+                <div
+                  key={material.id}
+                  className="flex flex-col gap-2 rounded-lg bg-[#fdfaf1] p-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-[#1e3a5f]">
+                      {index + 1}. {material.title}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {MATERIAL_TYPE_LABELS[material.type] ?? material.type}
+                    </p>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={index === 0}
+                      onClick={() =>
+                        moveMaterial.mutate({
+                          churchId,
+                          studyId: selectedStudyId,
+                          id: material.id,
+                          direction: "up",
+                        })
+                      }
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={index === linkedMaterials.length - 1}
+                      onClick={() =>
+                        moveMaterial.mutate({
+                          churchId,
+                          studyId: selectedStudyId,
+                          id: material.id,
+                          direction: "down",
+                        })
+                      }
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </Button>
+                    {material.fileUrl ? (
+                      <a
+                        href={material.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    ) : null}
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 text-destructive"
+                      onClick={() =>
+                        detachMaterial.mutate({
+                          churchId,
+                          studyId: selectedStudyId,
+                          id: material.id,
+                        })
+                      }
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : selectedStudyId ? (
+            <p className="text-sm text-muted-foreground">
+              Nenhum material foi vinculado a este estudo ainda.
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+      {canManageAdministrators ? (
+        <Card className="border-[#1e3a5f]/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-[#1e3a5f]">
+              <UserRoundCog className="h-5 w-5 text-[#c9a84c]" />
+              Administradores de estudos
+            </CardTitle>
+            <p className="text-sm font-normal text-muted-foreground">
+              O Pastor define quem pode administrar módulos, estudos e
+              materiais.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Select
+                value={administratorId}
+                onValueChange={setAdministratorId}
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Selecione uma conta ativa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(accounts ?? [])
+                    .filter(
+                      account =>
+                        account.active && !currentAdministrators.has(account.id)
+                    )
+                    .map(account => (
+                      <SelectItem key={account.id} value={String(account.id)}>
+                        {account.name} · {account.email}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <Button
+                disabled={!administratorId}
+                onClick={() =>
+                  assignAdministrator.mutate({
+                    churchId,
+                    churchUserId: Number(administratorId),
+                  })
+                }
+              >
+                <ShieldCheck className="mr-2 h-4 w-4" />
+                Autorizar
+              </Button>
+            </div>
+            {administrators?.map(administrator => (
+              <div
+                key={administrator.churchUserId}
+                className="flex items-center justify-between gap-3 rounded-lg bg-muted/40 p-3"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-[#1e3a5f]">
+                    {administrator.name}
+                  </span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {administrator.email}
+                  </span>
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    removeAdministrator.mutate({
+                      churchId,
+                      churchUserId: administrator.churchUserId,
+                    })
+                  }
+                >
+                  Remover
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+export default function EscolaFundamentos() {
+  const { churchId, primaryColor, secondaryColor } = useChurch();
+  const foundationTheme = createFoundationTheme(primaryColor, secondaryColor);
+  const [activeArea, setActiveArea] = useState<FoundationAdminArea>("estudos");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [courseName, setCourseName] = useState("");
+  const [courseType, setCourseType] =
+    useState<(typeof COURSE_TYPES)[number]["value"]>("salvacao");
+  const [courseDescription, setCourseDescription] = useState("");
+  const utils = trpc.useUtils();
+  const {
+    data: access,
+    isError: accessError,
+    refetch: refetchAccess,
+  } = trpc.escolaFundamentos.access.useQuery(
+    { churchId: churchId! },
+    { enabled: Boolean(churchId) }
+  );
+  const canManageStudies = Boolean(access?.canManageStudies);
+  const {
+    data: courses,
+    isLoading,
+    isError: coursesError,
+    refetch: refetchCourses,
+  } = trpc.escolaFundamentos.listCourses.useQuery(
+    { churchId: churchId! },
+    { enabled: Boolean(churchId && canManageStudies) }
+  );
+  const { data: people } = trpc.people.list.useQuery(
+    { churchId: churchId! },
+    { enabled: Boolean(churchId && canManageStudies) }
+  );
+  const [createError, setCreateError] = useState<string | null>(null);
+  const createCourse = trpc.escolaFundamentos.createCourse.useMutation({
+    onSuccess: () => {
+      toast.success("Turma criada. Agora crie módulos e estudos da trilha.");
+      setCreateOpen(false);
+      setCreateError(null);
+      setCourseName("");
+      setCourseDescription("");
+      utils.escolaFundamentos.listCourses.invalidate();
+    },
+    onError: error => {
+      setCreateError(error.message || "Não foi possível criar a turma.");
+      toast.error(error.message);
+    },
+  });
+  if (!churchId) return null;
+  if (accessError)
+    return (
+      <div className="space-y-3 p-4 sm:p-6" role="alert">
+        <h1 className="text-lg font-semibold text-[#1e3a5f]">
+          Não foi possível verificar o acesso à Escola.
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          A permissão não foi confirmada. Tente novamente.
+        </p>
+        <Button type="button" variant="outline" onClick={() => refetchAccess()}>
+          Tentar novamente
+        </Button>
+      </div>
+    );
+  if (!access)
+    return (
+      <div className="space-y-4 p-4 sm:p-6">
+        <div className="h-8 w-64 animate-pulse rounded bg-muted/40" />
+        <div className="h-40 animate-pulse rounded-2xl bg-muted/30" />
+      </div>
+    );
+  const typedCourses = (courses ?? []) as Course[];
+  const simplePeople = (people ?? []).map(person => ({
+    id: person.id,
+    fullName: person.fullName,
+  }));
+  const submitCourse = () => {
+    if (courseName.trim().length < 3) {
+      const message = "Informe um nome com ao menos 3 caracteres.";
+      setCreateError(message);
+      toast.error(message);
+      return;
+    }
+    setCreateError(null);
+    createCourse.mutate({
+      churchId,
+      name: courseName,
+      type: courseType,
+      description: courseDescription || undefined,
+    });
+  };
+  if (!canManageStudies)
+    return (
+      <div className="space-y-5 p-4 sm:p-6">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-[#1e3a5f]">
+            <BookOpen className="h-6 w-6 text-[#c9a84c]" />
+            Escola de Fundamentos
+          </h1>
+          <p className="mt-1 text-muted-foreground">
+            Sua preparação para a aula presencial.
+          </p>
+        </div>
+        <div className="rounded-xl border border-[#c9a84c]/20 bg-[#c9a84c]/5 p-4">
+          <div className="flex gap-3">
+            <Route className="mt-0.5 h-5 w-5 shrink-0 text-[#c9a84c]" />
+            <p className="text-sm text-[#1e3a5f]">
+              Você não precisa escolher uma turma. O estudo da semana aparece
+              aqui automaticamente quando chegar a sua data de início.
+            </p>
+          </div>
+        </div>
+        <Suspense fallback={<StudentLearningExperienceFallback />}>
+          <StudentLearningExperience
+            churchId={churchId}
+            theme={foundationTheme}
+          />
+        </Suspense>
+      </div>
+    );
+  if (coursesError)
+    return (
+      <div className="space-y-3 p-4 sm:p-6" role="alert">
+        <h1 className="text-lg font-semibold text-[#1e3a5f]">
+          Não foi possível carregar as trilhas.
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          A lista de turmas não foi confirmada. Tente novamente.
+        </p>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => refetchCourses()}
+        >
+          Tentar novamente
+        </Button>
+      </div>
+    );
+  return (
+    <div className="space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-[#1e3a5f]">
+            <BookOpen className="h-6 w-6 text-[#c9a84c]" />
+            Escola de Fundamentos
+          </h1>
+          <p className="mt-1 text-muted-foreground">
+            Trilhas de formação, turmas, módulos, estudos e materiais.
+          </p>
+        </div>
+        {canManageStudies ? (
+          <Dialog
+            open={createOpen}
+            onOpenChange={nextOpen => {
+              setCreateOpen(nextOpen);
+              if (nextOpen) setCreateError(null);
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button className="w-full bg-[#1e3a5f] text-white sm:w-auto">
+                <Plus className="mr-2 h-4 w-4" />
+                Criar turma
+              </Button>
+            </DialogTrigger>
+            <AdaptiveFormDialogContent>
+              <DialogHeader className={adaptiveFormDialogHeaderClassName}>
+                <DialogTitle className="font-display text-[#1e3a5f]">
+                  Criar turma de Fundamentos
+                </DialogTitle>
+              </DialogHeader>
+              <AdaptiveFormDialogBody>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Depois, estruture módulos, estudos e os materiais já
+                    existentes na Biblioteca Digital.
+                  </p>
+                  {createError ? (
+                    <div
+                      role="alert"
+                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800"
+                    >
+                      {createError}
+                    </div>
+                  ) : null}
+                  <div className="space-y-2">
+                    <Label htmlFor="foundation-course-name">
+                      Nome da turma
+                    </Label>
+                    <Input
+                      id="foundation-course-name"
+                      value={courseName}
+                      onChange={event => setCourseName(event.target.value)}
+                      placeholder="Ex.: Fundamentos da Fé — 1º semestre"
+                      maxLength={120}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Área de fundamento</Label>
+                    <Select
+                      value={courseType}
+                      onValueChange={value =>
+                        setCourseType(value as typeof courseType)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {COURSE_TYPES.map(course => (
+                          <SelectItem key={course.value} value={course.value}>
+                            {course.icon} {course.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="foundation-course-description">
+                      Descrição
+                    </Label>
+                    <Textarea
+                      id="foundation-course-description"
+                      value={courseDescription}
+                      onChange={event =>
+                        setCourseDescription(event.target.value)
+                      }
+                      placeholder="Explique o propósito desta turma."
+                      maxLength={500}
+                    />
+                  </div>
+                </div>
+              </AdaptiveFormDialogBody>
+              <AdaptiveFormDialogFooter>
+                <Button
+                  className="bg-[#1e3a5f] text-white"
+                  disabled={createCourse.isPending}
+                  onClick={submitCourse}
+                >
+                  {createCourse.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <GraduationCap className="mr-2 h-4 w-4" />
+                  )}
+                  Criar turma
+                </Button>
+              </AdaptiveFormDialogFooter>
+            </AdaptiveFormDialogContent>
+          </Dialog>
+        ) : null}
+      </div>
+      <FoundationAreaNav
+        activeArea={activeArea}
+        onChange={setActiveArea}
+        theme={foundationTheme}
+      />
+      {activeArea === "estudos" ? (
+        <FoundationAreaSection
+          title="Estudos"
+          description="Crie o estudo, monte as etapas, revise a prévia e publique — tudo no mesmo lugar."
+          icon={BookOpen}
+          theme={foundationTheme}
+        >
+          {canManageStudies ? (
+            <StudyManagement
+              churchId={churchId}
+              courses={typedCourses}
+              primaryColor={primaryColor}
+              secondaryColor={secondaryColor}
+              canManageAdministrators={Boolean(access?.canManageAdministrators)}
+            />
+          ) : isLoading ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {[1, 2].map(item => (
+                <Card key={item} className="h-48 animate-pulse bg-muted/30" />
+              ))}
+            </div>
+          ) : typedCourses.length ? (
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+              {typedCourses.map(course => (
+                <CourseCard
+                  key={course.id}
+                  course={course}
+                  churchId={churchId}
+                  people={simplePeople}
+                  canManage={false}
+                  theme={foundationTheme}
+                />
+              ))}
+            </div>
+          ) : (
+            <Card className="border-dashed border-[#c9a84c]/30">
+              <CardContent className="p-8 text-center text-sm text-muted-foreground">
+                A liderança ainda está preparando os estudos da Escola.
+              </CardContent>
+            </Card>
+          )}
+        </FoundationAreaSection>
+      ) : null}
+      {activeArea === "alunos" ? (
+        <FoundationAreaSection
+          title="Alunos"
+          description="Veja as matrículas e atualize o andamento sem abrir a gestão do conteúdo."
+          icon={Users}
+          theme={foundationTheme}
+        >
+          <FoundationStudentsArea churchId={churchId} courses={typedCourses} />
+        </FoundationAreaSection>
+      ) : null}
+      {activeArea === "aulas" ? (
+        <FoundationAreaSection
+          title="Aulas"
+          description="Registre a aula presencial, presença e os pontos que precisam de reforço."
+          icon={CalendarDays}
+          theme={foundationTheme}
+        >
+          {typedCourses.length ? (
+            <div className="grid gap-5 xl:grid-cols-2">
+              {typedCourses.map(course => (
+                <div key={course.id} className="space-y-4">
+                  <WeeklyOverview churchId={churchId} courseId={course.id} />
+                  <details className="group rounded-2xl border border-[#1e3a5f]/15 bg-white">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4">
+                      <span>
+                        <span className="block font-semibold text-[#1e3a5f]">
+                          Acompanhamento presencial
+                        </span>
+                        <span className="mt-1 block text-sm font-normal text-muted-foreground">
+                          Abra somente quando precisar revisar alunos e
+                          presença.
+                        </span>
+                      </span>
+                      <ChevronRight className="h-5 w-5 shrink-0 text-[#c9a84c] transition-transform group-open:rotate-90" />
+                    </summary>
+                    <div className="px-3 pb-1 sm:px-4">
+                      <TeacherLearningReview
+                        churchId={churchId}
+                        courseId={course.id}
+                      />
+                    </div>
+                  </details>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Card className="border-dashed border-[#c9a84c]/30">
+              <CardContent className="p-8 text-center text-sm text-muted-foreground">
+                Crie uma turma em Organização para registrar a primeira aula.
+              </CardContent>
+            </Card>
+          )}
+        </FoundationAreaSection>
+      ) : null}
+      {activeArea === "organizacao" ? (
+        <FoundationAreaSection
+          title="Organização"
+          description="A estrutura da Escola fica simples: o conteúdo é criado e publicado em Estudos."
+          icon={Layers3}
+          theme={foundationTheme}
+        >
+          <Card className="border-[#1e3a5f]/15 bg-[#fdfaf1]/50">
+            <CardHeader>
+              <CardTitle className="text-[#1e3a5f]">
+                Um único caminho para preparar o estudo
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Turmas, módulos, etapas, perguntas, materiais e publicação são
+                organizados em <strong>Estudos</strong>. Assim, você não precisa
+                procurar a mesma função em duas telas diferentes.
+              </p>
+              {canManageStudies ? (
+                <Button
+                  type="button"
+                  className="bg-[#1e3a5f] text-white"
+                  onClick={() => setActiveArea("estudos")}
+                >
+                  <BookOpen className="mr-2 h-4 w-4" />
+                  Abrir Estudos
+                </Button>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  A organização da Escola está disponível para a liderança
+                  autorizada.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </FoundationAreaSection>
+      ) : null}
+    </div>
+  );
+}

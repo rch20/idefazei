@@ -1,0 +1,266 @@
+import { OpenStreetMap } from "@/components/OpenStreetMap";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogTitle } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { trpc } from "@/lib/trpc";
+import { buildMapLocationQuery } from "@/lib/maptiler";
+import { Eye, MapPin, MessageCircle, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { isSuspiciousCoordinatePair } from "../../../shared/geo";
+
+const DAYS = [
+  { value: "segunda", label: "Segunda-feira" },
+  { value: "terca", label: "Terça-feira" },
+  { value: "quarta", label: "Quarta-feira" },
+  { value: "quinta", label: "Quinta-feira" },
+  { value: "sexta", label: "Sexta-feira" },
+  { value: "sabado", label: "Sábado" },
+  { value: "domingo", label: "Domingo" },
+] as const;
+
+type PublicCell = {
+  id: number;
+  name: string;
+  address?: string | null;
+  addressNumber?: string | null;
+  addressComplement?: string | null;
+  zipCode?: string | null;
+  city?: string | null;
+  state?: string | null;
+  neighborhood?: string | null;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  meetingDay?: typeof DAYS[number]["value"] | null;
+  meetingTime?: string | null;
+  publicVisible?: boolean | null;
+  publicLocationMode?: "approximate" | "exact" | null;
+  publicLeaderContact?: boolean | null;
+};
+
+type CellPublicSettingsDialogProps = {
+  churchId: number;
+  cell: PublicCell | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSaved?: (cell: PublicCell) => void;
+};
+
+function coordinateValue(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return "";
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? String(parsed) : "";
+}
+
+function isMeaningfulCoordinatePair(latitude: string | number | null | undefined, longitude: string | number | null | undefined) {
+  if (latitude === null || latitude === undefined || latitude === "" || longitude === null || longitude === undefined || longitude === "") return false;
+  const latitudeNumber = Number(latitude);
+  const longitudeNumber = Number(longitude);
+  return Number.isFinite(latitudeNumber) && Number.isFinite(longitudeNumber)
+    && latitudeNumber >= -90 && latitudeNumber <= 90
+    && longitudeNumber >= -180 && longitudeNumber <= 180
+    && !isSuspiciousCoordinatePair(latitudeNumber, longitudeNumber);
+}
+
+export function CellPublicSettingsDialog({ churchId, cell, open, onOpenChange, onSaved }: CellPublicSettingsDialogProps) {
+  const utils = trpc.useUtils();
+  const [formError, setFormError] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    address: "",
+    addressNumber: "",
+    addressComplement: "",
+    zipCode: "",
+    city: "",
+    state: "",
+    neighborhood: "",
+    latitude: "",
+    longitude: "",
+    meetingDay: "" as "" | typeof DAYS[number]["value"],
+    meetingTime: "",
+    publicVisible: false,
+    publicLocationMode: "approximate" as "approximate" | "exact",
+    publicLeaderContact: false,
+  });
+
+  useEffect(() => {
+    if (!cell || !open) return;
+    const hasLocation = isMeaningfulCoordinatePair(cell.latitude, cell.longitude);
+    setForm({
+      address: cell.address ?? "",
+      addressNumber: cell.addressNumber ?? "",
+      addressComplement: cell.addressComplement ?? "",
+      zipCode: cell.zipCode ?? "",
+      city: cell.city ?? "",
+      state: cell.state ?? "",
+      neighborhood: cell.neighborhood ?? "",
+      latitude: hasLocation ? coordinateValue(cell.latitude) : "",
+      longitude: hasLocation ? coordinateValue(cell.longitude) : "",
+      meetingDay: cell.meetingDay ?? "",
+      meetingTime: cell.meetingTime ?? "",
+      publicVisible: Boolean(cell.publicVisible),
+      publicLocationMode: cell.publicLocationMode ?? "approximate",
+      publicLeaderContact: Boolean(cell.publicLeaderContact),
+    });
+  }, [cell, open]);
+
+  const marker = useMemo(() => {
+    if (!cell || !isMeaningfulCoordinatePair(form.latitude, form.longitude)) return [];
+    const latitude = Number(form.latitude);
+    const longitude = Number(form.longitude);
+    return [{ id: cell.id, title: cell.name, latitude, longitude }];
+  }, [cell, form.latitude, form.longitude]);
+
+  const publicPreview = trpc.tenantPublic.adminPreview.useQuery(undefined, { enabled: open });
+  const publicPagePublished = publicPreview.data?.site?.status === "published";
+
+  const updateSettings = trpc.cells.updatePublicSettings.useMutation({
+    onSuccess: async (saved) => {
+      await utils.cells.list.invalidate({ churchId });
+      toast.success("Configuração pública da Célula salva.");
+      onSaved?.(saved as PublicCell);
+      setFormError(null);
+      onOpenChange(false);
+    },
+    onError: (error) => {
+      const message = error.message || "Não foi possível salvar a configuração pública.";
+      setFormError(message);
+      toast.error(message);
+    },
+  });
+
+  function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setFormError(null);
+    if (!cell) return;
+    const rawLatitude = form.latitude.trim() === "" ? null : Number(form.latitude);
+    const rawLongitude = form.longitude.trim() === "" ? null : Number(form.longitude);
+    if ((rawLatitude !== null && (!Number.isFinite(rawLatitude) || rawLatitude < -90 || rawLatitude > 90)) || (rawLongitude !== null && (!Number.isFinite(rawLongitude) || rawLongitude < -180 || rawLongitude > 180))) {
+      const message = "Informe coordenadas válidas ou escolha o ponto no mapa.";
+      setFormError(message);
+      toast.error(message);
+      return;
+    }
+    const hasCoordinates = isMeaningfulCoordinatePair(rawLatitude, rawLongitude);
+    const latitude = hasCoordinates ? rawLatitude : null;
+    const longitude = hasCoordinates ? rawLongitude : null;
+    if (form.publicVisible && !hasCoordinates) {
+      const message = "Defina o ponto no mapa antes de publicar a Célula.";
+      setFormError(message);
+      toast.error(message);
+      return;
+    }
+    updateSettings.mutate({
+      churchId,
+      cellId: cell.id,
+      address: form.address.trim() || null,
+      addressNumber: form.addressNumber.trim() || null,
+      addressComplement: form.addressComplement.trim() || null,
+      zipCode: form.zipCode.replace(/\D/g, "") || null,
+      city: form.city.trim() || null,
+      state: form.state.trim().toUpperCase() || null,
+      neighborhood: form.neighborhood.trim() || null,
+      latitude,
+      longitude,
+      meetingDay: form.meetingDay || null,
+      meetingTime: form.meetingTime || null,
+      publicVisible: form.publicVisible,
+      publicLocationMode: form.publicLocationMode,
+      publicLeaderContact: form.publicLeaderContact,
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => { onOpenChange(nextOpen); if (nextOpen) setFormError(null); }}>
+      <AdaptiveFormDialogContent className="sm:max-w-3xl">
+        <div className={adaptiveFormDialogHeaderClassName}>
+          <DialogTitle className="flex items-center gap-2 font-display text-navy">
+            <ShieldCheck className="h-5 w-5 text-gold" />
+            Publicação da Célula {cell?.name}
+          </DialogTitle>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Somente Pastores podem tornar estes dados públicos. As opções começam privadas.
+          </p>
+        </div>
+
+        <form onSubmit={submit} className="contents">
+          <AdaptiveFormDialogBody className="space-y-5">
+          <section className={`rounded-xl border p-4 ${form.publicVisible ? "border-indigo-200 bg-indigo-50/50" : "border-border bg-muted/20"}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <Label className="flex items-center gap-2 text-sm font-semibold text-navy"><Eye className="h-4 w-4" />Status da publicação</Label>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  {!form.publicVisible ? "Esta Célula está privada e não aparece para visitantes." : publicPreview.isLoading ? "Verificando a página pública…" : publicPagePublished ? "Esta Célula poderá ser vista em Visite-nos quando houver coordenadas válidas." : "A Célula está marcada, mas a Página Pública da igreja ainda não foi publicada."}
+                </p>
+              </div>
+              {form.publicVisible && publicPagePublished && <Button type="button" size="sm" variant="outline" asChild className="shrink-0"><a href="/visite-nos" target="_blank" rel="noreferrer"><Eye className="mr-1.5 h-4 w-4" />Visualizar Visite-nos</a></Button>}
+            </div>
+            <div className="mt-4 flex items-start justify-between gap-4 border-t border-black/5 pt-4">
+              <div>
+                <Label htmlFor="cell-public-visible" className="flex items-center gap-2 text-sm font-semibold text-navy"><Eye className="h-4 w-4" />Publicar esta Célula</Label>
+                <p className="mt-1 text-xs text-muted-foreground">A Célula só aparecerá em “Visite-nos” quando esta opção estiver ativa e houver coordenadas.</p>
+              </div>
+              <Switch id="cell-public-visible" checked={form.publicVisible} onCheckedChange={(publicVisible) => setForm((current) => ({ ...current, publicVisible }))} />
+            </div>
+          </section>
+          {form.publicVisible && !isMeaningfulCoordinatePair(form.latitude, form.longitude) && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">A publicação ainda não está pronta: marque o ponto da Célula no mapa. O CEP preenche o endereço, mas não substitui a localização geográfica.</div>}
+
+          <section className="space-y-4 rounded-xl border border-border p-4">
+            <div className="flex items-center gap-2"><MapPin className="h-4 w-4 text-gold" /><h3 className="text-sm font-semibold text-navy">Local e encontro</h3></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="sm:col-span-2"><Label>Logradouro</Label><Input className="mt-1" value={form.address} maxLength={500} onChange={(event) => setForm((current) => ({ ...current, address: event.target.value }))} placeholder="Rua, avenida ou estrada" /></label>
+              <label><Label>Número</Label><Input className="mt-1" value={form.addressNumber} maxLength={20} onChange={(event) => setForm((current) => ({ ...current, addressNumber: event.target.value }))} placeholder="359" /></label>
+              <label><Label>Complemento</Label><Input className="mt-1" value={form.addressComplement} maxLength={120} onChange={(event) => setForm((current) => ({ ...current, addressComplement: event.target.value }))} placeholder="Portão, salão, fundos…" /></label>
+              <label><Label>CEP</Label><Input className="mt-1" value={form.zipCode} maxLength={9} inputMode="numeric" onChange={(event) => setForm((current) => ({ ...current, zipCode: event.target.value }))} placeholder="00000-000" /></label>
+              <label><Label>Estado (UF)</Label><Input className="mt-1" value={form.state} maxLength={2} onChange={(event) => setForm((current) => ({ ...current, state: event.target.value.toUpperCase() }))} placeholder="SP" /></label>
+              <label><Label>Bairro</Label><Input className="mt-1" value={form.neighborhood} maxLength={100} onChange={(event) => setForm((current) => ({ ...current, neighborhood: event.target.value }))} /></label>
+              <label><Label>Cidade</Label><Input className="mt-1" value={form.city} maxLength={100} onChange={(event) => setForm((current) => ({ ...current, city: event.target.value }))} /></label>
+              <label><Label>Dia da semana</Label><Select value={form.meetingDay || "none"} onValueChange={(value) => setForm((current) => ({ ...current, meetingDay: value === "none" ? "" : value as typeof DAYS[number]["value"] }))}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Não informado</SelectItem>{DAYS.map((day) => <SelectItem key={day.value} value={day.value}>{day.label}</SelectItem>)}</SelectContent></Select></label>
+              <label><Label>Horário</Label><Input className="mt-1" type="time" value={form.meetingTime} onChange={(event) => setForm((current) => ({ ...current, meetingTime: event.target.value }))} /></label>
+              <label><Label>Latitude</Label><Input className="mt-1 font-mono" inputMode="decimal" value={form.latitude} onChange={(event) => setForm((current) => ({ ...current, latitude: event.target.value }))} placeholder="-23.5505" /></label>
+              <label><Label>Longitude</Label><Input className="mt-1 font-mono" inputMode="decimal" value={form.longitude} onChange={(event) => setForm((current) => ({ ...current, longitude: event.target.value }))} placeholder="-46.6333" /></label>
+            </div>
+            <OpenStreetMap
+              className="h-[340px]"
+              markers={marker}
+              selectedId={cell?.id ?? null}
+              initialCenter={marker[0] ?? undefined}
+              initialZoom={marker.length ? 15 : 5}
+              onLocationSelect={({ latitude, longitude }) => setForm((current) => ({ ...current, latitude: latitude.toFixed(7), longitude: longitude.toFixed(7) }))}
+              locationQueries={cell ? [{ id: cell.id, query: buildMapLocationQuery({ address: form.address, addressNumber: form.addressNumber, addressComplement: form.addressComplement, zipCode: form.zipCode, city: form.city, state: form.state, neighborhood: form.neighborhood }) }] : []}
+              ariaLabel="Mapa para escolher a localização pública da célula"
+            />
+            <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3">
+              <Label>Precisão pública</Label>
+              <Select value={form.publicLocationMode} onValueChange={(value: "approximate" | "exact") => setForm((current) => ({ ...current, publicLocationMode: value }))}>
+                <SelectTrigger className="mt-1 bg-background"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="approximate">Aproximada — mostra somente a região</SelectItem><SelectItem value="exact">Exata — permite endereço e rota direta</SelectItem></SelectContent>
+              </Select>
+              <p className="mt-2 text-xs text-amber-900">Para encontros em residências, prefira a localização aproximada. O endereço completo não será enviado ao visitante.</p>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-border p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <Label htmlFor="cell-public-contact" className="flex items-center gap-2 text-sm font-semibold text-navy"><MessageCircle className="h-4 w-4" />Exibir WhatsApp do líder</Label>
+                <p className="mt-1 text-xs text-muted-foreground">Ative somente com autorização do líder. O número deve estar cadastrado na ficha da Pessoa.</p>
+              </div>
+              <Switch id="cell-public-contact" checked={form.publicLeaderContact} onCheckedChange={(publicLeaderContact) => setForm((current) => ({ ...current, publicLeaderContact }))} />
+            </div>
+          </section>
+
+          {formError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{formError}</div>}
+          </AdaptiveFormDialogBody>
+          <AdaptiveFormDialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={updateSettings.isPending}>Cancelar</Button>
+            <Button type="submit" className="bg-navy text-white hover:bg-navy-light" disabled={!cell || updateSettings.isPending}>{updateSettings.isPending ? "Salvando…" : "Salvar configuração"}</Button>
+          </AdaptiveFormDialogFooter>
+        </form>
+      </AdaptiveFormDialogContent>
+    </Dialog>
+  );
+}

@@ -1,0 +1,155 @@
+{
+  "formatVersion": 1,
+  "purpose": "Ledger explícito das migrations SQL aditivas mantidas fora do journal gerado pelo Drizzle.",
+  "drizzleJournalBoundary": {
+    "idx": 67,
+    "tag": "0067_closed_blue_shield"
+  },
+  "policy": "As migrations desta lista são aplicadas e validadas pelo fluxo operacional controlado do Ide Fazei. Não devem ser executadas por db:push nem inseridas no journal automaticamente sem reconciliar todos os snapshots intermediários.",
+  "entries": [
+    {
+      "id": "0068",
+      "file": "drizzle/0068_public_registration_qr.sql",
+      "kind": "custom-additive",
+      "sha256": "e672ddb1121e2da62110555630b0384c319f1c8c601d61dc8135b0a6b3f8a68f"
+    },
+    {
+      "id": "0069",
+      "file": "drizzle/0069_parallel_journey_fronts.sql",
+      "kind": "custom-additive",
+      "sha256": "29a5f241cb38e92675866b2f8e12586350bdea203f86dc283ec910d843bfe116"
+    },
+    {
+      "id": "0070",
+      "file": "drizzle/0070_treasury_report_signatures.sql",
+      "kind": "custom-additive",
+      "sha256": "b7cf6c43d8ce10743bdb5c45f219f2673304c6a7891ceb86d8ad9ea31fd028a3"
+    },
+    {
+      "id": "0071",
+      "file": "drizzle/0071_financial_reconciliation_audit.sql",
+      "kind": "custom-additive",
+      "sha256": "af5e1c3bdba58d868bc2797a0ae07bad583d58858c64eb0176ac06da2dfe53ab"
+    },
+    {
+      "id": "0072",
+      "file": "drizzle/0072_treasury_authority_audit.sql",
+      "kind": "custom-additive",
+      "sha256": "596c8ac98addbe869c5c5ddec912ed258410cbe4097bbe8679c0a3c15dc9d9a6"
+    },
+    {
+      "id": "0073",
+      "file": "drizzle/0073_consolidation_idempotency.sql",
+      "kind": "custom-additive",
+      "sha256": "fdbd106a8618e85fcfa969a517112883c8fe331921d566db87cafe0796544b06"
+    },
+    {
+      "id": "0074",
+      "file": "drizzle/0074_security_access_audit.sql",
+      "kind": "custom-additive",
+      "sha256": "9eb3a1e9de1e79d28c40b642c755f92e8eadebf75951d8bf2c3d689f3a3717c4"
+    },
+    {
+      "id": "0075",
+      "file": "drizzle/0075_security_access_audit_holds.sql",
+      "kind": "custom-additive",
+      "sha256": "d68a2f851d49bf4f36acaa6de3830eef09486eab2e70544e9fea071c65f1f6f9"
+    },
+    {
+      "id": "0076",
+      "file": "drizzle/0076_security_access_audit_hold_events.sql",
+      "kind": "custom-additive",
+      "sha256": "596a803a2621ef721b5b5ffa58b68e3fdf75b38dd93183ba66267c95f6bfc692"
+    },
+    {
+      "id": "0077",
+      "file": "drizzle/0077_foundation_weekly_questions.sql",
+      "kind": "custom-additive",
+      "sha256": "1311be1a448e9b9704849631d85b0e6a7467b4b892b24d1c34b031fc8bfd2dad"
+    },
+    {
+      "id": "0078",
+      "file": "drizzle/0078_foundation_weekly_class.sql",
+      "kind": "custom-additive",
+      "sha256": "af004f4343e4b1f14a703882da64264a894782c24ca7ac37c58d6d946fc58bcd"
+    },
+    {
+      "id": "0079",
+      "file": "drizzle/0079_foundation_mobile_progress.sql",
+      "kind": "custom-additive",
+      "sha256": "b9dc2f70a2eb5f0487953725554ab30b773bb8fde68127a11e55a6ded4fd27b3"
+    },
+    {
+      "id": "0080",
+      "file": "drizzle/0080_foundation_excel_import_drafts.sql",
+      "kind": "custom-additive",
+      "sha256": "52e0ebceb60b3db5c51c609abe9c5b9b820d4de05380ffed64f319ffebbb9b64"
+    },
+    {
+      "id": "0081",
+      "file": "drizzle/0081_foundation_material_notes.sql",
+      "kind": "custom-additive",
+      "sha256": "1676d9a63851d31d9c505c1a9d585160cc81af2540ed3e3cbc921251ff247a09"
+    },
+    {
+      "id": "0082",
+      "file": "drizzle/0082_church_email_verification.sql",
+      "kind": "custom-additive",
+      "sha256": "2c58cfb150faa97c1523b7bd1cb38581283bd716e65a32ef66cc88b07b153a49"
+    },
+    {
+      "id": "0083",
+      "file": "drizzle/0083_primary_discipler_events.sql",
+      "kind": "custom-additive",
+      "sha256": "22cde3217f8065a2a88a2e1c6e59acd8c849c6654455743bffdb17a593faaa9c"
+    },
+    {
+      "id": "0084",
+      "file": "drizzle/0084_online_contributions.sql",
+      "kind": "custom-additive",
+      "sha256": "5aca5d75ab3c4b5e5a5677ef90c03fa2410eb8cfa864b26a8a156cc89ab91cb7"
+    },
+    {
+      "id": "0085",
+      "file": "drizzle/0085_financial_transaction_date_index.sql",
+      "kind": "custom-additive",
+      "sha256": "0f5c7b71cc8cab0b0d233145c68f5e156d75216d5204f4328d55b89756fbf540"
+    },
+    {
+      "id": "0086",
+      "file": "drizzle/0086_online_contribution_thank_you_message.sql",
+      "kind": "custom-additive",
+      "sha256": "c980c7f490af94bb85e9434a900a9bca6d2d7f13140539e26d8fb47ab9167175"
+    },
+    {
+      "id": "0089",
+      "file": "drizzle/0089_financial_payables.sql",
+      "kind": "custom-additive",
+      "sha256": "0f880cff3b3897cc0699735fa6cfd6a187f8dadf1962766b12b3dbe854326260"
+    },
+    {
+      "id": "0090",
+      "file": "drizzle/0090_public_donations.sql",
+      "kind": "custom-additive",
+      "sha256": "7c2eff91aa18c1d55d5c9dabfa1fdb1a5e71c06c413b799017faa04aa0587641"
+    },
+    {
+      "id": "0093",
+      "file": "drizzle/0093_schedule_event_link.sql",
+      "kind": "custom-additive",
+      "sha256": "f82ccad0bbbbaf0cf743a0b4f4c6e037fc6c96a7f5b07be98ee5a7848d5ed835"
+    },
+    {
+      "id": "0094",
+      "file": "drizzle/0094_encounter_inviter_phone.sql",
+      "kind": "custom-additive",
+      "sha256": "6a4738680a4f1fbd2773b5cbc47ae99cfc36b10f5a083249bbeb98980911804f"
+    },
+    {
+      "id": "0095",
+      "file": "drizzle/0095_foundation_stage_reflections.sql",
+      "kind": "custom-additive",
+      "sha256": "e15de939d4b511882f5094e155a2bd32e9905ec5740b8f0903f79b3b5b3a8479"
+    }
+  ]
+}

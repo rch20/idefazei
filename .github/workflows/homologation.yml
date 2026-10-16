@@ -1,0 +1,432 @@
+name: Ide Fazei — homologação
+
+on:
+  pull_request:
+    paths:
+      - "client/**"
+      - "shared/**"
+      - "server/**"
+      - "drizzle/schema.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "ops/**"
+      - "scripts/**"
+      - ".github/scripts/**"
+      - ".github/workflows/homologation.yml"
+  push:
+    branches:
+      - main
+      - "feat/**"
+    paths:
+      - "client/**"
+      - "shared/**"
+      - "server/**"
+      - "drizzle/schema.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "ops/**"
+      - "scripts/**"
+      - ".github/scripts/**"
+      - ".github/workflows/homologation.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Ação no ambiente de homologação"
+        required: true
+        type: choice
+        default: preflight
+        options:
+          - preflight
+          - apply
+      run_visual:
+        description: "Executar matriz Playwright somente leitura após o preflight/apply"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ide-fazei-homologation
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22.x"
+  STAGING_BASE_URL: https://homolog.idefazei.com.br
+  HOMOLOG_HOST: homolog.idefazei.com.br
+  HOMOLOG_REMOTE_USER: manus
+  HOMOLOG_REMOTE_PACKAGE_DIR: /home/manus
+  HOMOLOG_APPLY_WRAPPER: /usr/local/sbin/idefazei-homolog-deploy
+
+jobs:
+  validate:
+    name: Validar código e bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout limpo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Ativar pnpm
+        run: corepack enable
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript
+        run: pnpm check
+
+      - name: Testes automatizados
+        run: CI=1 pnpm exec vitest run --reporter=dot
+
+      - name: Build
+        run: pnpm build
+
+      - name: Integridade dos bundles
+        run: pnpm bundle:check
+
+      - name: Publicar relatório do bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-report-${{ github.run_id }}
+          path: artifacts/bundle-report.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  package:
+    name: Empacotar release de homologação
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      release_id: ${{ steps.release.outputs.release_id }}
+      backend_sha: ${{ steps.release.outputs.backend_sha }}
+      foundation_sha: ${{ steps.release.outputs.foundation_sha }}
+    steps:
+      - name: Checkout limpo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Ativar pnpm
+        run: corepack enable
+
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+
+      - name: Capturar runtime atual de homologação
+        shell: bash
+        env:
+          HOMOLOG_SSH_PRIVATE_KEY: ${{ secrets.HOMOLOG_SSH_PRIVATE_KEY }}
+          HOMOLOG_KNOWN_HOSTS: ${{ secrets.HOMOLOG_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$HOMOLOG_SSH_PRIVATE_KEY"
+          test -n "$HOMOLOG_KNOWN_HOSTS"
+          key="$RUNNER_TEMP/homolog_id_ed25519"
+          known_hosts="$RUNNER_TEMP/homolog_known_hosts"
+          config="$RUNNER_TEMP/homolog_ssh_config"
+          baseline="$RUNNER_TEMP/homolog-runtime-baseline"
+          umask 077
+          printf '%s\n' "$HOMOLOG_SSH_PRIVATE_KEY" > "$key"
+          printf '%s\n' "$HOMOLOG_KNOWN_HOSTS" > "$known_hosts"
+          chmod 600 "$key" "$known_hosts"
+          cat > "$config" <<EOF
+          Host ide-fazei-homolog
+            HostName ${HOMOLOG_HOST}
+            User ${HOMOLOG_REMOTE_USER}
+            IdentityFile ${key}
+            UserKnownHostsFile ${known_hosts}
+            BatchMode yes
+            StrictHostKeyChecking yes
+            ConnectTimeout 10
+          EOF
+          chmod 600 "$config"
+          mkdir -p "$baseline"
+          scp -F "$config" ide-fazei-homolog:/opt/idefazei-homolog/current/dist/index.js "$baseline/index.js"
+          scp -F "$config" ide-fazei-homolog:/opt/idefazei-homolog/current/dist/foundation-import-runtime.mjs "$baseline/foundation-import-runtime.mjs"
+          test -s "$baseline/index.js"
+          test -s "$baseline/foundation-import-runtime.mjs"
+          echo "HOMOLOG_BASELINE_RUNTIME=$baseline" >> "$GITHUB_ENV"
+          echo "HOMOLOG_SSH_KEY=$key" >> "$GITHUB_ENV"
+          echo "HOMOLOG_SSH_CONFIG=$config" >> "$GITHUB_ENV"
+          echo "HOMOLOG_KNOWN_HOSTS_FILE=$known_hosts" >> "$GITHUB_ENV"
+
+      - name: Gerar build do pacote
+        run: pnpm build
+
+      - name: Montar árvore mínima do pacote
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          release_id="homolog-foundation-less-is-more-${GITHUB_SHA::12}-${GITHUB_RUN_ID}"
+          package_root="$RUNNER_TEMP/$release_id"
+          package="$RUNNER_TEMP/$release_id.tar.gz"
+          mkdir -p "$package_root/dist" "$package_root/patches"
+          cp -a dist/. "$package_root/dist/"
+          cp "$HOMOLOG_BASELINE_RUNTIME/index.js" "$package_root/dist/index.js"
+          cp "$HOMOLOG_BASELINE_RUNTIME/foundation-import-runtime.mjs" "$package_root/dist/foundation-import-runtime.mjs"
+          cp package.json pnpm-lock.yaml "$package_root/"
+          cp patches/exceljs@4.4.0.patch "$package_root/patches/"
+          backend_sha="$(sha256sum "$package_root/dist/index.js" | awk '{print $1}')"
+          foundation_sha="$(sha256sum "$package_root/dist/foundation-import-runtime.mjs" | awk '{print $1}')"
+          pnpm release:package "$package_root" "$package" "$GITHUB_WORKSPACE"
+          sha256sum "$package" | tee "$package.sha256"
+          tar -tzf "$package" > "$package.package.list"
+          {
+            echo "release_id=$release_id"
+            echo "package=$package"
+            echo "backend_sha=$backend_sha"
+            echo "foundation_sha=$foundation_sha"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Auditar novamente o pacote fechado
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          package="$RUNNER_TEMP/${{ steps.release.outputs.release_id }}.tar.gz"
+          python3 .github/scripts/audit_release_package.py \
+            "$package" \
+            --required ./dist/public/index.html \
+            --required ./dist/index.js \
+            --required ./dist/foundation-import-runtime.mjs \
+            --required ./package.json \
+            --required ./pnpm-lock.yaml \
+            --required ./patches/exceljs@4.4.0.patch \
+            --required ./release-source.json
+          ! tar -tzf "$package" | grep -Eiq '(^|/)(\.env|uploads?/|data/|logs?/|backups?/|dumps?/|node_modules/|\.git/|id_ed25519|authorized_keys|migrations?/|.*\.sql$)'
+
+      - name: Publicar pacote privado do workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: homolog-release-${{ steps.release.outputs.release_id }}
+          path: |
+            ${{ steps.release.outputs.package }}
+            ${{ steps.release.outputs.package }}.sha256
+            ${{ steps.release.outputs.package }}.package.list
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Limpar baseline e chave SSH
+        if: always()
+        shell: bash
+        run: |
+          rm -rf "$HOMOLOG_BASELINE_RUNTIME"
+          rm -f "$HOMOLOG_SSH_KEY" "$HOMOLOG_SSH_CONFIG" "$HOMOLOG_KNOWN_HOSTS_FILE"
+
+  deploy:
+    name: Homologação — preflight/apply
+    needs: package
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: homologation
+      url: https://homolog.idefazei.com.br
+    steps:
+      - name: Baixar pacote
+        uses: actions/download-artifact@v4
+        with:
+          name: homolog-release-${{ needs.package.outputs.release_id }}
+          path: release
+
+      - name: Configurar chave SSH temporária
+        shell: bash
+        env:
+          HOMOLOG_SSH_PRIVATE_KEY: ${{ secrets.HOMOLOG_SSH_PRIVATE_KEY }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$HOMOLOG_SSH_PRIVATE_KEY"
+          key="$RUNNER_TEMP/homolog_id_ed25519"
+          umask 077
+          printf '%s\n' "$HOMOLOG_SSH_PRIVATE_KEY" > "$key"
+          chmod 600 "$key"
+          echo "HOMOLOG_SSH_KEY=$key" >> "$GITHUB_ENV"
+
+      - name: Preparar conexão SSH sem exibir segredos
+        shell: bash
+        env:
+          HOMOLOG_KNOWN_HOSTS: ${{ secrets.HOMOLOG_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$HOMOLOG_KNOWN_HOSTS"
+          known_hosts="$RUNNER_TEMP/homolog_known_hosts"
+          umask 077
+          printf '%s\n' "$HOMOLOG_KNOWN_HOSTS" > "$known_hosts"
+          chmod 600 "$known_hosts"
+          cat > "$RUNNER_TEMP/ssh_config" <<EOF
+          Host ide-fazei-homolog
+            HostName ${HOMOLOG_HOST}
+            User ${HOMOLOG_REMOTE_USER}
+            IdentityFile ${HOMOLOG_SSH_KEY}
+            UserKnownHostsFile ${known_hosts}
+            BatchMode yes
+            StrictHostKeyChecking yes
+            ConnectTimeout 10
+            ServerAliveInterval 5
+            ServerAliveCountMax 2
+          EOF
+          chmod 600 "$RUNNER_TEMP/ssh_config"
+          echo "HOMOLOG_SSH_CONFIG=$RUNNER_TEMP/ssh_config" >> "$GITHUB_ENV"
+
+      - name: Preflight remoto somente leitura
+        id: preflight
+        shell: bash
+        env:
+          RELEASE_ID: ${{ needs.package.outputs.release_id }}
+          EXPECTED_BACKEND_SHA: ${{ needs.package.outputs.backend_sha }}
+          EXPECTED_FOUNDATION_SHA: ${{ needs.package.outputs.foundation_sha }}
+        run: |
+          set -Eeuo pipefail
+          package="release/${RELEASE_ID}.tar.gz"
+          local_sha="$(awk 'NR == 1 {print $1}' "release/${RELEASE_ID}.tar.gz.sha256")"
+          remote_package="${HOMOLOG_REMOTE_PACKAGE_DIR}/${RELEASE_ID}.tar.gz"
+          scp -F "$HOMOLOG_SSH_CONFIG" "$package" "ide-fazei-homolog:${remote_package}"
+          ssh -F "$HOMOLOG_SSH_CONFIG" ide-fazei-homolog sudo -n bash -s -- \
+            "$remote_package" "$RELEASE_ID" "$local_sha" "$EXPECTED_BACKEND_SHA" "$EXPECTED_FOUNDATION_SHA" <<'REMOTE_PREFLIGHT'
+          set -Eeuo pipefail
+          package_path="$1"
+          release_id="$2"
+          expected_sha="$3"
+          expected_backend_sha="$4"
+          expected_foundation_sha="$5"
+          base_dir=/opt/idefazei-homolog
+          current_link="$base_dir/current"
+          target_release="$base_dir/releases/$release_id"
+          systemctl is-active --quiet idefazei
+          systemctl is-active --quiet idefazei-homolog
+          ss -ltn | grep -Eq '(^|[[:space:]])127\.0\.0\.1:3100([[:space:]]|$)'
+          nginx -t >/dev/null
+          test -f "$package_path"
+          test "$(sha256sum "$package_path" | awk '{print $1}')" = "$expected_sha"
+          test "$(tar -xOzf "$package_path" ./dist/index.js | sha256sum | awk '{print $1}')" = "$expected_backend_sha"
+          test "$(tar -xOzf "$package_path" ./dist/foundation-import-runtime.mjs | sha256sum | awk '{print $1}')" = "$expected_foundation_sha"
+          test "$(sha256sum "$base_dir/current/dist/index.js" | awk '{print $1}')" = "$expected_backend_sha"
+          test "$(sha256sum "$base_dir/current/dist/foundation-import-runtime.mjs" | awk '{print $1}')" = "$expected_foundation_sha"
+          test ! -e "$target_release"
+          old_release="$(readlink -f "$current_link")"
+          test -n "$old_release"
+          test -d "$old_release"
+          list="$(mktemp)"
+          trap 'rm -f "$list"' EXIT
+          tar -tzf "$package_path" > "$list"
+          grep -Fxq './release-source.json' "$list"
+          grep -Fxq './dist/public/index.html' "$list"
+          grep -Fxq './dist/index.js' "$list"
+          grep -Fxq './dist/foundation-import-runtime.mjs' "$list"
+          ! grep -Eiq '(^|/)(\.env|uploads?/|data/|logs?/|backups?/|dumps?/|node_modules/|\.git|id_ed25519|authorized_keys|migrations?/|.*\.sql$)' "$list"
+          printf 'PREFLIGHT_PACKAGE=PASS\nPREFLIGHT_RUNTIME_COMPATIBILITY=PASS\nPREFLIGHT_NO_STATE_CHANGE=PASS\nOLD_RELEASE=%s\n' "$old_release"
+          REMOTE_PREFLIGHT
+
+      - name: Aplicar troca atômica somente quando aprovado
+        if: inputs.action == 'apply'
+        shell: bash
+        env:
+          RELEASE_ID: ${{ needs.package.outputs.release_id }}
+        run: |
+          set -Eeuo pipefail
+          remote_package="${HOMOLOG_REMOTE_PACKAGE_DIR}/${RELEASE_ID}.tar.gz"
+          ssh -F "$HOMOLOG_SSH_CONFIG" ide-fazei-homolog sudo -n "$HOMOLOG_APPLY_WRAPPER" "$remote_package" "$RELEASE_ID"
+
+      - name: Pós-check independente
+        shell: bash
+        env:
+          RELEASE_ID: ${{ needs.package.outputs.release_id }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "${{ inputs.action }}" == "apply" ]]; then
+            ssh -F "$HOMOLOG_SSH_CONFIG" ide-fazei-homolog sudo -n bash -s -- "$RELEASE_ID" <<'REMOTE_POSTCHECK'
+          set -Eeuo pipefail
+          release_id="$1"
+          expected="/opt/idefazei-homolog/releases/$release_id"
+          test "$(readlink -f /opt/idefazei-homolog/current)" = "$expected"
+          systemctl is-active --quiet idefazei-homolog
+          systemctl is-active --quiet idefazei
+          ss -ltn | grep -Eq '(^|[[:space:]])127\.0\.0\.1:3100([[:space:]]|$)'
+          nginx -t >/dev/null
+          critical="$(journalctl -u idefazei-homolog --since '-10 min' --no-pager 2>/dev/null | grep -Eiv 'OAUTH_SERVER_URL is not configured' | grep -Eci 'ERR_MODULE_NOT_FOUND|SyntaxError|Unhandled|exception|failed' || true)"
+          test "$critical" = 0
+          printf 'POSTCHECK_SERVICE=PASS\nPOSTCHECK_CRITICAL_LOGS=%s\n' "$critical"
+          REMOTE_POSTCHECK
+          fi
+          root_code="$(curl -ksS --max-time 15 -o /dev/null -w '%{http_code}' "${STAGING_BASE_URL}/")"
+          login_code="$(curl -ksS --max-time 15 -o /dev/null -w '%{http_code}' "${STAGING_BASE_URL}/login")"
+          protected_code="$(curl -ksS --max-time 15 -o /dev/null -w '%{http_code}' "${STAGING_BASE_URL}/api/trpc/people.primaryDisciplerHistory")"
+          test "$root_code" = 200
+          test "$login_code" = 200
+          test "$protected_code" = 401
+          printf 'PUBLIC_ROOT_HTTP=%s\nPUBLIC_LOGIN_HTTP=%s\nPUBLIC_PROTECTED_HTTP=%s\n' "$root_code" "$login_code" "$protected_code"
+
+      - name: Limpar arquivos temporários
+        if: always()
+        shell: bash
+        run: |
+          rm -f "$HOMOLOG_SSH_KEY" "$HOMOLOG_SSH_CONFIG" "$RUNNER_TEMP/homolog_known_hosts"
+
+  visual:
+    name: Playwright mobile somente leitura
+    needs: deploy
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply' && inputs.run_visual == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: homologation
+      url: https://homolog.idefazei.com.br
+    steps:
+      - name: Checkout limpo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Ativar pnpm e instalar dependências
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Instalar browsers Playwright
+        run: pnpm exec playwright install --with-deps chromium webkit
+
+      - name: Materializar storage state protegido
+        env:
+          PW_STORAGE_STATE: ${{ secrets.PW_STORAGE_STATE }}
+        run: |
+          set -Eeuo pipefail
+          test -n "$PW_STORAGE_STATE"
+          mkdir -p playwright/.auth
+          umask 077
+          printf '%s' "$PW_STORAGE_STATE" > playwright/.auth/student-homolog.json
+          chmod 600 playwright/.auth/student-homolog.json
+
+      - name: Executar matriz sem mutations
+        env:
+          STAGING_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          PW_STORAGE_STATE_PATH: ${{ github.workspace }}/playwright/.auth/student-homolog.json
+        run: pnpm test:mobile
+
+      - name: Remover storage state e artefatos sensíveis
+        if: always()
+        run: rm -f playwright/.auth/student-homolog.json

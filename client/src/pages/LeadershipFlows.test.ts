@@ -1,0 +1,104 @@
+import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+
+const root = process.cwd();
+const compactSource = (source: string) =>
+  source
+    .replace(/\s+/g, " ")
+    .replace(/\basync\s+\(\s*([A-Za-z_$][\w$]*)\s*\)/g, "async $1")
+    .replace(/\(\s*([A-Za-z_$][\w$]*)\s*\)\s*=>/g, "$1 =>")
+    .replace(/\s+\./g, ".")
+    .replace(/\.\s+/g, ".")
+    .replace(/\(\s+/g, "(")
+    .replace(/\s+\)/g, ")")
+    .replace(/,\s*}/g, "}")
+    .replace(/\s+}/g, "}")
+    .trim();
+const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
+
+describe("Fluxos de liderança — contratos da interface", () => {
+  it("usa no App do Líder somente os campos atuais da Consolidação", () => {
+    const source = read("client/src/pages/AppLider.tsx");
+    expect(source).toContain('key: "callMade"');
+    expect(source).toContain('key: "visitMade"');
+    expect(source).toContain('key: "bibleDelivered"');
+    expect(source).toContain("c.addedToCell");
+    expect(source).not.toContain("phoneCalled");
+    expect(source).not.toContain("cellInvited");
+  });
+
+  it("usa capacidades calculadas pelo backend para ações de Ministérios", () => {
+    const source = read("client/src/pages/Ministerios.tsx");
+    expect(source).toContain("accessSummary?.canManageChurch");
+    expect(source).not.toContain("effectiveRoles.useQuery");
+    expect(source).toContain("ministries.updateLeader.useMutation");
+    expect(source).toContain("ministries.candidates.useQuery");
+    expect(source).toContain("selectedMinistry?.canManage");
+    expect(source).toContain("canCreateMinistry &&");
+  });
+
+  it("permite ao líder incluir somente Pessoas sem Célula e oculta ações não autorizadas", () => {
+    const source = read("client/src/pages/Celulas.tsx");
+    expect(source).toContain("cells.managementAccess.useQuery");
+    expect(source).toContain("cells.assignmentCandidates.useQuery");
+    expect(source).toContain("selectedCell?.canManage");
+    expect(source).toContain("Adicionar pessoa à Célula");
+    expect(source).toContain("Adicionar à Célula");
+    expect(source).toContain("getWhatsAppLinkWithMessage");
+    expect(source).toContain("section=resumo");
+    expect(source).toContain("Abrir ficha de");
+    expect(source).toContain("Conversar com");
+    expect(source).toContain("E-mail não cadastrado");
+    expect(source).toContain("mailto:");
+    expect(source).toContain("Enviar e-mail para");
+    expect(source).toContain(
+      "Transferências entre Células continuam sob responsabilidade pastoral"
+    );
+    expect(source).toContain("canCreateCell &&");
+  });
+
+  it("confirma a retirada de uma Pessoa antes da mutation e preserva o histórico", () => {
+    const source = read("client/src/pages/Celulas.tsx");
+    expect(source).toContain("ConfirmDestructiveActionDialog");
+    expect(source).toContain("type PendingMemberRemoval");
+    expect(source).toContain("setPendingMemberRemoval");
+    expect(source).toContain("Manter na Célula");
+    expect(source).toContain("Retirar da Célula");
+    expect(source).toContain(
+      "O histórico da participação será preservado e a formação principal não será alterada."
+    );
+    expect(source).toContain("onConfirm={confirmMemberRemoval}");
+    expect(source).not.toContain("window.confirm");
+    expect(source).toContain("selectedCell?.canManage");
+    expect(source).toContain("setPendingMemberRemoval(null)");
+  });
+
+  it("organiza o modal de gestão da Célula para leitura no desktop", () => {
+    const source = read("client/src/pages/Celulas.tsx");
+    expect(source).toContain("sm:max-w-2xl");
+    expect(source).toContain(
+      "Gestão da Célula, liderança, rotina e pessoas vinculadas em um só lugar."
+    );
+    expect(source).toContain("lg:grid-cols-2");
+    expect(source).toContain("Encontro semanal");
+    expect(source).toContain("Localização");
+    expect(source).toContain("Rotina da Célula");
+    expect(source).toContain("lg:overflow-y-auto");
+    expect(source).toContain("lg:grid-cols-2");
+    expect(source).toContain("lg:col-span-2");
+    expect(source).toContain("Pessoa sem Célula");
+    expect(source).toContain("lg:grid-cols-[minmax(0,1fr)_auto]");
+    expect(source).toContain("rounded-2xl border");
+  });
+
+  it("mantém operações críticas protegidas por transação e bloqueio", () => {
+    const source = compactSource(read("server/db.ts"));
+    expect(source).toContain(compactSource("startConsolidationWorkflow"));
+    expect(source).toContain(compactSource("setMinistryLeader"));
+    expect(source).toContain(compactSource('.for("update")'));
+    expect(source).toContain(
+      compactSource("return db.transaction(async (tx) =>")
+    );
+  });
+});

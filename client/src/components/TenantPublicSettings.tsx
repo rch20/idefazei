@@ -1,0 +1,197 @@
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { ChevronDown, ChevronUp, Eye, Globe2, GripVertical, ImagePlus, Plus, Save, Send, Smartphone, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
+import { uploadChurchMedia } from "@/lib/mediaUpload";
+import { HERO_PRESETS, resolveHeroImage, type HeroPresetId } from "../../../shared/publicHero";
+
+type SectionType = "hero" | "about" | "schedule" | "events" | "ministries" | "gallery" | "contact";
+type PublicService = { day: string; time: string; label?: string; location?: string };
+type PublicGalleryItem = { url: string; alt: string; caption?: string; mediaAssetId?: number };
+type EditorSection = { sectionType: SectionType; enabled: boolean; sortOrder: number; content: { title?: string; eyebrow?: string; subtitle?: string; body?: string; primaryCtaLabel?: string; primaryCtaHref?: string; heroImageSource?: "preset" | "custom"; heroImagePresetId?: HeroPresetId | null; heroImageUrl?: string | null; heroImageAssetId?: number | null; publicMinistryIds?: number[]; services?: PublicService[]; items?: PublicGalleryItem[] } };
+
+const labels: Record<SectionType, string> = { hero: "Hero", about: "Sobre a igreja", schedule: "Horários", events: "Eventos", ministries: "Ministérios", gallery: "Galeria", contact: "Contato" };
+const defaultSections: EditorSection[] = [
+  { sectionType: "hero", enabled: true, sortOrder: 0, content: { title: "", eyebrow: "", subtitle: "", primaryCtaLabel: "Quero conhecer a igreja", primaryCtaHref: "/visitante", heroImageSource: "preset", heroImagePresetId: "original", heroImageUrl: null, heroImageAssetId: null } },
+  { sectionType: "about", enabled: true, sortOrder: 1, content: { title: "Uma igreja para caminhar junto", body: "" } },
+  { sectionType: "schedule", enabled: true, sortOrder: 2, content: { title: "Horários de culto", body: "Encontre um horário para caminhar conosco.", services: [] } },
+  { sectionType: "events", enabled: true, sortOrder: 3, content: { title: "Próximos eventos", subtitle: "Participe do que Deus está fazendo em nossa comunidade." } },
+  { sectionType: "ministries", enabled: true, sortOrder: 4, content: { title: "Nossos ministérios", subtitle: "Encontre um lugar para servir e caminhar em comunidade.", publicMinistryIds: [] } },
+  { sectionType: "gallery", enabled: true, sortOrder: 5, content: { title: "Nossa comunidade", subtitle: "Momentos que vivemos juntos.", items: [] } },
+  { sectionType: "contact", enabled: true, sortOrder: 6, content: { title: "Visite-nos", subtitle: "Estamos prontos para receber você." } },
+];
+
+function PublicMetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return <article className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between gap-3"><p className="truncate text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{label}</p><strong className="text-lg font-bold text-navy">{value}</strong></div><p className="mt-2 truncate text-xs text-muted-foreground">{detail}</p></article>;
+}
+
+function stableSerialize(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
+  return `{${Object.entries(value as Record<string, unknown>).filter(([, entry]) => entry !== undefined).sort(([left], [right]) => left.localeCompare(right)).map(([key, entry]) => `${JSON.stringify(key)}:${stableSerialize(entry)}`).join(",")}}`;
+}
+
+function normalizePublicEditorState(input: { seoTitle?: unknown; seoDescription?: unknown; theme?: unknown; sections?: unknown }) {
+  const theme = input.theme && typeof input.theme === "object" ? input.theme as Record<string, unknown> : {};
+  const sections = (Array.isArray(input.sections) ? input.sections : []).map((value, index) => {
+    const section = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    const content = section.content && typeof section.content === "object" ? section.content : {};
+    return { sectionType: section.sectionType ?? "", enabled: Boolean(section.enabled), sortOrder: Number(section.sortOrder ?? index), content };
+  }).sort((left, right) => left.sortOrder - right.sortOrder);
+  return {
+    seoTitle: typeof input.seoTitle === "string" ? input.seoTitle.trim() || null : null,
+    seoDescription: typeof input.seoDescription === "string" ? input.seoDescription.trim() || null : null,
+    theme: { primaryColor: theme.primaryColor ?? null, secondaryColor: theme.secondaryColor ?? null, accentColor: theme.accentColor ?? null, fontPair: theme.fontPair ?? null, logoUrl: theme.logoUrl ?? null, faviconUrl: theme.faviconUrl ?? null },
+    sections,
+  };
+}
+
+function readPublicRevisionSnapshot(snapshot: unknown) {
+  if (!snapshot || typeof snapshot !== "object") return {};
+  const value = snapshot as Record<string, unknown>;
+  return { seoTitle: value.seoTitle, seoDescription: value.seoDescription, theme: value.theme, sections: value.sections };
+}
+
+function formatPublicDate(value: unknown) {
+  if (!value) return "Ainda não publicada";
+  const date = value instanceof Date ? value : new Date(value as string | number);
+  return Number.isNaN(date.getTime()) ? "Data indisponível" : date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+export function TenantPublicSettings({ ministries = [] }: { ministries?: Array<{ id: number; name: string; description?: string | null }> }) {
+  const utils = trpc.useUtils();
+  const preview = trpc.tenantPublic.adminPreview.useQuery();
+  const [theme, setTheme] = useState({ primaryColor: "#1e3a5f", secondaryColor: "#c9a84c", accentColor: "#c9a84c", fontPair: "sacred_serif" as const, logoUrl: null as string | null, faviconUrl: null as string | null });
+  const [seo, setSeo] = useState({ title: "", description: "" });
+  const [sections, setSections] = useState<EditorSection[]>(defaultSections);
+  const [mobilePreview, setMobilePreview] = useState(true);
+  const [isUploadingGallery, setIsUploadingGallery] = useState(false);
+  const [isUploadingHero, setIsUploadingHero] = useState(false);
+
+  useEffect(() => {
+    if (!preview.data) return;
+    const currentTheme = preview.data.theme;
+    if (currentTheme) setTheme({ primaryColor: currentTheme.primaryColor, secondaryColor: currentTheme.secondaryColor, accentColor: currentTheme.accentColor ?? currentTheme.secondaryColor, fontPair: "sacred_serif", logoUrl: currentTheme.logoUrl, faviconUrl: currentTheme.faviconUrl });
+    const saved = preview.data.sections.filter((section) => ["hero", "about", "schedule", "events", "ministries", "gallery", "contact"].includes(section.sectionType)) as unknown as EditorSection[];
+    const legacyPublicMinistryIds = ministries.map((ministry) => ministry.id);
+    setSections(defaultSections.map((fallback) => {
+      const savedSection = saved.find((section) => section.sectionType === fallback.sectionType);
+      if (!savedSection) return fallback;
+      if (savedSection.sectionType === "ministries" && !Array.isArray(savedSection.content.publicMinistryIds)) {
+        return { ...fallback, ...savedSection, content: { ...fallback.content, ...savedSection.content, publicMinistryIds: legacyPublicMinistryIds } };
+      }
+      return { ...fallback, ...savedSection, content: { ...fallback.content, ...savedSection.content } };
+    }).sort((a, b) => a.sortOrder - b.sortOrder));
+    setSeo({ title: preview.data.site?.seoTitle ?? "", description: preview.data.site?.seoDescription ?? "" });
+  }, [preview.data, ministries]);
+
+  const saveDraft = trpc.tenantPublic.saveDraft.useMutation({
+    onSuccess: async () => { await utils.tenantPublic.adminPreview.invalidate(); toast.success("Rascunho salvo. Visitantes continuam vendo a última versão publicada."); },
+    onError: (error) => toast.error(error.message),
+  });
+  const publish = trpc.tenantPublic.publish.useMutation({
+    onSuccess: async () => { await utils.tenantPublic.adminPreview.invalidate(); toast.success("Página pública publicada com sucesso."); },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const normalizedSections = useMemo(() => sections.map((section, index) => ({ ...section, sortOrder: index })), [sections]);
+  const draftPayload = { seoTitle: seo.title || null, seoDescription: seo.description || null, theme, sections: normalizedSections };
+  const save = () => saveDraft.mutate(draftPayload);
+  const publishPage = async () => {
+    try {
+      await saveDraft.mutateAsync(draftPayload);
+      await publish.mutateAsync();
+    } catch {
+      // As mutações já apresentam a mensagem segura ao administrador.
+    }
+  };
+  const move = (index: number, direction: -1 | 1) => setSections((items) => {
+    const next = [...items]; const target = index + direction;
+    if (target < 0 || target >= next.length) return items;
+    [next[index], next[target]] = [next[target], next[index]];
+    return next;
+  });
+  const patchSection = (sectionType: SectionType, patch: Partial<EditorSection>) => setSections((items) => items.map((section) => section.sectionType === sectionType ? { ...section, ...patch, content: patch.content ? { ...section.content, ...patch.content } : section.content } : section));
+  const patchService = (index: number, patch: Partial<PublicService>) => patchSection("schedule", { content: { services: (sections.find((section) => section.sectionType === "schedule")?.content.services ?? []).map((service, serviceIndex) => serviceIndex === index ? { ...service, ...patch } : service) } });
+  const addService = () => {
+    const current = sections.find((section) => section.sectionType === "schedule")?.content.services ?? [];
+    if (current.length < 7) patchSection("schedule", { content: { services: [...current, { day: "", time: "", label: "", location: "" }] } });
+  };
+  const removeService = (index: number) => {
+    const current = sections.find((section) => section.sectionType === "schedule")?.content.services ?? [];
+    patchSection("schedule", { content: { services: current.filter((_, serviceIndex) => serviceIndex !== index) } });
+  };
+  const galleryItems = sections.find((section) => section.sectionType === "gallery")?.content.items ?? [];
+  const uploadHeroImage = async (file: File) => {
+    if (!(new Set(["image/png", "image/jpeg", "image/webp"]).has(file.type))) return toast.error("Escolha uma imagem PNG, JPEG ou WebP.");
+    if (file.size > 5 * 1024 * 1024) return toast.error("A imagem do Hero deve ter no máximo 5 MB.");
+    setIsUploadingHero(true);
+    try {
+      const result = await uploadChurchMedia(file, { purpose: "tenant_public_hero", resourceType: "image" });
+      patchSection("hero", { content: { heroImageSource: "custom", heroImagePresetId: null, heroImageUrl: result.optimizedUrl, heroImageAssetId: result.mediaAssetId ?? null } });
+      toast.success("Imagem carregada. Revise a prévia e salve o rascunho ou publique a página.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível enviar a imagem do Hero."); }
+    finally { setIsUploadingHero(false); }
+  };
+  const selectHeroPreset = (presetId: HeroPresetId) => patchSection("hero", { content: { heroImageSource: "preset", heroImagePresetId: presetId, heroImageUrl: null, heroImageAssetId: null } });
+  const uploadGalleryImage = async (file: File) => {
+    if (!new Set(["image/png", "image/jpeg", "image/webp"]).has(file.type)) return toast.error("Escolha uma imagem PNG, JPEG ou WebP.");
+    if (file.size > 4 * 1024 * 1024) return toast.error("A imagem deve ter no máximo 4 MB.");
+    if (galleryItems.length >= 8) return toast.error("A galeria permite no máximo oito imagens.");
+    setIsUploadingGallery(true);
+    try {
+      const result = await uploadChurchMedia(file, { purpose: "tenant_public_gallery", resourceType: "image" });
+      patchSection("gallery", { content: { items: [...galleryItems, { url: result.optimizedUrl, mediaAssetId: result.mediaAssetId ?? undefined, alt: file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " "), caption: "" }] } });
+      toast.success("Imagem adicionada ao rascunho. Publique a página para exibi-la.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Não foi possível enviar a imagem."); }
+    finally { setIsUploadingGallery(false); }
+  };
+  const hero = sections.find((section) => section.sectionType === "hero")?.content;
+  const activeHeroImage = resolveHeroImage(hero);
+  const lastPublishedRevision = preview.data?.revisions?.[0] ?? null;
+  const currentEditorState = normalizePublicEditorState({ seoTitle: seo.title, seoDescription: seo.description, theme, sections: normalizedSections });
+  const persistedEditorState = preview.data ? normalizePublicEditorState({ seoTitle: preview.data.site?.seoTitle, seoDescription: preview.data.site?.seoDescription, theme: preview.data.theme, sections: preview.data.sections }) : null;
+  const publishedEditorState = lastPublishedRevision ? normalizePublicEditorState(readPublicRevisionSnapshot(lastPublishedRevision.snapshot)) : null;
+  const hasLocalDraftChanges = Boolean(persistedEditorState && stableSerialize(currentEditorState) !== stableSerialize(persistedEditorState));
+  const hasUnpublishedChanges = publishedEditorState ? stableSerialize(currentEditorState) !== stableSerialize(publishedEditorState) : Boolean(currentEditorState.sections.length);
+  const incompleteGalleryItems = galleryItems.filter((item) => item.alt.trim().length < 3).length;
+  const publicStatus = !lastPublishedRevision ? "Ainda não publicada" : hasUnpublishedChanges ? "Rascunho pendente" : "Publicada";
+  const publicStatusTone = !lastPublishedRevision || hasUnpublishedChanges ? "border-amber-200 bg-amber-50 text-amber-950" : "border-emerald-200 bg-emerald-50 text-emerald-950";
+  const publicStatusBadgeTone = !lastPublishedRevision || hasUnpublishedChanges ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800";
+  const publicStatusDescription = hasLocalDraftChanges ? "Há alterações feitas neste editor que ainda não foram salvas." : !lastPublishedRevision ? "A página ainda não tem uma versão pública para os visitantes." : hasUnpublishedChanges ? "O rascunho salvo é diferente da última versão exibida aos visitantes." : "Os visitantes estão vendo a última versão publicada.";
+  const pendingItems = [
+    ...(hasLocalDraftChanges ? ["Salve o rascunho para registrar as alterações deste editor."] : []),
+    ...(!lastPublishedRevision ? ["Publique uma primeira versão quando o conteúdo estiver pronto."] : []),
+    ...(lastPublishedRevision && hasUnpublishedChanges && !hasLocalDraftChanges ? ["Publique o rascunho salvo para atualizar a página pública."] : []),
+    ...(incompleteGalleryItems > 0 ? [`Complete o texto alternativo de ${incompleteGalleryItems} imagem(ns) da galeria.`] : []),
+  ];
+  if (pendingItems.length === 0) pendingItems.push("Nenhuma ação pendente: rascunho e publicação estão sincronizados.");
+
+  if (preview.isLoading) return <div className="h-48 animate-pulse rounded-2xl bg-muted" />;
+  return <div className="space-y-6">
+    <div className="flex items-start gap-3 rounded-2xl border border-gold/35 bg-gold/5 p-4 text-sm leading-relaxed text-navy"><Globe2 className="mt-0.5 h-5 w-5 shrink-0 text-gold" /><p><strong>Uma página, uma igreja.</strong> Edite o rascunho com segurança: esta configuração é salva e publicada somente no subdomínio da sua igreja. O editor não altera o CSS estrutural nem outras igrejas.</p></div>
+    <section aria-labelledby="tenant-public-status-title" className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${publicStatusTone}`}><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${publicStatusBadgeTone}`}>{publicStatus}</span>{hasLocalDraftChanges && <span className="rounded-full bg-white/70 px-2.5 py-1 text-xs font-semibold">Alterações locais</span>}</div><h2 id="tenant-public-status-title" className="mt-2 text-base font-bold">Estado da Página Pública</h2><p className="mt-1 max-w-2xl text-sm leading-relaxed opacity-80">{publicStatusDescription}</p></div><div className="shrink-0 rounded-xl bg-white/60 px-3 py-2 text-left sm:text-right"><span className="block text-[11px] font-semibold uppercase tracking-[0.12em] opacity-70">Última publicação</span><strong className="mt-1 block text-sm">{formatPublicDate(lastPublishedRevision?.publishedAt)}</strong></div></div><div className="mt-4 grid gap-2 sm:grid-cols-2">{pendingItems.map((item) => <p key={item} className="rounded-xl bg-white/60 px-3 py-2 text-xs leading-relaxed"><span className="mr-2 font-bold" aria-hidden="true">•</span>{item}</p>)}</div></section>
+    <div className="mb-1 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between"><p className="text-xs leading-relaxed text-muted-foreground">Edite à esquerda e acompanhe a prévia protegida à direita. As alterações só chegam ao visitante depois da publicação.</p><Button type="button" variant="outline" size="sm" className="w-full shrink-0 sm:w-auto xl:hidden" onClick={() => document.getElementById("tenant-public-preview")?.scrollIntoView({ behavior: "smooth", block: "start" })}><Eye className="mr-1.5 h-4 w-4" />Ver prévia</Button></div>
+    <div className="grid gap-3 sm:grid-cols-3"><PublicMetricCard label="Blocos ativos" value={`${sections.filter((section) => section.enabled).length}/${sections.length}`} detail="Seções exibidas no rascunho" /><PublicMetricCard label="Imagens" value={String(galleryItems.length)} detail="Itens na galeria pública" /><PublicMetricCard label="Prévia" value={mobilePreview ? "Mobile" : "Desktop"} detail="Modo de visualização atual" /></div>
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
+      <div className="min-w-0 space-y-5">
+        <section className="card-sacred p-5 sm:p-6"><div className="mb-5 flex items-start gap-3 border-b border-border pb-4"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold"><Globe2 className="h-5 w-5" /></span><div><h2 className="font-semibold text-navy">Tema da Página Pública</h2><p className="mt-1 text-sm leading-relaxed text-muted-foreground">Estas cores pertencem ao site público. A Identidade Visual geral controla a experiência interna do painel.</p></div></div>
+          <div className="grid gap-4 sm:grid-cols-2"><label className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"><span className="text-sm font-semibold text-navy">Cor principal</span><span className="mt-1 block text-xs text-muted-foreground">Cabeçalho e áreas de destaque</span><div className="mt-3 flex items-center gap-3"><span className="h-9 w-9 shrink-0 rounded-lg border border-white shadow-sm" style={{ backgroundColor: theme.primaryColor }} /><Input aria-label="Cor principal da Página Pública" className="min-w-0 font-mono uppercase" value={theme.primaryColor} maxLength={7} onChange={(event) => setTheme({ ...theme, primaryColor: event.target.value })} /></div></label><label className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"><span className="text-sm font-semibold text-navy">Cor de destaque</span><span className="mt-1 block text-xs text-muted-foreground">Botões e chamadas para ação</span><div className="mt-3 flex items-center gap-3"><span className="h-9 w-9 shrink-0 rounded-lg border border-white shadow-sm" style={{ backgroundColor: theme.secondaryColor }} /><Input aria-label="Cor de destaque da Página Pública" className="min-w-0 font-mono uppercase" value={theme.secondaryColor} maxLength={7} onChange={(event) => setTheme({ ...theme, secondaryColor: event.target.value, accentColor: event.target.value })} /></div></label></div>
+          <div className="mt-4 grid gap-4"><label><Label>Título para buscadores</Label><Input className="mt-1" value={seo.title} maxLength={255} onChange={(event) => setSeo({ ...seo, title: event.target.value })} placeholder="Ex.: Cristã Viver — Comunidade de Fé" /></label><label><Label>Descrição pública</Label><Textarea className="mt-1" value={seo.description} maxLength={320} rows={3} onChange={(event) => setSeo({ ...seo, description: event.target.value })} placeholder="Uma breve apresentação da sua igreja." /></label></div>
+        </section>
+        <section className="card-sacred p-5 sm:p-6"><div className="flex flex-col gap-1 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="font-semibold text-navy">Blocos da página</h2><p className="mt-1 text-sm text-muted-foreground">Ative, edite e reordene blocos aprovados. A mudança só fica pública ao publicar.</p></div><span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{sections.filter((section) => section.enabled).length} de {sections.length} ativos</span></div>
+          <div className="mt-4 space-y-3">{sections.map((section, index) => <article key={section.sectionType} className="rounded-xl border border-border bg-muted/20 p-4"><div className="flex min-w-0 flex-wrap items-center gap-3"><GripVertical aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" /><strong className="mr-auto min-w-0 truncate text-sm text-navy">{labels[section.sectionType]}</strong><span className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-border bg-background p-1"><Button type="button" variant="ghost" size="icon-sm" disabled={index === 0} onClick={() => move(index, -1)} aria-label={`Mover bloco ${labels[section.sectionType]} para cima`} title="Mover para cima"><ChevronUp className="h-4 w-4" /></Button><Button type="button" variant="ghost" size="icon-sm" disabled={index === sections.length - 1} onClick={() => move(index, 1)} aria-label={`Mover bloco ${labels[section.sectionType]} para baixo`} title="Mover para baixo"><ChevronDown className="h-4 w-4" /></Button></span><span className="inline-flex shrink-0 items-center gap-2"><Switch checked={section.enabled} onCheckedChange={(enabled) => patchSection(section.sectionType, { enabled })} aria-label={`Exibir bloco ${labels[section.sectionType]}`} /><span className="text-xs font-medium text-slate-600">Exibir</span></span></div>
+            {section.enabled && <div className="mt-4 grid gap-3"><label><Label>Título</Label><Input className="mt-1" value={section.content.title ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { title: event.target.value } })} /></label>{section.sectionType === "hero" && <><div className="rounded-xl border border-gold/25 bg-gold/5 p-3"><div className="mb-3"><strong className="text-sm text-navy">Imagem principal do Hero</strong><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Escolha uma imagem predefinida ou envie uma imagem da sua igreja. A seleção só fica pública depois de salvar e publicar a página.</p></div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{HERO_PRESETS.map((preset) => <button type="button" key={preset.id} aria-pressed={hero?.heroImageSource !== "custom" && (hero?.heroImagePresetId ?? "original") === preset.id} onClick={() => selectHeroPreset(preset.id)} className={`min-w-0 overflow-hidden rounded-xl border text-left transition ${hero?.heroImageSource !== "custom" && (hero?.heroImagePresetId ?? "original") === preset.id ? "border-gold bg-gold/10 ring-2 ring-gold/30" : "border-border bg-background hover:border-gold/60"}`}><div className="aspect-video overflow-hidden bg-navy">{preset.src ? <img src={preset.src} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center px-3 text-center text-xs font-semibold text-white/80">Visual atual do Ide Fazei</div>}</div><div className="p-3"><strong className="block truncate text-sm text-navy">{preset.label}</strong><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{preset.description}</span></div></button>)}</div><div className="mt-3 flex flex-col gap-3 rounded-xl border border-dashed border-gold/45 bg-background p-3 sm:flex-row sm:items-center sm:justify-between"><div><strong className="block text-sm text-navy">Enviar imagem da minha igreja</strong><span className="mt-1 block text-xs leading-relaxed text-muted-foreground">Recomendado: 1920 × 1080 px, proporção 16:9. JPEG, WebP ou PNG, até 5 MB.</span></div><label className="inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-navy transition hover:border-gold hover:bg-gold/5 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-gold"><input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" disabled={isUploadingHero} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadHeroImage(file); }} /><ImagePlus className="h-4 w-4" />{isUploadingHero ? "Enviando..." : "Enviar imagem"}</label></div>{hero?.heroImageSource === "custom" && hero.heroImageUrl && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900"><span><strong>Imagem personalizada selecionada.</strong> A prévia abaixo já mostra o enquadramento.</span><Button type="button" variant="ghost" size="sm" onClick={() => selectHeroPreset("original")}>Voltar ao visual atual</Button></div>}</div><label><Label>Frase de identificação</Label><Input className="mt-1" value={section.content.eyebrow ?? ""} maxLength={80} placeholder="Ex.: Comunidade de fé" onChange={(event) => patchSection("hero", { content: { eyebrow: event.target.value } })} /><p className="mt-1 text-xs text-muted-foreground">Aparece acima do título no hero e no rodapé. Se ficar em branco, usaremos “Comunidade de fé”.</p></label><label><Label>Subtítulo</Label><Textarea className="mt-1" rows={3} value={section.content.subtitle ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { subtitle: event.target.value } })} /></label><div className="grid gap-3 sm:grid-cols-2"><label><Label>Texto do botão</Label><Input className="mt-1" value={section.content.primaryCtaLabel ?? ""} onChange={(event) => patchSection("hero", { content: { primaryCtaLabel: event.target.value } })} /></label><label><Label>Destino do botão</Label><Input className="mt-1" value={section.content.primaryCtaHref ?? ""} onChange={(event) => patchSection("hero", { content: { primaryCtaHref: event.target.value } })} /></label></div></>}{section.sectionType === "ministries" && <div className="rounded-xl border border-gold/25 bg-gold/5 p-3"><div className="mb-3 flex flex-wrap items-start justify-between gap-2"><div><strong className="text-sm text-navy">Ministérios exibidos publicamente</strong><p className="mt-1 text-xs leading-relaxed text-muted-foreground">Ministérios internos ficam ocultos por padrão. Selecione somente os que ajudam o visitante a encontrar seu lugar na igreja.</p></div><span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-navy">{(section.content.publicMinistryIds ?? []).length}/6 selecionados</span></div><div className="grid gap-2 sm:grid-cols-2">{ministries.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum Ministério ativo disponível para publicação.</p> : ministries.map((ministry) => { const selectedIds = section.content.publicMinistryIds ?? []; const selected = selectedIds.includes(ministry.id); const disabled = !selected && selectedIds.length >= 6; return <label key={ministry.id} className={`flex min-w-0 items-start gap-3 rounded-xl border bg-background p-3 transition ${selected ? "border-gold bg-gold/5" : "border-border"} ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:border-gold/60"}`}><input type="checkbox" checked={selected} disabled={disabled} onChange={() => patchSection("ministries", { content: { publicMinistryIds: selected ? selectedIds.filter((id) => id !== ministry.id) : [...selectedIds, ministry.id] } })} className="mt-1 h-4 w-4 shrink-0 rounded border-input text-navy focus-visible:ring-gold" /><span className="min-w-0"><strong className="block truncate text-sm text-navy">{ministry.name}</strong><small className="mt-1 block truncate text-xs text-muted-foreground">{ministry.description || "Ministério da igreja"}</small></span></label>; })}</div><p className="mt-3 text-xs leading-relaxed text-muted-foreground">A seleção só será vista pelos visitantes depois de salvar o rascunho e publicar a Página Pública. Criar um Ministério não o publica automaticamente.</p></div>}{["about", "schedule"].includes(section.sectionType) && <label><Label>{section.sectionType === "schedule" ? "Mensagem de acolhimento" : "Texto"}</Label><Textarea className="mt-1" rows={3} value={section.content.body ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { body: event.target.value } })} /></label>}{section.sectionType === "schedule" && <div className="rounded-xl border border-gold/25 bg-gold/5 p-3"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-navy">Horários de culto e encontros</strong><Button type="button" size="sm" variant="outline" onClick={addService} disabled={(section.content.services ?? []).length >= 7}><Plus className="mr-1 h-3.5 w-3.5" />Adicionar horário</Button></div><div className="space-y-3">{(section.content.services ?? []).map((service, serviceIndex) => <div key={serviceIndex} className="grid gap-2 rounded-lg border border-border bg-background p-3 sm:grid-cols-2"><label><Label>Dia</Label><Input className="mt-1" value={service.day} maxLength={32} placeholder="Ex.: Domingo" onChange={(event) => patchService(serviceIndex, { day: event.target.value })} /></label><label><Label>Horário</Label><Input className="mt-1" value={service.time} maxLength={24} placeholder="Ex.: 19h" onChange={(event) => patchService(serviceIndex, { time: event.target.value })} /></label><label><Label>Descrição</Label><Input className="mt-1" value={service.label ?? ""} maxLength={80} placeholder="Ex.: Culto da Família" onChange={(event) => patchService(serviceIndex, { label: event.target.value })} /></label><label><Label>Local</Label><div className="mt-1 flex gap-2"><Input value={service.location ?? ""} maxLength={160} placeholder="Ex.: Templo principal" onChange={(event) => patchService(serviceIndex, { location: event.target.value })} /><Button type="button" size="icon" variant="outline" aria-label={`Remover horário ${serviceIndex + 1}`} onClick={() => removeService(serviceIndex)}><Trash2 className="h-4 w-4" /></Button></div></label></div>)}{(section.content.services ?? []).length === 0 && <p className="text-sm text-muted-foreground">Nenhum horário será exibido até você adicionar um culto ou encontro.</p>}</div></div>}{section.sectionType === "gallery" && <div className="rounded-xl border border-gold/25 bg-gold/5 p-3"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-navy">Imagens da galeria</strong><label><input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" disabled={isUploadingGallery || galleryItems.length >= 8} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadGalleryImage(file); }} /><Button type="button" size="sm" variant="outline" disabled={isUploadingGallery || galleryItems.length >= 8} asChild><span><ImagePlus className="mr-1 h-3.5 w-3.5" />{isUploadingGallery ? "Enviando..." : "Adicionar imagem"}</span></Button></label></div><p className="mb-3 text-xs text-muted-foreground">PNG, JPEG ou WebP, até 4 MB. Inclua uma descrição para acessibilidade.</p><div className="space-y-3">{galleryItems.map((item, itemIndex) => <div key={item.url} className="grid gap-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-[96px_minmax(0,1fr)]"><img src={item.url} alt="Prévia da mídia" className="h-24 w-24 rounded-md object-cover" /><div className="grid gap-2"><label><Label>Texto alternativo</Label><Input value={item.alt} maxLength={180} onChange={(event) => patchSection("gallery", { content: { items: galleryItems.map((current, index) => index === itemIndex ? { ...current, alt: event.target.value } : current) } })} /></label><label><Label>Legenda opcional</Label><div className="mt-1 flex gap-2"><Input value={item.caption ?? ""} maxLength={180} onChange={(event) => patchSection("gallery", { content: { items: galleryItems.map((current, index) => index === itemIndex ? { ...current, caption: event.target.value } : current) } })} /><Button type="button" size="icon" variant="outline" aria-label={`Remover imagem ${itemIndex + 1}`} onClick={() => patchSection("gallery", { content: { items: galleryItems.filter((_, index) => index !== itemIndex) } })}><Trash2 className="h-4 w-4" /></Button></div></label></div></div>)}{galleryItems.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma imagem será exibida até você adicionar e publicar a galeria.</p>}</div></div>}{["events", "ministries", "gallery", "contact"].includes(section.sectionType) && <label><Label>Mensagem</Label><Input className="mt-1" value={section.content.subtitle ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { subtitle: event.target.value } })} /></label>}</div>}</article>)}</div>
+        </section>
+        <div className="sticky bottom-3 z-10 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-background/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-end"><span className="text-xs leading-relaxed text-muted-foreground sm:mr-auto">Rascunho só fica público depois de publicar.</span><div className="grid grid-cols-2 gap-2 sm:flex"><Button type="button" variant="outline" className="w-full sm:w-auto" disabled={saveDraft.isPending || publish.isPending} onClick={save}><Save className="mr-2 h-4 w-4" />{saveDraft.isPending ? "Salvando..." : "Salvar rascunho"}</Button><Button type="button" className="w-full bg-navy text-white hover:bg-navy-light sm:w-auto" disabled={saveDraft.isPending || publish.isPending} onClick={publishPage}><Send className="mr-2 h-4 w-4" />{publish.isPending ? "Publicando..." : "Publicar página"}</Button></div></div>
+      </div>
+      <aside id="tenant-public-preview" className="min-w-0 scroll-mt-6 xl:sticky xl:top-6 xl:self-start"><div className="mb-3 flex items-center justify-between"><div><h2 className="font-semibold text-navy">Prévia protegida</h2><p className="text-xs text-muted-foreground">A prévia não publica alterações.</p></div><Button variant="outline" size="sm" onClick={() => setMobilePreview(!mobilePreview)}><Smartphone className="mr-1.5 h-4 w-4" />{mobilePreview ? "Mobile" : "Desktop"}</Button></div><div className={mobilePreview ? "mx-auto max-w-[375px] overflow-hidden rounded-[1.8rem] border-8 border-navy/15 bg-background shadow-lg" : "overflow-hidden rounded-2xl border border-border bg-background shadow-sm"}><div className="tenant-public-preview" style={{ "--tenant-primary": theme.primaryColor, "--tenant-secondary": theme.secondaryColor } as CSSProperties}><div className="tenant-public-preview-header">Sua igreja</div><div className="tenant-public-preview-hero">{activeHeroImage.src && <img className="tenant-public-preview-hero-image" src={mobilePreview ? (activeHeroImage.mobileSrc ?? activeHeroImage.src) : activeHeroImage.src} alt="" aria-hidden="true" />}{activeHeroImage.src && <div className="tenant-public-preview-hero-overlay" aria-hidden="true" />}
+<div className="tenant-public-preview-hero-copy"><span>{hero?.eyebrow || "Comunidade de fé"}</span><h3>{hero?.title || "Bem-vindo à sua igreja"}</h3><p>{hero?.subtitle || "Sua mensagem de acolhimento aparecerá aqui."}</p><b>{hero?.primaryCtaLabel || "Quero conhecer"}</b></div></div></div></div><p className="mt-3 text-xs text-muted-foreground"><Eye className="mr-1 inline h-3.5 w-3.5" />O visitante vê somente a última revisão publicada.</p></aside>
+    </div>
+  </div>;
+}

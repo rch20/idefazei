@@ -1,0 +1,11884 @@
+import { createHash } from "node:crypto";
+import { and, asc, count, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/mysql2";
+import { alias } from "drizzle-orm/mysql-core";
+import {
+  announcements,
+  baptismClasses,
+  baptismEnrollments,
+  careAssignments,
+  cellAttendance,
+  cellMeetings,
+  cellMembers,
+  cellStudies,
+  cellStudyAttachments,
+  cellStudyAdministrators,
+  cells,
+  churchMembers,
+  churchNotificationPreferences,
+  churchRegistrations,
+  churchUserComplementaryRoles,
+  churchPasswordResetTokens,
+  churchUsers,
+  webPushSubscriptions,
+  churches,
+  communicationLogs,
+  consolidations,
+  consolidationCaseAssignments,
+  consolidationFollowUps,
+  consolidationReferrals,
+  careVisitEvents,
+  careVisits,
+  counselingNotes,
+  counselingSessions,
+  courseEnrollments,
+  courses,
+  departmentMembers,
+  departmentRoleAssignments,
+  departments,
+  foundationStudies,
+  foundationModules,
+  foundationStudyMaterials,
+  foundationStudyAdministrators,
+  foundationLessonProgress,
+  foundationBlockProgress,
+  foundationStudyBlocks,
+  foundationQuestions,
+  foundationQuestionAttempts,
+  foundationImportDrafts,
+  foundationClasses,
+  foundationClassAttendance,
+  encounterChecklistItems,
+  encounterDiscipleForms,
+  encounterEnrollments,
+  encounterEvents,
+  encounterHistory,
+  encounterPublicForms,
+  encounterServantAssignments,
+  encounterTeams,
+  eventRegistrations,
+  events,
+  families,
+  familyMembers,
+  financialAccounts,
+  financialAuditLogs,
+  financialCategories,
+  financialPayables,
+  financialPeriodClosures,
+  financialReconciliationAttachments,
+  financialReconciliations,
+  financialTransactions,
+  onlineContributions,
+  treasuryServices,
+  treasuryRecurringSchedules,
+  treasuryCountSheets,
+  treasuryEntrySheets,
+  treasuryEntrySheetLines,
+  TreasuryEntrySheet,
+  TreasuryEntrySheetLine,
+  treasuryDeposits,
+  treasuryReports,
+  treasuryReportSignatures,
+  TreasuryReport,
+  TreasuryReportSignature,
+  mediaAssets,
+  InsertMediaAsset,
+  InsertUser,
+  leadershipHistory,
+  leadershipSchoolClasses,
+  leadershipSchoolEnrollments,
+  leadershipSchoolTeachers,
+  leadershipSchoolLessons,
+  leadershipSchoolAttendance,
+  leadershipSchoolProgress,
+  libraryItems,
+  ministries,
+  ministryMembers,
+  ministryRoleAssignments,
+  ministryRoleDefinitions,
+  notificationDeliveries,
+  notificationEvents,
+  people,
+  discipleshipStageProgress,
+  discipleshipStageEvents,
+  pastoralCoverages,
+  pastoralCoverageEvents,
+  primaryDisciplerEvents,
+  prayerRequests,
+  scheduleItems,
+  startupDiagnostics,
+  superAdmins,
+  souls,
+  tenantPageRevisions,
+  tenantPageSections,
+  tenantPublicSites,
+  tenantThemes,
+  users,
+  visitorLeads,
+  publicRegistrationLeads,
+  onboardingProgress,
+  securityAccessAuditHolds,
+  securityAccessAuditHoldEvents,
+} from "../drizzle/schema";
+import { ENV } from "./_core/env";
+import { buildSecurityAuditHoldExpireUpdate, buildSecurityAuditHoldExpiredEvent, buildSecurityAuditHoldOpenedEvent, buildSecurityAuditHoldReleaseUpdate, buildSecurityAuditHoldReleasedEvent, buildSecurityAuditHoldReviewUpdate, buildSecurityAuditHoldReviewedEvent, buildSecurityAuditHoldInsert, decideSecurityAuditRetention, deriveSecurityAuditHoldState, type CreateSecurityAuditHoldInput, type ReleaseSecurityAuditHoldInput, type ReviewSecurityAuditHoldInput, type SecurityAuditHoldStatus } from "./security-audit-holds";
+import { insertSecurityAccessAuditLog } from "./security-audit-persistence";
+import type { SecurityAccessEvent } from "./security-access-monitoring";
+import { getDerivedLogoIconUrls, getOptimizedMediaUrls } from "./media";
+import { currentCivilDateAsUtcNoon, formatCivilDateInput, formatCivilDateValue, parseCivilDateAsUtcNoon } from "./civilDate";
+import { normalizeSocialMediaLinks } from "../shared/socialMedia";
+import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
+import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
+import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus, shouldFlagLegacyConsolidationPending, shouldFlagModernFirstContactPending } from "../shared/consolidation";
+import { resolveDirectoryCareState, type DirectoryCareStatus } from "../shared/peopleDirectory";
+import { FoundationImportError, type FoundationImportPayload, type FoundationImportSummary } from "./foundationImport";
+
+let _db: ReturnType<typeof drizzle> | null = null;
+
+export async function getDb() {
+  if (!_db && process.env.DATABASE_URL) {
+    try {
+      _db = drizzle(process.env.DATABASE_URL);
+    } catch (error) {
+      console.warn("[Database] Failed to connect:", error);
+      _db = null;
+    }
+  }
+  return _db;
+}
+
+export async function recordSecurityAccessAuditEvent(data: { churchId: number; event: SecurityAccessEvent }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return insertSecurityAccessAuditLog(db, data);
+}
+
+export async function createSecurityAuditHold(data: CreateSecurityAuditHoldInput, now = new Date()) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const values = buildSecurityAuditHoldInsert(data, now);
+  return db.transaction(async tx => {
+    const result = await tx.insert(securityAccessAuditHolds).values(values);
+    const holdId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!holdId) throw new Error("Unable to create security hold");
+    await tx.insert(securityAccessAuditHoldEvents).values(
+      buildSecurityAuditHoldOpenedEvent({
+        churchId: values.churchId,
+        holdId,
+        actorChurchUserId: values.createdByChurchUserId,
+        occurredAt: now,
+        reason: values.holdReason,
+        hold: {
+          expiresAt: values.expiresAt,
+          reviewDueAt: values.reviewDueAt,
+        },
+      })
+    );
+    return holdId;
+  });
+}
+
+export async function getSecurityAuditHoldById(churchId: number, holdId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select()
+    .from(securityAccessAuditHolds)
+    .where(and(eq(securityAccessAuditHolds.churchId, churchId), eq(securityAccessAuditHolds.id, holdId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getSecurityAuditHoldByIdempotencyKey(churchId: number, idempotencyKey: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const rows = await db
+    .select()
+    .from(securityAccessAuditHolds)
+    .where(and(eq(securityAccessAuditHolds.churchId, churchId), eq(securityAccessAuditHolds.idempotencyKey, idempotencyKey)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function listSecurityAuditHolds(churchId: number, status?: SecurityAuditHoldStatus) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const conditions = [eq(securityAccessAuditHolds.churchId, churchId)];
+  if (status) conditions.push(eq(securityAccessAuditHolds.status, status));
+  return db
+    .select()
+    .from(securityAccessAuditHolds)
+    .where(and(...conditions))
+    .orderBy(desc(securityAccessAuditHolds.createdAt), desc(securityAccessAuditHolds.id));
+}
+
+export async function getSecurityAuditHoldEvents(churchId: number, holdId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db
+    .select()
+    .from(securityAccessAuditHoldEvents)
+    .where(and(eq(securityAccessAuditHoldEvents.churchId, churchId), eq(securityAccessAuditHoldEvents.holdId, holdId)))
+    .orderBy(asc(securityAccessAuditHoldEvents.occurredAt), asc(securityAccessAuditHoldEvents.id));
+}
+
+export async function listActiveSecurityAuditHolds(churchId: number, at = new Date()) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db
+    .select()
+    .from(securityAccessAuditHolds)
+    .where(and(eq(securityAccessAuditHolds.churchId, churchId), eq(securityAccessAuditHolds.status, "active"), lte(securityAccessAuditHolds.startsAt, at), gt(securityAccessAuditHolds.expiresAt, at)))
+    .orderBy(asc(securityAccessAuditHolds.expiresAt));
+}
+
+export async function reviewSecurityAuditHold(data: ReviewSecurityAuditHoldInput) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const values = buildSecurityAuditHoldReviewUpdate(data);
+  return db.transaction(async tx => {
+    const beforeRows = await tx
+      .select()
+      .from(securityAccessAuditHolds)
+      .where(and(eq(securityAccessAuditHolds.id, data.holdId), eq(securityAccessAuditHolds.churchId, data.churchId), eq(securityAccessAuditHolds.status, "active")))
+      .limit(1)
+      .for("update");
+    const before = beforeRows[0];
+    if (!before) throw new Error("Active security hold not found");
+
+    await tx
+      .update(securityAccessAuditHolds)
+      .set(values)
+      .where(and(eq(securityAccessAuditHolds.id, data.holdId), eq(securityAccessAuditHolds.churchId, data.churchId), eq(securityAccessAuditHolds.status, "active")));
+    const afterRows = await tx
+      .select()
+      .from(securityAccessAuditHolds)
+      .where(and(eq(securityAccessAuditHolds.id, data.holdId), eq(securityAccessAuditHolds.churchId, data.churchId)))
+      .limit(1);
+    const after = afterRows[0];
+    if (!after) throw new Error("Security hold disappeared during review");
+
+    await tx.insert(securityAccessAuditHoldEvents).values(
+      buildSecurityAuditHoldReviewedEvent({
+        churchId: data.churchId,
+        holdId: data.holdId,
+        actorChurchUserId: data.reviewedByChurchUserId,
+        occurredAt: data.reviewedAt,
+        reason: "Security hold revisado e prazo renovado.",
+        previous: before,
+        next: after,
+      })
+    );
+    return after;
+  });
+}
+
+export async function releaseSecurityAuditHold(data: ReleaseSecurityAuditHoldInput) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const values = buildSecurityAuditHoldReleaseUpdate(data);
+  return db.transaction(async tx => {
+    const beforeRows = await tx
+      .select()
+      .from(securityAccessAuditHolds)
+      .where(and(eq(securityAccessAuditHolds.id, data.holdId), eq(securityAccessAuditHolds.churchId, data.churchId), eq(securityAccessAuditHolds.status, "active")))
+      .limit(1)
+      .for("update");
+    const before = beforeRows[0];
+    if (!before) throw new Error("Active security hold not found");
+
+    await tx
+      .update(securityAccessAuditHolds)
+      .set(values)
+      .where(and(eq(securityAccessAuditHolds.id, data.holdId), eq(securityAccessAuditHolds.churchId, data.churchId), eq(securityAccessAuditHolds.status, "active")));
+    const afterRows = await tx
+      .select()
+      .from(securityAccessAuditHolds)
+      .where(and(eq(securityAccessAuditHolds.id, data.holdId), eq(securityAccessAuditHolds.churchId, data.churchId)))
+      .limit(1);
+    const after = afterRows[0];
+    if (!after) throw new Error("Security hold disappeared during release");
+
+    await tx.insert(securityAccessAuditHoldEvents).values(
+      buildSecurityAuditHoldReleasedEvent({
+        churchId: data.churchId,
+        holdId: data.holdId,
+        actorChurchUserId: data.releasedByChurchUserId,
+        occurredAt: data.releasedAt,
+        reason: data.releaseReason,
+        previous: before,
+      })
+    );
+    return after;
+  });
+}
+
+export async function expireSecurityAuditHolds(churchId: number, at = new Date()) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async tx => {
+    const due = await tx
+      .select()
+      .from(securityAccessAuditHolds)
+      .where(and(eq(securityAccessAuditHolds.churchId, churchId), eq(securityAccessAuditHolds.status, "active"), lte(securityAccessAuditHolds.expiresAt, at)))
+      .for("update");
+    let expiredCount = 0;
+    for (const hold of due) {
+      const result = await tx
+        .update(securityAccessAuditHolds)
+        .set(buildSecurityAuditHoldExpireUpdate(at, hold))
+        .where(and(eq(securityAccessAuditHolds.id, hold.id), eq(securityAccessAuditHolds.churchId, churchId), eq(securityAccessAuditHolds.status, "active")));
+      const affectedRows = Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0);
+      if (!affectedRows) continue;
+      await tx.insert(securityAccessAuditHoldEvents).values(
+        buildSecurityAuditHoldExpiredEvent({
+          churchId,
+          holdId: hold.id,
+          actorChurchUserId: null,
+          occurredAt: at,
+          reason: "Security hold expirado automaticamente pelo job interno.",
+          previous: hold,
+        })
+      );
+      expiredCount += 1;
+    }
+    return expiredCount;
+  });
+}
+
+export async function decideSecurityAuditLogRetention(churchId: number, log: Parameters<typeof decideSecurityAuditRetention>[0], at = new Date()) {
+  const holds = await listActiveSecurityAuditHolds(churchId, at);
+  return decideSecurityAuditRetention(log, holds, at);
+}
+function activeConsolidationReferralCondition() {
+  return inArray(consolidationReferrals.status, [...ACTIVE_CONSOLIDATION_REFERRAL_STATUSES]);
+}
+
+export async function createMediaAsset(data: InsertMediaAsset) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(mediaAssets).values(data);
+  const id = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+  if (!id) return null;
+  const rows = await db
+    .select()
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.id, id), eq(mediaAssets.churchId, data.churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getActiveMediaAssetById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.id, id), eq(mediaAssets.churchId, churchId), eq(mediaAssets.status, "active")))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function markMediaAssetDeleted(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const result = await db
+    .update(mediaAssets)
+    .set({ status: "deleted" })
+    .where(and(eq(mediaAssets.id, id), eq(mediaAssets.churchId, churchId), eq(mediaAssets.status, "active")));
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0) > 0;
+}
+
+// ─── NOTIFICAÇÕES MULTI-CANAL ─────────────────────────────────────────────────
+
+export type NotificationEventType = "cadastro_pendente" | "pessoa_aprovada" | "visita_agendada" | "lembrete_visita" | "visita_nao_realizada" | "responsabilidade_atribuida" | "funcao_ministerial_atribuida" | "evento_igreja" | "comunicado_lideranca" | "encaminhamento_sem_aceite" | "lembrete_escala" | "escala_atribuida" | "escala_alterada" | "escala_cancelada" | "celula_encontro_registrado" | "celula_aviso";
+
+export type NotificationChannel = "sistema" | "whatsapp";
+
+export async function isNotificationChannelActive(churchId: number, eventType: NotificationEventType, channel: NotificationChannel) {
+  const db = await getDb();
+  if (!db) return false;
+  const preference = await db
+    .select()
+    .from(churchNotificationPreferences)
+    .where(and(eq(churchNotificationPreferences.churchId, churchId), eq(churchNotificationPreferences.eventType, eventType), eq(churchNotificationPreferences.channel, channel)))
+    .limit(1);
+  return preference[0]?.active ?? channel === "sistema";
+}
+
+export async function getNotificationEventByDedupeKey(churchId: number, dedupeKey: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(notificationEvents)
+    .where(and(eq(notificationEvents.churchId, churchId), eq(notificationEvents.dedupeKey, dedupeKey)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createNotificationEvent(data: { churchId: number; type: NotificationEventType; entityType?: string | null; entityId?: number | null; title: string; body: string; metadata?: Record<string, unknown> | null; dedupeKey?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(notificationEvents).values({
+    churchId: data.churchId,
+    type: data.type,
+    entityType: data.entityType ?? null,
+    entityId: data.entityId ?? null,
+    title: data.title,
+    body: data.body,
+    metadata: data.metadata ?? null,
+    dedupeKey: data.dedupeKey ?? null,
+  });
+  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+  const rows = await db.select().from(notificationEvents).where(eq(notificationEvents.id, id)).limit(1);
+  if (!rows[0]) throw new Error("Falha ao criar evento de notificação");
+  return rows[0];
+}
+
+export async function createInternalNotificationDelivery(data: { churchId: number; eventId: number; recipientChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(notificationDeliveries).values({
+    churchId: data.churchId,
+    eventId: data.eventId,
+    recipientChurchUserId: data.recipientChurchUserId,
+    channel: "sistema",
+    status: "entregue",
+    deliveredAt: new Date(),
+  });
+}
+
+export async function getNotificationsForChurchUser(data: { churchId: number; churchUserId: number; unreadOnly?: boolean; limit?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(notificationDeliveries.churchId, data.churchId), eq(notificationDeliveries.recipientChurchUserId, data.churchUserId), eq(notificationDeliveries.channel, "sistema")];
+  if (data.unreadOnly) conditions.push(isNull(notificationDeliveries.readAt));
+  return db
+    .select({ delivery: notificationDeliveries, event: notificationEvents })
+    .from(notificationDeliveries)
+    .innerJoin(notificationEvents, and(eq(notificationEvents.id, notificationDeliveries.eventId), eq(notificationEvents.churchId, data.churchId)))
+    .where(and(...conditions))
+    .orderBy(desc(notificationDeliveries.createdAt))
+    .limit(data.limit ?? 40);
+}
+
+export async function getUnreadNotificationCount(churchId: number, churchUserId: number) {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db
+    .select({ value: count() })
+    .from(notificationDeliveries)
+    .where(and(eq(notificationDeliveries.churchId, churchId), eq(notificationDeliveries.recipientChurchUserId, churchUserId), eq(notificationDeliveries.channel, "sistema"), isNull(notificationDeliveries.readAt)));
+  return Number(rows[0]?.value ?? 0);
+}
+
+export async function markNotificationRead(data: { id: number; churchId: number; churchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(notificationDeliveries)
+    .set({ status: "lida", readAt: new Date() })
+    .where(and(eq(notificationDeliveries.id, data.id), eq(notificationDeliveries.churchId, data.churchId), eq(notificationDeliveries.recipientChurchUserId, data.churchUserId), eq(notificationDeliveries.channel, "sistema")));
+}
+
+function hashWebPushEndpoint(endpoint: string) {
+  return createHash("sha256").update(endpoint).digest("hex");
+}
+
+export async function hasActiveWebPushSubscription(data: { churchId: number; churchUserId: number; endpoint?: string }) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: webPushSubscriptions.id })
+    .from(webPushSubscriptions)
+    .where(and(eq(webPushSubscriptions.churchId, data.churchId), eq(webPushSubscriptions.churchUserId, data.churchUserId), ...(data.endpoint ? [eq(webPushSubscriptions.endpointHash, hashWebPushEndpoint(data.endpoint))] : []), isNull(webPushSubscriptions.revokedAt)))
+    .limit(1);
+  return Boolean(rows[0]);
+}
+
+export async function upsertWebPushSubscription(data: { churchId: number; churchUserId: number; endpoint: string; p256dh: string; auth: string; userAgent?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const endpointHash = hashWebPushEndpoint(data.endpoint);
+  const existing = await db.select({ id: webPushSubscriptions.id }).from(webPushSubscriptions).where(eq(webPushSubscriptions.endpointHash, endpointHash)).limit(1);
+  const now = new Date();
+  if (existing[0]) {
+    await db
+      .update(webPushSubscriptions)
+      .set({
+      churchId: data.churchId,
+      churchUserId: data.churchUserId,
+      endpoint: data.endpoint,
+      endpointHash,
+      p256dh: data.p256dh,
+      auth: data.auth,
+      userAgent: data.userAgent ?? null,
+      lastSeenAt: now,
+      revokedAt: null,
+      })
+      .where(eq(webPushSubscriptions.id, existing[0].id));
+  } else {
+    await db.insert(webPushSubscriptions).values({
+      churchId: data.churchId,
+      churchUserId: data.churchUserId,
+      endpoint: data.endpoint,
+      endpointHash,
+      p256dh: data.p256dh,
+      auth: data.auth,
+      userAgent: data.userAgent ?? null,
+      lastSeenAt: now,
+    });
+  }
+  return { subscribed: true } as const;
+}
+
+export async function getChurchUserIdsWithActiveCell(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ id: churchUsers.id })
+    .from(churchUsers)
+    .innerJoin(cellMembers, eq(cellMembers.personId, churchUsers.personId))
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .where(and(eq(churchUsers.churchId, churchId), eq(churchUsers.active, true), isNotNull(churchUsers.personId), eq(cellMembers.active, true), eq(cells.churchId, churchId), eq(cells.active, true)));
+  return Array.from(new Set(rows.map(row => row.id)));
+}
+
+export async function getActiveWebPushSubscriptionsByChurchUsers(data: { churchId: number; churchUserIds: number[] }) {
+  const db = await getDb();
+  if (!db || data.churchUserIds.length === 0) return [];
+  return db
+    .select({
+    id: webPushSubscriptions.id,
+    churchId: webPushSubscriptions.churchId,
+    churchUserId: webPushSubscriptions.churchUserId,
+    endpoint: webPushSubscriptions.endpoint,
+    p256dh: webPushSubscriptions.p256dh,
+    auth: webPushSubscriptions.auth,
+    })
+    .from(webPushSubscriptions)
+    .where(and(eq(webPushSubscriptions.churchId, data.churchId), inArray(webPushSubscriptions.churchUserId, Array.from(new Set(data.churchUserIds))), isNull(webPushSubscriptions.revokedAt)));
+}
+
+export async function revokeWebPushSubscription(data: { churchId: number; churchUserId: number; endpoint: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db
+    .update(webPushSubscriptions)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(webPushSubscriptions.churchId, data.churchId), eq(webPushSubscriptions.churchUserId, data.churchUserId), eq(webPushSubscriptions.endpointHash, hashWebPushEndpoint(data.endpoint)), isNull(webPushSubscriptions.revokedAt)));
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0) > 0;
+}
+
+// ─── DIAGNÓSTICOS DE INICIALIZAÇÃO ────────────────────────────────────────────
+
+export type StartupDiagnosticKind = "error" | "unhandled_rejection" | "resource_load" | "startup_timeout" | "recovery";
+
+export async function createStartupDiagnostic(data: { churchId?: number | null; kind: StartupDiagnosticKind; message: string; fingerprint: string; path: string; userAgent: string; platform?: string | null; appVersion?: string | null; clientId?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const retentionDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  await db.delete(startupDiagnostics).where(lt(startupDiagnostics.createdAt, retentionDate));
+  const result = await db.insert(startupDiagnostics).values(data);
+  const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+  const rows = await db.select().from(startupDiagnostics).where(eq(startupDiagnostics.id, id)).limit(1);
+  if (!rows[0]) throw new Error("Falha ao registrar diagnóstico de inicialização");
+  return rows[0];
+}
+
+export async function getStartupDiagnostics(limit = 80) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(startupDiagnostics)
+    .orderBy(desc(startupDiagnostics.createdAt))
+    .limit(Math.min(Math.max(limit, 1), 200));
+}
+
+// ─── USERS ────────────────────────────────────────────────────────────────────
+
+export async function upsertUser(user: InsertUser): Promise<void> {
+  if (!user.openId) throw new Error("User openId is required for upsert");
+  const db = await getDb();
+  if (!db) return;
+
+  const values: InsertUser = { openId: user.openId };
+  const updateSet: Record<string, unknown> = {};
+
+  const textFields = ["name", "email", "loginMethod"] as const;
+  textFields.forEach(field => {
+    const value = user[field];
+    if (value === undefined) return;
+    const normalized = value ?? null;
+    values[field] = normalized;
+    updateSet[field] = normalized;
+  });
+
+  if (user.lastSignedIn !== undefined) {
+    values.lastSignedIn = user.lastSignedIn;
+    updateSet.lastSignedIn = user.lastSignedIn;
+  }
+  if (user.role !== undefined) {
+    values.role = user.role;
+    updateSet.role = user.role;
+  } else if (user.openId === ENV.ownerOpenId) {
+    values.role = "admin";
+    updateSet.role = "admin";
+  }
+
+  if (!values.lastSignedIn) values.lastSignedIn = new Date();
+  if (Object.keys(updateSet).length === 0) updateSet.lastSignedIn = new Date();
+
+  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+}
+
+export async function getUserByOpenId(openId: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// ─── CHURCHES (TENANTS) ───────────────────────────────────────────────────────
+
+export async function getChurchBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(churches).where(eq(churches.slug, slug)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function getChurchById(id: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(churches).where(eq(churches.id, id)).limit(1);
+  return result[0] ?? null;
+}
+
+export async function getAllChurches() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(churches).where(eq(churches.active, true)).orderBy(churches.name);
+}
+
+export async function createChurch(data: typeof churches.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(churches).values(data);
+  const insertId = (result[0] as { insertId?: number })?.insertId;
+  if (!insertId) throw new Error("Failed to create church");
+  const rows = await db.select().from(churches).where(eq(churches.id, insertId)).limit(1);
+  return rows[0];
+}
+
+type PublishedBrandingPatch = Partial<Pick<typeof tenantThemes.$inferInsert, "primaryColor" | "secondaryColor" | "logoUrl" | "faviconUrl">>;
+
+async function syncPublishedBranding(tx: Parameters<Parameters<NonNullable<Awaited<ReturnType<typeof getDb>>>["transaction"]>[0]>[0], churchId: number, branding: PublishedBrandingPatch) {
+  const siteRows = await tx.select().from(tenantPublicSites).where(eq(tenantPublicSites.churchId, churchId)).limit(1);
+  const site = siteRows[0];
+  if (!site?.publishedRevisionId) return;
+  const revisionRows = await tx
+    .select()
+    .from(tenantPageRevisions)
+    .where(and(eq(tenantPageRevisions.id, site.publishedRevisionId), eq(tenantPageRevisions.churchId, churchId), eq(tenantPageRevisions.siteId, site.id)))
+    .limit(1);
+  const revision = revisionRows[0];
+  const snapshot = revision?.snapshot as { theme?: Record<string, unknown>; sections?: unknown } | undefined;
+  if (!revision || !snapshot?.theme) return;
+  await tx
+    .update(tenantPageRevisions)
+    .set({
+    snapshot: { ...snapshot, theme: { ...snapshot.theme, ...branding } },
+    })
+    .where(and(eq(tenantPageRevisions.id, revision.id), eq(tenantPageRevisions.churchId, churchId), eq(tenantPageRevisions.siteId, site.id)));
+}
+
+async function getLatestLogoForChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.churchId, churchId), eq(mediaAssets.purpose, "tenant_logo"), eq(mediaAssets.status, "active")))
+    .orderBy(desc(mediaAssets.createdAt), desc(mediaAssets.id))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+async function deriveLatestLogoIcon(churchId: number, backgroundColor?: string | null) {
+  const asset = await getLatestLogoForChurch(churchId);
+  if (!asset) return null;
+  return getDerivedLogoIconUrls(
+    {
+    provider: asset.provider,
+    publicId: asset.publicId,
+    url: asset.secureUrl ?? asset.url,
+    },
+    backgroundColor
+  );
+}
+
+export async function updateChurch(id: number, data: Partial<typeof churches.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const currentChurch = await getChurchById(id);
+  const shouldRefreshDerivedIcon = Boolean(currentChurch && currentChurch.pwaIconAssetId === null && currentChurch.pwaIconSource !== "custom" && (data.primaryColor !== undefined || data.logoUrl !== undefined));
+  const derivedIconUrls = shouldRefreshDerivedIcon ? await deriveLatestLogoIcon(id, data.primaryColor ?? currentChurch?.primaryColor) : null;
+  const branding: PublishedBrandingPatch = {};
+  if (data.primaryColor) branding.primaryColor = data.primaryColor;
+  if (data.secondaryColor) branding.secondaryColor = data.secondaryColor;
+  if (data.logoUrl !== undefined) branding.logoUrl = data.logoUrl;
+  if (derivedIconUrls) branding.faviconUrl = derivedIconUrls.icon192Url;
+  const churchPatch = derivedIconUrls
+    ? {
+        ...data,
+        pwaIconAssetId: null,
+        pwaIcon192Url: derivedIconUrls.icon192Url,
+        pwaIcon512Url: derivedIconUrls.icon512Url,
+        pwaIconSource: "derived" as const,
+      }
+    : data;
+  await db.transaction(async tx => {
+    await tx.update(churches).set(churchPatch).where(eq(churches.id, id));
+    if (Object.keys(branding).length > 0) {
+      await tx.update(tenantThemes).set(branding).where(eq(tenantThemes.churchId, id));
+      await syncPublishedBranding(tx, id, branding);
+    }
+  });
+  return getChurchById(id);
+}
+
+export async function getEffectivePwaIconUrls(churchId: number) {
+  const church = await getChurchById(churchId);
+  if (!church) return null;
+  if (church.pwaIconAssetId !== null || church.pwaIconSource === "custom") {
+    return {
+      icon192Url: church.pwaIcon192Url || church.logoUrl,
+      icon512Url: church.pwaIcon512Url || church.pwaIcon192Url || church.logoUrl,
+    };
+  }
+  if (!church.logoUrl) return null;
+  const derived = await deriveLatestLogoIcon(churchId, church.primaryColor);
+  return derived ?? { icon192Url: church.logoUrl, icon512Url: church.logoUrl };
+}
+
+export async function updateChurchPwaIcon(
+  churchId: number,
+  data: {
+    assetId: number | null;
+    icon192Url: string;
+    icon512Url: string;
+    source: "custom" | "derived";
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.transaction(async tx => {
+    await tx
+      .update(churches)
+      .set({
+        pwaIconAssetId: data.assetId,
+        pwaIcon192Url: data.icon192Url,
+        pwaIcon512Url: data.icon512Url,
+        pwaIconSource: data.source,
+      })
+      .where(eq(churches.id, churchId));
+    await tx.update(tenantThemes).set({ faviconUrl: data.icon192Url }).where(eq(tenantThemes.churchId, churchId));
+    await syncPublishedBranding(tx, churchId, { faviconUrl: data.icon192Url });
+  });
+}
+
+/** Reativa a logo institucional como fonte do ícone sem excluir o upload manual anterior. */
+export async function useChurchLogoAsPwaIcon(churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const church = await getChurchById(churchId);
+  if (!church?.logoUrl) throw new Error("Este tenant ainda não possui uma logo institucional.");
+  const logoAsset = await getLatestLogoForChurch(churchId);
+  const logoMedia = logoAsset
+    ? {
+    provider: logoAsset.provider,
+    publicId: logoAsset.publicId,
+    url: logoAsset.secureUrl ?? logoAsset.url,
+      }
+    : null;
+  const urls = logoMedia ? getDerivedLogoIconUrls(logoMedia, church.primaryColor) : { icon192Url: church.logoUrl, icon512Url: church.logoUrl };
+  await updateChurchPwaIcon(churchId, {
+    assetId: null,
+    ...urls,
+    source: "derived",
+  });
+  return getChurchById(churchId);
+}
+
+// ─── SITE PÚBLICO MULTI-TENANT ─────────────────────────────────────────────────
+
+/**
+ * Retorna somente o conteúdo já publicado para um tenant ativo. A resolução usa o
+ * slug no servidor e nunca aceita churchId informado pelo visitante.
+ */
+export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const churchRows = await db
+    .select()
+    .from(churches)
+    .where(and(eq(churches.slug, slug), eq(churches.active, true)))
+    .limit(1);
+  const church = churchRows[0];
+  if (!church) return null;
+  const pastoralSupport = normalizePastoralSupportConfig(church.pastoralSupport);
+  const publicPastoralSupport = pastoralSupport.enabled && pastoralSupport.showPublic && pastoralSupport.url ? { url: pastoralSupport.url, label: pastoralSupport.label } : null;
+
+  const [siteRows, themeRows] = await Promise.all([db.select().from(tenantPublicSites).where(eq(tenantPublicSites.churchId, church.id)).limit(1), db.select().from(tenantThemes).where(eq(tenantThemes.churchId, church.id)).limit(1)]);
+  const site = siteRows[0] ?? null;
+  const theme = themeRows[0] ?? null;
+  const sections =
+    site && site.status === "published"
+      ? await db
+          .select()
+          .from(tenantPageSections)
+          .where(and(eq(tenantPageSections.churchId, church.id), eq(tenantPageSections.siteId, site.id), eq(tenantPageSections.enabled, true)))
+      .orderBy(tenantPageSections.sortOrder, tenantPageSections.id)
+    : [];
+
+  let publishedTheme = theme;
+  let publishedSections = sections;
+  if (site?.publishedRevisionId) {
+    const revisionRows = await db
+      .select()
+      .from(tenantPageRevisions)
+      .where(and(eq(tenantPageRevisions.id, site.publishedRevisionId), eq(tenantPageRevisions.churchId, church.id), eq(tenantPageRevisions.siteId, site.id)))
+      .limit(1);
+    const snapshot = revisionRows[0]?.snapshot as { theme?: unknown; sections?: unknown } | undefined;
+    if (snapshot?.theme && Array.isArray(snapshot.sections)) {
+      publishedTheme = snapshot.theme as typeof theme;
+      publishedSections = (snapshot.sections as typeof sections).filter(section => section.enabled);
+    }
+  }
+
+  const upcomingEvents = site?.status === "published" ? await getPublicUpcomingEventsByChurchId(church.id) : [];
+  const publishedMinistryIds = publishedSections.find(section => section.sectionType === "ministries")?.content && typeof publishedSections.find(section => section.sectionType === "ministries")?.content === "object" ? (publishedSections.find(section => section.sectionType === "ministries")?.content as { publicMinistryIds?: unknown }).publicMinistryIds : undefined;
+  const publicMinistries = site?.status === "published" ? await getPublicMinistriesByChurchId(church.id, Array.isArray(publishedMinistryIds) ? publishedMinistryIds : undefined) : [];
+  const publicCells = site?.status === "published" ? await getPublicCellsByChurchId(church.id) : [];
+  const publicAnnouncements = site?.status === "published" ? await getPublicAnnouncementsByChurch(church.id) : [];
+  const publicDevotional = site?.status === "published" ? await getPublicDailyDevotionalByChurch(church.id) : null;
+
+  return {
+    church: {
+      id: church.id,
+      name: church.name,
+      slug: church.slug,
+      logoUrl: church.logoUrl,
+      pwaIconAssetId: church.pwaIconAssetId,
+      pwaIconSource: church.pwaIconSource,
+      pwaIconVersion: church.updatedAt.getTime(),
+      primaryColor: church.primaryColor,
+      secondaryColor: church.secondaryColor,
+      city: church.city,
+      state: church.state,
+      phone: church.phone,
+      whatsapp: church.whatsapp,
+      email: church.email,
+      website: church.website,
+      address: church.address,
+      vision: church.vision,
+      mission: church.mission,
+      values: church.values,
+      socialMedia: normalizeSocialMediaLinks(church.socialMedia),
+      pastoralSupport: publicPastoralSupport,
+      publicRegistration: {
+        enabled: church.publicRegistrationEnabled,
+        title: church.publicRegistrationTitle,
+        message: church.publicRegistrationMessage,
+        path: "/cadastro",
+      },
+    },
+    site,
+    theme: publishedTheme,
+    sections: publishedSections,
+    upcomingEvents,
+    publicMinistries,
+    publicCells,
+    publicAnnouncements,
+    publicDevotional,
+  };
+}
+
+/** Consulta administrativa preparada para a próxima fase. Sempre recebe churchId validado no router. */
+export async function getTenantPublicSiteByChurchId(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const siteRows = await db.select().from(tenantPublicSites).where(eq(tenantPublicSites.churchId, churchId)).limit(1);
+  const site = siteRows[0] ?? null;
+  if (!site) return { site: null, theme: null, sections: [], revisions: [] };
+  const [themeRows, sections, revisions] = await Promise.all([
+    db.select().from(tenantThemes).where(eq(tenantThemes.churchId, churchId)).limit(1),
+    db
+      .select()
+      .from(tenantPageSections)
+      .where(and(eq(tenantPageSections.churchId, churchId), eq(tenantPageSections.siteId, site.id)))
+      .orderBy(tenantPageSections.sortOrder, tenantPageSections.id),
+    db
+      .select()
+      .from(tenantPageRevisions)
+      .where(and(eq(tenantPageRevisions.churchId, churchId), eq(tenantPageRevisions.siteId, site.id)))
+      .orderBy(desc(tenantPageRevisions.version)),
+  ]);
+  return { site, theme: themeRows[0] ?? null, sections, revisions };
+}
+
+export type TenantPublicDraftInput = {
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  theme: {
+    primaryColor: string;
+    secondaryColor: string;
+    accentColor?: string | null;
+    fontPair?: "sacred_serif";
+    logoUrl?: string | null;
+    faviconUrl?: string | null;
+  };
+  sections: Array<{
+    sectionType: "hero" | "welcome" | "about" | "schedule" | "events" | "ministries" | "gallery" | "contact" | "footer";
+    enabled: boolean;
+    sortOrder: number;
+    content: Record<string, unknown> & { publicMinistryIds?: number[] };
+  }>;
+};
+
+const DEFAULT_PUBLIC_SECTIONS = [
+  {
+    sectionType: "hero" as const,
+    enabled: true,
+    sortOrder: 0,
+    content: {
+      title: "",
+      eyebrow: "",
+      subtitle: "",
+      primaryCtaLabel: "Quero conhecer a igreja",
+      primaryCtaHref: "/visitante",
+      heroImageSource: "preset",
+      heroImagePresetId: "original",
+      heroImageUrl: null,
+      heroImageAssetId: null,
+    },
+  },
+  {
+    sectionType: "about" as const,
+    enabled: true,
+    sortOrder: 1,
+    content: { title: "Uma igreja para caminhar junto", body: "" },
+  },
+  {
+    sectionType: "schedule" as const,
+    enabled: true,
+    sortOrder: 2,
+    content: {
+      title: "Horários de culto",
+      body: "Encontre um horário para caminhar conosco.",
+      services: [],
+    },
+  },
+  {
+    sectionType: "events" as const,
+    enabled: true,
+    sortOrder: 3,
+    content: {
+      title: "Próximos eventos",
+      subtitle: "Participe do que Deus está fazendo em nossa comunidade.",
+    },
+  },
+  {
+    sectionType: "ministries" as const,
+    enabled: true,
+    sortOrder: 4,
+    content: {
+      title: "Nossos ministérios",
+      subtitle: "Encontre um lugar para servir e caminhar em comunidade.",
+    },
+  },
+  {
+    sectionType: "contact" as const,
+    enabled: true,
+    sortOrder: 5,
+    content: {
+      title: "Visite-nos",
+      subtitle: "Estamos prontos para receber você.",
+    },
+  },
+];
+
+/** Garante a fundação do site sem depender de IDs enviados pelo cliente. */
+async function ensureTenantPublicSiteByChurchId(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const churchRows = await db.select().from(churches).where(eq(churches.id, churchId)).limit(1);
+  const church = churchRows[0];
+  if (!church) return null;
+  await db
+    .insert(tenantPublicSites)
+    .values({ churchId, templateKey: "ministerial_base", status: "draft" })
+    .onDuplicateKeyUpdate({ set: { templateKey: sql`templateKey` } });
+  const siteRows = await db.select().from(tenantPublicSites).where(eq(tenantPublicSites.churchId, churchId)).limit(1);
+  const site = siteRows[0];
+  if (!site) return null;
+  await db
+    .insert(tenantThemes)
+    .values({
+      churchId,
+      primaryColor: church.primaryColor || "#1e3a5f",
+      secondaryColor: church.secondaryColor || "#c9a84c",
+      logoUrl: church.logoUrl,
+      faviconUrl: church.pwaIcon192Url || church.logoUrl,
+    })
+    .onDuplicateKeyUpdate({ set: { churchId: sql`churchId` } });
+  for (const section of DEFAULT_PUBLIC_SECTIONS) {
+    const content =
+      section.sectionType === "hero"
+        ? {
+            ...section.content,
+            title: `Bem-vindo à ${church.name}`,
+            subtitle: church.mission || "Uma igreja comprometida com pessoas, fé e propósito.",
+          }
+      : section.sectionType === "about"
+        ? { ...section.content, body: church.vision || church.mission || "" }
+        : section.content;
+    await db
+      .insert(tenantPageSections)
+      .values({ churchId, siteId: site.id, ...section, content })
+      .onDuplicateKeyUpdate({ set: { churchId: sql`churchId` } });
+  }
+  return site;
+}
+
+/** Persiste somente o rascunho da própria igreja. O visitante continua lendo a última versão publicada. */
+export async function saveTenantPublicDraftByChurchId(churchId: number, input: TenantPublicDraftInput) {
+  const db = await getDb();
+  if (!db) return null;
+  const site = await ensureTenantPublicSiteByChurchId(churchId);
+  if (!site) return null;
+  const ministriesSection = input.sections.find(section => section.sectionType === "ministries");
+  const selectedMinistryIds = ministriesSection?.content.publicMinistryIds;
+  if (selectedMinistryIds !== undefined) {
+    if (!Array.isArray(selectedMinistryIds) || selectedMinistryIds.length > 6 || selectedMinistryIds.some(id => !Number.isInteger(id) || id <= 0) || new Set(selectedMinistryIds).size !== selectedMinistryIds.length) {
+      throw new Error("Selecione no máximo seis Ministérios públicos válidos, sem repetição.");
+    }
+    if (selectedMinistryIds.length > 0) {
+      const selectedRows = await db
+        .select({ id: ministries.id })
+        .from(ministries)
+        .where(and(eq(ministries.churchId, churchId), eq(ministries.active, true), inArray(ministries.id, selectedMinistryIds)))
+        .limit(6);
+      if (selectedRows.length !== selectedMinistryIds.length) throw new Error("Um dos Ministérios selecionados não pertence a esta igreja ou está arquivado.");
+    }
+  }
+  for (const section of input.sections) {
+    if (section.sectionType !== "gallery") continue;
+    const items = Array.isArray(section.content.items) ? section.content.items : [];
+    if (items.length > 8) throw new Error("A galeria permite no máximo oito imagens.");
+    for (const item of items) {
+      if (!item || typeof item !== "object") throw new Error("Imagem de galeria inválida.");
+      const media = item as {
+        url?: unknown;
+        alt?: unknown;
+        caption?: unknown;
+        mediaAssetId?: unknown;
+      };
+      if (typeof media.mediaAssetId === "number" && Number.isInteger(media.mediaAssetId) && media.mediaAssetId > 0) {
+        const assetRows = await db
+          .select({
+            id: mediaAssets.id,
+            url: mediaAssets.url,
+            secureUrl: mediaAssets.secureUrl,
+            purpose: mediaAssets.purpose,
+            resourceType: mediaAssets.resourceType,
+          })
+          .from(mediaAssets)
+          .where(and(eq(mediaAssets.id, media.mediaAssetId), eq(mediaAssets.churchId, churchId), eq(mediaAssets.purpose, "tenant_public_gallery"), eq(mediaAssets.resourceType, "image"), eq(mediaAssets.status, "active")))
+          .limit(1);
+        const asset = assetRows[0];
+        if (!asset || typeof media.url !== "string" || (asset.url !== media.url && asset.secureUrl !== media.url)) throw new Error("A imagem não pertence a esta igreja.");
+      } else {
+        const ownedPrefix = `/manus-storage/churches/${churchId}/public/`;
+        if (typeof media.url !== "string" || !media.url.startsWith(ownedPrefix)) throw new Error("A imagem não pertence a esta igreja.");
+      }
+      if (typeof media.alt !== "string" || media.alt.trim().length < 3 || media.alt.length > 180) throw new Error("Informe um texto alternativo entre 3 e 180 caracteres.");
+      if (media.caption !== undefined && (typeof media.caption !== "string" || media.caption.length > 180)) throw new Error("A legenda da imagem é inválida.");
+    }
+  }
+  await db.transaction(async tx => {
+    await tx
+      .update(tenantPublicSites)
+      .set({
+        seoTitle: input.seoTitle ?? null,
+        seoDescription: input.seoDescription ?? null,
+      })
+      .where(and(eq(tenantPublicSites.id, site.id), eq(tenantPublicSites.churchId, churchId)));
+    await tx.update(tenantThemes).set(input.theme).where(eq(tenantThemes.churchId, churchId));
+    for (const section of input.sections) {
+      await tx
+        .insert(tenantPageSections)
+        .values({ churchId, siteId: site.id, ...section })
+        .onDuplicateKeyUpdate({
+          set: {
+            enabled: section.enabled,
+            sortOrder: section.sortOrder,
+            content: section.content,
+          },
+        });
+    }
+  });
+  return getTenantPublicSiteByChurchId(churchId);
+}
+
+/** Publica um snapshot imutável do rascunho, preservando a última versão pública até esta transição. */
+export async function publishTenantPublicSiteByChurchId(churchId: number, createdByChurchUserId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const site = await ensureTenantPublicSiteByChurchId(churchId);
+  if (!site) return null;
+  const current = await getTenantPublicSiteByChurchId(churchId);
+  if (!current?.theme) return null;
+  const version = (current.revisions[0]?.version ?? 0) + 1;
+  const snapshot = {
+    theme: current.theme,
+    sections: current.sections,
+    seoTitle: current.site?.seoTitle ?? null,
+    seoDescription: current.site?.seoDescription ?? null,
+  };
+  const result = await db.insert(tenantPageRevisions).values({
+    churchId,
+    siteId: site.id,
+    version,
+    snapshot,
+    createdByChurchUserId,
+    publishedAt: new Date(),
+  });
+  const revisionId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+  if (!revisionId) throw new Error("Não foi possível registrar a revisão publicada.");
+  await db
+    .update(tenantPublicSites)
+    .set({ status: "published", publishedRevisionId: revisionId })
+    .where(and(eq(tenantPublicSites.id, site.id), eq(tenantPublicSites.churchId, churchId)));
+  return getTenantPublicSiteByChurchId(churchId);
+}
+
+// ─── CHURCH MEMBERS ───────────────────────────────────────────────────────────
+
+export async function getChurchMemberByUserId(userId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(churchMembers)
+    .where(and(eq(churchMembers.userId, userId), eq(churchMembers.churchId, churchId)))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+/** Retorna somente um usuário próprio de igreja que continua ativo. */
+export async function getActiveChurchUserById(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(churchUsers)
+    .where(and(eq(churchUsers.id, userId), eq(churchUsers.active, true)))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export async function getChurchUsersByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const accounts = await db
+    .select({
+      id: churchUsers.id,
+      name: churchUsers.name,
+      email: churchUsers.email,
+      role: churchUsers.role,
+      personId: churchUsers.personId,
+      active: churchUsers.active,
+      lastLoginAt: churchUsers.lastLoginAt,
+    })
+    .from(churchUsers)
+    .where(eq(churchUsers.churchId, churchId))
+    .orderBy(churchUsers.name);
+  const complementary = await db
+    .select({
+      churchUserId: churchUserComplementaryRoles.churchUserId,
+      role: churchUserComplementaryRoles.role,
+    })
+    .from(churchUserComplementaryRoles)
+    .where(eq(churchUserComplementaryRoles.churchId, churchId));
+  return accounts.map(account => ({
+    ...account,
+    complementaryRoles: complementary.filter(item => item.churchUserId === account.id).map(item => item.role),
+  }));
+}
+
+export async function linkChurchUserToPerson(userId: number, churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(churchUsers)
+    .set({ personId })
+    .where(and(eq(churchUsers.id, userId), eq(churchUsers.churchId, churchId)));
+  return getActiveChurchUserById(userId);
+}
+
+export async function updateChurchUserAssignment(userId: number, churchId: number, data: { personId: number; role: (typeof churchUsers.$inferInsert)["role"] }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(churchUsers)
+    .set(data)
+    .where(and(eq(churchUsers.id, userId), eq(churchUsers.churchId, churchId)));
+  return getActiveChurchUserById(userId);
+}
+
+export async function getPendingChurchUsers(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(churchUsers)
+    .where(and(eq(churchUsers.churchId, churchId), eq(churchUsers.registrationStatus, "pending")))
+    .orderBy(churchUsers.createdAt);
+}
+
+export async function resolveChurchUserRegistration(userId: number, churchId: number, approverId: number, approved: boolean, rejectionReason?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(churchUsers)
+    .set({
+      registrationStatus: approved ? "approved" : "rejected",
+      active: approved,
+      approvedAt: approved ? new Date() : null,
+      approvedByChurchUserId: approverId,
+      rejectionReason: approved ? null : rejectionReason || "Cadastro não aprovado",
+    })
+    .where(and(eq(churchUsers.id, userId), eq(churchUsers.churchId, churchId), eq(churchUsers.registrationStatus, "pending")));
+  const rows = await db
+    .select()
+    .from(churchUsers)
+    .where(and(eq(churchUsers.id, userId), eq(churchUsers.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getComplementaryRolesByChurchUser(churchUserId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ role: churchUserComplementaryRoles.role })
+    .from(churchUserComplementaryRoles)
+    .where(and(eq(churchUserComplementaryRoles.churchUserId, churchUserId), eq(churchUserComplementaryRoles.churchId, churchId)));
+  return rows.map(row => row.role);
+}
+
+export async function setComplementaryRolesForChurchUser(churchUserId: number, churchId: number, roles: Array<"consolidador" | "diacono" | "tesoureiro" | "levita">) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.delete(churchUserComplementaryRoles).where(and(eq(churchUserComplementaryRoles.churchUserId, churchUserId), eq(churchUserComplementaryRoles.churchId, churchId)));
+  const uniqueRoles = Array.from(new Set(roles));
+  if (uniqueRoles.length > 0) {
+    await db.insert(churchUserComplementaryRoles).values(uniqueRoles.map(role => ({ churchId, churchUserId, role })));
+  }
+  return getComplementaryRolesByChurchUser(churchUserId, churchId);
+}
+
+/** Determina se uma conta pode movimentar a jornada espiritual de uma Pessoa. */
+export async function canChurchUserManageJourney(input: { churchId: number; actorPersonId: number | null; actorRoles: string[]; targetPersonId: number }) {
+  if (input.actorRoles.some(role => ["pastor_presidente", "pastor_local"].includes(role))) return true;
+  if (!input.actorPersonId) return false;
+
+  const db = await getDb();
+  if (!db) return false;
+
+  const primaryDiscipler = await db
+    .select({ id: people.id })
+    .from(people)
+    .where(and(eq(people.id, input.targetPersonId), eq(people.churchId, input.churchId), eq(people.discipledById, input.actorPersonId), eq(people.active, true)))
+    .limit(1);
+  if (primaryDiscipler.length > 0) return true;
+
+  if (input.actorRoles.includes("consolidador")) {
+    const assignment = await getCurrentCareAssignment(input.targetPersonId, input.churchId);
+    if (assignment?.responsiblePersonId === input.actorPersonId && assignment.role === "consolidador") return true;
+  }
+
+  if (input.actorRoles.includes("lider") || input.actorRoles.includes("supervisor")) {
+    const matches = await db
+      .select({
+        leaderId: cells.leaderId,
+        coLeaderId: cells.coLeaderId,
+        supervisorId: cells.supervisorId,
+      })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cellMembers.personId, input.targetPersonId), eq(cellMembers.active, true), eq(cells.churchId, input.churchId)))
+      .limit(1);
+    return matches.some(cell => (input.actorRoles.includes("lider") && [cell.leaderId, cell.coLeaderId].includes(input.actorPersonId)) || (input.actorRoles.includes("supervisor") && cell.supervisorId === input.actorPersonId));
+  }
+
+  return false;
+}
+
+/** Lista as Pessoas que um perfil não pastoral pode movimentar no Funil. */
+export async function getJourneyManagedPersonIds(input: { churchId: number; actorPersonId: number | null; actorRoles: string[] }) {
+  if (!input.actorPersonId) return [];
+  const db = await getDb();
+  if (!db) return [];
+
+  const personIds = new Set<number>();
+
+  const primaryDisciples = await db
+    .select({ personId: people.id })
+    .from(people)
+    .where(and(eq(people.churchId, input.churchId), eq(people.discipledById, input.actorPersonId), eq(people.active, true)));
+  primaryDisciples.forEach(row => personIds.add(row.personId));
+
+  if (input.actorRoles.includes("consolidador")) {
+    const rows = await db
+      .select({ personId: careAssignments.personId })
+      .from(careAssignments)
+      .where(and(eq(careAssignments.churchId, input.churchId), eq(careAssignments.responsiblePersonId, input.actorPersonId), eq(careAssignments.role, "consolidador"), eq(careAssignments.active, true)));
+    rows.forEach(row => personIds.add(row.personId));
+  }
+
+  if (input.actorRoles.includes("lider") || input.actorRoles.includes("supervisor")) {
+    const rows = await db
+      .select({
+        personId: cellMembers.personId,
+        leaderId: cells.leaderId,
+        coLeaderId: cells.coLeaderId,
+        supervisorId: cells.supervisorId,
+      })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cellMembers.active, true), eq(cells.churchId, input.churchId)));
+    rows.filter(cell => (input.actorRoles.includes("lider") && [cell.leaderId, cell.coLeaderId].includes(input.actorPersonId)) || (input.actorRoles.includes("supervisor") && cell.supervisorId === input.actorPersonId)).forEach(cell => personIds.add(cell.personId));
+  }
+
+  return Array.from(personIds);
+}
+
+/** Retorna somente um Super Admin que continua ativo. */
+export async function getActiveSuperAdminById(adminId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(superAdmins)
+    .where(and(eq(superAdmins.id, adminId), eq(superAdmins.active, true)))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+export async function getChurchMembersByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(churchMembers)
+    .where(and(eq(churchMembers.churchId, churchId), eq(churchMembers.active, true)));
+}
+
+// ─── PEOPLE ───────────────────────────────────────────────────────────────────
+
+export async function getPeopleByChurch(churchId: number, search?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(people.churchId, churchId), eq(people.active, true)];
+  if (search) {
+    conditions.push(or(sql`${people.fullName} LIKE ${`%${search}%`}`, sql`${people.email} LIKE ${`%${search}%`}`, sql`${people.phone} LIKE ${`%${search}%`}`) as any);
+  }
+  const peopleColumns = getTableColumns(people);
+  return db
+    .select({
+      ...peopleColumns,
+      birthDate: sql<string | null>`DATE_FORMAT(${people.birthDate}, '%Y-%m-%d')`,
+    })
+    .from(people)
+    .where(and(...conditions))
+    .orderBy(people.fullName)
+    .limit(100);
+}
+
+export type PeopleDirectoryPerson = {
+  id: number;
+  photoUrl: string | null;
+  fullName: string;
+  phone: string | null;
+  whatsapp: string | null;
+  email: string | null;
+  city: string | null;
+  state: string | null;
+  discipleshipStage: string | null;
+};
+
+export type PeopleDirectoryEntry = {
+  person: PeopleDirectoryPerson;
+  care: {
+    status: DirectoryCareStatus;
+    priority: "alta" | "media" | "normal";
+    nextStep: string;
+    responsiblePersonId: number | null;
+    responsibleName: string | null;
+    role: string | null;
+    referralId: number | null;
+    referralStatus: string | null;
+    careDueAt: Date | null;
+    pastoralCoverage: {
+      coveringPastorName: string;
+      coveringChurchName: string;
+    } | null;
+  };
+  cell: { id: number; name: string } | null;
+};
+
+/**
+ * Diretório operacional em lote. O resumo é derivado somente de relações do
+ * mesmo tenant e não cria estado novo nem substitui a fila da Consolidação.
+ */
+export async function getPeopleDirectoryByChurch(churchId: number, search?: string, allowedPersonIds?: number[] | null): Promise<PeopleDirectoryEntry[]> {
+  const db = await getDb();
+  if (!db || (allowedPersonIds && allowedPersonIds.length === 0)) return [];
+
+  const conditions = [eq(people.churchId, churchId), eq(people.active, true)];
+  if (allowedPersonIds) conditions.push(inArray(people.id, allowedPersonIds) as any);
+  if (search) {
+    conditions.push(or(sql`${people.fullName} LIKE ${`%${search}%`}`, sql`${people.email} LIKE ${`%${search}%`}`, sql`${people.phone} LIKE ${`%${search}%`}`, sql`${people.whatsapp} LIKE ${`%${search}%`}`) as any);
+  }
+
+  const persons = await db
+    .select({
+      id: people.id,
+      photoUrl: people.photoUrl,
+      fullName: people.fullName,
+      phone: people.phone,
+      whatsapp: people.whatsapp,
+      email: people.email,
+      city: people.city,
+      state: people.state,
+      discipleshipStage: people.discipleshipStage,
+    })
+    .from(people)
+    .where(and(...conditions))
+    .orderBy(people.fullName)
+    .limit(200);
+  if (persons.length === 0) return [];
+
+  const personIds = persons.map(person => person.id);
+  const [assignments, memberships, referrals, pastoralCoverageRows] = await Promise.all([
+    db
+      .select({
+        personId: careAssignments.personId,
+        responsiblePersonId: careAssignments.responsiblePersonId,
+        role: careAssignments.role,
+      })
+      .from(careAssignments)
+      .where(and(eq(careAssignments.churchId, churchId), eq(careAssignments.active, true), inArray(careAssignments.personId, personIds))),
+    db
+      .select({
+        personId: cellMembers.personId,
+        cellId: cells.id,
+        cellName: cells.name,
+      })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cells.churchId, churchId), eq(cells.active, true), eq(cellMembers.active, true), inArray(cellMembers.personId, personIds))),
+    db
+      .select({
+        id: consolidationReferrals.id,
+        personId: consolidationReferrals.personId,
+        status: consolidationReferrals.status,
+        assignedToPersonId: consolidationReferrals.assignedToPersonId,
+        acceptedByPersonId: consolidationReferrals.acceptedByPersonId,
+        acceptedByChurchUserId: consolidationReferrals.acceptedByChurchUserId,
+        careDueAt: consolidationReferrals.careDueAt,
+        updatedAt: consolidationReferrals.updatedAt,
+      })
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.churchId, churchId), inArray(consolidationReferrals.personId, personIds))),
+    db
+      .select({
+        pastorPersonId: pastoralCoverages.pastorPersonId,
+        coveringPastorName: pastoralCoverages.coveringPastorName,
+        coveringChurchName: pastoralCoverages.coveringChurchName,
+      })
+      .from(pastoralCoverages)
+      .where(and(eq(pastoralCoverages.churchId, churchId), inArray(pastoralCoverages.pastorPersonId, personIds))),
+  ]);
+
+  const assignmentByPerson = new Map(assignments.map(item => [item.personId, item]));
+  const cellByPerson = new Map(memberships.map(item => [item.personId, { id: item.cellId, name: item.cellName }]));
+  const pastoralCoverageByPerson = new Map(
+    pastoralCoverageRows.map(item => [
+      item.pastorPersonId,
+      {
+    coveringPastorName: item.coveringPastorName,
+    coveringChurchName: item.coveringChurchName,
+      },
+    ])
+  );
+  const responsibleIds = Array.from(new Set([...assignments.map(item => item.responsiblePersonId), ...referrals.flatMap(item => [item.assignedToPersonId, item.acceptedByPersonId])].filter((id): id is number => id !== null)));
+  const responsiblePeople =
+    responsibleIds.length === 0
+    ? []
+    : await db
+        .select({ id: people.id, fullName: people.fullName })
+        .from(people)
+        .where(and(eq(people.churchId, churchId), eq(people.active, true), inArray(people.id, responsibleIds)));
+  const responsibleById = new Map(responsiblePeople.map(item => [item.id, item.fullName]));
+  const activeReferralByPerson = new Map<number, (typeof referrals)[number]>();
+  for (const referral of referrals.filter(item => isActiveConsolidationReferralStatus(item.status)).sort((a, b) => Number(new Date(b.updatedAt)) - Number(new Date(a.updatedAt)))) {
+    if (!activeReferralByPerson.has(referral.personId)) activeReferralByPerson.set(referral.personId, referral);
+  }
+
+  return persons.map(person => {
+    const assignment = assignmentByPerson.get(person.id);
+    const referral = activeReferralByPerson.get(person.id);
+    const pastoralCoverage = pastoralCoverageByPerson.get(person.id) ?? null;
+    const hasReferralResponsible = Boolean(referral && hasConsolidationResponsible(referral));
+    const isOverdue = Boolean(referral?.careDueAt && Number(new Date(referral.careDueAt)) < Date.now());
+    const careState = resolveDirectoryCareState({
+      hasAssignment: Boolean(assignment),
+      hasReferral: Boolean(referral),
+      hasReferralResponsible,
+      isOverdue,
+      hasPastoralCoverage: Boolean(pastoralCoverage),
+    });
+    const responsiblePersonId = assignment?.responsiblePersonId ?? referral?.assignedToPersonId ?? referral?.acceptedByPersonId ?? null;
+    return {
+      person,
+      care: {
+        status: careState.status,
+        priority: careState.priority,
+        nextStep: careState.nextStep,
+        responsiblePersonId,
+        responsibleName: responsiblePersonId ? responsibleById.get(responsiblePersonId) ?? null : null,
+        role: assignment?.role ?? null,
+        referralId: referral?.id ?? null,
+        referralStatus: referral?.status ?? null,
+        careDueAt: referral?.careDueAt ?? null,
+        pastoralCoverage,
+      },
+      cell: cellByPerson.get(person.id) ?? null,
+    };
+  });
+}
+
+export async function getBirthdaysByChurch(churchId: number, month: number, day?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(people.churchId, churchId), eq(people.active, true), isNotNull(people.birthDate), sql`MONTH(${people.birthDate}) = ${month}`];
+  if (day !== undefined) conditions.push(sql`DAY(${people.birthDate}) = ${day}`);
+  return db
+    .select({
+      id: people.id,
+      fullName: people.fullName,
+      // DATE é uma data civil: formatar no banco evita que o driver/serializador
+      // transforme 22/09 em 21/09 ao atravessar fusos horários.
+      birthDate: sql<string>`DATE_FORMAT(${people.birthDate}, '%Y-%m-%d')`,
+      phone: people.phone,
+      whatsapp: people.whatsapp,
+      email: people.email,
+    })
+    .from(people)
+    .where(and(...conditions))
+    .orderBy(sql`DAY(${people.birthDate})`, people.fullName);
+}
+
+export async function getPersonById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const peopleColumns = getTableColumns(people);
+  const result = await db
+    .select({
+      ...peopleColumns,
+      birthDate: sql<string | null>`DATE_FORMAT(${people.birthDate}, '%Y-%m-%d')`,
+    })
+    .from(people)
+    .where(and(eq(people.id, id), eq(people.churchId, churchId)))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+/** Define o discipulador principal sem encerrar atribuições de apoio ou de Célula. */
+export async function setPrimaryDiscipler(data: { churchId: number; personId: number; disciplerPersonId: number | null; notes?: string | null; changedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  return db.transaction(async tx => {
+    const targetRows = await tx
+      .select({ id: people.id, discipledById: people.discipledById })
+      .from(people)
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1)
+      .for("update");
+    const target = targetRows[0];
+    if (!target) throw new Error("Pessoa não encontrada nesta igreja.");
+
+    if (data.disciplerPersonId !== null) {
+      if (data.disciplerPersonId === data.personId) {
+        throw new Error("A Pessoa não pode ser seu próprio discipulador.");
+      }
+      const disciplerRows = await tx
+        .select({ id: people.id })
+        .from(people)
+        .where(and(eq(people.id, data.disciplerPersonId), eq(people.churchId, data.churchId), eq(people.active, true)))
+        .limit(1);
+      if (disciplerRows.length === 0) throw new Error("Discipulador inválido para esta igreja.");
+    }
+
+    const previousDisciplerId = target.discipledById ?? null;
+    const changed = previousDisciplerId !== data.disciplerPersonId;
+    if (!changed) {
+      return {
+        personId: data.personId,
+        previousDisciplerId,
+        disciplerPersonId: data.disciplerPersonId,
+        changed: false,
+      };
+    }
+
+    const now = new Date();
+    await tx
+      .update(people)
+      .set({ discipledById: data.disciplerPersonId })
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)));
+    await tx
+      .update(careAssignments)
+      .set({ active: false, endedAt: now })
+      .where(and(eq(careAssignments.personId, data.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.role, "discipulador"), eq(careAssignments.active, true)));
+    if (data.disciplerPersonId !== null) {
+      await tx.insert(careAssignments).values({
+        churchId: data.churchId,
+        personId: data.personId,
+        responsiblePersonId: data.disciplerPersonId,
+        role: "discipulador",
+        notes: data.notes ?? "Discipulador principal definido pela liderança.",
+        active: true,
+        startedAt: now,
+      });
+    }
+
+    const action = previousDisciplerId === null ? ("definido" as const) : data.disciplerPersonId === null ? ("removido" as const) : ("alterado" as const);
+    const eventInserted = await tx.insert(primaryDisciplerEvents).values({
+      churchId: data.churchId,
+      personId: data.personId,
+      previousDisciplerPersonId: previousDisciplerId,
+      nextDisciplerPersonId: data.disciplerPersonId,
+      action,
+      reason: data.notes?.trim() || (action === "definido" ? "Discipulador principal definido pela liderança." : action === "removido" ? "Discipulador principal removido pela liderança." : "Discipulador principal atualizado pela liderança."),
+      changedByChurchUserId: data.changedByChurchUserId,
+      createdAt: now,
+    });
+    const eventId = Number((eventInserted[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+
+    return {
+      personId: data.personId,
+      previousDisciplerId,
+      disciplerPersonId: data.disciplerPersonId,
+      changed: true,
+      eventId,
+    };
+  });
+}
+
+/** Sugere fichas existentes, sem vincular automaticamente pessoas homônimas. */
+export async function findPossiblePeopleByIdentity(churchId: number, identity: { fullName: string; phone?: string; email?: string }) {
+  const db = await getDb();
+  if (!db) return [];
+  const matches = [eq(people.fullName, identity.fullName.trim())];
+  const normalizedPhone = identity.phone?.replace(/\D/g, "");
+  if (normalizedPhone) {
+    const phoneExpression = (column: any) => sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') = ${normalizedPhone}`;
+    matches.push(phoneExpression(people.phone), phoneExpression(people.whatsapp));
+  }
+  const normalizedEmail = identity.email?.trim().toLowerCase();
+  if (normalizedEmail) matches.push(sql`LOWER(TRIM(COALESCE(${people.email}, ''))) = ${normalizedEmail}`);
+  return db
+    .select()
+    .from(people)
+    .where(and(eq(people.churchId, churchId), eq(people.active, true), or(...matches)))
+    .orderBy(people.fullName)
+    .limit(10);
+}
+
+export async function getChurchUserByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({
+    id: churchUsers.id,
+    churchId: churchUsers.churchId,
+    name: churchUsers.name,
+    email: churchUsers.email,
+    active: churchUsers.active,
+    registrationStatus: churchUsers.registrationStatus,
+    emailVerificationRequired: churchUsers.emailVerificationRequired,
+    emailVerifiedAt: churchUsers.emailVerifiedAt,
+  })
+    .from(churchUsers)
+    .where(sql`LOWER(${churchUsers.email}) = ${email.trim().toLowerCase()}`)
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createPerson(data: typeof people.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(people).values(data);
+  const personId = (result[0] as { insertId?: number }).insertId;
+  if (!personId) throw new Error("Failed to create person");
+  return getPersonById(personId, data.churchId);
+}
+
+export async function updatePersonContact(churchId: number, personId: number, data: { phone: string | null; whatsapp: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  const contactValues = [data.phone, data.whatsapp].filter((value): value is string => Boolean(value));
+  if (contactValues.length > 0) {
+    const contactExpressions = contactValues.flatMap(value => {
+      const normalized = value.replace(/\D/g, "");
+      return [sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${people.phone}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', ''), '.', '') = ${normalized}`, sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${people.whatsapp}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', ''), '.', '') = ${normalized}`];
+    });
+    const duplicate = await db
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.churchId, churchId), eq(people.active, true), ne(people.id, personId), or(...contactExpressions)))
+      .limit(1);
+    if (duplicate.length > 0) throw new Error("PERSON_CONTACT_ALREADY_IN_USE");
+  }
+
+  await db
+    .update(people)
+    .set(data)
+    .where(and(eq(people.id, personId), eq(people.churchId, churchId)));
+  return getPersonById(personId, churchId);
+}
+
+export async function updatePerson(id: number, churchId: number, data: Partial<typeof people.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(people)
+    .set(data)
+    .where(and(eq(people.id, id), eq(people.churchId, churchId)));
+}
+
+export async function getPastorCandidatesByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [memberRows, accountRows] = await Promise.all([
+    db
+      .select({
+        personId: people.id,
+        fullName: people.fullName,
+        role: churchMembers.role,
+      })
+      .from(churchMembers)
+      .innerJoin(people, and(eq(people.id, churchMembers.personId), eq(people.churchId, churchId)))
+      .where(and(eq(churchMembers.churchId, churchId), eq(churchMembers.active, true), eq(people.active, true), inArray(churchMembers.role, ["pastor_presidente", "pastor_local"]))),
+    db
+      .select({
+        personId: people.id,
+        fullName: people.fullName,
+        role: churchUsers.role,
+      })
+      .from(churchUsers)
+      .innerJoin(people, and(eq(people.id, churchUsers.personId), eq(people.churchId, churchId)))
+      .where(and(eq(churchUsers.churchId, churchId), eq(churchUsers.active, true), eq(people.active, true), inArray(churchUsers.role, ["pastor_presidente", "pastor_local"]))),
+  ]);
+  const byPerson = new Map<number, (typeof memberRows)[number]>();
+  for (const row of [...memberRows, ...accountRows]) {
+    const current = byPerson.get(row.personId);
+    if (!current || row.role === "pastor_presidente" || row.role === "pastor_local") byPerson.set(row.personId, row);
+  }
+  return Array.from(byPerson.values()).sort((a, b) => a.fullName.localeCompare(b.fullName, "pt-BR"));
+}
+
+export async function getPastoralCoverageByPerson(churchId: number, pastorPersonId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({
+      id: pastoralCoverages.id,
+      churchId: pastoralCoverages.churchId,
+      pastorPersonId: pastoralCoverages.pastorPersonId,
+      coveringPastorPersonId: pastoralCoverages.coveringPastorPersonId,
+      coveringChurchName: pastoralCoverages.coveringChurchName,
+      coveringPastorName: pastoralCoverages.coveringPastorName,
+      coveringPastorPhone: pastoralCoverages.coveringPastorPhone,
+      coveringPastorWhatsapp: pastoralCoverages.coveringPastorWhatsapp,
+      notes: pastoralCoverages.notes,
+      updatedByChurchUserId: pastoralCoverages.updatedByChurchUserId,
+      createdAt: pastoralCoverages.createdAt,
+      updatedAt: pastoralCoverages.updatedAt,
+      updatedByName: churchUsers.name,
+    })
+    .from(pastoralCoverages)
+    .leftJoin(churchUsers, and(eq(pastoralCoverages.updatedByChurchUserId, churchUsers.id), eq(churchUsers.churchId, churchId)))
+    .where(and(eq(pastoralCoverages.churchId, churchId), eq(pastoralCoverages.pastorPersonId, pastorPersonId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getPastoralCoverageEvents(churchId: number, pastorPersonId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: pastoralCoverageEvents.id,
+      churchId: pastoralCoverageEvents.churchId,
+      pastorPersonId: pastoralCoverageEvents.pastorPersonId,
+      coveringPastorPersonId: pastoralCoverageEvents.coveringPastorPersonId,
+      coveringChurchName: pastoralCoverageEvents.coveringChurchName,
+      coveringPastorName: pastoralCoverageEvents.coveringPastorName,
+      coveringPastorPhone: pastoralCoverageEvents.coveringPastorPhone,
+      coveringPastorWhatsapp: pastoralCoverageEvents.coveringPastorWhatsapp,
+      notes: pastoralCoverageEvents.notes,
+      action: pastoralCoverageEvents.action,
+      changedByChurchUserId: pastoralCoverageEvents.changedByChurchUserId,
+      createdAt: pastoralCoverageEvents.createdAt,
+      changedByName: churchUsers.name,
+    })
+    .from(pastoralCoverageEvents)
+    .leftJoin(churchUsers, and(eq(pastoralCoverageEvents.changedByChurchUserId, churchUsers.id), eq(churchUsers.churchId, churchId)))
+    .where(and(eq(pastoralCoverageEvents.churchId, churchId), eq(pastoralCoverageEvents.pastorPersonId, pastorPersonId)))
+    .orderBy(desc(pastoralCoverageEvents.createdAt), desc(pastoralCoverageEvents.id));
+}
+
+export async function upsertPastoralCoverage(input: { churchId: number; pastorPersonId: number; coveringPastorPersonId?: number | null; coveringChurchName: string; coveringPastorName: string; coveringPastorPhone?: string | null; coveringPastorWhatsapp?: string | null; notes?: string | null; updatedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const action = await db.transaction(async tx => {
+    const existing = await tx
+      .select()
+      .from(pastoralCoverages)
+      .where(and(eq(pastoralCoverages.churchId, input.churchId), eq(pastoralCoverages.pastorPersonId, input.pastorPersonId)))
+      .limit(1);
+    const data = {
+      coveringPastorPersonId: input.coveringPastorPersonId ?? null,
+      coveringChurchName: input.coveringChurchName.trim(),
+      coveringPastorName: input.coveringPastorName.trim(),
+      coveringPastorPhone: input.coveringPastorPhone?.trim() || null,
+      coveringPastorWhatsapp: input.coveringPastorWhatsapp?.trim() || null,
+      notes: input.notes?.trim() || null,
+      updatedByChurchUserId: input.updatedByChurchUserId,
+    };
+    const action = existing[0] ? ("atualizada" as const) : ("criada" as const);
+    if (existing[0]) {
+      await tx.update(pastoralCoverages).set(data).where(eq(pastoralCoverages.id, existing[0].id));
+    } else {
+      await tx.insert(pastoralCoverages).values({
+        churchId: input.churchId,
+        pastorPersonId: input.pastorPersonId,
+        ...data,
+      });
+    }
+    await tx.insert(pastoralCoverageEvents).values({
+      churchId: input.churchId,
+      pastorPersonId: input.pastorPersonId,
+      ...data,
+      action,
+      changedByChurchUserId: input.updatedByChurchUserId,
+    });
+    return action;
+  });
+  return {
+    action,
+    coverage: await getPastoralCoverageByPerson(input.churchId, input.pastorPersonId),
+  };
+}
+
+export async function removePastoralCoverage(input: { churchId: number; pastorPersonId: number; changedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const existing = await tx
+      .select()
+      .from(pastoralCoverages)
+      .where(and(eq(pastoralCoverages.churchId, input.churchId), eq(pastoralCoverages.pastorPersonId, input.pastorPersonId)))
+      .limit(1);
+    if (!existing[0]) return false;
+    await tx.delete(pastoralCoverages).where(eq(pastoralCoverages.id, existing[0].id));
+    await tx.insert(pastoralCoverageEvents).values({
+      churchId: input.churchId,
+      pastorPersonId: input.pastorPersonId,
+      coveringPastorPersonId: existing[0].coveringPastorPersonId,
+      coveringChurchName: existing[0].coveringChurchName,
+      coveringPastorName: existing[0].coveringPastorName,
+      coveringPastorPhone: existing[0].coveringPastorPhone,
+      coveringPastorWhatsapp: existing[0].coveringPastorWhatsapp,
+      notes: existing[0].notes,
+      action: "removida",
+      changedByChurchUserId: input.changedByChurchUserId,
+    });
+    return true;
+  });
+}
+
+export async function getDiscipleshipStageProgress(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(discipleshipStageProgress)
+    .where(and(eq(discipleshipStageProgress.churchId, churchId), eq(discipleshipStageProgress.personId, personId)))
+    .orderBy(discipleshipStageProgress.id);
+}
+
+export async function getDiscipleshipStageEvents(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: discipleshipStageEvents.id,
+      churchId: discipleshipStageEvents.churchId,
+      personId: discipleshipStageEvents.personId,
+      stage: discipleshipStageEvents.stage,
+      status: discipleshipStageEvents.status,
+      notes: discipleshipStageEvents.notes,
+      changedByChurchUserId: discipleshipStageEvents.changedByChurchUserId,
+      createdAt: discipleshipStageEvents.createdAt,
+      actorName: churchUsers.name,
+    })
+    .from(discipleshipStageEvents)
+    .leftJoin(churchUsers, and(eq(discipleshipStageEvents.changedByChurchUserId, churchUsers.id), eq(churchUsers.churchId, churchId)))
+    .where(and(eq(discipleshipStageEvents.churchId, churchId), eq(discipleshipStageEvents.personId, personId)))
+    .orderBy(discipleshipStageEvents.id);
+}
+
+export async function upsertDiscipleshipStageProgress(input: { churchId: number; personId: number; stage: "nova_alma" | "consolidacao" | "fundamentos" | "celula" | "batismo" | "encontro_com_deus" | "escola_de_lideres" | "lideranca" | "multiplicador"; status: "concluida" | "pendente" | "nao_registrada"; notes?: string | null; updatedByChurchUserId: number; setCurrentStage?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const completedAt = input.status === "concluida" ? new Date() : null;
+  return db.transaction(async tx => {
+    const existing = await tx
+      .select({
+        id: discipleshipStageProgress.id,
+        isCurrent: discipleshipStageProgress.isCurrent,
+      })
+      .from(discipleshipStageProgress)
+      .where(and(eq(discipleshipStageProgress.churchId, input.churchId), eq(discipleshipStageProgress.personId, input.personId), eq(discipleshipStageProgress.stage, input.stage)))
+      .limit(1);
+
+    const isCurrent = input.status === "concluida" || input.status === "nao_registrada" ? false : existing[0]?.isCurrent ?? false;
+    const data = {
+      status: input.status,
+      isCurrent,
+      notes: input.notes?.trim() || null,
+      completedAt,
+      updatedByChurchUserId: input.updatedByChurchUserId,
+    };
+
+    let state: {
+      id: number;
+      churchId: number;
+      personId: number;
+      stage: typeof input.stage;
+      status: typeof input.status;
+      isCurrent: boolean;
+      notes: string | null;
+      completedAt: Date | null;
+      updatedByChurchUserId: number;
+    };
+    if (existing[0]) {
+      await tx.update(discipleshipStageProgress).set(data).where(eq(discipleshipStageProgress.id, existing[0].id));
+      state = {
+        id: existing[0].id,
+        churchId: input.churchId,
+        personId: input.personId,
+        stage: input.stage,
+        ...data,
+      };
+    } else {
+      const inserted = await tx.insert(discipleshipStageProgress).values({
+        churchId: input.churchId,
+        personId: input.personId,
+        stage: input.stage,
+        ...data,
+      });
+      const id = Number((inserted[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      state = {
+        id,
+        churchId: input.churchId,
+        personId: input.personId,
+        stage: input.stage,
+        ...data,
+      };
+    }
+
+    const eventInserted = await tx.insert(discipleshipStageEvents).values({
+      churchId: input.churchId,
+      personId: input.personId,
+      stage: input.stage,
+      status: input.status,
+      notes: data.notes,
+      changedByChurchUserId: input.updatedByChurchUserId,
+    });
+    const eventId = Number((eventInserted[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (input.setCurrentStage) {
+      await tx
+        .update(people)
+        .set({ discipleshipStage: input.stage })
+        .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)));
+    }
+    return { ...state, eventId };
+  });
+}
+
+export async function setParallelJourneyStage(input: { churchId: number; personId: number; stage: "nova_alma" | "consolidacao" | "fundamentos" | "celula" | "batismo" | "encontro_com_deus" | "escola_de_lideres" | "lideranca" | "multiplicador"; isCurrent: boolean; updatedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const person = await tx
+      .select({ id: people.id, discipleshipStage: people.discipleshipStage })
+      .from(people)
+      .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)))
+      .limit(1);
+    if (!person[0]) throw new Error("Pessoa não encontrada nesta igreja.");
+    if (person[0].discipleshipStage === input.stage && input.isCurrent) {
+      throw new Error("A etapa principal não precisa ser adicionada como frente paralela.");
+    }
+
+    const existing = await tx
+      .select()
+      .from(discipleshipStageProgress)
+      .where(and(eq(discipleshipStageProgress.churchId, input.churchId), eq(discipleshipStageProgress.personId, input.personId), eq(discipleshipStageProgress.stage, input.stage)))
+      .limit(1);
+
+    let state;
+    if (existing[0]) {
+      await tx
+        .update(discipleshipStageProgress)
+        .set({
+          isCurrent: input.isCurrent,
+          updatedByChurchUserId: input.updatedByChurchUserId,
+        })
+        .where(eq(discipleshipStageProgress.id, existing[0].id));
+      state = {
+        ...existing[0],
+        isCurrent: input.isCurrent,
+        updatedByChurchUserId: input.updatedByChurchUserId,
+      };
+    } else {
+      const inserted = await tx.insert(discipleshipStageProgress).values({
+        churchId: input.churchId,
+        personId: input.personId,
+        stage: input.stage,
+        status: "pendente",
+        isCurrent: input.isCurrent,
+        updatedByChurchUserId: input.updatedByChurchUserId,
+      });
+      const id = Number((inserted[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      state = {
+        id,
+        churchId: input.churchId,
+        personId: input.personId,
+        stage: input.stage,
+        status: "pendente" as const,
+        isCurrent: input.isCurrent,
+        notes: null,
+        completedAt: null,
+        updatedByChurchUserId: input.updatedByChurchUserId,
+      };
+    }
+
+    await tx.insert(discipleshipStageEvents).values({
+      churchId: input.churchId,
+      personId: input.personId,
+      stage: input.stage,
+      status: state.status,
+      notes: input.isCurrent ? "Frente paralela ativada pela liderança pastoral." : "Frente paralela desativada pela liderança pastoral.",
+      changedByChurchUserId: input.updatedByChurchUserId,
+    });
+    return state;
+  });
+}
+
+// ─── SOULS (GANHAR ALMAS) ─────────────────────────────────────────────────────
+
+export async function getSoulsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      ...getTableColumns(souls),
+      discipleshipStage: people.discipleshipStage,
+      email: people.email,
+    })
+    .from(souls)
+    .leftJoin(people, and(eq(people.id, souls.personId), eq(people.churchId, churchId)))
+    .where(eq(souls.churchId, churchId))
+    .orderBy(desc(souls.createdAt))
+    .limit(100);
+}
+
+export async function getSoulsByWinner(churchId: number, wonById: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(souls)
+    .where(and(eq(souls.churchId, churchId), eq(souls.wonById, wonById)))
+    .orderBy(desc(souls.createdAt))
+    .limit(100);
+}
+
+export async function getSoulById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(souls)
+    .where(and(eq(souls.id, id), eq(souls.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createSoul(data: typeof souls.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(souls).values(data);
+  const soulId = (result[0] as { insertId?: number }).insertId;
+  if (!soulId) throw new Error("Failed to create soul");
+  const rows = await db
+    .select()
+    .from(souls)
+    .where(and(eq(souls.id, soulId), eq(souls.churchId, data.churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateSoul(id: number, churchId: number, data: Partial<typeof souls.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(souls)
+    .set(data)
+    .where(and(eq(souls.id, id), eq(souls.churchId, churchId)));
+}
+
+export async function linkSoulToPerson(soulId: number, churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(souls)
+    .set({ personId })
+    .where(and(eq(souls.id, soulId), eq(souls.churchId, churchId)));
+}
+
+// ─── CUIDADO PASTORAL ─────────────────────────────────────────────────────────
+
+export async function getCurrentCareAssignment(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(careAssignments)
+    .where(and(eq(careAssignments.personId, personId), eq(careAssignments.churchId, churchId), eq(careAssignments.active, true)))
+    .orderBy(desc(careAssignments.startedAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Retorna apenas o cuidado operacional; o discipulador principal é exibido separadamente. */
+export async function getCurrentOperationalCareAssignment(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(careAssignments)
+    .where(and(eq(careAssignments.personId, personId), eq(careAssignments.churchId, churchId), eq(careAssignments.active, true), ne(careAssignments.role, "discipulador")))
+    .orderBy(desc(careAssignments.startedAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCareHistoryByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(careAssignments)
+    .where(and(eq(careAssignments.personId, personId), eq(careAssignments.churchId, churchId)))
+    .orderBy(desc(careAssignments.startedAt));
+}
+
+export async function getOperationalCareHistoryByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(careAssignments)
+    .where(and(eq(careAssignments.personId, personId), eq(careAssignments.churchId, churchId), ne(careAssignments.role, "discipulador")))
+    .orderBy(desc(careAssignments.startedAt));
+}
+
+export async function getPrimaryDisciplerHistory(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const previousDiscipler = alias(people, "previous_primary_discipler");
+  const nextDiscipler = alias(people, "next_primary_discipler");
+  return db
+    .select({
+      id: primaryDisciplerEvents.id,
+      churchId: primaryDisciplerEvents.churchId,
+      personId: primaryDisciplerEvents.personId,
+      previousDisciplerPersonId: primaryDisciplerEvents.previousDisciplerPersonId,
+      nextDisciplerPersonId: primaryDisciplerEvents.nextDisciplerPersonId,
+      previousDisciplerName: previousDiscipler.fullName,
+      nextDisciplerName: nextDiscipler.fullName,
+      action: primaryDisciplerEvents.action,
+      reason: primaryDisciplerEvents.reason,
+      changedByChurchUserId: primaryDisciplerEvents.changedByChurchUserId,
+      changedByName: churchUsers.name,
+      createdAt: primaryDisciplerEvents.createdAt,
+    })
+    .from(primaryDisciplerEvents)
+    .leftJoin(previousDiscipler, and(eq(previousDiscipler.id, primaryDisciplerEvents.previousDisciplerPersonId), eq(previousDiscipler.churchId, churchId)))
+    .leftJoin(nextDiscipler, and(eq(nextDiscipler.id, primaryDisciplerEvents.nextDisciplerPersonId), eq(nextDiscipler.churchId, churchId)))
+    .leftJoin(churchUsers, and(eq(churchUsers.id, primaryDisciplerEvents.changedByChurchUserId), eq(churchUsers.churchId, churchId)))
+    .where(and(eq(primaryDisciplerEvents.churchId, churchId), eq(primaryDisciplerEvents.personId, personId)))
+    .orderBy(desc(primaryDisciplerEvents.createdAt), desc(primaryDisciplerEvents.id));
+}
+
+/** Retorna a fila objetiva de pessoas que demandam uma ação pastoral. */
+export async function getCareAttentionByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [persons, churchSouls, churchConsolidations, referrals, activeAssignments, activeMemberships, pastoralCandidates, pastoralCoverageRows] = await Promise.all([
+    getPeopleByChurch(churchId),
+    getSoulsByChurch(churchId),
+    getConsolidationsByChurch(churchId),
+    getConsolidationReferralsByChurch(churchId),
+    db
+      .select()
+      .from(careAssignments)
+      .where(and(eq(careAssignments.churchId, churchId), eq(careAssignments.active, true))),
+    db
+      .select({
+        personId: cellMembers.personId,
+        cellId: cells.id,
+        cellName: cells.name,
+      })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cells.churchId, churchId), eq(cells.active, true), eq(cellMembers.active, true))),
+    getPastorCandidatesByChurch(churchId),
+    db.select({ pastorPersonId: pastoralCoverages.pastorPersonId }).from(pastoralCoverages).where(eq(pastoralCoverages.churchId, churchId)),
+  ]);
+
+  const pastoralPersonIds = new Set(pastoralCandidates.map(item => item.personId));
+  const coveredPastoralPersonIds = new Set(pastoralCoverageRows.map(item => item.pastorPersonId));
+  const soulByPerson = new Map(churchSouls.filter(soul => soul.personId).map(soul => [soul.personId!, soul]));
+  const consolidationBySoul = new Map(churchConsolidations.map(item => [item.soulId, item]));
+  const activeReferralByPerson = new Map<number, (typeof referrals)[number]>();
+  referrals
+    .filter(referral => isActiveConsolidationReferralStatus(referral.status))
+    .sort((left, right) => Number(new Date(right.referredAt)) - Number(new Date(left.referredAt)))
+    .forEach(referral => {
+      if (!activeReferralByPerson.has(referral.personId)) activeReferralByPerson.set(referral.personId, referral);
+    });
+  const careAssignmentsByPerson = new Map<number, typeof activeAssignments>();
+  for (const assignment of activeAssignments) {
+    const current = careAssignmentsByPerson.get(assignment.personId) ?? [];
+    current.push(assignment);
+    careAssignmentsByPerson.set(assignment.personId, current);
+  }
+  const cellByPerson = new Map(activeMemberships.map(item => [item.personId, item]));
+  const personById = new Map(persons.map(person => [person.id, person]));
+
+  return persons.map(person => {
+    const soul = soulByPerson.get(person.id);
+    const consolidation = soul ? consolidationBySoul.get(soul.id) : undefined;
+    const activeReferral = activeReferralByPerson.get(person.id) ?? null;
+    const hasActiveReferral = Boolean(activeReferral);
+    const careAssignmentsForPerson = [...(careAssignmentsByPerson.get(person.id) ?? [])].sort((left, right) => {
+      const leftRoleRank = left.role === "discipulador" ? 1 : 0;
+      const rightRoleRank = right.role === "discipulador" ? 1 : 0;
+      if (leftRoleRank !== rightRoleRank) return leftRoleRank - rightRoleRank;
+      const leftStartedAt = left.startedAt ? new Date(left.startedAt).getTime() : 0;
+      const rightStartedAt = right.startedAt ? new Date(right.startedAt).getTime() : 0;
+      return rightStartedAt - leftStartedAt || right.id - left.id;
+    });
+    const enrichedCareAssignments = careAssignmentsForPerson.map(assignment => ({
+      ...assignment,
+      responsiblePersonName: personById.get(assignment.responsiblePersonId)?.fullName ?? null,
+    }));
+    const careAssignment = enrichedCareAssignments[0];
+    const cell = cellByPerson.get(person.id);
+    const reasons: string[] = [];
+    let nextStep = "Acompanhamento em dia";
+    let priority: "alta" | "media" | "normal" = "normal";
+    const isPastor = pastoralPersonIds.has(person.id);
+    const hasPastoralCoverage = isPastor && coveredPastoralPersonIds.has(person.id);
+
+    if (careAssignmentsForPerson.length === 0 && !hasPastoralCoverage) {
+      reasons.push("Sem responsável pelo cuidado");
+      nextStep = "Definir responsável";
+      priority = "alta";
+    }
+    if (
+      !isPastor &&
+      shouldFlagLegacyConsolidationPending({
+      soulStatus: soul?.status,
+      discipleshipStage: person.discipleshipStage,
+      hasLegacyConsolidation: Boolean(consolidation),
+      hasActiveReferral,
+      })
+    ) {
+      reasons.push("Consolidação não iniciada");
+      nextStep = "Iniciar consolidação";
+      priority = "alta";
+    } else if (
+      !isPastor &&
+      shouldFlagModernFirstContactPending({
+      hasActiveReferral,
+      hasResponsible: activeReferral ? hasConsolidationResponsible(activeReferral) : false,
+      firstContactAt: activeReferral?.firstContactAt,
+      })
+    ) {
+      reasons.push("Sem primeiro contato registrado");
+      nextStep = "Registrar primeiro contato";
+      priority = "alta";
+    } else if (!isPastor && soul?.status === "consolidado" && !cell) {
+      reasons.push("Sem célula ativa");
+      nextStep = "Enviar para célula";
+      priority = priority === "alta" ? "alta" : "media";
+    }
+
+    return {
+      person,
+      soul: soul ?? null,
+      consolidation: consolidation ?? null,
+      activeConsolidationReferral: activeReferral,
+      careAssignment: careAssignment ?? null,
+      careAssignments: enrichedCareAssignments,
+      primaryDiscipler: person.discipledById
+        ? {
+            id: person.discipledById,
+            name: personById.get(person.discipledById)?.fullName ?? null,
+          }
+        : null,
+      cell: cell ?? null,
+      nextStep,
+      priority,
+      reasons,
+    };
+  });
+}
+
+export type SpiritualRadarPriority = "alta" | "media" | "normal";
+export type SpiritualRadarSignalKey = "consolidacao_pendente" | "primeiro_contato_pendente" | "visita_pendente" | "follow_up_vencido" | "sem_responsavel" | "sem_celula" | "sem_discipulador" | "ausencias_recentes" | "pedido_oracao_pendente" | "sem_formacao";
+
+export type SpiritualRadarItem = {
+  person: {
+    id: number;
+    fullName: string;
+    discipleshipStage: string | null;
+  };
+  cell: { id: number; name: string } | null;
+  careAssignment: { responsiblePersonId: number; role: string } | null;
+  priority: SpiritualRadarPriority;
+  score: number;
+  nextAction: string;
+  signals: Array<{
+    key: SpiritualRadarSignalKey;
+    label: string;
+    severity: SpiritualRadarPriority;
+    evidence: string;
+    source: "pessoas" | "consolidacao" | "visitas" | "celulas" | "oracao" | "formacao";
+    sourceId: number | null;
+  }>;
+};
+
+/**
+ * Calcula uma fila explicável de atenção pastoral. O retorno deliberadamente não
+ * inclui telefone, endereço, CPF, WhatsApp ou notas pastorais; esses dados seguem
+ * protegidos pelos procedimentos de ficha e cuidado já existentes.
+ */
+export async function getSpiritualRadarByChurch(churchId: number) {
+  const db = await getDb();
+  const empty = {
+    items: [] as SpiritualRadarItem[],
+    summary: {
+      totalPeople: 0,
+      peopleWithSignals: 0,
+      alta: 0,
+      media: 0,
+      normal: 0,
+      bySignal: {} as Record<string, number>,
+    },
+  };
+  if (!db) return empty;
+
+  const [persons, pastoralCandidates, pastoralCoverageRows, activeCells, activeCare, churchSouls, churchConsolidations, referrals, visits, followUps, prayers, enrollments, attendance] = await Promise.all([
+    db
+      .select({
+        id: people.id,
+        fullName: people.fullName,
+        discipleshipStage: people.discipleshipStage,
+        discipledById: people.discipledById,
+      })
+      .from(people)
+      .where(and(eq(people.churchId, churchId), eq(people.active, true))),
+    getPastorCandidatesByChurch(churchId),
+    db.select({ pastorPersonId: pastoralCoverages.pastorPersonId }).from(pastoralCoverages).where(eq(pastoralCoverages.churchId, churchId)),
+    db
+      .select({
+        personId: cellMembers.personId,
+        cellId: cells.id,
+        cellName: cells.name,
+      })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cells.churchId, churchId), eq(cells.active, true), eq(cellMembers.active, true))),
+    db
+      .select({
+        personId: careAssignments.personId,
+        responsiblePersonId: careAssignments.responsiblePersonId,
+        role: careAssignments.role,
+      })
+      .from(careAssignments)
+      .where(and(eq(careAssignments.churchId, churchId), eq(careAssignments.active, true))),
+    getSoulsByChurch(churchId),
+    getConsolidationsByChurch(churchId),
+    db.select().from(consolidationReferrals).where(eq(consolidationReferrals.churchId, churchId)),
+    db.select().from(careVisits).where(eq(careVisits.churchId, churchId)),
+    db.select().from(consolidationFollowUps).where(eq(consolidationFollowUps.churchId, churchId)),
+    db
+      .select({
+        id: prayerRequests.id,
+        personId: prayerRequests.personId,
+        createdAt: prayerRequests.createdAt,
+      })
+      .from(prayerRequests)
+      .where(and(eq(prayerRequests.churchId, churchId), eq(prayerRequests.answered, false), isNotNull(prayerRequests.personId))),
+    db
+      .select({
+        personId: courseEnrollments.personId,
+        status: courseEnrollments.status,
+      })
+      .from(courseEnrollments)
+      .innerJoin(courses, eq(courses.id, courseEnrollments.courseId))
+      .where(and(eq(courses.churchId, churchId), eq(courses.active, true))),
+    db
+      .select({
+        personId: cellAttendance.personId,
+        status: cellAttendance.status,
+        meetingDate: cellMeetings.meetingDate,
+      })
+      .from(cellAttendance)
+      .innerJoin(cellMeetings, eq(cellMeetings.id, cellAttendance.meetingId))
+      .where(and(eq(cellMeetings.churchId, churchId), isNotNull(cellAttendance.personId))),
+  ]);
+
+  const stageOrder: Record<string, number> = {
+    nova_alma: 0,
+    consolidacao: 1,
+    fundamentos: 2,
+    celula: 3,
+    batismo: 4,
+    encontro_com_deus: 5,
+    escola_de_lideres: 6,
+    lideranca: 7,
+    multiplicador: 8,
+  };
+  const pastoralPersonIds = new Set(pastoralCandidates.map(item => item.personId));
+  const coveredPastoralPersonIds = new Set(pastoralCoverageRows.map(item => item.pastorPersonId));
+  const cellByPerson = new Map<number, { id: number; name: string }>();
+  activeCells.forEach(item => {
+    if (!cellByPerson.has(item.personId)) cellByPerson.set(item.personId, { id: item.cellId, name: item.cellName });
+  });
+  const careByPerson = new Map(activeCare.map(item => [item.personId, { responsiblePersonId: item.responsiblePersonId, role: item.role }]));
+  const soulByPerson = new Map<number, (typeof churchSouls)[number]>();
+  churchSouls.forEach(soul => {
+    if (soul.personId && !soulByPerson.has(soul.personId)) soulByPerson.set(soul.personId, soul);
+  });
+  const consolidationBySoul = new Map<number, (typeof churchConsolidations)[number]>();
+  churchConsolidations.forEach(item => consolidationBySoul.set(item.soulId, item));
+  const referralById = new Map(referrals.map(item => [item.id, item]));
+  const activeReferralByPerson = new Map<number, (typeof referrals)[number]>();
+  referrals
+    .filter(item => isActiveConsolidationReferralStatus(item.status))
+    .sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)))
+    .forEach(item => {
+      if (!activeReferralByPerson.has(item.personId)) activeReferralByPerson.set(item.personId, item);
+    });
+  const openVisitByPerson = new Map<number, (typeof visits)[number]>();
+  visits
+    .filter(item => !["realizada", "cancelada"].includes(item.status))
+    .sort((a, b) => Number(new Date(a.scheduledAt ?? a.createdAt)) - Number(new Date(b.scheduledAt ?? b.createdAt)))
+    .forEach(item => {
+      const referral = referralById.get(item.referralId);
+      if (referral && !openVisitByPerson.has(referral.personId)) openVisitByPerson.set(referral.personId, item);
+    });
+  const latestFollowUpByReferral = new Map<number, (typeof followUps)[number]>();
+  followUps
+    .sort((a, b) => Number(new Date(b.createdAt)) - Number(new Date(a.createdAt)))
+    .forEach(item => {
+      if (!latestFollowUpByReferral.has(item.referralId)) latestFollowUpByReferral.set(item.referralId, item);
+    });
+  const unansweredPrayerByPerson = new Map<number, number>();
+  prayers.forEach(item => {
+    if (item.personId) unansweredPrayerByPerson.set(item.personId, (unansweredPrayerByPerson.get(item.personId) ?? 0) + 1);
+  });
+  const enrolledPersonIds = new Set(enrollments.map(item => item.personId));
+  const attendanceByPerson = new Map<number, Array<{ status: string; date: string }>>();
+  attendance.forEach(item => {
+    if (!item.personId) return;
+    const list = attendanceByPerson.get(item.personId) ?? [];
+    list.push({ status: item.status, date: String(item.meetingDate) });
+    attendanceByPerson.set(item.personId, list);
+  });
+
+  const signalMeta: Record<
+    SpiritualRadarSignalKey,
+    {
+      label: string;
+      severity: SpiritualRadarPriority;
+      weight: number;
+      source: SpiritualRadarItem["signals"][number]["source"];
+    }
+  > = {
+    consolidacao_pendente: {
+      label: "Consolidação pendente",
+      severity: "alta",
+      weight: 45,
+      source: "consolidacao",
+    },
+    primeiro_contato_pendente: {
+      label: "Primeiro contato pendente",
+      severity: "alta",
+      weight: 45,
+      source: "consolidacao",
+    },
+    visita_pendente: {
+      label: "Visita pendente",
+      severity: "alta",
+      weight: 40,
+      source: "visitas",
+    },
+    follow_up_vencido: {
+      label: "Follow-up vencido",
+      severity: "alta",
+      weight: 40,
+      source: "consolidacao",
+    },
+    sem_responsavel: {
+      label: "Sem responsável",
+      severity: "alta",
+      weight: 40,
+      source: "pessoas",
+    },
+    sem_celula: {
+      label: "Sem célula ativa",
+      severity: "media",
+      weight: 24,
+      source: "celulas",
+    },
+    sem_discipulador: {
+      label: "Sem discipulador",
+      severity: "media",
+      weight: 22,
+      source: "pessoas",
+    },
+    ausencias_recentes: {
+      label: "Ausências recentes",
+      severity: "media",
+      weight: 24,
+      source: "celulas",
+    },
+    pedido_oracao_pendente: {
+      label: "Pedido de oração pendente",
+      severity: "media",
+      weight: 20,
+      source: "oracao",
+    },
+    sem_formacao: {
+      label: "Sem formação registrada",
+      severity: "normal",
+      weight: 10,
+      source: "formacao",
+    },
+  };
+  const nextActionByKey: Record<SpiritualRadarSignalKey, string> = {
+    consolidacao_pendente: "Abrir ou atribuir Consolidação",
+    primeiro_contato_pendente: "Registrar primeiro contato",
+    visita_pendente: "Abrir e atribuir Visita",
+    follow_up_vencido: "Registrar retorno ou reagendar ação",
+    sem_responsavel: "Definir responsável pelo cuidado",
+    sem_celula: "Encaminhar para uma célula",
+    sem_discipulador: "Definir discipulador",
+    ausencias_recentes: "Verificar a situação com cuidado",
+    pedido_oracao_pendente: "Registrar retorno pastoral",
+    sem_formacao: "Recomendar formação adequada",
+  };
+
+  const items = persons
+    .map((person): SpiritualRadarItem => {
+      const signals: SpiritualRadarItem["signals"] = [];
+      const cell = cellByPerson.get(person.id) ?? null;
+      const careAssignment = careByPerson.get(person.id) ?? null;
+      const soul = soulByPerson.get(person.id);
+      const consolidation = soul ? consolidationBySoul.get(soul.id) : undefined;
+      const referral = activeReferralByPerson.get(person.id);
+      const visit = openVisitByPerson.get(person.id);
+      const stage = stageOrder[person.discipleshipStage ?? "nova_alma"] ?? 0;
+      const isPastor = pastoralPersonIds.has(person.id);
+      const hasPastoralCoverage = isPastor && coveredPastoralPersonIds.has(person.id);
+      const addSignal = (key: SpiritualRadarSignalKey, evidence: string, sourceId: number | null = null) => {
+        const meta = signalMeta[key];
+        signals.push({
+          key,
+          label: meta.label,
+          severity: meta.severity,
+          evidence,
+          source: meta.source,
+          sourceId,
+        });
+      };
+
+      if (!careAssignment && !hasPastoralCoverage) addSignal("sem_responsavel", "Não há responsável ativo registrado para esta Pessoa.");
+      if (
+        !isPastor &&
+        shouldFlagLegacyConsolidationPending({
+        soulStatus: soul?.status,
+        discipleshipStage: person.discipleshipStage,
+        hasLegacyConsolidation: Boolean(consolidation),
+        hasActiveReferral: Boolean(referral),
+        })
+      )
+        addSignal("consolidacao_pendente", "Existe uma Nova Alma em fase inicial sem ficha de Consolidação.", soul?.id ?? null);
+      else if (
+        !isPastor &&
+        shouldFlagModernFirstContactPending({
+        hasActiveReferral: Boolean(referral),
+        hasResponsible: referral ? hasConsolidationResponsible(referral) : false,
+        firstContactAt: referral?.firstContactAt,
+        })
+      )
+        addSignal("primeiro_contato_pendente", "O caso moderno de Consolidação foi assumido, mas o primeiro contato ainda não foi registrado.", referral?.id ?? null);
+      if (visit) {
+        const overdue = visit.scheduledAt && Number(new Date(visit.scheduledAt)) < Date.now();
+        addSignal("visita_pendente", overdue ? "A visita está agendada para uma data já vencida." : "Há uma visita aberta aguardando atribuição ou realização.", visit.id);
+      }
+      if (referral) {
+        const lastFollowUp = latestFollowUpByReferral.get(referral.id);
+        if (lastFollowUp?.nextActionAt && Number(new Date(lastFollowUp.nextActionAt)) < Date.now()) {
+          addSignal("follow_up_vencido", "A próxima ação registrada para este caso está vencida.", lastFollowUp.id);
+        }
+      }
+      if (!isPastor && stage >= 2 && !cell) addSignal("sem_celula", "A Pessoa está em uma etapa que já recomenda integração em célula.");
+      if (!isPastor && stage <= 6 && !person.discipledById) addSignal("sem_discipulador", "A etapa atual não possui discipulador registrado.");
+      const recentAttendance = (attendanceByPerson.get(person.id) ?? []).sort((a, b) => Number(new Date(b.date)) - Number(new Date(a.date)));
+      if (recentAttendance.length >= 2 && recentAttendance.slice(0, 2).every(item => item.status === "ausente")) {
+        addSignal("ausencias_recentes", "As duas últimas marcações registradas foram ausências.");
+      }
+      const prayerCount = unansweredPrayerByPerson.get(person.id) ?? 0;
+      if (prayerCount > 0) addSignal("pedido_oracao_pendente", `${prayerCount} pedido(s) de oração aguardam retorno registrado.`);
+      if (!isPastor && stage >= 2 && enrollments.length > 0 && !enrolledPersonIds.has(person.id)) addSignal("sem_formacao", "Não há matrícula em formação ativa ou concluída registrada.");
+
+      const score = Math.min(
+        100,
+        signals.reduce((total, signal) => total + signalMeta[signal.key].weight, 0)
+      );
+      const priority: SpiritualRadarPriority = signals.some(signal => signal.severity === "alta") ? "alta" : signals.some(signal => signal.severity === "media") ? "media" : "normal";
+      const firstSignal = signals.find(signal => signal.severity === "alta") ?? signals.find(signal => signal.severity === "media") ?? signals[0];
+      return {
+        person: {
+          id: person.id,
+          fullName: person.fullName,
+          discipleshipStage: person.discipleshipStage,
+        },
+        cell,
+        careAssignment,
+        priority,
+        score,
+        nextAction: firstSignal ? nextActionByKey[firstSignal.key] : "Acompanhamento em dia",
+        signals,
+      };
+    })
+    .filter(item => item.signals.length > 0)
+    .sort((a, b) => b.score - a.score || a.person.fullName.localeCompare(b.person.fullName, "pt-BR"));
+
+  const bySignal: Record<string, number> = {};
+  items.forEach(item =>
+    item.signals.forEach(signal => {
+      bySignal[signal.key] = (bySignal[signal.key] ?? 0) + 1;
+    })
+  );
+  return {
+    items,
+    summary: {
+      totalPeople: persons.length,
+      peopleWithSignals: items.length,
+      alta: items.filter(item => item.priority === "alta").length,
+      media: items.filter(item => item.priority === "media").length,
+      normal: items.filter(item => item.priority === "normal").length,
+      bySignal,
+    },
+  };
+}
+
+/** Encerra apenas o responsável anterior do mesmo papel e pode liberar a conta pendente da Pessoa. */
+export async function setCurrentCareAssignment(data: { churchId: number; personId: number; responsiblePersonId: number; role: "quem_ganhou" | "consolidador" | "lider_celula" | "discipulador" | "pastor"; notes?: string; releaseAccess?: boolean; approverChurchUserId?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const now = new Date();
+    await tx
+      .update(careAssignments)
+      .set({ active: false, endedAt: now })
+      .where(and(eq(careAssignments.personId, data.personId), eq(careAssignments.churchId, data.churchId), eq(careAssignments.role, data.role), eq(careAssignments.active, true)));
+    const result = await tx.insert(careAssignments).values({
+      churchId: data.churchId,
+      personId: data.personId,
+      responsiblePersonId: data.responsiblePersonId,
+      role: data.role,
+      notes: data.notes,
+      active: true,
+      startedAt: now,
+    });
+    const assignmentId = (result[0] as { insertId?: number }).insertId;
+    if (!assignmentId) throw new Error("Failed to set care assignment");
+
+    let accessReleased = false;
+    if (data.releaseAccess === true) {
+      const pendingAccounts = await tx
+        .select({ id: churchUsers.id })
+        .from(churchUsers)
+        .where(and(eq(churchUsers.churchId, data.churchId), eq(churchUsers.personId, data.personId), eq(churchUsers.registrationStatus, "pending"), eq(churchUsers.active, false)))
+        .limit(1);
+      const pendingAccount = pendingAccounts[0];
+      if (pendingAccount) {
+        const updateResult = await tx
+          .update(churchUsers)
+          .set({
+            registrationStatus: "approved",
+            active: true,
+            approvedAt: now,
+            approvedByChurchUserId: data.approverChurchUserId ?? null,
+            rejectionReason: null,
+          })
+          .where(and(eq(churchUsers.id, pendingAccount.id), eq(churchUsers.churchId, data.churchId), eq(churchUsers.personId, data.personId), eq(churchUsers.registrationStatus, "pending"), eq(churchUsers.active, false)));
+        accessReleased = Number((updateResult as { affectedRows?: number }).affectedRows ?? 0) > 0;
+      }
+    }
+
+    const rows = await tx.select().from(careAssignments).where(eq(careAssignments.id, assignmentId)).limit(1);
+    return rows[0] ? { ...rows[0], accessReleased } : null;
+  });
+}
+
+// ─── CONSOLIDATIONS ───────────────────────────────────────────────────────────
+
+export async function getConsolidationsBySoul(soulId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(consolidations)
+    .where(and(eq(consolidations.soulId, soulId), eq(consolidations.churchId, churchId)));
+}
+
+export async function getConsolidationsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(consolidations).where(eq(consolidations.churchId, churchId)).orderBy(desc(consolidations.createdAt));
+}
+
+export async function getConsolidationById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(consolidations)
+    .where(and(eq(consolidations.id, id), eq(consolidations.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createConsolidation(data: typeof consolidations.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(consolidations).values(data);
+  return result[0];
+}
+
+export async function startConsolidationWorkflow(data: { churchId: number; soulId: number; personId: number; consolidatorId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const lockedSouls = await tx
+      .select({ id: souls.id, personId: souls.personId })
+      .from(souls)
+      .where(and(eq(souls.id, data.soulId), eq(souls.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const soul = lockedSouls[0];
+    if (!soul || soul.personId !== data.personId) throw new Error("Nova Alma inválida para iniciar a Consolidação.");
+
+    const existing = await tx
+      .select({ id: consolidations.id })
+      .from(consolidations)
+      .where(and(eq(consolidations.soulId, data.soulId), eq(consolidations.churchId, data.churchId)))
+      .limit(1);
+    if (existing.length > 0) throw new Error("Esta Nova Alma já possui uma consolidação em andamento.");
+
+    const insert = await tx.insert(consolidations).values({
+      churchId: data.churchId,
+      soulId: data.soulId,
+      consolidatorId: data.consolidatorId,
+    });
+    const consolidationId = Number((insert[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!consolidationId) throw new Error("Não foi possível iniciar a Consolidação.");
+
+    await tx
+      .update(souls)
+      .set({ status: "em_consolidacao" })
+      .where(and(eq(souls.id, data.soulId), eq(souls.churchId, data.churchId)));
+    await tx
+      .update(people)
+      .set({ discipleshipStage: "consolidacao" })
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId)));
+
+    const rows = await tx
+      .select()
+      .from(consolidations)
+      .where(and(eq(consolidations.id, consolidationId), eq(consolidations.churchId, data.churchId)))
+      .limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function updateConsolidation(id: number, churchId: number, data: Partial<typeof consolidations.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(consolidations)
+    .set(data)
+    .where(and(eq(consolidations.id, id), eq(consolidations.churchId, churchId)));
+}
+
+/** Registra o primeiro contato no histórico moderno e atualiza o marcador legado apenas para compatibilidade da fila antiga. */
+export async function recordModernFirstContact(data: { churchId: number; personId: number; idempotencyKey: string; recordedByPersonId: number | null; recordedByChurchUserId: number | null; notes: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const referralRows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.personId, data.personId), or(eq(consolidationReferrals.status, "pendente"), eq(consolidationReferrals.status, "aprovado"), eq(consolidationReferrals.status, "aceito"), eq(consolidationReferrals.status, "em_acompanhamento"))))
+      .orderBy(desc(consolidationReferrals.referredAt))
+      .limit(1)
+      .for("update");
+    const referral = referralRows[0];
+    if (!referral) throw new Error("Esta Pessoa não possui um caso moderno de Consolidação ativo.");
+    if (!referral.acceptedByPersonId && !referral.acceptedByChurchUserId) {
+      throw new Error("O caso precisa ser assumido antes do primeiro acompanhamento.");
+    }
+    const existingFollowUp = await tx
+      .select({ id: consolidationFollowUps.id })
+      .from(consolidationFollowUps)
+      .where(and(eq(consolidationFollowUps.churchId, data.churchId), eq(consolidationFollowUps.referralId, referral.id), eq(consolidationFollowUps.idempotencyKey, data.idempotencyKey)))
+      .limit(1)
+      .for("update");
+    if (existingFollowUp[0]) return { referralId: referral.id, followUpId: existingFollowUp[0].id };
+    const now = new Date();
+    const followUpResult = await tx.insert(consolidationFollowUps).values({
+      churchId: data.churchId,
+      referralId: referral.id,
+      idempotencyKey: data.idempotencyKey,
+      recordedByPersonId: data.recordedByPersonId,
+      recordedByChurchUserId: data.recordedByChurchUserId,
+      contactChannel: "ligacao",
+      outcome: "conversou",
+      notes: data.notes,
+      nextAction: null,
+      nextActionAt: null,
+      visitStatus: "nao_necessaria",
+      visitAssigneePersonId: null,
+      visitScheduledAt: null,
+    });
+    await tx
+      .update(consolidationReferrals)
+      .set({
+        status: "em_acompanhamento",
+        firstContactAt: referral.firstContactAt ?? now,
+      })
+      .where(and(eq(consolidationReferrals.id, referral.id), eq(consolidationReferrals.churchId, data.churchId)));
+
+    const soulRows = await tx
+      .select({ id: souls.id })
+      .from(souls)
+      .where(and(eq(souls.personId, data.personId), eq(souls.churchId, data.churchId)))
+      .limit(1);
+    if (soulRows[0]) {
+      await tx
+        .update(consolidations)
+        .set({ callMade: true, callDate: referral.firstContactAt ?? now })
+        .where(and(eq(consolidations.soulId, soulRows[0].id), eq(consolidations.churchId, data.churchId)));
+    }
+    return {
+      referralId: referral.id,
+      followUpId: Number((followUpResult[0] as { insertId?: number } | undefined)?.insertId ?? 0),
+    };
+  });
+}
+
+export async function getOpenCareVisitsByReferral(referralId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(careVisits)
+    .where(and(eq(careVisits.referralId, referralId), eq(careVisits.churchId, churchId), or(eq(careVisits.status, "solicitada"), eq(careVisits.status, "agendada"), eq(careVisits.status, "em_andamento"))))
+    .orderBy(desc(careVisits.createdAt));
+}
+
+// ─── ENCAMINHAMENTOS PARA CONSOLIDAÇÃO ─────────────────────────────────────────
+
+export async function getConsolidationReferralsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(consolidationReferrals).where(eq(consolidationReferrals.churchId, churchId)).orderBy(desc(consolidationReferrals.referredAt));
+}
+
+export async function getConsolidationReferralById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(consolidationReferrals)
+    .where(and(eq(consolidationReferrals.id, id), eq(consolidationReferrals.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getActiveConsolidationReferralByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(consolidationReferrals)
+    .where(and(eq(consolidationReferrals.personId, personId), eq(consolidationReferrals.churchId, churchId), activeConsolidationReferralCondition()))
+    .orderBy(desc(consolidationReferrals.referredAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createConsolidationReferral(data: typeof consolidationReferrals.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(consolidationReferrals).values(data);
+  return result[0];
+}
+
+export async function createConsolidationReferralCase(data: typeof consolidationReferrals.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const target = await tx
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1)
+      .for("update");
+    if (target.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
+    if (data.idempotencyKey) {
+      const existing = await tx
+        .select()
+        .from(consolidationReferrals)
+        .where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.idempotencyKey, data.idempotencyKey)))
+        .limit(1)
+        .for("update");
+      if (existing[0]) return existing[0];
+    }
+    const active = await tx
+      .select({ id: consolidationReferrals.id })
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.personId, data.personId), activeConsolidationReferralCondition()))
+      .limit(1);
+    if (active.length > 0) throw new Error("Esta Pessoa já possui um caso ativo na Consolidação.");
+    const result = await tx.insert(consolidationReferrals).values(data);
+    const referralId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!referralId) throw new Error("Não foi possível criar o caso de Consolidação.");
+    if (data.assignedToPersonId) {
+      await tx.insert(consolidationCaseAssignments).values({
+        churchId: data.churchId,
+        referralId,
+        action: "atribuido",
+        toPersonId: data.assignedToPersonId,
+        performedByChurchUserId: data.assignedByChurchUserId ?? null,
+      });
+    }
+    const rows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function assignConsolidationCase(data: { churchId: number; referralId: number; toPersonId: number | null; performedByChurchUserId: number | null; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const referral = rows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (["encerrado", "cancelado"].includes(referral.status)) throw new Error("Não é possível alterar a atribuição de um caso encerrado.");
+    if (data.toPersonId) {
+      const person = await tx
+        .select({ id: people.id })
+        .from(people)
+        .where(and(eq(people.id, data.toPersonId), eq(people.churchId, data.churchId), eq(people.active, true)))
+        .limit(1);
+      if (person.length === 0) throw new Error("Consolidador inválido para esta igreja.");
+    }
+    const fromPersonId = referral.assignedToPersonId ?? referral.acceptedByPersonId ?? null;
+    const action = data.toPersonId ? (fromPersonId ? "reatribuido" : "atribuido") : "devolvido_fila";
+    const keepsAcceptedPerson = data.toPersonId !== null && data.toPersonId === referral.acceptedByPersonId;
+    const keepsCurrentResponsibility = keepsAcceptedPerson;
+    const now = new Date();
+    await tx
+      .update(consolidationReferrals)
+      .set({
+      assignedToPersonId: data.toPersonId,
+      assignedByChurchUserId: data.toPersonId ? data.performedByChurchUserId : null,
+      assignedAt: data.toPersonId ? referral.assignedAt ?? now : null,
+      acceptedByPersonId: keepsAcceptedPerson ? referral.acceptedByPersonId : null,
+      acceptedByChurchUserId: null,
+      acceptedAt: keepsCurrentResponsibility ? referral.acceptedAt : null,
+      status: keepsCurrentResponsibility ? referral.status : referral.status === "aprovado" ? "aprovado" : "pendente",
+      })
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
+    await tx.insert(consolidationCaseAssignments).values({
+      churchId: data.churchId,
+      referralId: data.referralId,
+      action,
+      fromPersonId,
+      toPersonId: data.toPersonId,
+      performedByChurchUserId: data.performedByChurchUserId,
+      notes: data.notes ?? null,
+    });
+    const updated = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function acceptConsolidationCase(data: { churchId: number; referralId: number; personId: number; churchUserId: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const referral = rows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (!["pendente", "aprovado"].includes(referral.status)) throw new Error("Este caso não está mais disponível para aceite.");
+    if (referral.assignedToPersonId && referral.assignedToPersonId !== data.personId) throw new Error("Este caso está atribuído a outro Consolidador.");
+    const now = new Date();
+    await tx
+      .update(consolidationReferrals)
+      .set({
+        assignedToPersonId: data.personId,
+        assignedByChurchUserId: referral.assignedByChurchUserId ?? data.churchUserId,
+        assignedAt: referral.assignedAt ?? now,
+        acceptedByPersonId: data.personId,
+        acceptedByChurchUserId: null,
+        acceptedAt: now,
+        status: "aceito",
+      })
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId), or(eq(consolidationReferrals.status, "pendente"), eq(consolidationReferrals.status, "aprovado"))));
+    await tx.insert(consolidationCaseAssignments).values({
+      churchId: data.churchId,
+      referralId: data.referralId,
+      action: "aceito",
+      fromPersonId: referral.assignedToPersonId,
+      toPersonId: data.personId,
+      performedByChurchUserId: data.churchUserId,
+    });
+    const updated = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function assumeConsolidationCaseByChurchUser(data: { churchId: number; referralId: number; churchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const referral = rows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (referral.acceptedByChurchUserId === data.churchUserId && referral.status === "aceito") return referral;
+    if (!["pendente", "aprovado"].includes(referral.status)) throw new Error("Este caso não está disponível para ser assumido pelo Pastor.");
+    if (referral.acceptedByPersonId || referral.acceptedByChurchUserId) throw new Error("Este caso já foi assumido por outro responsável.");
+    const now = new Date();
+    await tx
+      .update(consolidationReferrals)
+      .set({
+      assignedToPersonId: null,
+      assignedByChurchUserId: data.churchUserId,
+      assignedAt: now,
+      acceptedByPersonId: null,
+      acceptedByChurchUserId: data.churchUserId,
+      acceptedAt: now,
+      status: "aceito",
+      })
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId), or(eq(consolidationReferrals.status, "pendente"), eq(consolidationReferrals.status, "aprovado"))));
+    await tx.insert(consolidationCaseAssignments).values({
+      churchId: data.churchId,
+      referralId: data.referralId,
+      action: "aceito",
+      fromPersonId: referral.assignedToPersonId,
+      toPersonId: null,
+      performedByChurchUserId: data.churchUserId,
+      notes: "Caso assumido pelo Pastor responsável.",
+    });
+    const updated = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function approveConsolidationCase(data: { churchId: number; referralId: number; approvedByPersonId: number | null; churchUserId: number | null; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const referral = rows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (referral.status !== "pendente") throw new Error("Este caso já foi analisado pela liderança.");
+    const now = new Date();
+    const assignedPersonId = referral.assignedToPersonId ?? referral.preferredConsolidatorId ?? null;
+    await tx
+      .update(consolidationReferrals)
+      .set({
+        status: "aprovado",
+        approvedByPersonId: data.approvedByPersonId,
+        approvedAt: now,
+      })
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.status, "pendente")));
+    await tx.insert(consolidationCaseAssignments).values({
+      churchId: data.churchId,
+      referralId: data.referralId,
+      action: "aprovado",
+      fromPersonId: null,
+      toPersonId: assignedPersonId,
+      performedByChurchUserId: data.churchUserId,
+      notes: data.notes ?? null,
+    });
+    const updated = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function getConsolidationCaseAssignments(referralId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(consolidationCaseAssignments)
+    .where(and(eq(consolidationCaseAssignments.referralId, referralId), eq(consolidationCaseAssignments.churchId, churchId)))
+    .orderBy(desc(consolidationCaseAssignments.createdAt));
+}
+
+export async function updateConsolidationReferral(id: number, churchId: number, data: Partial<typeof consolidationReferrals.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(consolidationReferrals)
+    .set(data)
+    .where(and(eq(consolidationReferrals.id, id), eq(consolidationReferrals.churchId, churchId)));
+  return getConsolidationReferralById(id, churchId);
+}
+
+export async function finalizeConsolidationReferral(data: { churchId: number; referralId: number; status: "encerrado" | "cancelado"; closeNotes: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const referral = rows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (referral.status === data.status) return referral;
+    if (["encerrado", "cancelado"].includes(referral.status)) throw new Error("Este caso já foi finalizado.");
+
+    const now = new Date();
+    await tx
+      .update(consolidationReferrals)
+      .set({ status: data.status, closedAt: now, closeNotes: data.closeNotes })
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
+
+    const updated = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function getConsolidationFollowUpsByReferral(referralId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(consolidationFollowUps)
+    .where(and(eq(consolidationFollowUps.referralId, referralId), eq(consolidationFollowUps.churchId, churchId)))
+    .orderBy(desc(consolidationFollowUps.createdAt));
+}
+
+export async function getConsolidationFollowUpsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(consolidationFollowUps).where(eq(consolidationFollowUps.churchId, churchId)).orderBy(desc(consolidationFollowUps.createdAt));
+}
+
+/** Retorna somente os registros modernos de Consolidação vinculados a uma Pessoa. */
+export async function getConsolidationHistoryByPerson(personId: number, churchId: number) {
+  const [referrals, visits] = await Promise.all([getConsolidationReferralsByChurch(churchId), getCareVisitsByChurch(churchId)]);
+  const personReferrals = referrals.filter(referral => referral.personId === personId);
+
+  return Promise.all(
+    personReferrals.map(async referral => {
+      const [assignments, followUps] = await Promise.all([getConsolidationCaseAssignments(referral.id, churchId), getConsolidationFollowUpsByReferral(referral.id, churchId)]);
+    return {
+      referral,
+      assignments,
+      followUps,
+        visits: visits.filter(visit => visit.referralId === referral.id),
+    };
+    })
+  );
+}
+
+export async function createConsolidationFollowUp(data: typeof consolidationFollowUps.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(consolidationFollowUps).values(data);
+  return result[0];
+}
+
+export async function recordConsolidationFollowUp(data: {
+  churchId: number;
+  referralId: number;
+  idempotencyKey: string;
+  recordedByPersonId: number | null;
+  recordedByChurchUserId: number | null;
+  contactChannel: typeof consolidationFollowUps.$inferInsert.contactChannel;
+  outcome: typeof consolidationFollowUps.$inferInsert.outcome;
+  notes: string;
+  nextAction: string | null;
+  nextActionAt: Date | null;
+  visitStatus: typeof consolidationFollowUps.$inferInsert.visitStatus;
+  visitAssigneePersonId: number | null;
+  visitScheduledAt: Date | null;
+  visit: {
+    departmentId: number | null;
+    requestedByPersonId: number | null;
+    requestedByChurchUserId: number | null;
+    assignedToPersonId: number | null;
+    assignedByChurchUserId: number | null;
+    reason: string;
+    priority: typeof careVisits.$inferInsert.priority;
+    performedByChurchUserId: number | null;
+  } | null;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const referralRows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const referral = referralRows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (["encerrado", "cancelado"].includes(referral.status)) throw new Error("Este caso já foi encerrado e não aceita novos acompanhamentos.");
+
+    const existingFollowUp = await tx
+      .select()
+      .from(consolidationFollowUps)
+      .where(and(eq(consolidationFollowUps.churchId, data.churchId), eq(consolidationFollowUps.referralId, data.referralId), eq(consolidationFollowUps.idempotencyKey, data.idempotencyKey)))
+      .limit(1)
+      .for("update");
+    if (existingFollowUp[0]) {
+      const existingVisits = await tx
+        .select()
+        .from(careVisits)
+        .where(and(eq(careVisits.churchId, data.churchId), eq(careVisits.sourceFollowUpId, existingFollowUp[0].id)))
+        .limit(1);
+      return {
+        followUp: existingFollowUp[0],
+        visit: existingVisits[0] ?? null,
+      };
+    }
+
+    const now = new Date();
+    const followUpResult = await tx.insert(consolidationFollowUps).values({
+      churchId: data.churchId,
+      referralId: data.referralId,
+      idempotencyKey: data.idempotencyKey,
+      recordedByPersonId: data.recordedByPersonId,
+      recordedByChurchUserId: data.recordedByChurchUserId,
+      contactChannel: data.contactChannel,
+      outcome: data.outcome,
+      notes: data.notes,
+      nextAction: data.nextAction,
+      nextActionAt: data.nextActionAt,
+      visitStatus: data.visitStatus,
+      visitAssigneePersonId: data.visitAssigneePersonId,
+      visitScheduledAt: data.visitScheduledAt,
+    });
+    const followUpId = Number((followUpResult[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!followUpId) throw new Error("Não foi possível registrar o acompanhamento.");
+
+    let visit = null;
+    if (data.visit) {
+      const visitResult = await tx.insert(careVisits).values({
+        churchId: data.churchId,
+        referralId: data.referralId,
+        sourceFollowUpId: followUpId,
+        departmentId: data.visit.departmentId,
+        requestedByPersonId: data.visit.requestedByPersonId,
+        requestedByChurchUserId: data.visit.requestedByChurchUserId,
+        assignedToPersonId: data.visit.assignedToPersonId,
+        assignedByChurchUserId: data.visit.assignedByChurchUserId,
+        assignedAt: data.visit.assignedToPersonId ? now : null,
+        priority: data.visit.priority,
+        status: data.visitScheduledAt ? "agendada" : "solicitada",
+        reason: data.visit.reason,
+        address: null,
+        scheduledAt: data.visitScheduledAt,
+      });
+      const visitId = Number((visitResult[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      if (!visitId) throw new Error("Não foi possível criar a Visita.");
+      await tx.insert(careVisitEvents).values({
+        churchId: data.churchId,
+        visitId,
+        action: "criada",
+        toPersonId: data.visit.assignedToPersonId,
+        performedByChurchUserId: data.visit.performedByChurchUserId,
+        notes: data.visit.reason,
+      });
+      if (data.visit.assignedToPersonId)
+        await tx.insert(careVisitEvents).values({
+        churchId: data.churchId,
+        visitId,
+        action: "atribuida",
+        toPersonId: data.visit.assignedToPersonId,
+        performedByChurchUserId: data.visit.performedByChurchUserId,
+      });
+      if (data.visitScheduledAt)
+        await tx.insert(careVisitEvents).values({
+        churchId: data.churchId,
+        visitId,
+        action: "agendada",
+        toPersonId: data.visit.assignedToPersonId,
+        performedByChurchUserId: data.visit.performedByChurchUserId,
+      });
+      const visitRows = await tx
+        .select()
+        .from(careVisits)
+        .where(and(eq(careVisits.id, visitId), eq(careVisits.churchId, data.churchId)))
+        .limit(1);
+      visit = visitRows[0] ?? null;
+    }
+
+    await tx
+      .update(consolidationReferrals)
+      .set({
+        status: "em_acompanhamento",
+        firstContactAt: referral.firstContactAt ?? now,
+      })
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
+    const followUpRows = await tx
+      .select()
+      .from(consolidationFollowUps)
+      .where(and(eq(consolidationFollowUps.id, followUpId), eq(consolidationFollowUps.churchId, data.churchId)))
+      .limit(1);
+    return { followUp: followUpRows[0] ?? null, visit };
+  });
+}
+
+export async function getCareVisitsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(careVisits).where(eq(careVisits.churchId, churchId)).orderBy(desc(careVisits.createdAt));
+}
+
+export async function getCareVisitById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(careVisits)
+    .where(and(eq(careVisits.id, id), eq(careVisits.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCareVisitEvents(visitId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(careVisitEvents)
+    .where(and(eq(careVisitEvents.visitId, visitId), eq(careVisitEvents.churchId, churchId)))
+    .orderBy(desc(careVisitEvents.createdAt));
+}
+
+export async function createCareVisit(
+  data: typeof careVisits.$inferInsert & {
+    performedByChurchUserId?: number | null;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const referral = await tx
+      .select({
+        id: consolidationReferrals.id,
+        status: consolidationReferrals.status,
+      })
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    if (referral.length === 0 || ["encerrado", "cancelado"].includes(referral[0].status)) throw new Error("Caso de Consolidação inválido para solicitar Visita.");
+    const status = data.scheduledAt ? "agendada" : "solicitada";
+    const result = await tx.insert(careVisits).values({
+      sourceFollowUpId: data.sourceFollowUpId ?? null,
+      churchId: data.churchId,
+      referralId: data.referralId,
+      departmentId: data.departmentId ?? null,
+      requestedByPersonId: data.requestedByPersonId ?? null,
+      requestedByChurchUserId: data.requestedByChurchUserId ?? null,
+      assignedToPersonId: data.assignedToPersonId ?? null,
+      assignedByChurchUserId: data.assignedByChurchUserId ?? null,
+      priority: data.priority ?? "normal",
+      status,
+      reason: data.reason,
+      address: data.address ?? null,
+      scheduledAt: data.scheduledAt ?? null,
+      assignedAt: data.assignedToPersonId ? new Date() : null,
+    });
+    const visitId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!visitId) throw new Error("Não foi possível criar a Visita.");
+    await tx.insert(careVisitEvents).values({
+      churchId: data.churchId,
+      visitId,
+      action: "criada",
+      toPersonId: data.assignedToPersonId ?? null,
+      performedByChurchUserId: data.performedByChurchUserId ?? null,
+      notes: data.reason,
+    });
+    if (data.assignedToPersonId)
+      await tx.insert(careVisitEvents).values({
+        churchId: data.churchId,
+        visitId,
+        action: "atribuida",
+        toPersonId: data.assignedToPersonId,
+        performedByChurchUserId: data.performedByChurchUserId ?? null,
+      });
+    if (data.scheduledAt)
+      await tx.insert(careVisitEvents).values({
+        churchId: data.churchId,
+        visitId,
+        action: "agendada",
+        toPersonId: data.assignedToPersonId ?? null,
+        performedByChurchUserId: data.performedByChurchUserId ?? null,
+      });
+    const rows = await tx
+      .select()
+      .from(careVisits)
+      .where(and(eq(careVisits.id, visitId), eq(careVisits.churchId, data.churchId)))
+      .limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function assignCareVisit(data: { churchId: number; visitId: number; toPersonId: number | null; performedByChurchUserId: number | null; scheduledAt?: Date | null; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(careVisits)
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const visit = rows[0];
+    if (!visit) throw new Error("Visita não encontrada.");
+    if (["realizada", "cancelada"].includes(visit.status)) throw new Error("Esta Visita não pode mais ser atribuída.");
+    const action = visit.assignedToPersonId || data.toPersonId === null ? "reatribuida" : "atribuida";
+    const nextStatus = data.scheduledAt ?? visit.scheduledAt ? "agendada" : "solicitada";
+    await tx
+      .update(careVisits)
+      .set({
+        assignedToPersonId: data.toPersonId,
+        assignedByChurchUserId: data.toPersonId ? data.performedByChurchUserId : null,
+        assignedAt: data.toPersonId ? new Date() : null,
+        scheduledAt: data.scheduledAt === undefined ? visit.scheduledAt : data.scheduledAt,
+        status: nextStatus,
+      })
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)));
+    await tx.insert(careVisitEvents).values({
+      churchId: data.churchId,
+      visitId: data.visitId,
+      action,
+      fromPersonId: visit.assignedToPersonId,
+      toPersonId: data.toPersonId,
+      performedByChurchUserId: data.performedByChurchUserId,
+      notes: data.notes ?? null,
+    });
+    if (data.scheduledAt && data.scheduledAt.getTime() !== visit.scheduledAt?.getTime())
+      await tx.insert(careVisitEvents).values({
+        churchId: data.churchId,
+        visitId: data.visitId,
+        action: visit.scheduledAt ? "reagendada" : "agendada",
+        toPersonId: data.toPersonId,
+        performedByChurchUserId: data.performedByChurchUserId,
+      });
+    const updated = await tx
+      .select()
+      .from(careVisits)
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)))
+      .limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function acceptCareVisit(data: { churchId: number; visitId: number; personId: number; performedByChurchUserId: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(careVisits)
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const visit = rows[0];
+    if (!visit) throw new Error("Visita não encontrada.");
+    if (["realizada", "cancelada"].includes(visit.status)) throw new Error("Esta Visita não pode mais ser aceita.");
+    if (visit.assignedToPersonId && visit.assignedToPersonId !== data.personId) throw new Error("Esta Visita já foi assumida por outro Visitador.");
+    if (visit.assignedToPersonId === data.personId) return visit;
+    await tx
+      .update(careVisits)
+      .set({
+      assignedToPersonId: data.personId,
+      assignedByChurchUserId: data.performedByChurchUserId,
+      assignedAt: new Date(),
+      status: visit.scheduledAt ? "agendada" : "solicitada",
+      })
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)));
+    await tx.insert(careVisitEvents).values({
+      churchId: data.churchId,
+      visitId: data.visitId,
+      action: "aceita",
+      fromPersonId: visit.assignedToPersonId,
+      toPersonId: data.personId,
+      performedByChurchUserId: data.performedByChurchUserId,
+      notes: "Visita aceita pelo Visitador.",
+    });
+    const updated = await tx
+      .select()
+      .from(careVisits)
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)))
+      .limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function completeCareVisit(data: { churchId: number; visitId: number; performedByChurchUserId: number | null; notes: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(careVisits)
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const visit = rows[0];
+    if (!visit) throw new Error("Visita não encontrada.");
+    if (visit.status === "realizada") return visit;
+    if (visit.status === "cancelada") throw new Error("Uma Visita cancelada não pode ser concluída.");
+    const completedAt = new Date();
+    await tx
+      .update(careVisits)
+      .set({ status: "realizada", completedAt, completionNotes: data.notes })
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)));
+    await tx.insert(careVisitEvents).values({
+      churchId: data.churchId,
+      visitId: data.visitId,
+      action: "concluida",
+      toPersonId: visit.assignedToPersonId,
+      performedByChurchUserId: data.performedByChurchUserId,
+      notes: data.notes,
+    });
+    const updated = await tx
+      .select()
+      .from(careVisits)
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)))
+      .limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function cancelCareVisit(data: { churchId: number; visitId: number; performedByChurchUserId: number | null; reason: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(careVisits)
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const visit = rows[0];
+    if (!visit) throw new Error("Visita não encontrada.");
+    if (visit.status === "realizada") throw new Error("Uma Visita realizada não pode ser cancelada.");
+    if (visit.status === "cancelada") return visit;
+    await tx
+      .update(careVisits)
+      .set({
+        status: "cancelada",
+        cancelledAt: new Date(),
+        cancellationReason: data.reason,
+      })
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)));
+    await tx.insert(careVisitEvents).values({
+      churchId: data.churchId,
+      visitId: data.visitId,
+      action: "cancelada",
+      toPersonId: visit.assignedToPersonId,
+      performedByChurchUserId: data.performedByChurchUserId,
+      notes: data.reason,
+    });
+    const updated = await tx
+      .select()
+      .from(careVisits)
+      .where(and(eq(careVisits.id, data.visitId), eq(careVisits.churchId, data.churchId)))
+      .limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+// ─── CELLS ────────────────────────────────────────────────────────────────────
+
+export async function getCellsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(cells)
+    .where(and(eq(cells.churchId, churchId), eq(cells.active, true)))
+    .orderBy(cells.name);
+}
+
+/**
+ * Consulta pública mínima de Células. A chamada externa é resolvida pelo slug do
+ * host e só ocorre quando a página pública do tenant está publicada.
+ */
+export async function getPublicCellsByChurchId(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      id: cells.id,
+      name: cells.name,
+      address: cells.address,
+      addressNumber: cells.addressNumber,
+      addressComplement: cells.addressComplement,
+      zipCode: cells.zipCode,
+      city: cells.city,
+      state: cells.state,
+      neighborhood: cells.neighborhood,
+       latitude: cells.latitude,
+      longitude: cells.longitude,
+      meetingDay: cells.meetingDay,
+      meetingTime: cells.meetingTime,
+      publicLocationMode: cells.publicLocationMode,
+      publicLeaderContact: cells.publicLeaderContact,
+      leaderName: people.fullName,
+      leaderWhatsapp: people.whatsapp,
+      leaderPhone: people.phone,
+    })
+    .from(cells)
+    .innerJoin(people, and(eq(people.id, cells.leaderId), eq(people.churchId, cells.churchId)))
+    .where(and(eq(cells.churchId, churchId), eq(cells.active, true), eq(cells.publicVisible, true)))
+    .orderBy(cells.name)
+    .limit(100);
+
+  return rows.map(row => {
+    const exactLocation = row.publicLocationMode === "exact";
+    const latitude = Number(row.latitude);
+    const longitude = Number(row.longitude);
+    return {
+      id: row.id,
+      name: row.name,
+      addressNumber: row.addressNumber,
+      addressComplement: row.addressComplement,
+      zipCode: row.zipCode,
+      city: row.city,
+      state: row.state,
+      neighborhood: row.neighborhood,
+       latitude: exactLocation ? latitude : Math.round(latitude * 100) / 100,
+      longitude: exactLocation ? longitude : Math.round(longitude * 100) / 100,
+      locationMode: row.publicLocationMode,
+      address: exactLocation ? row.address : null,
+      meetingDay: row.meetingDay,
+      meetingTime: row.meetingTime,
+      leaderName: row.leaderName,
+      leaderWhatsapp: row.publicLeaderContact ? row.leaderWhatsapp?.trim() || row.leaderPhone?.trim() || null : null,
+    };
+  });
+}
+
+export async function getCellById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(cells)
+    .where(and(eq(cells.id, id), eq(cells.churchId, churchId)))
+    .limit(1);
+  return result[0] ?? null;
+}
+/** Retorna as Células operacionais acessíveis à Pessoa no tenant. */
+export async function getAccessibleCellIdsByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [leadershipRows, membership] = await Promise.all([
+    db
+      .select({ id: cells.id })
+      .from(cells)
+      .where(and(eq(cells.churchId, churchId), eq(cells.active, true), or(eq(cells.leaderId, personId), eq(cells.coLeaderId, personId), eq(cells.supervisorId, personId)))),
+    getActiveCellMembership(personId, churchId),
+  ]);
+  const ids = new Set(leadershipRows.map(row => row.id));
+  if (membership) ids.add(membership.cellId);
+  return Array.from(ids);
+}
+/** Converte liderança estrutural de Célula em papéis efetivos deduplicados. */
+export async function getActiveCellRoleKeysByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      leaderId: cells.leaderId,
+      coLeaderId: cells.coLeaderId,
+      supervisorId: cells.supervisorId,
+    })
+    .from(cells)
+    .where(and(eq(cells.churchId, churchId), eq(cells.active, true), or(eq(cells.leaderId, personId), eq(cells.coLeaderId, personId), eq(cells.supervisorId, personId))));
+  const roles = new Set<string>();
+  for (const row of rows) {
+    if (row.leaderId === personId || row.coLeaderId === personId) roles.add("lider");
+    if (row.supervisorId === personId) roles.add("supervisor");
+  }
+  return Array.from(roles);
+}
+export async function createCell(data: typeof cells.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(cells).values(data);
+  return result[0];
+}
+
+export async function updateCell(id: number, churchId: number, data: Partial<typeof cells.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(cells)
+    .set(data)
+    .where(and(eq(cells.id, id), eq(cells.churchId, churchId)));
+  return getCellById(id, churchId);
+}
+
+export async function getCellMembersCount(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ cellId: cellMembers.cellId, count: sql<number>`COUNT(*)` })
+    .from(cellMembers)
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .where(and(eq(cells.churchId, churchId), eq(cellMembers.active, true)))
+    .groupBy(cellMembers.cellId);
+}
+
+/** Retorna as reuniões recentes de uma Célula com o resumo de presença já calculado. */
+export async function getCellMeetingSummaries(cellId: number, churchId: number, limit = 6) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      meeting: cellMeetings,
+      total: sql<number>`COUNT(${cellAttendance.id})`,
+      present: sql<number>`COALESCE(SUM(CASE WHEN ${cellAttendance.status} = 'presente' THEN 1 ELSE 0 END), 0)`,
+      absent: sql<number>`COALESCE(SUM(CASE WHEN ${cellAttendance.status} = 'ausente' THEN 1 ELSE 0 END), 0)`,
+    })
+    .from(cellMeetings)
+    .leftJoin(cellAttendance, eq(cellAttendance.meetingId, cellMeetings.id))
+    .innerJoin(cells, eq(cells.id, cellMeetings.cellId))
+    .where(and(eq(cellMeetings.cellId, cellId), eq(cellMeetings.churchId, churchId), eq(cells.churchId, churchId)))
+    .groupBy(cellMeetings.id)
+    .orderBy(desc(cellMeetings.meetingDate))
+    .limit(limit);
+}
+
+export async function getCellMeetingByDate(cellId: number, churchId: number, meetingDate: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(cellMeetings)
+    .where(and(eq(cellMeetings.cellId, cellId), eq(cellMeetings.churchId, churchId), sql`${cellMeetings.meetingDate} = DATE(${meetingDate})`))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Cria um único encontro e sua lista completa de presença na mesma transação. */
+export async function createCellMeetingWithAttendance(data: { cellId: number; churchId: number; meetingDate: string; topic?: string | null; notes?: string | null; attendance: Array<{ personId: number; status: "presente" | "ausente" }> }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const normalizedMeetingDate = new Date(`${data.meetingDate}T12:00:00.000Z`);
+
+  return db.transaction(async tx => {
+    const result = await tx.insert(cellMeetings).values({
+      cellId: data.cellId,
+      churchId: data.churchId,
+      meetingDate: normalizedMeetingDate,
+      topic: data.topic ?? null,
+      notes: data.notes ?? null,
+    });
+    const meetingId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!meetingId) throw new Error("Failed to create cell meeting");
+
+    if (data.attendance.length > 0) {
+      await tx.insert(cellAttendance).values(
+        data.attendance.map(entry => ({
+          meetingId,
+          personId: entry.personId,
+          status: entry.status,
+        }))
+      );
+    }
+
+    const rows = await tx.select().from(cellMeetings).where(eq(cellMeetings.id, meetingId)).limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function getActiveMembersByCell(cellId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ membership: cellMembers, person: people })
+    .from(cellMembers)
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .innerJoin(people, eq(people.id, cellMembers.personId))
+    .where(and(eq(cellMembers.cellId, cellId), eq(cellMembers.active, true), eq(cells.churchId, churchId), eq(people.churchId, churchId)))
+    .orderBy(people.fullName);
+}
+
+export async function getActiveCellMembership(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({
+      id: cellMembers.id,
+      personId: cellMembers.personId,
+      cellId: cells.id,
+      cellName: cells.name,
+      joinedAt: cellMembers.joinedAt,
+    })
+    .from(cellMembers)
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .where(and(eq(cellMembers.personId, personId), eq(cellMembers.active, true), eq(cells.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getPeopleWithoutActiveCell(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [churchPeople, activeMemberships] = await Promise.all([
+    db
+      .select({ id: people.id, fullName: people.fullName })
+      .from(people)
+      .where(and(eq(people.churchId, churchId), eq(people.active, true)))
+      .orderBy(people.fullName),
+    db
+      .select({ personId: cellMembers.personId })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cells.churchId, churchId), eq(cellMembers.active, true))),
+  ]);
+  const assignedIds = new Set(activeMemberships.map(membership => membership.personId));
+  return churchPeople.filter(person => !assignedIds.has(person.id));
+}
+
+export async function getCellMembershipHistory(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: cellMembers.id,
+      cellId: cells.id,
+      cellName: cells.name,
+      joinedAt: cellMembers.joinedAt,
+      leftAt: cellMembers.leftAt,
+      active: cellMembers.active,
+    })
+    .from(cellMembers)
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .where(and(eq(cellMembers.personId, personId), eq(cells.churchId, churchId)))
+    .orderBy(desc(cellMembers.joinedAt));
+}
+
+/** Encerra qualquer vínculo ativo antes de inserir a nova Célula da Pessoa. A formação principal não é alterada aqui. */
+export async function assignPersonToCell(data: { churchId: number; personId: number; cellId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const personRows = await tx
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1)
+      .for("update");
+    if (personRows.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
+    const targetCells = await tx
+      .select({ id: cells.id })
+      .from(cells)
+      .where(and(eq(cells.id, data.cellId), eq(cells.churchId, data.churchId), eq(cells.active, true)))
+      .limit(1);
+    if (targetCells.length === 0) throw new Error("Célula inválida para esta igreja.");
+
+    const now = new Date();
+    const activeMemberships = await tx
+      .select({ membershipId: cellMembers.id, cellId: cellMembers.cellId })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cellMembers.personId, data.personId), eq(cellMembers.active, true), eq(cells.churchId, data.churchId)));
+    const current = activeMemberships.find(membership => membership.cellId === data.cellId);
+    if (current) {
+      const rows = await tx.select().from(cellMembers).where(eq(cellMembers.id, current.membershipId)).limit(1);
+      return rows[0] ?? null;
+    }
+    for (const membership of activeMemberships) {
+      await tx.update(cellMembers).set({ active: false, leftAt: now }).where(eq(cellMembers.id, membership.membershipId));
+    }
+    const result = await tx.insert(cellMembers).values({
+      cellId: data.cellId,
+      personId: data.personId,
+      active: true,
+      joinedAt: now,
+    });
+    const membershipId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!membershipId) throw new Error("Failed to assign person to cell");
+    const rows = await tx.select().from(cellMembers).where(eq(cellMembers.id, membershipId)).limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+/** Encerra o vínculo atual sem apagar o histórico e sem retroceder a Jornada. */
+export async function removePersonFromCell(data: { churchId: number; personId: number; cellId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const personRows = await tx
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1)
+      .for("update");
+    if (personRows.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
+
+    const membershipRows = await tx
+      .select({ membershipId: cellMembers.id })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cellMembers.personId, data.personId), eq(cellMembers.cellId, data.cellId), eq(cellMembers.active, true), eq(cells.churchId, data.churchId)))
+      .limit(1);
+    const membership = membershipRows[0];
+    if (!membership) return null;
+
+    const now = new Date();
+    await tx.update(cellMembers).set({ active: false, leftAt: now }).where(eq(cellMembers.id, membership.membershipId));
+    const updatedRows = await tx.select().from(cellMembers).where(eq(cellMembers.id, membership.membershipId)).limit(1);
+    return updatedRows[0] ?? null;
+  });
+}
+
+/** Integra um caso moderno em Célula e encerra o cuidado na mesma transação. */
+export async function integrateConsolidationReferralIntoCell(data: { churchId: number; referralId: number; cellId: number; closeNotes: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const referralRows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const referral = referralRows[0];
+    if (!referral) throw new Error("Caso de Consolidação não encontrado.");
+    if (referral.status !== "em_acompanhamento") throw new Error("Registre um acompanhamento antes de integrar a Pessoa em uma Célula.");
+    if (!referral.acceptedByPersonId) throw new Error("O caso precisa ter um Consolidador responsável antes da integração.");
+    const openVisits = await tx
+      .select({ id: careVisits.id })
+      .from(careVisits)
+      .where(and(eq(careVisits.referralId, data.referralId), eq(careVisits.churchId, data.churchId), or(eq(careVisits.status, "solicitada"), eq(careVisits.status, "agendada"), eq(careVisits.status, "em_andamento"))))
+      .limit(1);
+    if (openVisits.length > 0) throw new Error("Conclua ou cancele as visitas abertas antes de integrar esta Pessoa em uma Célula.");
+
+    const targetCells = await tx
+      .select({ id: cells.id, name: cells.name, leaderId: cells.leaderId })
+      .from(cells)
+      .where(and(eq(cells.id, data.cellId), eq(cells.churchId, data.churchId), eq(cells.active, true)))
+      .limit(1);
+    const targetCell = targetCells[0];
+    if (!targetCell) throw new Error("Célula inválida para esta igreja.");
+    if (!targetCell.leaderId) throw new Error("A Célula precisa ter um líder definido antes de receber esta Pessoa.");
+
+    const personRows = await tx
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.id, referral.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1)
+      .for("update");
+    if (personRows.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
+
+    const now = new Date();
+    const activeMemberships = await tx
+      .select({ membershipId: cellMembers.id, cellId: cellMembers.cellId })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .where(and(eq(cellMembers.personId, referral.personId), eq(cellMembers.active, true), eq(cells.churchId, data.churchId)));
+    const current = activeMemberships.find(membership => membership.cellId === data.cellId);
+    let membership;
+    if (current) {
+      const rows = await tx.select().from(cellMembers).where(eq(cellMembers.id, current.membershipId)).limit(1);
+      membership = rows[0] ?? null;
+    } else {
+      for (const activeMembership of activeMemberships) {
+        await tx.update(cellMembers).set({ active: false, leftAt: now }).where(eq(cellMembers.id, activeMembership.membershipId));
+      }
+      const result = await tx.insert(cellMembers).values({
+        cellId: data.cellId,
+        personId: referral.personId,
+        active: true,
+        joinedAt: now,
+      });
+      const membershipId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      if (!membershipId) throw new Error("Não foi possível integrar a Pessoa à Célula.");
+      const rows = await tx.select().from(cellMembers).where(eq(cellMembers.id, membershipId)).limit(1);
+      membership = rows[0] ?? null;
+    }
+
+    await tx
+      .update(consolidationReferrals)
+      .set({ status: "encerrado", closedAt: now, closeNotes: data.closeNotes })
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)));
+
+    const updatedRows = await tx
+      .select()
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.id, data.referralId), eq(consolidationReferrals.churchId, data.churchId)))
+      .limit(1);
+    return {
+      referral: updatedRows[0] ?? null,
+      membership,
+      cellName: targetCell.name,
+    };
+  });
+}
+
+// ─── EVENTS ───────────────────────────────────────────────────────────────────
+
+type EventFlyerAssetRow = {
+  id: number | null;
+  provider: "cloudinary" | "manus_storage" | null;
+  resourceType: "image" | "video" | "raw" | null;
+  publicId: string | null;
+  url: string | null;
+  secureUrl: string | null;
+  width: number | null;
+  height: number | null;
+};
+
+function toEventFlyer(asset: EventFlyerAssetRow | null | undefined) {
+  if (!asset?.id || !asset.url || !asset.provider || !asset.resourceType) return null;
+  const optimized = getOptimizedMediaUrls({
+    provider: asset.provider,
+    publicId: asset.publicId,
+    url: asset.secureUrl ?? asset.url,
+    resourceType: asset.resourceType,
+  });
+  return {
+    mediaAssetId: asset.id,
+    url: asset.secureUrl ?? asset.url,
+    optimizedUrl: optimized.optimizedUrl,
+    webpUrl: optimized.webpUrl,
+    avifUrl: optimized.avifUrl,
+    width: asset.width,
+    height: asset.height,
+  };
+}
+
+function eventFlyerSelection() {
+  return {
+    id: mediaAssets.id,
+    provider: mediaAssets.provider,
+    resourceType: mediaAssets.resourceType,
+    publicId: mediaAssets.publicId,
+    url: mediaAssets.url,
+    secureUrl: mediaAssets.secureUrl,
+    width: mediaAssets.width,
+    height: mediaAssets.height,
+  } as const;
+}
+
+export async function getEventsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ event: events, flyer: eventFlyerSelection() })
+    .from(events)
+    .leftJoin(mediaAssets, and(eq(mediaAssets.id, events.flyerMediaAssetId), eq(mediaAssets.churchId, events.churchId), eq(mediaAssets.purpose, "event_flyer"), eq(mediaAssets.resourceType, "image"), eq(mediaAssets.status, "active")))
+    .where(and(eq(events.churchId, churchId), eq(events.active, true)))
+    .orderBy(desc(events.startDate));
+  return rows.map(({ event, flyer }) => ({
+    ...event,
+    flyer: toEventFlyer(flyer as EventFlyerAssetRow),
+  }));
+}
+
+/** Expõe somente dados institucionais de próximos eventos ativos da mesma igreja. */
+export async function getPublicUpcomingEventsByChurchId(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      event: {
+    id: events.id,
+    name: events.name,
+    type: events.type,
+    description: events.description,
+    startDate: events.startDate,
+    endDate: events.endDate,
+    startTime: events.startTime,
+    endTime: events.endTime,
+    location: events.location,
+    registrationMode: events.registrationMode,
+    registrationToken: events.registrationToken,
+    flyerFormat: events.flyerFormat,
+      },
+      flyer: eventFlyerSelection(),
+    })
+    .from(events)
+    .leftJoin(mediaAssets, and(eq(mediaAssets.id, events.flyerMediaAssetId), eq(mediaAssets.churchId, events.churchId), eq(mediaAssets.purpose, "event_flyer"), eq(mediaAssets.resourceType, "image"), eq(mediaAssets.status, "active")))
+    .where(and(eq(events.churchId, churchId), eq(events.active, true), gte(events.startDate, currentCivilDateAsUtcNoon())))
+    .orderBy(events.startDate)
+    .limit(3);
+  return rows.map(({ event, flyer }) => ({
+    ...event,
+    flyer: toEventFlyer(flyer as EventFlyerAssetRow),
+  }));
+}
+
+/** Expõe somente Ministérios ativos selecionados pelo Pastor no rascunho publicado. */
+export async function getPublicMinistriesByChurchId(churchId: number, selectedIds?: number[]) {
+  const db = await getDb();
+  if (!db || (selectedIds && selectedIds.length === 0)) return [];
+  const filters = [eq(ministries.churchId, churchId), eq(ministries.active, true)];
+  if (selectedIds) filters.push(inArray(ministries.id, selectedIds));
+  return db
+    .select({
+    id: ministries.id,
+    name: ministries.name,
+    type: ministries.type,
+    description: ministries.description,
+  })
+    .from(ministries)
+    .where(and(...filters))
+    .orderBy(ministries.name)
+    .limit(6);
+}
+
+export async function getEventAttendanceReport(data: { churchId: number; eventId: number }) {
+  const db = await getDb();
+  if (!db) return null;
+  const eventRows = await db
+    .select()
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  const event = eventRows[0];
+  if (!event) return null;
+
+  const rows = await db
+    .select({
+    id: eventRegistrations.id,
+    personId: eventRegistrations.personId,
+    participantName: eventRegistrations.participantName,
+    participantPhone: eventRegistrations.participantPhone,
+    companionName: eventRegistrations.companionName,
+    email: eventRegistrations.email,
+    attendeeCount: eventRegistrations.attendeeCount,
+    amountCents: eventRegistrations.amountCents,
+    paymentStatus: eventRegistrations.paymentStatus,
+    paymentConfirmedAt: eventRegistrations.paymentConfirmedAt,
+    paymentConfirmedByChurchUserId: eventRegistrations.paymentConfirmedByChurchUserId,
+    source: eventRegistrations.source,
+    presenceStatus: eventRegistrations.presenceStatus,
+    registeredAt: eventRegistrations.registeredAt,
+    checkedIn: eventRegistrations.checkedIn,
+    checkedInAt: eventRegistrations.checkedInAt,
+    status: eventRegistrations.status,
+    personName: people.fullName,
+  })
+    .from(eventRegistrations)
+    .leftJoin(people, and(eq(people.id, eventRegistrations.personId), eq(people.churchId, data.churchId)))
+    .where(and(eq(eventRegistrations.eventId, event.id), or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, data.churchId))))
+    .orderBy(desc(eventRegistrations.checkedInAt), desc(eventRegistrations.registeredAt));
+
+  const registrations = rows.filter(row => row.status !== "cancelado" && row.presenceStatus !== "cancelado");
+  const checkedIn = registrations.filter(row => row.checkedIn || row.status === "participou" || row.presenceStatus === "presente");
+  const absent = registrations.filter(row => row.presenceStatus === "ausente");
+  const pending = registrations.filter(row => !checkedIn.includes(row) && !absent.includes(row));
+  return {
+    event,
+    summary: {
+      registeredCount: registrations.length,
+      attendeeCount: registrations.reduce((total, row) => total + (row.attendeeCount ?? 1), 0),
+      checkedInCount: checkedIn.length,
+      checkedInAttendeeCount: checkedIn.reduce((total, row) => total + (row.attendeeCount ?? 1), 0),
+      absentCount: absent.length,
+      absentAttendeeCount: absent.reduce((total, row) => total + (row.attendeeCount ?? 1), 0),
+      pendingCount: pending.length,
+      pendingAttendeeCount: pending.reduce((total, row) => total + (row.attendeeCount ?? 1), 0),
+      cancelledCount: rows.length - registrations.length,
+      paymentPendingCount: registrations.filter(row => row.paymentStatus === "pendente").length,
+      paymentPaidCount: registrations.filter(row => row.paymentStatus === "pago").length,
+      paymentExemptCount: registrations.filter(row => row.paymentStatus === "isento").length,
+      paymentRefundedCount: registrations.filter(row => row.paymentStatus === "reembolsado").length,
+      expectedAmountCents: registrations.reduce((total, row) => total + (row.amountCents ?? 0), 0),
+      paidAmountCents: registrations.filter(row => row.paymentStatus === "pago").reduce((total, row) => total + (row.amountCents ?? 0), 0),
+      pendingAmountCents: registrations.filter(row => row.paymentStatus === "pendente").reduce((total, row) => total + (row.amountCents ?? 0), 0),
+      refundedAmountCents: registrations.filter(row => row.paymentStatus === "reembolsado").reduce((total, row) => total + (row.amountCents ?? 0), 0),
+    },
+    registrations: registrations.map(row => ({
+      ...row,
+      displayName: row.participantName ?? row.personName ?? "Participante",
+      attendance: row.checkedIn || row.status === "participou" || row.presenceStatus === "presente" ? ("presente" as const) : row.presenceStatus === "ausente" ? ("ausente" as const) : ("pendente" as const),
+    })),
+  };
+}
+
+export async function createEvent(data: typeof events.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(events).values(data);
+  const id = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+  if (!id) return result[0];
+  const rows = await db
+    .select()
+    .from(events)
+    .where(and(eq(events.id, id), eq(events.churchId, data.churchId)))
+    .limit(1);
+  return rows[0] ?? result[0];
+}
+
+export async function updateEvent(data: { churchId: number; eventId: number; name: string; type: "congresso" | "conferencia" | "vigilia" | "retiro" | "seminario" | "culto" | "outro"; description: string | null; startDate: Date; endDate: Date | null; startTime: string | null; endTime: string | null; location: string | null; maxCapacity: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  if (!eventRows[0]) return null;
+  await db
+    .update(events)
+    .set({
+    name: data.name,
+    type: data.type,
+    description: data.description,
+    startDate: data.startDate,
+    endDate: data.endDate,
+    startTime: data.startTime,
+    endTime: data.endTime,
+    location: data.location,
+    maxCapacity: data.maxCapacity,
+    })
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+  const updatedRows = await db
+    .select()
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  return updatedRows[0] ?? null;
+}
+
+export async function removeEvent(data: { churchId: number; eventId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db
+    .select({
+      id: events.id,
+      name: events.name,
+      flyerMediaAssetId: events.flyerMediaAssetId,
+    })
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  const event = eventRows[0];
+  if (!event) return null;
+
+  const registrationRows = await db
+    .select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(and(eq(eventRegistrations.eventId, data.eventId), or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, data.churchId))))
+    .limit(1);
+  if (registrationRows[0]) {
+    await db
+      .update(events)
+      .set({ active: false, registrationToken: null })
+      .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+    return {
+      mode: "archived" as const,
+      eventId: data.eventId,
+      eventName: event.name,
+    };
+  }
+
+  if (event.flyerMediaAssetId) {
+    await db
+      .update(mediaAssets)
+      .set({ entityType: null, entityId: null })
+      .where(and(eq(mediaAssets.id, event.flyerMediaAssetId), eq(mediaAssets.churchId, data.churchId)));
+  }
+  await db.delete(events).where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+  return {
+    mode: "deleted" as const,
+    eventId: data.eventId,
+    eventName: event.name,
+  };
+}
+
+export async function setEventFlyer(data: { churchId: number; eventId: number; mediaAssetId: number | null; flyerFormat: "mobile" | "screen" | "stories" }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db
+    .select({ id: events.id, flyerMediaAssetId: events.flyerMediaAssetId })
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  const event = eventRows[0];
+  if (!event) return null;
+
+  if (data.mediaAssetId !== null) {
+    const assetRows = await db
+      .select({ id: mediaAssets.id })
+      .from(mediaAssets)
+      .where(and(eq(mediaAssets.id, data.mediaAssetId), eq(mediaAssets.churchId, data.churchId), eq(mediaAssets.purpose, "event_flyer"), eq(mediaAssets.resourceType, "image"), eq(mediaAssets.status, "active")))
+      .limit(1);
+    if (!assetRows[0]) return null;
+    const usedByOtherEvent = await db
+      .select({ id: events.id })
+      .from(events)
+      .where(and(eq(events.churchId, data.churchId), eq(events.flyerMediaAssetId, data.mediaAssetId), ne(events.id, data.eventId)))
+      .limit(1);
+    if (usedByOtherEvent[0]) return null;
+  }
+
+  await db
+    .update(events)
+    .set({
+      flyerMediaAssetId: data.mediaAssetId,
+      flyerFormat: data.flyerFormat,
+    })
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+  if (event.flyerMediaAssetId && event.flyerMediaAssetId !== data.mediaAssetId) {
+    await db
+      .update(mediaAssets)
+      .set({ entityType: null, entityId: null })
+      .where(and(eq(mediaAssets.id, event.flyerMediaAssetId), eq(mediaAssets.churchId, data.churchId)));
+  }
+  if (data.mediaAssetId) {
+    await db
+      .update(mediaAssets)
+      .set({ entityType: "event", entityId: data.eventId })
+      .where(and(eq(mediaAssets.id, data.mediaAssetId), eq(mediaAssets.churchId, data.churchId)));
+  }
+  const updatedRows = await db
+    .select()
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  return updatedRows[0] ?? null;
+}
+
+export async function setEventRegistrationMode(data: { churchId: number; eventId: number; registrationMode: "none" | "individual" | "casal"; registrationToken: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const rows = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  if (!rows[0]) return null;
+  await db
+    .update(events)
+    .set({
+      registrationMode: data.registrationMode,
+      registrationToken: data.registrationToken,
+    })
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+  const updatedRows = await db
+    .select()
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  return updatedRows[0] ?? null;
+}
+
+export async function setEventPaymentSettings(data: { churchId: number; eventId: number; registrationFeeCents: number; paymentDueDate: Date | null; paymentInstructions: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const rows = await db
+    .select({ id: events.id, registrationMode: events.registrationMode })
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  const event = rows[0];
+  if (!event) return null;
+  if (event.registrationMode === "none" && data.registrationFeeCents > 0) return { invalid: "paid_without_registration" as const };
+  await db
+    .update(events)
+    .set({
+    registrationFeeCents: data.registrationFeeCents,
+    paymentDueDate: data.paymentDueDate,
+    paymentInstructions: data.paymentInstructions,
+    })
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)));
+  const updatedRows = await db
+    .select()
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  return updatedRows[0] ?? null;
+}
+
+export async function updateEventRegistrationPayment(data: { churchId: number; eventId: number; registrationId: number; paymentStatus: "pendente" | "pago" | "isento" | "reembolsado"; confirmedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  if (!eventRows[0]) return null;
+  const registrationRows = await db
+    .select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(and(eq(eventRegistrations.id, data.registrationId), eq(eventRegistrations.eventId, data.eventId), or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, data.churchId))))
+    .limit(1);
+  if (!registrationRows[0]) return null;
+  const confirmed = data.paymentStatus !== "pendente";
+  await db
+    .update(eventRegistrations)
+    .set({
+    paymentStatus: data.paymentStatus,
+    paymentConfirmedAt: confirmed ? new Date() : null,
+    paymentConfirmedByChurchUserId: confirmed ? data.confirmedByChurchUserId : null,
+    })
+    .where(and(eq(eventRegistrations.id, data.registrationId), eq(eventRegistrations.eventId, data.eventId)));
+  return { success: true };
+}
+
+export async function getPublicEventRegistrationByToken(token: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ event: events, church: churches, flyer: eventFlyerSelection() })
+    .from(events)
+    .innerJoin(churches, eq(churches.id, events.churchId))
+    .leftJoin(mediaAssets, and(eq(mediaAssets.id, events.flyerMediaAssetId), eq(mediaAssets.churchId, events.churchId), eq(mediaAssets.purpose, "event_flyer"), eq(mediaAssets.resourceType, "image"), eq(mediaAssets.status, "active")))
+    .where(and(eq(events.registrationToken, token), ne(events.registrationMode, "none"), eq(events.active, true), eq(churches.active, true)))
+    .limit(1);
+  const resolved = rows[0];
+  if (!resolved) return null;
+  return {
+    event: resolved.event,
+    church: resolved.church,
+    flyer: toEventFlyer(resolved.flyer as EventFlyerAssetRow),
+  };
+}
+
+export async function createPublicEventRegistration(data: { token: string; participantName: string; participantPhone: string; companionName?: string | null; email?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const resolved = await getPublicEventRegistrationByToken(data.token);
+  if (!resolved) return null;
+  const { event } = resolved;
+  const attendeeCount = event.registrationMode === "casal" ? 2 : 1;
+  const phone = data.participantPhone.replace(/\D/g, "");
+  if (phone.length < 8) throw new Error("Informe um telefone válido.");
+  const duplicateRows = await db
+    .select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(and(eq(eventRegistrations.eventId, event.id), or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, event.churchId)), eq(eventRegistrations.participantPhone, phone), ne(eventRegistrations.presenceStatus, "cancelado")))
+    .limit(1);
+  if (duplicateRows[0]) throw new Error("Já existe uma inscrição ativa com este telefone para este evento.");
+
+  if (event.maxCapacity) {
+    const currentRows = await db
+      .select({ attendeeCount: eventRegistrations.attendeeCount })
+      .from(eventRegistrations)
+      .where(and(eq(eventRegistrations.eventId, event.id), or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, event.churchId)), ne(eventRegistrations.presenceStatus, "cancelado")));
+    const currentCount = currentRows.reduce((total, row) => total + (row.attendeeCount ?? 1), 0);
+    if (currentCount + attendeeCount > event.maxCapacity) throw new Error("As vagas deste evento já foram preenchidas.");
+  }
+
+  const result = await db.insert(eventRegistrations).values({
+    eventId: event.id,
+    churchId: event.churchId,
+    personId: null,
+    participantName: data.participantName.trim(),
+    participantPhone: phone,
+    companionName: data.companionName?.trim() || null,
+    email: data.email?.trim() || null,
+    attendeeCount,
+    amountCents: event.registrationFeeCents ?? 0,
+    paymentStatus: "pendente",
+    source: "public_form",
+    presenceStatus: "pendente",
+    status: "inscrito",
+  });
+  return {
+    id: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0),
+    eventName: event.name,
+    attendeeCount,
+  };
+}
+
+export async function createManualEventRegistration(data: { churchId: number; eventId: number; registrationMode: "individual" | "casal"; participantName: string; participantPhone?: string | null; companionName?: string | null; email?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db
+    .select()
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId), eq(events.active, true)))
+    .limit(1);
+  const event = eventRows[0];
+  if (!event) return null;
+  if (event.registrationMode !== "none" && event.registrationMode !== data.registrationMode) {
+    throw new Error("Use o mesmo modelo de inscrição configurado para este evento.");
+  }
+
+  const participantName = data.participantName.trim();
+  if (participantName.length < 2) throw new Error("Informe o nome completo do participante.");
+  const phone = data.participantPhone?.replace(/\D/g, "") ?? "";
+  if (phone && phone.length < 8) throw new Error("Informe um telefone válido ou deixe o campo em branco.");
+  const companionName = data.companionName?.trim() || null;
+  if (data.registrationMode === "casal" && !companionName) throw new Error("Informe o nome do segundo participante.");
+  if (data.registrationMode === "individual" && companionName) throw new Error("Esta inscrição é individual.");
+
+  if (phone) {
+    const duplicateRows = await db
+      .select({ id: eventRegistrations.id })
+      .from(eventRegistrations)
+      .where(and(eq(eventRegistrations.eventId, event.id), or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, event.churchId)), eq(eventRegistrations.participantPhone, phone), ne(eventRegistrations.presenceStatus, "cancelado")))
+      .limit(1);
+    if (duplicateRows[0]) throw new Error("Já existe uma inscrição ativa com este telefone para este evento.");
+  }
+
+  const attendeeCount = data.registrationMode === "casal" ? 2 : 1;
+  if (event.maxCapacity && event.maxCapacity > 0) {
+    const currentRows = await db
+      .select({ attendeeCount: eventRegistrations.attendeeCount })
+      .from(eventRegistrations)
+      .where(and(eq(eventRegistrations.eventId, event.id), or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, event.churchId)), ne(eventRegistrations.presenceStatus, "cancelado")));
+    const currentCount = currentRows.reduce((total, row) => total + (row.attendeeCount ?? 1), 0);
+    if (currentCount + attendeeCount > event.maxCapacity) throw new Error("As vagas deste evento já foram preenchidas.");
+  }
+
+  const result = await db.insert(eventRegistrations).values({
+    eventId: event.id,
+    churchId: event.churchId,
+    personId: null,
+    participantName,
+    participantPhone: phone || null,
+    companionName,
+    email: data.email?.trim() || null,
+    attendeeCount,
+    amountCents: event.registrationFeeCents ?? 0,
+    paymentStatus: "pendente",
+    source: "manual",
+    presenceStatus: "pendente",
+    status: "inscrito",
+  });
+  return {
+    id: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0),
+    eventName: event.name,
+    attendeeCount,
+  };
+}
+
+export async function updateEventRegistrationPresence(data: { churchId: number; eventId: number; registrationId: number; presenceStatus: "pendente" | "presente" | "ausente" | "cancelado" }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const eventRows = await db
+    .select({ id: events.id })
+    .from(events)
+    .where(and(eq(events.id, data.eventId), eq(events.churchId, data.churchId)))
+    .limit(1);
+  if (!eventRows[0]) return null;
+  const registrationRows = await db
+    .select({ id: eventRegistrations.id })
+    .from(eventRegistrations)
+    .where(and(eq(eventRegistrations.id, data.registrationId), eq(eventRegistrations.eventId, data.eventId), or(isNull(eventRegistrations.churchId), eq(eventRegistrations.churchId, data.churchId))))
+    .limit(1);
+  if (!registrationRows[0]) return null;
+  const isPresent = data.presenceStatus === "presente";
+  await db
+    .update(eventRegistrations)
+    .set({
+    presenceStatus: data.presenceStatus,
+    checkedIn: isPresent,
+    checkedInAt: isPresent ? new Date() : null,
+    status: data.presenceStatus === "cancelado" ? "cancelado" : isPresent ? "participou" : "inscrito",
+    })
+    .where(and(eq(eventRegistrations.id, data.registrationId), eq(eventRegistrations.eventId, data.eventId)));
+  return { success: true };
+}
+
+// ─── MINISTRIES ───────────────────────────────────────────────────────────────
+
+export async function getMinistriesByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(ministries)
+    .where(and(eq(ministries.churchId, churchId), eq(ministries.active, true)))
+    .orderBy(ministries.name);
+}
+
+/** Retorna os Ministérios ativos dos quais a Pessoa participa nesta igreja. */
+export async function getMinistryMembershipsByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ membership: ministryMembers, ministry: ministries })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .innerJoin(people, eq(people.id, ministryMembers.personId))
+    .where(and(eq(ministryMembers.personId, personId), eq(ministryMembers.active, true), eq(ministries.churchId, churchId), eq(ministries.active, true), eq(people.churchId, churchId), eq(people.active, true)))
+    .orderBy(ministries.name);
+}
+
+export async function createMinistry(data: typeof ministries.$inferInsert, participantIds: number[] = []) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const result = await tx.insert(ministries).values(data);
+    const ministryId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!ministryId) throw new Error("Failed to create ministry");
+    const initialParticipantIds = Array.from(new Set([data.leaderId, ...participantIds].filter((id): id is number => Boolean(id))));
+    for (const personId of initialParticipantIds) {
+      await tx.insert(ministryMembers).values({ ministryId, personId, active: true });
+    }
+    if (data.type === "consolidacao") {
+      for (const department of [
+        {
+          name: "Consolidação",
+          description: "Acompanhamento e integração de Pessoas.",
+          systemKey: "consolidacao" as const,
+        },
+        {
+          name: "Visitas",
+          description: "Planejamento e execução de visitas de cuidado.",
+          systemKey: "visitas" as const,
+        },
+      ]) {
+        await tx.insert(departments).values({
+          churchId: data.churchId,
+          ministryId,
+          name: department.name,
+          description: department.description,
+          systemKey: department.systemKey,
+          active: true,
+        });
+      }
+    } else if (data.type === "visitas") {
+      await tx.insert(departments).values({
+        churchId: data.churchId,
+        ministryId,
+        name: "Visitas",
+        description: "Planejamento e execução de visitas de cuidado.",
+        systemKey: "visitas",
+        leaderId: data.leaderId ?? null,
+        active: true,
+      });
+    }
+    const rows = await tx
+      .select()
+      .from(ministries)
+      .where(and(eq(ministries.id, ministryId), eq(ministries.churchId, data.churchId)))
+      .limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function updateMinistry(id: number, churchId: number, data: Partial<typeof ministries.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(ministries)
+    .set(data)
+    .where(and(eq(ministries.id, id), eq(ministries.churchId, churchId)));
+  const rows = await db
+    .select()
+    .from(ministries)
+    .where(and(eq(ministries.id, id), eq(ministries.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Arquiva um Ministério no tenant, preservando o histórico e desativando apenas os vínculos operacionais. */
+export async function archiveMinistry(data: { ministryId: number; churchId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const ministryRows = await tx
+      .select({
+        id: ministries.id,
+        name: ministries.name,
+        active: ministries.active,
+      })
+      .from(ministries)
+      .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const ministry = ministryRows[0];
+    if (!ministry) return { archived: false as const, reason: "not_found" as const };
+    if (!ministry.active)
+      return {
+        archived: true as const,
+        alreadyArchived: true as const,
+        ministryId: ministry.id,
+        name: ministry.name,
+      };
+
+    const scheduledRows = await tx
+      .select({ id: scheduleItems.id })
+      .from(scheduleItems)
+      .where(and(eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.ministryId, data.ministryId), eq(scheduleItems.status, "agendada")))
+      .limit(1);
+    if (scheduledRows.length > 0) return { archived: false as const, reason: "scheduled_items" as const };
+
+    const referralRows = await tx
+      .select({ id: consolidationReferrals.id })
+      .from(consolidationReferrals)
+      .where(and(eq(consolidationReferrals.churchId, data.churchId), eq(consolidationReferrals.sourceMinistryId, data.ministryId)))
+      .limit(1);
+    if (referralRows.length > 0)
+      return {
+        archived: false as const,
+        reason: "consolidation_referrals" as const,
+      };
+
+    await tx
+      .update(ministries)
+      .set({ active: false })
+      .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId)));
+    await tx.update(ministryMembers).set({ active: false }).where(eq(ministryMembers.ministryId, data.ministryId));
+    await tx
+      .update(ministryRoleAssignments)
+      .set({ active: false, endedAt: new Date() })
+      .where(and(eq(ministryRoleAssignments.churchId, data.churchId), eq(ministryRoleAssignments.ministryId, data.ministryId)));
+    await tx
+      .update(ministryRoleDefinitions)
+      .set({ active: false })
+      .where(and(eq(ministryRoleDefinitions.churchId, data.churchId), eq(ministryRoleDefinitions.ministryId, data.ministryId)));
+    const departmentRows = await tx
+      .select({ id: departments.id })
+      .from(departments)
+      .where(and(eq(departments.churchId, data.churchId), eq(departments.ministryId, data.ministryId)));
+    for (const department of departmentRows) {
+      await tx
+        .update(departmentMembers)
+        .set({ active: false, leftAt: new Date() })
+        .where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, department.id)));
+      await tx
+        .update(departmentRoleAssignments)
+        .set({ active: false, endedAt: new Date() })
+        .where(and(eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, department.id)));
+      await tx
+        .update(departments)
+        .set({ active: false })
+        .where(and(eq(departments.id, department.id), eq(departments.churchId, data.churchId)));
+    }
+    return {
+      archived: true as const,
+      alreadyArchived: false as const,
+      ministryId: ministry.id,
+      name: ministry.name,
+    };
+  });
+}
+
+export async function setMinistryLeader(data: { ministryId: number; churchId: number; leaderId: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const locked = await tx
+      .select({ id: ministries.id, type: ministries.type })
+      .from(ministries)
+      .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId), eq(ministries.active, true)))
+      .limit(1)
+      .for("update");
+    if (locked.length === 0) return null;
+    await tx
+      .update(ministries)
+      .set({ leaderId: data.leaderId })
+      .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId)));
+    if (locked[0].type === "visitas") {
+      await tx
+        .update(departments)
+        .set({ leaderId: data.leaderId })
+        .where(and(eq(departments.churchId, data.churchId), eq(departments.ministryId, data.ministryId), eq(departments.systemKey, "visitas")));
+    }
+    if (data.leaderId) {
+      const existing = await tx
+        .select({ id: ministryMembers.id })
+        .from(ministryMembers)
+        .where(and(eq(ministryMembers.ministryId, data.ministryId), eq(ministryMembers.personId, data.leaderId), eq(ministryMembers.active, true)))
+        .limit(1);
+      if (existing.length === 0)
+        await tx.insert(ministryMembers).values({
+          ministryId: data.ministryId,
+          personId: data.leaderId,
+          active: true,
+        });
+    }
+    const rows = await tx
+      .select()
+      .from(ministries)
+      .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId)))
+      .limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+// ─── DEPARTAMENTOS ────────────────────────────────────────────────────────────
+
+export async function getDepartmentsByMinistry(ministryId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(departments)
+    .where(and(eq(departments.ministryId, ministryId), eq(departments.churchId, churchId), eq(departments.active, true)))
+    .orderBy(departments.name);
+}
+
+export async function getDepartmentsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(departments).where(eq(departments.churchId, churchId)).orderBy(departments.name);
+}
+
+export async function getDepartmentById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(departments)
+    .where(and(eq(departments.id, id), eq(departments.churchId, churchId), eq(departments.active, true)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createDepartment(data: { churchId: number; ministryId: number; name: string; description?: string | null; systemKey?: "consolidacao" | "visitas" | null; leaderId?: number | null; supervisorId?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const ministryRows = await tx
+      .select({ id: ministries.id })
+      .from(ministries)
+      .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId), eq(ministries.active, true)))
+      .limit(1)
+      .for("update");
+    if (ministryRows.length === 0) throw new Error("Ministério não encontrado nesta igreja.");
+    const responsibleIds = Array.from(new Set([data.leaderId, data.supervisorId].filter((id): id is number => Boolean(id))));
+    for (const personId of responsibleIds) {
+      const peopleRows = await tx
+        .select({ id: people.id })
+        .from(people)
+        .where(and(eq(people.id, personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+        .limit(1);
+      if (peopleRows.length === 0) throw new Error("Responsável inválido para esta igreja.");
+    }
+    const result = await tx.insert(departments).values({
+      churchId: data.churchId,
+      ministryId: data.ministryId,
+      name: data.name,
+      description: data.description ?? null,
+      systemKey: data.systemKey ?? null,
+      leaderId: data.leaderId ?? null,
+      supervisorId: data.supervisorId ?? null,
+    });
+    const departmentId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!departmentId) throw new Error("Não foi possível criar o Departamento.");
+    for (const personId of responsibleIds) {
+      const ministryMembership = await tx
+        .select({ id: ministryMembers.id })
+        .from(ministryMembers)
+        .where(and(eq(ministryMembers.ministryId, data.ministryId), eq(ministryMembers.personId, personId), eq(ministryMembers.active, true)))
+        .limit(1);
+      if (ministryMembership.length === 0) await tx.insert(ministryMembers).values({ ministryId: data.ministryId, personId, active: true });
+      await tx.insert(departmentMembers).values({
+        churchId: data.churchId,
+        departmentId,
+        personId,
+        active: true,
+      });
+    }
+    const rows = await tx
+      .select()
+      .from(departments)
+      .where(and(eq(departments.id, departmentId), eq(departments.churchId, data.churchId)))
+      .limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function updateDepartment(data: { id: number; churchId: number; name?: string; description?: string | null; active?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(departments)
+    .set({
+      name: data.name,
+      description: data.description,
+      active: data.active,
+    })
+    .where(and(eq(departments.id, data.id), eq(departments.churchId, data.churchId)));
+  return getDepartmentById(data.id, data.churchId);
+}
+
+export async function setDepartmentLeader(data: { departmentId: number; churchId: number; leaderId: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const departmentRows = await tx
+      .select()
+      .from(departments)
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId), eq(departments.active, true)))
+      .limit(1)
+      .for("update");
+    const department = departmentRows[0];
+    if (!department) return null;
+    if (data.leaderId) {
+      const peopleRows = await tx
+        .select({ id: people.id })
+        .from(people)
+        .where(and(eq(people.id, data.leaderId), eq(people.churchId, data.churchId), eq(people.active, true)))
+        .limit(1);
+      if (peopleRows.length === 0) throw new Error("Líder inválido para esta igreja.");
+      const ministryMembership = await tx
+        .select({ id: ministryMembers.id })
+        .from(ministryMembers)
+        .where(and(eq(ministryMembers.ministryId, department.ministryId), eq(ministryMembers.personId, data.leaderId), eq(ministryMembers.active, true)))
+        .limit(1);
+      if (ministryMembership.length === 0)
+        await tx.insert(ministryMembers).values({
+          ministryId: department.ministryId,
+          personId: data.leaderId,
+          active: true,
+        });
+      const departmentMembership = await tx
+        .select({ id: departmentMembers.id })
+        .from(departmentMembers)
+        .where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.personId, data.leaderId), eq(departmentMembers.active, true)))
+        .limit(1);
+      if (departmentMembership.length === 0)
+        await tx.insert(departmentMembers).values({
+          churchId: data.churchId,
+          departmentId: data.departmentId,
+          personId: data.leaderId,
+          active: true,
+        });
+    }
+    await tx
+      .update(departments)
+      .set({ leaderId: data.leaderId })
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId)));
+    const rows = await tx
+      .select()
+      .from(departments)
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId)))
+      .limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function setDepartmentSupervisor(data: { departmentId: number; churchId: number; supervisorId: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const departmentRows = await tx
+      .select()
+      .from(departments)
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId), eq(departments.active, true)))
+      .limit(1)
+      .for("update");
+    const department = departmentRows[0];
+    if (!department) return null;
+    if (data.supervisorId) {
+      const peopleRows = await tx
+        .select({ id: people.id })
+        .from(people)
+        .where(and(eq(people.id, data.supervisorId), eq(people.churchId, data.churchId), eq(people.active, true)))
+        .limit(1);
+      if (peopleRows.length === 0) throw new Error("Supervisor inválido para esta igreja.");
+      const ministryMembership = await tx
+        .select({ id: ministryMembers.id })
+        .from(ministryMembers)
+        .where(and(eq(ministryMembers.ministryId, department.ministryId), eq(ministryMembers.personId, data.supervisorId), eq(ministryMembers.active, true)))
+        .limit(1);
+      if (ministryMembership.length === 0)
+        await tx.insert(ministryMembers).values({
+          ministryId: department.ministryId,
+          personId: data.supervisorId,
+          active: true,
+        });
+      const departmentMembership = await tx
+        .select({ id: departmentMembers.id })
+        .from(departmentMembers)
+        .where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.personId, data.supervisorId), eq(departmentMembers.active, true)))
+        .limit(1);
+      if (departmentMembership.length === 0)
+        await tx.insert(departmentMembers).values({
+          churchId: data.churchId,
+          departmentId: data.departmentId,
+          personId: data.supervisorId,
+          active: true,
+        });
+    }
+    await tx
+      .update(departments)
+      .set({ supervisorId: data.supervisorId })
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId)));
+    const rows = await tx
+      .select()
+      .from(departments)
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId)))
+      .limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function setConsolidationDepartmentLeadership(data: { churchId: number; departmentId: number; leaderId: number | null; supervisorId: number | null; assignedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const departmentRows = await tx
+      .select()
+      .from(departments)
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId), eq(departments.active, true)))
+      .limit(1)
+      .for("update");
+    const department = departmentRows[0];
+    if (!department || !department.systemKey) throw new Error("Departamento sistêmico não encontrado nesta igreja.");
+
+    const roleKeys =
+      department.systemKey === "consolidacao"
+        ? {
+            leader: "lider_consolidacao",
+            supervisor: "supervisor_consolidacao",
+          }
+      : { leader: "lider_visitas", supervisor: "supervisor_visitas" };
+    const responsibleIds = Array.from(new Set([data.leaderId, data.supervisorId].filter((id): id is number => Boolean(id))));
+
+    for (const personId of responsibleIds) {
+      const personRows = await tx
+        .select({ id: people.id })
+        .from(people)
+        .where(and(eq(people.id, personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+        .limit(1);
+      if (personRows.length === 0) throw new Error("Responsável inválido para esta igreja.");
+      const ministryMembership = await tx
+        .select({ id: ministryMembers.id })
+        .from(ministryMembers)
+        .where(and(eq(ministryMembers.ministryId, department.ministryId), eq(ministryMembers.personId, personId), eq(ministryMembers.active, true)))
+        .limit(1);
+      if (ministryMembership.length === 0)
+        await tx.insert(ministryMembers).values({
+          ministryId: department.ministryId,
+          personId,
+          active: true,
+        });
+      const departmentMembership = await tx
+        .select({ id: departmentMembers.id })
+        .from(departmentMembers)
+        .where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.personId, personId), eq(departmentMembers.active, true)))
+        .limit(1);
+      if (departmentMembership.length === 0)
+        await tx.insert(departmentMembers).values({
+          churchId: data.churchId,
+          departmentId: data.departmentId,
+          personId,
+          active: true,
+        });
+    }
+
+    const assignments = await tx
+      .select()
+      .from(departmentRoleAssignments)
+      .where(and(eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, data.departmentId), eq(departmentRoleAssignments.active, true)))
+      .for("update");
+    for (const assignment of assignments) {
+      const removeLeaderRole = assignment.roleKey === roleKeys.leader && assignment.personId !== data.leaderId;
+      const removeSupervisorRole = assignment.roleKey === roleKeys.supervisor && assignment.personId !== data.supervisorId;
+      if (removeLeaderRole || removeSupervisorRole) {
+        await tx
+          .update(departmentRoleAssignments)
+          .set({ active: false, endedAt: new Date() })
+          .where(and(eq(departmentRoleAssignments.id, assignment.id), eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, data.departmentId), eq(departmentRoleAssignments.active, true)));
+      }
+    }
+
+    await tx
+      .update(departments)
+      .set({ leaderId: data.leaderId, supervisorId: data.supervisorId })
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId)));
+    for (const assignment of [data.leaderId ? { personId: data.leaderId, roleKey: roleKeys.leader } : null, data.supervisorId ? { personId: data.supervisorId, roleKey: roleKeys.supervisor } : null].filter((item): item is { personId: number; roleKey: string } => Boolean(item))) {
+      const existing = await tx
+        .select({ id: departmentRoleAssignments.id })
+        .from(departmentRoleAssignments)
+        .where(and(eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, data.departmentId), eq(departmentRoleAssignments.personId, assignment.personId), eq(departmentRoleAssignments.roleKey, assignment.roleKey), eq(departmentRoleAssignments.active, true)))
+        .limit(1);
+      if (existing.length === 0)
+        await tx.insert(departmentRoleAssignments).values({
+          churchId: data.churchId,
+          departmentId: data.departmentId,
+          personId: assignment.personId,
+          roleKey: assignment.roleKey,
+          assignedByChurchUserId: data.assignedByChurchUserId,
+          active: true,
+        });
+    }
+
+    const updated = await tx
+      .select()
+      .from(departments)
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId)))
+      .limit(1);
+    return updated[0] ?? null;
+  });
+}
+
+export async function ensureConsolidationMinistryStructure(churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    let ministry = (
+      await tx
+        .select()
+        .from(ministries)
+        .where(and(eq(ministries.churchId, churchId), or(eq(ministries.type, "consolidacao"), sql`LOWER(${ministries.name}) LIKE '%consolida%'`), eq(ministries.active, true)))
+        .limit(1)
+        .for("update")
+    )[0];
+    if (!ministry) {
+      const result = await tx.insert(ministries).values({
+        churchId,
+        name: "Consolidação e Visitas",
+        type: "consolidacao",
+        description: "Cuidado, acompanhamento e visitas da igreja.",
+        active: true,
+      });
+      const ministryId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      ministry = (
+        await tx
+          .select()
+          .from(ministries)
+          .where(and(eq(ministries.id, ministryId), eq(ministries.churchId, churchId)))
+          .limit(1)
+      )[0];
+    }
+    if (!ministry) throw new Error("Não foi possível estruturar o Ministério de Consolidação.");
+
+    for (const definition of [
+      {
+        systemKey: "consolidacao" as const,
+        name: "Consolidação",
+        description: "Acompanhamento e integração de Pessoas.",
+      },
+      {
+        systemKey: "visitas" as const,
+        name: "Visitas",
+        description: "Planejamento e execução de visitas de cuidado.",
+      },
+    ]) {
+      const existing = await tx
+        .select({ id: departments.id })
+        .from(departments)
+        .where(and(eq(departments.churchId, churchId), eq(departments.ministryId, ministry.id), eq(departments.systemKey, definition.systemKey)))
+        .limit(1);
+      if (existing.length === 0)
+        await tx.insert(departments).values({
+          churchId,
+          ministryId: ministry.id,
+          name: definition.name,
+          description: definition.description,
+          systemKey: definition.systemKey,
+          active: true,
+        });
+    }
+
+    const departmentRows = await tx
+      .select()
+      .from(departments)
+      .where(and(eq(departments.churchId, churchId), eq(departments.ministryId, ministry.id), eq(departments.active, true)))
+      .orderBy(departments.name);
+    return { ministry, departments: departmentRows };
+  });
+}
+
+export async function getActiveDepartmentRoleKeysByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ roleKey: departmentRoleAssignments.roleKey })
+    .from(departmentRoleAssignments)
+    .innerJoin(departments, eq(departments.id, departmentRoleAssignments.departmentId))
+    .where(and(eq(departmentRoleAssignments.churchId, churchId), eq(departmentRoleAssignments.personId, personId), eq(departmentRoleAssignments.active, true), eq(departments.churchId, churchId), eq(departments.active, true)));
+  return Array.from(new Set(rows.map(row => row.roleKey)));
+}
+
+export async function getDepartmentMembers(departmentId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ membership: departmentMembers, person: people })
+    .from(departmentMembers)
+    .innerJoin(departments, eq(departments.id, departmentMembers.departmentId))
+    .innerJoin(people, eq(people.id, departmentMembers.personId))
+    .where(and(eq(departmentMembers.departmentId, departmentId), eq(departmentMembers.churchId, churchId), eq(departmentMembers.active, true), eq(departments.churchId, churchId), eq(departments.active, true), eq(people.churchId, churchId)))
+    .orderBy(people.fullName);
+}
+
+export async function getDepartmentCandidates(departmentId: number, churchId: number) {
+  const department = await getDepartmentById(departmentId, churchId);
+  if (!department) return [];
+  const [ministryMemberships, currentMembers] = await Promise.all([getMinistryMembers(department.ministryId, churchId), getDepartmentMembers(departmentId, churchId)]);
+  const currentIds = new Set(currentMembers.map(({ person }) => person.id));
+  return ministryMemberships.filter(({ person }) => !currentIds.has(person.id)).map(({ person }) => ({ id: person.id, fullName: person.fullName }));
+}
+
+export async function isActiveDepartmentMember(departmentId: number, personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: departmentMembers.id })
+    .from(departmentMembers)
+    .innerJoin(departments, eq(departments.id, departmentMembers.departmentId))
+    .where(and(eq(departmentMembers.departmentId, departmentId), eq(departmentMembers.personId, personId), eq(departmentMembers.churchId, churchId), eq(departmentMembers.active, true), eq(departments.churchId, churchId), eq(departments.active, true)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function assignPersonToDepartment(data: { churchId: number; departmentId: number; personId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const departmentRows = await tx
+      .select()
+      .from(departments)
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId), eq(departments.active, true)))
+      .limit(1)
+      .for("update");
+    const department = departmentRows[0];
+    if (!department) throw new Error("Departamento não encontrado nesta igreja.");
+    const eligible = await tx
+      .select({ id: ministryMembers.id })
+      .from(ministryMembers)
+      .innerJoin(people, eq(people.id, ministryMembers.personId))
+      .where(and(eq(ministryMembers.ministryId, department.ministryId), eq(ministryMembers.personId, data.personId), eq(ministryMembers.active, true), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1);
+    if (eligible.length === 0) throw new Error("A Pessoa precisa participar do Ministério antes de entrar no Departamento.");
+    const existing = await tx
+      .select()
+      .from(departmentMembers)
+      .where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.personId, data.personId), eq(departmentMembers.active, true)))
+      .limit(1);
+    if (existing[0]) return existing[0];
+    const result = await tx.insert(departmentMembers).values({
+      churchId: data.churchId,
+      departmentId: data.departmentId,
+      personId: data.personId,
+      active: true,
+    });
+    const membershipId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    const rows = await tx.select().from(departmentMembers).where(eq(departmentMembers.id, membershipId)).limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function removePersonFromDepartment(data: { churchId: number; departmentId: number; personId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const departmentRows = await tx
+      .select()
+      .from(departments)
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId), eq(departments.active, true)))
+      .limit(1)
+      .for("update");
+    const department = departmentRows[0];
+    if (!department) return false;
+    if (department.leaderId === data.personId) throw new Error("Defina outro líder antes de remover a liderança do Departamento.");
+    if (department.supervisorId === data.personId) throw new Error("Defina outro supervisor antes de remover a supervisão do Departamento.");
+    const result = await tx
+      .update(departmentMembers)
+      .set({ active: false, leftAt: new Date() })
+      .where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.personId, data.personId), eq(departmentMembers.active, true)));
+    await tx
+      .update(departmentRoleAssignments)
+      .set({ active: false, endedAt: new Date() })
+      .where(and(eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, data.departmentId), eq(departmentRoleAssignments.personId, data.personId), eq(departmentRoleAssignments.active, true)));
+    return Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0;
+  });
+}
+
+export async function getDepartmentRoleAssignments(departmentId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(departmentRoleAssignments)
+    .where(and(eq(departmentRoleAssignments.departmentId, departmentId), eq(departmentRoleAssignments.churchId, churchId), eq(departmentRoleAssignments.active, true)))
+    .orderBy(departmentRoleAssignments.roleKey);
+}
+
+export async function assignDepartmentRole(data: { churchId: number; departmentId: number; personId: number; roleKey: string; assignedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const department = await tx
+      .select({ id: departments.id })
+      .from(departments)
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId), eq(departments.active, true)))
+      .limit(1)
+      .for("update");
+    if (department.length === 0) throw new Error("Departamento não encontrado nesta igreja.");
+    const member = await tx
+      .select({ id: departmentMembers.id })
+      .from(departmentMembers)
+      .where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.personId, data.personId), eq(departmentMembers.active, true)))
+      .limit(1);
+    if (member.length === 0) throw new Error("A função só pode ser atribuída a participante ativo do Departamento.");
+    const existing = await tx
+      .select()
+      .from(departmentRoleAssignments)
+      .where(and(eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, data.departmentId), eq(departmentRoleAssignments.personId, data.personId), eq(departmentRoleAssignments.roleKey, data.roleKey), eq(departmentRoleAssignments.active, true)))
+      .limit(1);
+    if (existing[0]) return existing[0];
+    const result = await tx.insert(departmentRoleAssignments).values({ ...data, active: true });
+    const id = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    const rows = await tx.select().from(departmentRoleAssignments).where(eq(departmentRoleAssignments.id, id)).limit(1);
+    return rows[0] ?? null;
+  });
+}
+
+export async function endDepartmentRole(data: { id: number; churchId: number; departmentId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db
+    .update(departmentRoleAssignments)
+    .set({ active: false, endedAt: new Date() })
+    .where(and(eq(departmentRoleAssignments.id, data.id), eq(departmentRoleAssignments.churchId, data.churchId), eq(departmentRoleAssignments.departmentId, data.departmentId), eq(departmentRoleAssignments.active, true)));
+  return Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0;
+}
+
+export async function getMinistryMembers(ministryId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ membership: ministryMembers, person: people })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .innerJoin(people, eq(people.id, ministryMembers.personId))
+    .where(and(eq(ministryMembers.ministryId, ministryId), eq(ministries.churchId, churchId), eq(ministryMembers.active, true)))
+    .orderBy(people.fullName);
+}
+
+export async function getMinistryMemberCounts(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      ministryId: ministryMembers.ministryId,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .where(and(eq(ministries.churchId, churchId), eq(ministryMembers.active, true)))
+    .groupBy(ministryMembers.ministryId);
+}
+
+export async function isActiveMinistryMember(ministryId: number, personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: ministryMembers.id })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .innerJoin(people, eq(people.id, ministryMembers.personId))
+    .where(and(eq(ministryMembers.ministryId, ministryId), eq(ministryMembers.personId, personId), eq(ministryMembers.active, true), eq(ministries.churchId, churchId), eq(people.churchId, churchId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
+ * Participar do Ministério de Consolidação libera a atuação de Consolidador.
+ * O vínculo é derivado somente de registros ativos da mesma igreja; a ação de
+ * aprovação da liderança e a assunção do cuidado continuam protegidas pelas
+ * regras próprias da Consolidação.
+ */
+export async function isActiveConsolidationMinistryMember(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: ministryMembers.id })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .innerJoin(people, eq(people.id, ministryMembers.personId))
+    .where(and(eq(ministryMembers.personId, personId), eq(ministryMembers.active, true), or(eq(ministries.type, "consolidacao"), sql`LOWER(${ministries.name}) LIKE '%consolida%'`), eq(ministries.churchId, churchId), eq(ministries.active, true), eq(people.id, personId), eq(people.churchId, churchId), eq(people.active, true)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** Participantes ativos do Ministério de Visitas recebem a capacidade operacional de Visitador. */
+export async function isActiveVisitsMinistryMember(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: ministryMembers.id })
+    .from(ministryMembers)
+    .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+    .innerJoin(people, eq(people.id, ministryMembers.personId))
+    .where(and(eq(ministryMembers.personId, personId), eq(ministryMembers.active, true), or(eq(ministries.type, "visitas"), sql`(LOWER(${ministries.name}) LIKE '%visita%' AND LOWER(${ministries.name}) NOT LIKE '%consolida%')`), eq(ministries.churchId, churchId), eq(ministries.active, true), eq(people.id, personId), eq(people.churchId, churchId), eq(people.active, true)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function getScheduleTimeConflicts(data: { churchId: number; personId: number; scheduledDate: string; startTime: string; endTime: string; excludeScheduleItemId?: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  const scheduledDate = parseCivilDateAsUtcNoon(data.scheduledDate);
+  if (!scheduledDate) return [];
+  const rows = await db
+    .select()
+    .from(scheduleItems)
+    .where(and(eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.personId, data.personId), eq(scheduleItems.scheduledDate, scheduledDate)));
+  return rows.filter(item => item.id !== data.excludeScheduleItemId && item.status !== "cancelada" && Boolean(item.startTime && item.endTime && item.startTime < data.endTime && item.endTime > data.startTime));
+}
+
+function hasScheduleTimeOverlap(item: { startTime?: string | null; endTime?: string | null }, startTime: string, endTime: string) {
+  return Boolean(item.startTime && item.endTime && item.startTime < endTime && item.endTime > startTime);
+}
+
+export async function createScheduleItem(data: { churchId: number; ministryId: number; departmentId?: number | null; eventId?: number | null; personId: number; scheduledDate: Date; startTime: string; endTime: string; role?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    // A mesma Pessoa é o recurso que serializa criações/edições concorrentes.
+    // O churchId faz parte da trava para preservar o isolamento entre igrejas.
+    const lockedPerson = await tx
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1)
+      .for("update");
+    if (!lockedPerson[0]) throw new Error("Pessoa não encontrada nesta igreja.");
+
+    const existing = await tx
+      .select()
+      .from(scheduleItems)
+      .where(and(eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.personId, data.personId), eq(scheduleItems.scheduledDate, data.scheduledDate), eq(scheduleItems.status, "agendada")));
+    if (existing.some(item => hasScheduleTimeOverlap(item, data.startTime, data.endTime))) {
+      throw new Error("Esta pessoa já possui outra escala em horário sobreposto nesta data.");
+    }
+
+    const result = await tx.insert(scheduleItems).values({
+      churchId: data.churchId,
+      ministryId: data.ministryId,
+      departmentId: data.departmentId ?? null,
+      eventId: data.eventId ?? null,
+      personId: data.personId,
+      scheduledDate: data.scheduledDate,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      role: data.role ?? null,
+    });
+    return Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0) || null;
+  });
+}
+
+export async function createScheduleItemsForDepartmentTeam(data: { churchId: number; ministryId: number; departmentId: number; eventId?: number | null; scheduledDate: Date; startTime: string; endTime: string; role?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const departmentRows = await tx
+      .select({ id: departments.id })
+      .from(departments)
+      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId), eq(departments.ministryId, data.ministryId), eq(departments.active, true)))
+      .limit(1)
+      .for("update");
+    if (!departmentRows[0]) throw new Error("O Departamento selecionado não pertence a este Ministério.");
+    const members = await tx
+      .select({ personId: departmentMembers.personId })
+      .from(departmentMembers)
+      .innerJoin(people, eq(people.id, departmentMembers.personId))
+      .where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.active, true), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .orderBy(people.fullName);
+    const personIds = Array.from(new Set(members.map(member => member.personId))).sort((left, right) => left - right);
+    if (personIds.length === 0) throw new Error("Este Departamento ainda não possui participantes ativos.");
+
+    const lockedPeople = await tx
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.churchId, data.churchId), inArray(people.id, personIds), eq(people.active, true)))
+      .orderBy(asc(people.id))
+      .for("update");
+    if (lockedPeople.length !== personIds.length) throw new Error("Um ou mais participantes desta equipe não pertencem a esta igreja.");
+
+    const existing = await tx
+      .select()
+      .from(scheduleItems)
+      .where(and(eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.scheduledDate, data.scheduledDate), inArray(scheduleItems.personId, personIds), eq(scheduleItems.status, "agendada")));
+    if (existing.some(item => hasScheduleTimeOverlap(item, data.startTime, data.endTime))) {
+      throw new Error("Uma ou mais pessoas desta equipe já possuem escala em horário sobreposto nesta data.");
+    }
+    const result = await tx.insert(scheduleItems).values(
+      personIds.map(personId => ({
+      churchId: data.churchId,
+      ministryId: data.ministryId,
+      departmentId: data.departmentId,
+      eventId: data.eventId ?? null,
+      personId,
+      scheduledDate: data.scheduledDate,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      role: data.role ?? null,
+      }))
+    );
+    return {
+      count: personIds.length,
+      firstId: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0) || null,
+    };
+  });
+}
+
+export async function getUpcomingScheduleItemsByMinistry(churchId: number, ministryId: number, limit = 3) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(scheduleItems)
+    .where(and(eq(scheduleItems.churchId, churchId), eq(scheduleItems.ministryId, ministryId), eq(scheduleItems.status, "agendada")));
+  const todayKey = formatCivilDateInput(currentCivilDateAsUtcNoon());
+  const civilDateKey = (value: Date | string) => {
+    const date = value instanceof Date ? value : new Date(value);
+    return formatCivilDateInput(date);
+  };
+  const upcoming = rows
+    .filter(item => civilDateKey(item.scheduledDate) >= todayKey)
+    .sort((left, right) => {
+      const dateComparison = civilDateKey(left.scheduledDate).localeCompare(civilDateKey(right.scheduledDate));
+      if (dateComparison !== 0) return dateComparison;
+      return String(left.startTime ?? "99:99").localeCompare(String(right.startTime ?? "99:99")) || left.id - right.id;
+    })
+    .slice(0, Math.max(1, Math.min(limit, 10)));
+  if (upcoming.length === 0) return [];
+  const [people, departments] = await Promise.all([getPeopleByChurch(churchId), getDepartmentsByChurch(churchId)]);
+  const peopleById = new Map(people.map(person => [person.id, person.fullName]));
+  const departmentsById = new Map(departments.map(department => [department.id, department.name]));
+  return upcoming.map(item => ({
+    ...item,
+    personName: peopleById.get(item.personId) ?? null,
+    departmentName: item.departmentId ? departmentsById.get(item.departmentId) ?? null : null,
+  }));
+}
+
+export async function getScheduleItemById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(scheduleItems)
+    .where(and(eq(scheduleItems.id, id), eq(scheduleItems.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateScheduleItem(data: { id: number; churchId: number; ministryId: number; departmentId?: number | null; eventId?: number | null; personId: number; scheduledDate: Date; startTime: string; endTime: string; role?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const currentRows = await tx
+      .select({ personId: scheduleItems.personId })
+      .from(scheduleItems)
+      .where(and(eq(scheduleItems.id, data.id), eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.status, "agendada")))
+      .limit(1)
+      .for("update");
+    const current = currentRows[0];
+    if (!current) return null;
+
+    const personIds = Array.from(new Set([current.personId, data.personId])).sort((left, right) => left - right);
+    const lockedPeople = await tx
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.churchId, data.churchId), inArray(people.id, personIds), eq(people.active, true)))
+      .orderBy(asc(people.id))
+      .for("update");
+    if (lockedPeople.length !== personIds.length) throw new Error("Pessoa não encontrada nesta igreja.");
+
+    const existing = await tx
+      .select()
+      .from(scheduleItems)
+      .where(and(eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.personId, data.personId), eq(scheduleItems.scheduledDate, data.scheduledDate), eq(scheduleItems.status, "agendada")));
+    if (existing.some(item => item.id !== data.id && hasScheduleTimeOverlap(item, data.startTime, data.endTime))) {
+      throw new Error("Esta pessoa já possui outra escala em horário sobreposto nesta data.");
+    }
+
+    await tx
+      .update(scheduleItems)
+      .set({
+        ministryId: data.ministryId,
+        departmentId: data.departmentId ?? null,
+        eventId: data.eventId ?? null,
+        personId: data.personId,
+        scheduledDate: data.scheduledDate,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        role: data.role ?? null,
+      })
+      .where(and(eq(scheduleItems.id, data.id), eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.status, "agendada")));
+    const updatedRows = await tx
+      .select()
+      .from(scheduleItems)
+      .where(and(eq(scheduleItems.id, data.id), eq(scheduleItems.churchId, data.churchId)))
+      .limit(1);
+    return updatedRows[0] ?? null;
+  });
+}
+
+export async function cancelScheduleItem(data: { id: number; churchId: number; cancelledByChurchUserId: number; cancelReason?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(scheduleItems)
+    .set({
+      status: "cancelada",
+      cancelledAt: new Date(),
+      cancelledByChurchUserId: data.cancelledByChurchUserId,
+      cancelReason: data.cancelReason ?? null,
+    })
+    .where(and(eq(scheduleItems.id, data.id), eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.status, "agendada")));
+  return getScheduleItemById(data.id, data.churchId);
+}
+
+export async function assignPersonToMinistry(data: { churchId: number; ministryId: number; personId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const locked = await tx
+      .select({ id: ministries.id })
+      .from(ministries)
+      .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId), eq(ministries.active, true)))
+      .limit(1)
+      .for("update");
+    if (locked.length === 0) throw new Error("Ministério não encontrado nesta igreja.");
+    const person = await tx
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1);
+    if (person.length === 0) throw new Error("Pessoa não encontrada nesta igreja.");
+    const existing = await tx
+      .select()
+      .from(ministryMembers)
+      .where(and(eq(ministryMembers.ministryId, data.ministryId), eq(ministryMembers.personId, data.personId), eq(ministryMembers.active, true)))
+      .limit(1);
+    if (existing[0]) return existing[0];
+    const result = await tx.insert(ministryMembers).values({
+      ministryId: data.ministryId,
+      personId: data.personId,
+      active: true,
+    });
+    const membershipId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!membershipId) throw new Error("Não foi possível vincular a Pessoa ao Ministério.");
+    const rows = await tx
+      .select()
+      .from(ministryMembers)
+      .where(and(eq(ministryMembers.id, membershipId), eq(ministryMembers.ministryId, data.ministryId)))
+      .limit(1);
+    return rows[0] ?? null;
+  });
+}
+export async function removePersonFromMinistry(data: { churchId: number; ministryId: number; personId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const ministry = await tx
+      .select({ id: ministries.id })
+      .from(ministries)
+      .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    if (ministry.length === 0) throw new Error("Ministério não encontrado nesta igreja.");
+    const result = await tx
+      .update(ministryMembers)
+      .set({ active: false })
+      .where(and(eq(ministryMembers.ministryId, data.ministryId), eq(ministryMembers.personId, data.personId), eq(ministryMembers.active, true)));
+    await tx
+      .update(ministryRoleAssignments)
+      .set({ active: false, endedAt: new Date() })
+      .where(and(eq(ministryRoleAssignments.churchId, data.churchId), eq(ministryRoleAssignments.ministryId, data.ministryId), eq(ministryRoleAssignments.personId, data.personId), eq(ministryRoleAssignments.active, true)));
+    return Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0) > 0;
+  });
+}
+
+export async function getMinistryRoleAssignmentById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(ministryRoleAssignments)
+    .where(and(eq(ministryRoleAssignments.id, id), eq(ministryRoleAssignments.churchId, churchId), eq(ministryRoleAssignments.active, true)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+export async function getMinistryRoleAssignmentsByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ assignment: ministryRoleAssignments, ministry: ministries })
+    .from(ministryRoleAssignments)
+    .innerJoin(ministries, eq(ministries.id, ministryRoleAssignments.ministryId))
+    .where(and(eq(ministryRoleAssignments.churchId, churchId), eq(ministryRoleAssignments.personId, personId), eq(ministryRoleAssignments.active, true), eq(ministries.churchId, churchId), eq(ministries.active, true)))
+    .orderBy(ministries.name, ministryRoleAssignments.roleKey);
+}
+
+export async function getActiveMinistryRoleKeysByPerson(personId: number, churchId: number) {
+  const assignments = await getMinistryRoleAssignmentsByPerson(personId, churchId);
+  return Array.from(new Set(assignments.map(({ assignment }) => assignment.roleKey)));
+}
+
+export async function getMinistryRoleAssignmentsByMinistry(ministryId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ assignment: ministryRoleAssignments, person: people })
+    .from(ministryRoleAssignments)
+    .innerJoin(people, eq(people.id, ministryRoleAssignments.personId))
+    .where(and(eq(ministryRoleAssignments.ministryId, ministryId), eq(ministryRoleAssignments.churchId, churchId), eq(ministryRoleAssignments.active, true), eq(people.churchId, churchId), eq(people.active, true)))
+    .orderBy(people.fullName, ministryRoleAssignments.roleKey);
+}
+
+export async function assignMinistryRole(data: { churchId: number; ministryId: number; personId: number; roleKey: string; assignedByChurchUserId?: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    if (data.roleKey === MINISTRY_VICE_LEADER_ROLE_KEY) {
+      const ministryRows = await tx
+        .select({ id: ministries.id })
+        .from(ministries)
+        .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId), eq(ministries.active, true)))
+        .limit(1)
+        .for("update");
+      if (ministryRows.length === 0) throw new Error("Ministério não encontrado nesta igreja.");
+      await tx
+        .update(ministryRoleAssignments)
+        .set({ active: false, endedAt: new Date() })
+        .where(and(eq(ministryRoleAssignments.churchId, data.churchId), eq(ministryRoleAssignments.ministryId, data.ministryId), eq(ministryRoleAssignments.roleKey, MINISTRY_VICE_LEADER_ROLE_KEY), eq(ministryRoleAssignments.active, true), ne(ministryRoleAssignments.personId, data.personId)));
+    }
+    const existing = await tx
+      .select({ id: ministryRoleAssignments.id })
+      .from(ministryRoleAssignments)
+      .where(and(eq(ministryRoleAssignments.churchId, data.churchId), eq(ministryRoleAssignments.ministryId, data.ministryId), eq(ministryRoleAssignments.personId, data.personId), eq(ministryRoleAssignments.roleKey, data.roleKey), eq(ministryRoleAssignments.active, true)))
+      .limit(1);
+    if (existing.length) return { id: existing[0].id, alreadyAssigned: true };
+    const result = await tx.insert(ministryRoleAssignments).values({ ...data, active: true });
+    return { id: result[0].insertId, alreadyAssigned: false };
+  });
+}
+
+export async function deactivateMinistryRole(id: number, churchId: number, ministryId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(ministryRoleAssignments)
+    .set({ active: false, endedAt: new Date() })
+    .where(and(eq(ministryRoleAssignments.id, id), eq(ministryRoleAssignments.churchId, churchId), eq(ministryRoleAssignments.ministryId, ministryId), eq(ministryRoleAssignments.active, true)));
+}
+
+export async function getMinistryRoleDefinitionsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(ministryRoleDefinitions).where(eq(ministryRoleDefinitions.churchId, churchId)).orderBy(ministryRoleDefinitions.name);
+}
+
+export async function createMinistryRoleDefinition(data: { churchId: number; ministryId?: number | null; key: string; name: string; permissionPackage: "member" | "cell_leader" | "consolidator" | "visitor" | "treasurer" | "ministry_leader" | "communication_leader"; createdByChurchUserId?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.insert(ministryRoleDefinitions).values({
+    ...data,
+    ministryId: data.ministryId ?? null,
+    createdByChurchUserId: data.createdByChurchUserId ?? null,
+  });
+  const rows = await db
+    .select()
+    .from(ministryRoleDefinitions)
+    .where(and(eq(ministryRoleDefinitions.churchId, data.churchId), eq(ministryRoleDefinitions.key, data.key)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+// ─── ANNOUNCEMENTS (MURAL) ────────────────────────────────────────────────────
+
+export async function getAnnouncementsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(announcements).where(eq(announcements.churchId, churchId)).orderBy(desc(announcements.pinned), desc(announcements.createdAt)).limit(50);
+}
+
+export async function getPublicDailyDevotionalByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const now = new Date();
+  const rows = await db
+    .select({
+    id: announcements.id,
+    title: announcements.title,
+    content: announcements.content,
+    type: announcements.type,
+    imageUrl: announcements.imageUrl,
+    ctaLabel: announcements.ctaLabel,
+    ctaHref: announcements.ctaHref,
+    publishedAt: announcements.publishedAt,
+    expiresAt: announcements.expiresAt,
+    })
+    .from(announcements)
+    .where(and(eq(announcements.churchId, churchId), eq(announcements.type, "devocional"), eq(announcements.publicVisible, true), or(eq(announcements.publicStatus, "publicado"), eq(announcements.publicStatus, "agendado")), or(isNull(announcements.publicStartsAt), lte(announcements.publicStartsAt, now)), or(isNull(announcements.expiresAt), gt(announcements.expiresAt, now))))
+    .orderBy(desc(announcements.publishedAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getPublicAnnouncementsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+  return db
+    .select({
+    id: announcements.id,
+    title: announcements.title,
+    content: announcements.content,
+    type: announcements.type,
+    imageUrl: announcements.imageUrl,
+    pinned: announcements.pinned,
+    ctaLabel: announcements.ctaLabel,
+    ctaHref: announcements.ctaHref,
+    publishedAt: announcements.publishedAt,
+    expiresAt: announcements.expiresAt,
+    })
+    .from(announcements)
+    .where(and(eq(announcements.churchId, churchId), eq(announcements.publicVisible, true), or(eq(announcements.publicStatus, "publicado"), eq(announcements.publicStatus, "agendado")), or(isNull(announcements.publicStartsAt), lte(announcements.publicStartsAt, now)), or(isNull(announcements.expiresAt), gt(announcements.expiresAt, now))))
+    .orderBy(desc(announcements.pinned), desc(announcements.publishedAt))
+    .limit(6);
+}
+
+export async function updateAnnouncement(id: number, churchId: number, data: Partial<typeof announcements.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(announcements)
+    .set(data)
+    .where(and(eq(announcements.id, id), eq(announcements.churchId, churchId)));
+  const rows = await db
+    .select()
+    .from(announcements)
+    .where(and(eq(announcements.id, id), eq(announcements.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createAnnouncement(data: typeof announcements.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(announcements).values(data);
+  const id = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+  if (!id) return result[0];
+  const rows = await db
+    .select()
+    .from(announcements)
+    .where(and(eq(announcements.id, id), eq(announcements.churchId, data.churchId)))
+    .limit(1);
+  return rows[0] ?? result[0];
+}
+
+export async function deleteAnnouncement(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const rows = await db
+    .select({ id: announcements.id, title: announcements.title })
+    .from(announcements)
+    .where(and(eq(announcements.id, id), eq(announcements.churchId, churchId)))
+    .limit(1);
+  const announcement = rows[0];
+  if (!announcement) return null;
+  await db.delete(announcements).where(and(eq(announcements.id, id), eq(announcements.churchId, churchId)));
+  return announcement;
+}
+
+// ─── PRAYER REQUESTS ──────────────────────────────────────────────────────────
+
+export async function getPrayerRequestsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(prayerRequests).where(eq(prayerRequests.churchId, churchId)).orderBy(desc(prayerRequests.createdAt)).limit(50);
+}
+
+export async function getPrayerRequestsByPerson(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(prayerRequests)
+    .where(and(eq(prayerRequests.churchId, churchId), eq(prayerRequests.personId, personId)))
+    .orderBy(desc(prayerRequests.createdAt))
+    .limit(50);
+}
+
+export async function createPrayerRequest(data: typeof prayerRequests.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const result = await db.insert(prayerRequests).values(data);
+  return result[0];
+}
+
+// ─── DASHBOARD STATS ──────────────────────────────────────────────────────────
+
+export async function getDashboardStats(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [totalMembers] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(people)
+    .where(and(eq(people.churchId, churchId), eq(people.active, true)));
+
+  const [newSouls] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(souls)
+    .where(and(eq(souls.churchId, churchId), eq(souls.status, "nova_alma")));
+
+  const [consolidated] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(souls)
+    .where(and(eq(souls.churchId, churchId), eq(souls.status, "consolidado")));
+
+  const [baptized] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(people)
+    .where(and(eq(people.churchId, churchId), sql`${people.baptismDate} IS NOT NULL`));
+
+  const [totalCells] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(cells)
+    .where(and(eq(cells.churchId, churchId), eq(cells.active, true)));
+
+  const [totalLeaders] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(churchMembers)
+    .where(and(eq(churchMembers.churchId, churchId), eq(churchMembers.active, true), or(eq(churchMembers.role, "lider"), eq(churchMembers.role, "supervisor"), eq(churchMembers.role, "pastor_local"), eq(churchMembers.role, "pastor_presidente")) as any));
+
+  const [totalMinistries] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(ministries)
+    .where(and(eq(ministries.churchId, churchId), eq(ministries.active, true)));
+
+  return {
+    totalMembers: Number(totalMembers?.count ?? 0),
+    newSouls: Number(newSouls?.count ?? 0),
+    consolidated: Number(consolidated?.count ?? 0),
+    baptized: Number(baptized?.count ?? 0),
+    totalCells: Number(totalCells?.count ?? 0),
+    totalLeaders: Number(totalLeaders?.count ?? 0),
+    totalMinistries: Number(totalMinistries?.count ?? 0),
+  };
+}
+
+// ─── RADAR ESPIRITUAL ─────────────────────────────────────────────────────────
+
+export async function getRadarEspiritual(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+
+  // Pessoas sem célula
+  const semCelula = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(people)
+    .where(and(eq(people.churchId, churchId), eq(people.active, true), sql`${people.id} NOT IN (SELECT personId FROM cell_members WHERE active = true)`));
+
+  // Pessoas sem discipulador
+  const semDiscipulador = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(people)
+    .where(and(eq(people.churchId, churchId), eq(people.active, true), isNull(people.discipledById)));
+
+  // Pessoas sem consolidação (novas almas sem consolidador)
+  const semConsolidacao = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(souls)
+    .where(and(eq(souls.churchId, churchId), eq(souls.status, "nova_alma"), sql`${souls.id} NOT IN (SELECT soulId FROM consolidations)`));
+
+  // Pessoas sem curso
+  const semCurso = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(people)
+    .where(and(eq(people.churchId, churchId), eq(people.active, true), sql`${people.id} NOT IN (SELECT personId FROM course_enrollments)`));
+
+  return {
+    semCelula: Number(semCelula[0]?.count ?? 0),
+    semDiscipulador: Number(semDiscipulador[0]?.count ?? 0),
+    semConsolidacao: Number(semConsolidacao[0]?.count ?? 0),
+    semCurso: Number(semCurso[0]?.count ?? 0),
+  };
+}
+
+// ─── DISCIPLESHIP FUNNEL ──────────────────────────────────────────────────────
+
+export async function getDiscipleshipFunnel(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const stages = ["nova_alma", "consolidacao", "fundamentos", "celula", "batismo", "encontro_com_deus", "escola_de_lideres", "lideranca", "multiplicador"] as const;
+
+  const results = await Promise.all(
+    stages.map(async stage => {
+      const [row] = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(people)
+        .where(and(eq(people.churchId, churchId), eq(people.active, true), eq(people.discipleshipStage, stage)));
+      return { stage, count: Number(row?.count ?? 0) };
+    })
+  );
+
+  return results;
+}
+
+// ─── DISCIPLESHIP TREE ────────────────────────────────────────────────────────
+
+export async function getDiscipleshipTree(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db
+    .select({
+      id: people.id,
+      fullName: people.fullName,
+      photoUrl: people.photoUrl,
+      discipleshipStage: people.discipleshipStage,
+      wonById: people.wonById,
+      discipledById: people.discipledById,
+    })
+    .from(people)
+    .where(and(eq(people.churchId, churchId), eq(people.active, true)))
+    .orderBy(people.fullName)
+    .limit(200);
+}
+
+// ─── FAMILIES ─────────────────────────────────────────────────────────────────
+export async function getFamiliesByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db.select().from(families).where(eq(families.churchId, churchId)).limit(200);
+  if (!rows.length) return [];
+  const memberRows = await db
+    .select({
+      familyId: familyMembers.familyId,
+      personId: familyMembers.personId,
+      relation: familyMembers.relation,
+      fullName: people.fullName,
+    })
+    .from(familyMembers)
+    .innerJoin(people, eq(people.id, familyMembers.personId))
+    .where(
+      and(
+        inArray(
+          familyMembers.familyId,
+          rows.map(family => family.id)
+        ),
+        eq(people.churchId, churchId)
+      )
+    );
+  const membersByFamily = new Map<number, typeof memberRows>();
+  for (const member of memberRows) {
+    const current = membersByFamily.get(member.familyId) ?? [];
+    current.push(member);
+    membersByFamily.set(member.familyId, current);
+  }
+  return rows.map(f => {
+    const members = membersByFamily.get(f.id) ?? [];
+    const father = members.find(member => member.relation === "pai");
+    const mother = members.find(member => member.relation === "mae");
+    return {
+      id: f.id,
+      name: f.familyName,
+      fatherName: father?.fullName ?? null,
+      motherName: mother?.fullName ?? null,
+      childrenCount: members.filter(member => member.relation === "filho" || member.relation === "filha").length,
+      memberCount: members.length,
+      phone: null as string | null,
+      address: null as string | null,
+      notes: f.notes,
+    };
+  });
+}
+
+export async function createFamily(input: { churchId: number; name: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(families).values({
+    churchId: input.churchId,
+    familyName: input.name,
+  });
+  return {
+    success: true,
+    id: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0),
+  };
+}
+
+// ─── SUPER ADMIN ──────────────────────────────────────────────────────────────
+
+export async function getAllChurchesAdmin() {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      id: churches.id,
+      name: churches.name,
+      slug: churches.slug,
+      city: churches.city,
+      state: churches.state,
+      email: churches.email,
+      phone: churches.phone,
+      active: churches.active,
+      createdAt: churches.createdAt,
+    })
+    .from(churches)
+    .orderBy(churches.createdAt);
+  return rows;
+}
+
+export async function getGlobalStats() {
+  const db = await getDb();
+  if (!db) return { totalChurches: 0, totalMembers: 0, totalCells: 0, totalSouls: 0 };
+  const [churchCount] = await db.select({ count: sql<number>`count(*)` }).from(churches);
+  const [memberCount] = await db.select({ count: sql<number>`count(*)` }).from(people);
+  const [cellCount] = await db.select({ count: sql<number>`count(*)` }).from(cells);
+  const [soulCount] = await db.select({ count: sql<number>`count(*)` }).from(souls);
+  return {
+    totalChurches: Number(churchCount?.count ?? 0),
+    totalMembers: Number(memberCount?.count ?? 0),
+    totalCells: Number(cellCount?.count ?? 0),
+    totalSouls: Number(soulCount?.count ?? 0),
+  };
+}
+
+// ─── VISITOR LEADS ────────────────────────────────────────────────────────────
+
+export async function createVisitorLead(input: { churchId: number; name: string; phone?: string; email?: string; type: "pedido_oracao" | "visita_pastoral" | "primeira_visita" | "interesse_participar"; message?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(visitorLeads).values({
+    churchId: input.churchId,
+    name: input.name,
+    phone: input.phone ?? null,
+    email: input.email ?? null,
+    type: input.type,
+    message: input.message ?? null,
+  });
+  return { success: true };
+}
+
+export async function getVisitorLeadsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(visitorLeads).where(eq(visitorLeads.churchId, churchId)).orderBy(visitorLeads.createdAt);
+}
+
+// ─── PUBLIC REGISTRATION QR LEADS ─────────────────────────────────────────────
+
+function normalizePublicRegistrationWhatsapp(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function publicRegistrationIdentityHash(churchId: number, whatsapp: string) {
+  return createHash("sha256")
+    .update(`${churchId}:${normalizePublicRegistrationWhatsapp(whatsapp)}`)
+    .digest("hex");
+}
+
+function formatPublicRegistrationAddress(input: { zipCode?: string | null; street?: string | null; number?: string | null; neighborhood?: string | null; city?: string | null; state?: string | null }) {
+  const parts = [input.street && input.number ? `${input.street}, ${input.number}` : input.street || input.number, input.neighborhood, input.city && input.state ? `${input.city}/${input.state}` : input.city || input.state, input.zipCode ? `CEP ${input.zipCode}` : null].filter(Boolean);
+  return parts.join(" · ") || null;
+}
+
+export async function createPublicRegistrationLead(input: { churchId: number; name: string; whatsapp: string; email?: string | null; zipCode?: string | null; street?: string | null; number?: string | null; neighborhood?: string | null; city?: string | null; state?: string | null; source: "qrcode" | "convite" | "evento" | "link"; campaign?: string | null; consentAccepted: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const identityHash = publicRegistrationIdentityHash(input.churchId, input.whatsapp);
+  const existing = await db
+    .select()
+    .from(publicRegistrationLeads)
+    .where(and(eq(publicRegistrationLeads.churchId, input.churchId), eq(publicRegistrationLeads.identityHash, identityHash)))
+    .limit(1);
+  if (existing[0])
+    return {
+      created: false as const,
+      duplicate: true as const,
+      lead: existing[0],
+    };
+
+  const origin = input.source === "evento" ? ("evento" as const) : input.source === "convite" ? ("indicacao" as const) : input.source === "link" ? ("redes_sociais" as const) : ("visita_espontanea" as const);
+  const address = formatPublicRegistrationAddress(input);
+  const notes = input.campaign ? `Cadastro público · ${input.campaign}` : "Cadastro público recebido por QR Code ou link oficial.";
+  return db.transaction(async tx => {
+    const soulResult = await tx.insert(souls).values({
+      churchId: input.churchId,
+      personId: null,
+      name: input.name,
+      phone: input.whatsapp,
+      address,
+      decisionDate: currentCivilDateAsUtcNoon(),
+      origin,
+      acceptedJesus: false,
+      reconciliation: false,
+      firstVisit: true,
+      wonById: null,
+      notes,
+      status: "nova_alma",
+    });
+    const soulId = Number((soulResult[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!soulId) throw new Error("Failed to create public registration soul");
+    const leadResult = await tx.insert(publicRegistrationLeads).values({
+      churchId: input.churchId,
+      soulId,
+      identityHash,
+      name: input.name,
+      whatsapp: input.whatsapp,
+      email: input.email || null,
+      zipCode: input.zipCode || null,
+      street: input.street || null,
+      number: input.number || null,
+      neighborhood: input.neighborhood || null,
+      city: input.city || null,
+      state: input.state || null,
+      source: input.source,
+      campaign: input.campaign || null,
+      consentAccepted: input.consentAccepted,
+      consentVersion: "v1",
+      status: "novo",
+    });
+    const leadId = Number((leadResult[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+    if (!leadId) throw new Error("Failed to create public registration lead");
+    const rows = await tx
+      .select()
+      .from(publicRegistrationLeads)
+      .where(and(eq(publicRegistrationLeads.id, leadId), eq(publicRegistrationLeads.churchId, input.churchId)))
+      .limit(1);
+    return {
+      created: true as const,
+      duplicate: false as const,
+      lead: rows[0] ?? null,
+    };
+  });
+}
+
+export async function getPublicRegistrationLeadsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+    ...getTableColumns(publicRegistrationLeads),
+    personId: souls.personId,
+    soulStatus: souls.status,
+    discipleshipStage: people.discipleshipStage,
+      personEmail: people.email,
+    })
+    .from(publicRegistrationLeads)
+    .leftJoin(souls, and(eq(souls.id, publicRegistrationLeads.soulId), eq(souls.churchId, churchId)))
+    .leftJoin(people, and(eq(people.id, souls.personId), eq(people.churchId, churchId)))
+    .where(eq(publicRegistrationLeads.churchId, churchId))
+    .orderBy(desc(publicRegistrationLeads.createdAt))
+    .limit(100);
+}
+
+export async function updatePublicRegistrationLeadStatus(id: number, churchId: number, status: "novo" | "em_atendimento" | "convertido" | "encerrado") {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(publicRegistrationLeads)
+    .set({ status })
+    .where(and(eq(publicRegistrationLeads.id, id), eq(publicRegistrationLeads.churchId, churchId)));
+  return { success: true };
+}
+
+function publicRegistrationPhoneExpression(column: any, normalizedWhatsapp: string) {
+  return sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') = ${normalizedWhatsapp}`;
+}
+
+export async function convertPublicRegistrationLeadToDisciple(input: { id: number; churchId: number; changedByChurchUserId: number; personId?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async tx => {
+    const leadRows = await tx
+      .select()
+      .from(publicRegistrationLeads)
+      .where(and(eq(publicRegistrationLeads.id, input.id), eq(publicRegistrationLeads.churchId, input.churchId)))
+      .limit(1);
+    const lead = leadRows[0];
+    if (!lead) return { status: "not_found" as const };
+
+    if (lead.soulId) {
+      const soulRows = await tx
+        .select({ personId: souls.personId })
+        .from(souls)
+        .where(and(eq(souls.id, lead.soulId), eq(souls.churchId, input.churchId)))
+        .limit(1);
+      const existingPersonId = soulRows[0]?.personId ?? null;
+      if (existingPersonId) {
+        if (lead.status !== "convertido") {
+          await tx
+            .update(publicRegistrationLeads)
+            .set({ status: "convertido" })
+            .where(and(eq(publicRegistrationLeads.id, input.id), eq(publicRegistrationLeads.churchId, input.churchId)));
+        }
+        const existingPerson = await tx
+          .select({
+          id: people.id,
+          fullName: people.fullName,
+          phone: people.phone,
+          whatsapp: people.whatsapp,
+          email: people.email,
+          })
+          .from(people)
+          .where(and(eq(people.id, existingPersonId), eq(people.churchId, input.churchId)))
+          .limit(1);
+        return {
+          status: "already_converted" as const,
+          person: existingPerson[0] ?? {
+            id: existingPersonId,
+            fullName: lead.name,
+            phone: lead.whatsapp,
+            whatsapp: lead.whatsapp,
+            email: lead.email,
+          },
+        };
+      }
+    }
+
+    let personId = input.personId ?? null;
+    let resultStatus: "created" | "linked" = input.personId ? "linked" : "created";
+    if (personId) {
+      const selected = await tx
+        .select({
+        id: people.id,
+        fullName: people.fullName,
+        phone: people.phone,
+        whatsapp: people.whatsapp,
+        email: people.email,
+        })
+        .from(people)
+        .where(and(eq(people.id, personId), eq(people.churchId, input.churchId), eq(people.active, true)))
+        .limit(1);
+      if (!selected[0]) return { status: "person_not_found" as const };
+    } else {
+      const normalizedWhatsapp = normalizePublicRegistrationWhatsapp(lead.whatsapp);
+      const matches = await tx
+        .select({
+        id: people.id,
+        fullName: people.fullName,
+        phone: people.phone,
+        whatsapp: people.whatsapp,
+        email: people.email,
+        })
+        .from(people)
+        .where(and(eq(people.churchId, input.churchId), eq(people.active, true), or(publicRegistrationPhoneExpression(people.whatsapp, normalizedWhatsapp), publicRegistrationPhoneExpression(people.phone, normalizedWhatsapp))))
+        .orderBy(people.fullName)
+        .limit(10);
+      if (matches.length > 1) return { status: "ambiguous" as const, matches };
+      if (matches.length === 1) {
+        personId = matches[0].id;
+        resultStatus = "linked";
+      }
+    }
+
+    if (!personId) {
+      const personResult = await tx.insert(people).values({
+        churchId: input.churchId,
+        fullName: lead.name,
+        phone: lead.whatsapp,
+        whatsapp: lead.whatsapp,
+        email: lead.email,
+        zipCode: lead.zipCode,
+        street: lead.street,
+        number: lead.number,
+        neighborhood: lead.neighborhood,
+        city: lead.city,
+        state: lead.state,
+        conversionDate: currentCivilDateAsUtcNoon(),
+        discipleshipStage: "nova_alma",
+        active: true,
+      });
+      personId = Number((personResult[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      if (!personId) throw new Error("Failed to create disciple person");
+    }
+
+    await tx
+      .update(souls)
+      .set({ personId })
+      .where(and(eq(souls.id, lead.soulId ?? -1), eq(souls.churchId, input.churchId)));
+    await tx
+      .update(publicRegistrationLeads)
+      .set({ status: "convertido" })
+      .where(and(eq(publicRegistrationLeads.id, input.id), eq(publicRegistrationLeads.churchId, input.churchId)));
+
+    const progress = await tx
+      .select({ id: discipleshipStageProgress.id })
+      .from(discipleshipStageProgress)
+      .where(and(eq(discipleshipStageProgress.churchId, input.churchId), eq(discipleshipStageProgress.personId, personId), eq(discipleshipStageProgress.stage, "nova_alma")))
+      .limit(1);
+    const conversionNote = "Ficha criada ou vinculada a partir de cadastro público.";
+    if (progress[0]) {
+      await tx
+        .update(discipleshipStageProgress)
+        .set({
+        status: "concluida",
+        notes: conversionNote,
+        completedAt: new Date(),
+        updatedByChurchUserId: input.changedByChurchUserId,
+        })
+        .where(eq(discipleshipStageProgress.id, progress[0].id));
+    } else {
+      await tx.insert(discipleshipStageProgress).values({
+        churchId: input.churchId,
+        personId,
+        stage: "nova_alma",
+        status: "concluida",
+        notes: conversionNote,
+        completedAt: new Date(),
+        updatedByChurchUserId: input.changedByChurchUserId,
+      });
+    }
+    await tx.insert(discipleshipStageEvents).values({
+      churchId: input.churchId,
+      personId,
+      stage: "nova_alma",
+      status: "concluida",
+      notes: conversionNote,
+      changedByChurchUserId: input.changedByChurchUserId,
+    });
+
+    const person = await tx
+      .select({
+      id: people.id,
+      fullName: people.fullName,
+      phone: people.phone,
+      whatsapp: people.whatsapp,
+      email: people.email,
+      })
+      .from(people)
+      .where(and(eq(people.id, personId), eq(people.churchId, input.churchId)))
+      .limit(1);
+    return { status: resultStatus, person: person[0] ?? null };
+  });
+}
+
+// ─── CHURCH REGISTRATION ──────────────────────────────────────────────────────
+
+export async function createChurchRegistration(churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(churchRegistrations).values({ churchId });
+  return { success: true };
+}
+
+export async function getPendingRegistrations() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: churchRegistrations.id,
+      churchId: churchRegistrations.churchId,
+      status: churchRegistrations.status,
+      submittedAt: churchRegistrations.submittedAt,
+      churchName: churches.name,
+      churchSlug: churches.slug,
+      email: churches.email,
+    })
+    .from(churchRegistrations)
+    .innerJoin(churches, eq(churches.id, churchRegistrations.churchId))
+    .where(eq(churchRegistrations.status, "pending"))
+    .orderBy(churchRegistrations.submittedAt);
+}
+
+export async function updateChurchRegistration(id: number, status: "approved" | "rejected" | "suspended", reason?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const registration = await db.select({ churchId: churchRegistrations.churchId }).from(churchRegistrations).where(eq(churchRegistrations.id, id)).limit(1);
+  if (!registration[0]) throw new Error("Cadastro de igreja não encontrado");
+
+  await db
+    .update(churchRegistrations)
+    .set({
+    status,
+    reviewedAt: new Date(),
+      rejectionReason: status === "rejected" ? reason ?? null : null,
+      suspensionReason: status === "suspended" ? reason ?? null : null,
+    })
+    .where(eq(churchRegistrations.id, id));
+  await db
+    .update(churches)
+    .set({ active: status === "approved" })
+    .where(eq(churches.id, registration[0].churchId));
+  return { success: true };
+}
+
+// ─── ONBOARDING ───────────────────────────────────────────────────────────────
+
+export async function getOnboardingProgress(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(onboardingProgress).where(eq(onboardingProgress.churchId, churchId)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function upsertOnboardingProgress(data: { churchId: number; stepWelcome?: boolean; stepImportMembers?: boolean; stepCreateCell?: boolean; stepInviteLeaders?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await getOnboardingProgress(data.churchId);
+  const update: Record<string, unknown> = {};
+  if (data.stepWelcome !== undefined) update.stepWelcome = data.stepWelcome;
+  if (data.stepImportMembers !== undefined) update.stepImportMembers = data.stepImportMembers;
+  if (data.stepCreateCell !== undefined) update.stepCreateCell = data.stepCreateCell;
+  if (data.stepInviteLeaders !== undefined) update.stepInviteLeaders = data.stepInviteLeaders;
+
+  if (existing) {
+    // Check if all steps completed
+    const merged = { ...existing, ...update };
+    if (merged.stepWelcome && merged.stepImportMembers && merged.stepCreateCell && merged.stepInviteLeaders) {
+      update.completedAt = new Date();
+    }
+    await db.update(onboardingProgress).set(update).where(eq(onboardingProgress.id, existing.id));
+    return { ...existing, ...update };
+  } else {
+    const vals = { churchId: data.churchId, ...update };
+    await db.insert(onboardingProgress).values(vals as typeof onboardingProgress.$inferInsert);
+    return vals;
+  }
+}
+
+export async function importPeopleFromCSV(
+  churchId: number,
+  rows: {
+    fullName: string;
+    email?: string;
+    phone?: string;
+    birthDate?: string;
+  }[]
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  let imported = 0;
+  for (const row of rows) {
+    if (!row.fullName?.trim()) continue;
+    await db.insert(people).values({
+      churchId,
+      fullName: row.fullName.trim(),
+      email: row.email?.trim() || null,
+      phone: row.phone?.trim() || null,
+      birthDate: row.birthDate ? parseCivilDateAsUtcNoon(row.birthDate) : null,
+      status: "membro",
+    } as typeof people.$inferInsert);
+    imported++;
+  }
+  return imported;
+}
+
+// ─── ESCOLA DE FUNDAMENTOS ────────────────────────────────────────────────────
+
+export async function getCoursesByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(courses).where(eq(courses.churchId, churchId));
+}
+
+export async function createCourse(data: { churchId: number; name: string; type: "salvacao" | "oracao" | "biblia" | "igreja" | "espirito_santo" | "batismo" | "outro"; description?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(courses).values({
+    churchId: data.churchId,
+    name: data.name.trim(),
+    type: data.type,
+    description: data.description?.trim() || null,
+    active: true,
+  });
+  return { id: result.insertId };
+}
+
+export async function getCourseEnrollments(courseId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+    enrollment: courseEnrollments,
+    person: { id: people.id, fullName: people.fullName, phone: people.phone },
+  })
+  .from(courseEnrollments)
+  .innerJoin(people, eq(courseEnrollments.personId, people.id))
+  .where(and(eq(courseEnrollments.courseId, courseId), eq(people.churchId, churchId)));
+}
+
+export async function getCourseEnrollmentById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ enrollment: courseEnrollments })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .where(and(eq(courseEnrollments.id, id), eq(courses.churchId, churchId), eq(people.churchId, churchId)))
+    .limit(1);
+  return rows[0]?.enrollment ?? null;
+}
+
+export async function enrollInCourse(data: { courseId: number; personId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(courseEnrollments).values({
+    courseId: data.courseId,
+    personId: data.personId,
+    status: "matriculado",
+  } as typeof courseEnrollments.$inferInsert);
+}
+
+export async function updateCourseEnrollment(id: number, data: { status?: string; completedAt?: Date | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.status !== undefined) update.status = data.status;
+  if (data.completedAt !== undefined) update.completedAt = data.completedAt;
+  await db.update(courseEnrollments).set(update).where(eq(courseEnrollments.id, id));
+}
+
+export async function getFoundationStudiesByCourse(churchId: number, courseId: number, includeInactive = false) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(foundationStudies.churchId, churchId), eq(foundationStudies.courseId, courseId)];
+  if (!includeInactive) conditions.push(eq(foundationStudies.active, true));
+  return db
+    .select()
+    .from(foundationStudies)
+    .where(and(...conditions))
+    .orderBy(foundationStudies.position, foundationStudies.id);
+}
+
+export async function getFoundationStudyWeekStarts(churchId: number, courseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ weekStart: foundationStudies.weekStart })
+    .from(foundationStudies)
+    .where(and(eq(foundationStudies.churchId, churchId), eq(foundationStudies.courseId, courseId), isNotNull(foundationStudies.weekStart)));
+  return rows.map(row => row.weekStart).filter((value): value is string => Boolean(value));
+}
+
+export function selectFoundationWeeklyStudy<T extends { id: number; weekStart?: string | null }>(studies: T[], today: string) {
+  const datedStudies = studies.filter(study => Boolean(study.weekStart && study.weekStart <= today)).sort((left, right) => (right.weekStart ?? "").localeCompare(left.weekStart ?? "") || right.id - left.id);
+  if (datedStudies[0]) return datedStudies[0];
+  const legacyStudies = studies.filter(study => !study.weekStart);
+  return legacyStudies[legacyStudies.length - 1] ?? null;
+}
+
+export async function getFoundationModulesByCourse(churchId: number, courseId: number, includeInactive = false) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(foundationModules.churchId, churchId), eq(foundationModules.courseId, courseId)];
+  if (!includeInactive) conditions.push(eq(foundationModules.active, true));
+  return db
+    .select()
+    .from(foundationModules)
+    .where(and(...conditions))
+    .orderBy(foundationModules.position, foundationModules.id);
+}
+
+export async function getFoundationModuleById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(foundationModules)
+    .where(and(eq(foundationModules.id, id), eq(foundationModules.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createFoundationModule(data: { churchId: number; courseId: number; title: string; description?: string | null; position: number; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(foundationModules).values({
+    ...data,
+    title: data.title.trim(),
+    description: data.description?.trim() || null,
+    active: true,
+  });
+  return { id: result.insertId };
+}
+
+export async function updateFoundationModule(data: { id: number; churchId: number; title?: string; description?: string | null; position?: number; active?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.title !== undefined) update.title = data.title.trim();
+  if (data.description !== undefined) update.description = data.description?.trim() || null;
+  if (data.position !== undefined) update.position = data.position;
+  if (data.active !== undefined) update.active = data.active;
+  if (Object.keys(update).length === 0) return;
+  await db
+    .update(foundationModules)
+    .set(update)
+    .where(and(eq(foundationModules.id, data.id), eq(foundationModules.churchId, data.churchId)));
+}
+
+export async function getFoundationStudyById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(foundationStudies)
+    .where(and(eq(foundationStudies.id, id), eq(foundationStudies.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createFoundationStudy(data: { churchId: number; courseId: number; moduleId?: number | null; title: string; weekStart?: string | null; summary?: string | null; content?: string | null; position: number; createdByChurchUserId: number; active?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(foundationStudies).values({
+    ...data,
+    title: data.title.trim(),
+    weekStart: data.weekStart ?? null,
+    summary: data.summary?.trim() || null,
+    content: data.content?.trim() || null,
+    active: data.active ?? false,
+  });
+  return { id: result.insertId };
+}
+
+export async function createFoundationStudyWithBlocks(
+  data: {
+  churchId: number;
+  courseId: number;
+  moduleId?: number | null;
+  title: string;
+  weekStart?: string | null;
+  summary?: string | null;
+  content?: string | null;
+  position: number;
+  createdByChurchUserId: number;
+    active?: boolean;
+  },
+  blocks: ReadonlyArray<{ title: string; content: string }>
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async tx => {
+    const [result] = await tx.insert(foundationStudies).values({
+    ...data,
+    title: data.title.trim(),
+    weekStart: data.weekStart ?? null,
+    summary: data.summary?.trim() || null,
+    content: data.content?.trim() || null,
+    active: data.active ?? false,
+  });
+    const studyId = Number(result.insertId);
+    if (blocks.length > 0) {
+      await tx.insert(foundationStudyBlocks).values(
+        blocks.map((block, position) => ({
+          churchId: data.churchId,
+          studyId,
+          title: block.title.trim(),
+          content: block.content.trim(),
+          position,
+          active: true,
+          createdByChurchUserId: data.createdByChurchUserId,
+        }))
+      );
+    }
+    return { id: studyId };
+  });
+}
+
+export async function updateFoundationStudy(data: { id: number; churchId: number; moduleId?: number | null; weekStart?: string | null; title?: string; summary?: string | null; content?: string | null; position?: number; active?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.title !== undefined) update.title = data.title.trim();
+  if (data.moduleId !== undefined) update.moduleId = data.moduleId;
+  if (data.weekStart !== undefined) update.weekStart = data.weekStart;
+  if (data.summary !== undefined) update.summary = data.summary?.trim() || null;
+  if (data.content !== undefined) update.content = data.content?.trim() || null;
+  if (data.position !== undefined) update.position = data.position;
+  if (data.active !== undefined) update.active = data.active;
+  if (Object.keys(update).length === 0) return;
+  await db
+    .update(foundationStudies)
+    .set(update)
+    .where(and(eq(foundationStudies.id, data.id), eq(foundationStudies.churchId, data.churchId)));
+}
+
+export async function getFoundationClassForStudy(churchId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(foundationClasses)
+    .where(and(eq(foundationClasses.churchId, churchId), eq(foundationClasses.studyId, studyId)))
+    .orderBy(desc(foundationClasses.classDate), desc(foundationClasses.id))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFoundationClassById(churchId: number, classId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(foundationClasses)
+    .where(and(eq(foundationClasses.churchId, churchId), eq(foundationClasses.id, classId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function upsertFoundationClass(data: { churchId: number; courseId: number; studyId: number; classDate: string; status: "planejada" | "realizada" | "cancelada"; notes?: string | null; churchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(foundationClasses)
+    .values({
+    churchId: data.churchId,
+    courseId: data.courseId,
+    studyId: data.studyId,
+    classDate: data.classDate,
+    status: data.status,
+    notes: data.notes?.trim() || null,
+    createdByChurchUserId: data.churchUserId,
+    updatedByChurchUserId: data.churchUserId,
+    })
+    .onDuplicateKeyUpdate({
+    set: {
+      status: data.status,
+      notes: data.notes?.trim() || null,
+      updatedByChurchUserId: data.churchUserId,
+    },
+  });
+  const rows = await db
+    .select()
+    .from(foundationClasses)
+    .where(and(eq(foundationClasses.churchId, data.churchId), eq(foundationClasses.studyId, data.studyId), eq(foundationClasses.classDate, data.classDate)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFoundationClassRoster(churchId: number, classId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const foundationClass = await getFoundationClassById(churchId, classId);
+  if (!foundationClass) return [];
+  return db
+    .select({
+    enrollment: courseEnrollments,
+    person: { id: people.id, fullName: people.fullName },
+    attendance: foundationClassAttendance,
+    progress: foundationLessonProgress,
+  })
+    .from(courseEnrollments)
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .leftJoin(foundationClassAttendance, and(eq(foundationClassAttendance.classId, classId), eq(foundationClassAttendance.enrollmentId, courseEnrollments.id), eq(foundationClassAttendance.churchId, churchId)))
+    .leftJoin(foundationLessonProgress, and(eq(foundationLessonProgress.enrollmentId, courseEnrollments.id), eq(foundationLessonProgress.studyId, foundationClass.studyId), eq(foundationLessonProgress.churchId, churchId)))
+    .where(and(eq(courseEnrollments.courseId, foundationClass.courseId), eq(people.churchId, churchId)))
+    .orderBy(people.fullName, people.id);
+}
+
+export async function recordFoundationClassAttendance(data: { churchId: number; classId: number; enrollmentId: number; status: "presente" | "ausente" | "justificado"; notes?: string | null; recordedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(foundationClassAttendance)
+    .values({
+    churchId: data.churchId,
+    classId: data.classId,
+    enrollmentId: data.enrollmentId,
+    status: data.status,
+    notes: data.notes?.trim() || null,
+    recordedByChurchUserId: data.recordedByChurchUserId,
+    })
+    .onDuplicateKeyUpdate({
+    set: {
+      status: data.status,
+      notes: data.notes?.trim() || null,
+      recordedByChurchUserId: data.recordedByChurchUserId,
+    },
+  });
+}
+
+export async function getFoundationStudentAttendance(churchId: number, classId: number, enrollmentId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(foundationClassAttendance)
+    .where(and(eq(foundationClassAttendance.churchId, churchId), eq(foundationClassAttendance.classId, classId), eq(foundationClassAttendance.enrollmentId, enrollmentId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFoundationStudyMetrics(churchId: number, courseId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return { started: 0, completed: 0, questionErrors: [] };
+  const progressRows = await db
+    .select({ status: foundationLessonProgress.status })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .leftJoin(foundationLessonProgress, and(eq(foundationLessonProgress.enrollmentId, courseEnrollments.id), eq(foundationLessonProgress.studyId, studyId), eq(foundationLessonProgress.churchId, churchId)))
+    .where(and(eq(courseEnrollments.courseId, courseId), eq(courses.churchId, churchId), eq(people.churchId, churchId)));
+  const questionErrors = await db
+    .select({
+    questionId: foundationQuestions.id,
+    prompt: foundationQuestions.prompt,
+    errors: count(),
+  })
+    .from(foundationQuestionAttempts)
+    .innerJoin(foundationQuestions, and(eq(foundationQuestions.id, foundationQuestionAttempts.questionId), eq(foundationQuestions.churchId, churchId)))
+    .innerJoin(foundationStudyBlocks, and(eq(foundationStudyBlocks.id, foundationQuestions.blockId), eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId)))
+    .where(and(eq(foundationQuestionAttempts.churchId, churchId), eq(foundationQuestionAttempts.isCorrect, false)))
+    .groupBy(foundationQuestions.id, foundationQuestions.prompt)
+    .orderBy(desc(count()))
+    .limit(5);
+  return {
+    started: progressRows.filter(row => row.status === "em_andamento" || row.status === "concluida").length,
+    completed: progressRows.filter(row => row.status === "concluida").length,
+    questionErrors,
+  };
+}
+
+export async function getFoundationWeeklyOverview(churchId: number, courseId: number, today: string) {
+  const studies = await getFoundationStudiesByCourse(churchId, courseId);
+  const study = selectFoundationWeeklyStudy(studies, today);
+  if (!study) {
+    return {
+      study: null,
+      metrics: {
+        enrolled: 0,
+        started: 0,
+        completed: 0,
+        pending: 0,
+        startedPercent: 0,
+        completedPercent: 0,
+        questionErrors: [],
+      },
+      class: null,
+    };
+  }
+
+  const db = await getDb();
+  if (!db)
+    return {
+      study,
+      metrics: {
+        enrolled: 0,
+        started: 0,
+        completed: 0,
+        pending: 0,
+        startedPercent: 0,
+        completedPercent: 0,
+        questionErrors: [],
+      },
+      class: null,
+    };
+  const progressRows = await db
+    .select({ status: foundationLessonProgress.status })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .leftJoin(foundationLessonProgress, and(eq(foundationLessonProgress.enrollmentId, courseEnrollments.id), eq(foundationLessonProgress.studyId, study.id), eq(foundationLessonProgress.churchId, churchId)))
+    .where(and(eq(courseEnrollments.courseId, courseId), eq(courses.churchId, churchId), eq(people.churchId, churchId)));
+  const [metrics, foundationClass] = await Promise.all([getFoundationStudyMetrics(churchId, courseId, study.id), getFoundationClassForStudy(churchId, study.id)]);
+  const roster = foundationClass ? await getFoundationClassRoster(churchId, foundationClass.id) : [];
+  const enrolled = progressRows.length;
+  const started = progressRows.filter(row => row.status === "em_andamento" || row.status === "concluida").length;
+  const completed = progressRows.filter(row => row.status === "concluida").length;
+  const pending = progressRows.filter(row => !row.status || row.status === "nao_iniciada").length;
+  return {
+    study,
+    metrics: {
+      enrolled,
+      started,
+      completed,
+      pending,
+      startedPercent: enrolled ? Math.round((started / enrolled) * 100) : 0,
+      completedPercent: enrolled ? Math.round((completed / enrolled) * 100) : 0,
+      questionErrors: metrics.questionErrors,
+    },
+    class: foundationClass
+      ? {
+      id: foundationClass.id,
+      classDate: foundationClass.classDate,
+      status: foundationClass.status,
+      attendance: {
+        total: roster.length,
+            present: roster.filter(row => row.attendance?.status === "presente").length,
+            absent: roster.filter(row => row.attendance?.status === "ausente").length,
+            justified: roster.filter(row => row.attendance?.status === "justificado").length,
+      },
+        }
+      : null,
+  };
+}
+
+export async function getFoundationEnrollmentForPerson(courseId: number, personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ enrollment: courseEnrollments })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .where(and(eq(courseEnrollments.courseId, courseId), eq(courseEnrollments.personId, personId), eq(courses.churchId, churchId), eq(people.churchId, churchId)))
+    .limit(1);
+  return rows[0]?.enrollment ?? null;
+}
+
+export async function getFoundationActiveEnrollmentForPerson(personId: number, churchId: number, includeCompleted = false) {
+  const db = await getDb();
+  if (!db) return null;
+  const conditions = [eq(courseEnrollments.personId, personId), eq(courses.churchId, churchId), eq(people.churchId, churchId)];
+  if (!includeCompleted) {
+    conditions.push(ne(courseEnrollments.status, "concluido"));
+    conditions.push(eq(courses.active, true));
+  }
+  const rows = await db
+    .select({ enrollment: courseEnrollments, course: courses })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .where(and(...conditions))
+    .orderBy(desc(courseEnrollments.enrolledAt), desc(courseEnrollments.id))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFoundationLearningProgress(churchId: number, enrollmentId: number, courseId: number, includeInactive = false) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(foundationStudies.churchId, churchId), eq(foundationStudies.courseId, courseId)];
+  if (!includeInactive) conditions.push(eq(foundationStudies.active, true));
+  return db
+    .select({
+    study: foundationStudies,
+    progress: foundationLessonProgress,
+  })
+    .from(foundationStudies)
+    .leftJoin(foundationLessonProgress, and(eq(foundationLessonProgress.studyId, foundationStudies.id), eq(foundationLessonProgress.churchId, churchId), eq(foundationLessonProgress.enrollmentId, enrollmentId)))
+    .where(and(...conditions))
+    .orderBy(foundationStudies.position, foundationStudies.id);
+}
+
+export type FoundationQuestionOption = { id: string; label: string };
+
+export async function getFoundationStudyQuestions(churchId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ block: foundationStudyBlocks, question: foundationQuestions })
+    .from(foundationStudyBlocks)
+    .innerJoin(foundationQuestions, and(eq(foundationQuestions.blockId, foundationStudyBlocks.id), eq(foundationQuestions.churchId, churchId), eq(foundationQuestions.active, true)))
+    .where(and(eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId), eq(foundationStudyBlocks.active, true)))
+    .orderBy(foundationStudyBlocks.position, foundationStudyBlocks.id, foundationQuestions.position, foundationQuestions.id);
+}
+
+export async function getFoundationStudyBlocks(churchId: number, studyId: number, activeOnly = false) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId)];
+  if (activeOnly) conditions.push(eq(foundationStudyBlocks.active, true));
+  return db
+    .select()
+    .from(foundationStudyBlocks)
+    .where(and(...conditions))
+    .orderBy(foundationStudyBlocks.position, foundationStudyBlocks.id);
+}
+
+export async function getFoundationStudyBlockById(churchId: number, studyId: number, blockId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(foundationStudyBlocks)
+    .where(and(eq(foundationStudyBlocks.id, blockId), eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+export async function updateFoundationStudyBlock(data: { id: number; churchId: number; studyId: number; title?: string; content?: string; reflectionPrompt?: string | null; active?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Partial<typeof foundationStudyBlocks.$inferInsert> = {};
+  if (data.title !== undefined) update.title = data.title.trim();
+  if (data.content !== undefined) update.content = data.content.trim();
+  if (data.reflectionPrompt !== undefined) update.reflectionPrompt = data.reflectionPrompt?.trim() || null;
+  if (data.active !== undefined) update.active = data.active;
+  if (Object.keys(update).length === 0) {
+    return getFoundationStudyBlockById(data.churchId, data.studyId, data.id);
+  }
+  await db
+    .update(foundationStudyBlocks)
+    .set(update)
+    .where(and(eq(foundationStudyBlocks.id, data.id), eq(foundationStudyBlocks.churchId, data.churchId), eq(foundationStudyBlocks.studyId, data.studyId)));
+  return getFoundationStudyBlockById(data.churchId, data.studyId, data.id);
+}
+export async function moveFoundationStudyBlocks(data: { churchId: number; studyId: number; currentId: number; currentPosition: number; targetId: number; targetPosition: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.transaction(async tx => {
+    const scope = and(eq(foundationStudyBlocks.churchId, data.churchId), eq(foundationStudyBlocks.studyId, data.studyId));
+    await tx
+      .update(foundationStudyBlocks)
+      .set({ position: -1 })
+      .where(and(scope, eq(foundationStudyBlocks.id, data.currentId)));
+    await tx
+      .update(foundationStudyBlocks)
+      .set({ position: data.currentPosition })
+      .where(and(scope, eq(foundationStudyBlocks.id, data.targetId)));
+    await tx
+      .update(foundationStudyBlocks)
+      .set({ position: data.targetPosition })
+      .where(and(scope, eq(foundationStudyBlocks.id, data.currentId)));
+  });
+}
+export async function getFoundationBlockProgress(churchId: number, enrollmentId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ progress: foundationBlockProgress, block: foundationStudyBlocks })
+    .from(foundationBlockProgress)
+    .innerJoin(foundationStudyBlocks, and(eq(foundationStudyBlocks.id, foundationBlockProgress.blockId), eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId), eq(foundationStudyBlocks.active, true)))
+    .where(and(eq(foundationBlockProgress.churchId, churchId), eq(foundationBlockProgress.enrollmentId, enrollmentId), eq(foundationBlockProgress.studyId, studyId)))
+    .orderBy(asc(foundationStudyBlocks.position), asc(foundationStudyBlocks.id));
+}
+
+export async function getFoundationCorrectQuestionIds(churchId: number, enrollmentId: number, questionIds: number[]) {
+  if (!questionIds.length) return new Set<number>();
+  const db = await getDb();
+  if (!db) return new Set<number>();
+  const rows = await db
+    .select({ questionId: foundationQuestionAttempts.questionId })
+    .from(foundationQuestionAttempts)
+    .where(and(eq(foundationQuestionAttempts.churchId, churchId), eq(foundationQuestionAttempts.enrollmentId, enrollmentId), eq(foundationQuestionAttempts.isCorrect, true), inArray(foundationQuestionAttempts.questionId, questionIds)));
+  return new Set(rows.map(row => row.questionId));
+}
+
+export async function getFoundationStudySession(churchId: number, enrollmentId: number, studyId: number) {
+  const [study, progress, blocks, blockProgress, questionRows] = await Promise.all([getFoundationStudyById(studyId, churchId), getFoundationLessonProgress(churchId, enrollmentId, studyId), getFoundationStudyBlocks(churchId, studyId, true), getFoundationBlockProgress(churchId, enrollmentId, studyId), getFoundationStudyQuestions(churchId, studyId)]);
+  const correctQuestionIds = await getFoundationCorrectQuestionIds(
+    churchId,
+    enrollmentId,
+    questionRows.map(({ question }) => question.id)
+  );
+  return {
+    study,
+    progress,
+    blocks,
+    blockProgress,
+    questionRows,
+    correctQuestionIds,
+  };
+}
+
+export async function createFoundationStudyBlock(data: { churchId: number; studyId: number; title: string; content: string; reflectionPrompt?: string | null; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) return null;
+  const last = await db
+    .select({ position: foundationStudyBlocks.position })
+    .from(foundationStudyBlocks)
+    .where(and(eq(foundationStudyBlocks.churchId, data.churchId), eq(foundationStudyBlocks.studyId, data.studyId)))
+    .orderBy(desc(foundationStudyBlocks.position), desc(foundationStudyBlocks.id))
+    .limit(1);
+  const result = await db.insert(foundationStudyBlocks).values({ ...data, reflectionPrompt: data.reflectionPrompt?.trim() || null, position: (last[0]?.position ?? -1) + 1 });
+  return Number(result[0]?.insertId ?? 0);
+}
+
+export async function createFoundationQuestion(data: { churchId: number; blockId: number; prompt: string; options: FoundationQuestionOption[]; correctOptionId: string; explanation: string; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) return null;
+  const last = await db
+    .select({ position: foundationQuestions.position })
+    .from(foundationQuestions)
+    .where(and(eq(foundationQuestions.churchId, data.churchId), eq(foundationQuestions.blockId, data.blockId)))
+    .orderBy(desc(foundationQuestions.position), desc(foundationQuestions.id))
+    .limit(1);
+  const result = await db.insert(foundationQuestions).values({ ...data, position: (last[0]?.position ?? -1) + 1 });
+  return Number(result[0]?.insertId ?? 0);
+}
+
+export async function getFoundationQuestionForAttempt(churchId: number, studyId: number, questionId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ block: foundationStudyBlocks, question: foundationQuestions })
+    .from(foundationQuestions)
+    .innerJoin(foundationStudyBlocks, and(eq(foundationStudyBlocks.id, foundationQuestions.blockId), eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId), eq(foundationStudyBlocks.active, true)))
+    .where(and(eq(foundationQuestions.id, questionId), eq(foundationQuestions.churchId, churchId), eq(foundationQuestions.active, true)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function countFoundationQuestionAttempts(churchId: number, enrollmentId: number, questionId: number) {
+  const db = await getDb();
+  if (!db) return 0;
+  const rows = await db
+    .select({ total: count() })
+    .from(foundationQuestionAttempts)
+    .where(and(eq(foundationQuestionAttempts.churchId, churchId), eq(foundationQuestionAttempts.enrollmentId, enrollmentId), eq(foundationQuestionAttempts.questionId, questionId)));
+  return Number(rows[0]?.total ?? 0);
+}
+
+export async function getFoundationQuestionAttemptByClientId(data: { churchId: number; enrollmentId: number; questionId: number; clientAttemptId: string }) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(foundationQuestionAttempts)
+    .where(and(eq(foundationQuestionAttempts.churchId, data.churchId), eq(foundationQuestionAttempts.enrollmentId, data.enrollmentId), eq(foundationQuestionAttempts.questionId, data.questionId), eq(foundationQuestionAttempts.clientAttemptId, data.clientAttemptId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function recordFoundationQuestionAttempt(data: { churchId: number; enrollmentId: number; questionId: number; selectedOptionId: string; isCorrect: boolean; attemptNumber: number; clientAttemptId?: string | null }) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(foundationQuestionAttempts).values({
+    ...data,
+    clientAttemptId: data.clientAttemptId ?? null,
+  });
+  return Number(result[0]?.insertId ?? 0);
+}
+
+export async function hasCompletedFoundationQuestions(churchId: number, enrollmentId: number, studyId: number) {
+  const questions = await getFoundationStudyQuestions(churchId, studyId);
+  if (!questions.length) return true;
+  const db = await getDb();
+  if (!db) return false;
+  const correctRows = await db
+    .select({ questionId: foundationQuestionAttempts.questionId })
+    .from(foundationQuestionAttempts)
+    .where(
+      and(
+      eq(foundationQuestionAttempts.churchId, churchId),
+      eq(foundationQuestionAttempts.enrollmentId, enrollmentId),
+      eq(foundationQuestionAttempts.isCorrect, true),
+        inArray(
+          foundationQuestionAttempts.questionId,
+          questions.map(({ question }) => question.id)
+        )
+      )
+    );
+  const correctQuestionIds = new Set(correctRows.map(row => row.questionId));
+  return questions.every(({ question }) => correctQuestionIds.has(question.id));
+}
+
+export async function getFoundationLessonProgress(churchId: number, enrollmentId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(foundationLessonProgress)
+    .where(and(eq(foundationLessonProgress.churchId, churchId), eq(foundationLessonProgress.enrollmentId, enrollmentId), eq(foundationLessonProgress.studyId, studyId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFoundationCourseProgress(churchId: number, courseId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+    study: foundationStudies,
+    enrollment: courseEnrollments,
+    person: { id: people.id, fullName: people.fullName },
+    progress: foundationLessonProgress,
+  })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .innerJoin(foundationStudies, and(eq(foundationStudies.courseId, courseId), eq(foundationStudies.churchId, churchId), eq(foundationStudies.active, true)))
+    .leftJoin(foundationLessonProgress, and(eq(foundationLessonProgress.enrollmentId, courseEnrollments.id), eq(foundationLessonProgress.studyId, foundationStudies.id), eq(foundationLessonProgress.churchId, churchId)))
+    .where(and(eq(courseEnrollments.courseId, courseId), eq(courses.churchId, churchId), eq(people.churchId, churchId)));
+}
+
+export async function getFoundationStudentHistory(churchId: number, enrollmentId: number, courseId: number, today: string) {
+  const rows = await getFoundationLearningProgress(churchId, enrollmentId, courseId, true);
+  const history = await Promise.all(
+    rows.map(async ({ study, progress }) => {
+    const [foundationClass, blockProgress] = await Promise.all([
+      getFoundationClassForStudy(churchId, study.id),
+      progress ? getFoundationBlockProgress(churchId, enrollmentId, study.id) : Promise.resolve([]),
+    ]);
+      const attendance = foundationClass ? await getFoundationStudentAttendance(churchId, foundationClass.id, enrollmentId) : null;
+    return {
+      study,
+      progress,
+      stageReflections: blockProgress
+        .filter(({ progress: block }) => Boolean(block.reflection?.trim()))
+        .map(({ block, progress: blockProgressItem }) => ({
+          blockId: block.id,
+          title: block.title,
+          reflectionPrompt: block.reflectionPrompt,
+          reflection: blockProgressItem.reflection!.trim(),
+        })),
+      class: foundationClass
+          ? {
+              id: foundationClass.id,
+              classDate: foundationClass.classDate,
+              status: foundationClass.status,
+            }
+        : null,
+      attendance: attendance ? { status: attendance.status } : null,
+    };
+    })
+  );
+  return history.filter(item => Boolean(item.progress) || Boolean(item.class) || !item.study.weekStart || item.study.weekStart <= today);
+}
+
+export async function getFoundationStudentHistoryForPerson(churchId: number, personId: number, today: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const enrollments = await db
+    .select({ enrollment: courseEnrollments, course: courses })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
+    .innerJoin(people, eq(courseEnrollments.personId, people.id))
+    .where(and(eq(courseEnrollments.personId, personId), eq(courses.churchId, churchId), eq(people.churchId, churchId)))
+    .orderBy(desc(courseEnrollments.enrolledAt), desc(courseEnrollments.id));
+  const grouped = await Promise.all(
+    enrollments.map(async ({ enrollment, course }) => {
+    const items = await getFoundationStudentHistory(churchId, enrollment.id, course.id, today);
+      return items.map(item => ({
+      ...item,
+      course: { id: course.id, name: course.name },
+      enrollmentId: enrollment.id,
+    }));
+    })
+  );
+  const history = grouped.flat();
+  const dateKey = (item: (typeof history)[number]) => {
+    if (item.study.weekStart) return item.study.weekStart;
+    const progressDate = item.progress?.completedAt ?? item.progress?.updatedAt ?? item.progress?.createdAt;
+    return progressDate ? new Date(progressDate).toISOString() : "0000-00-00";
+  };
+  return history.sort((left, right) => dateKey(right).localeCompare(dateKey(left)) || right.study.id - left.study.id);
+}
+
+export async function touchFoundationLessonProgress(data: { churchId: number; enrollmentId: number; studyId: number; lastBlockPosition: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db
+    .insert(foundationLessonProgress)
+    .values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    status: "em_andamento",
+    lastBlockPosition: data.lastBlockPosition,
+    startedAt: now,
+    lastAccessedAt: now,
+    })
+    .onDuplicateKeyUpdate({
+    set: {
+      status: sql`CASE WHEN ${foundationLessonProgress.status} = 'concluida' THEN ${foundationLessonProgress.status} ELSE 'em_andamento' END`,
+      lastBlockPosition: sql`GREATEST(${foundationLessonProgress.lastBlockPosition}, ${data.lastBlockPosition})`,
+      lastAccessedAt: now,
+    },
+  });
+}
+
+export async function touchFoundationBlockProgress(data: { churchId: number; enrollmentId: number; studyId: number; blockId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db
+    .insert(foundationBlockProgress)
+    .values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    blockId: data.blockId,
+    status: "em_andamento",
+    firstViewedAt: now,
+    lastViewedAt: now,
+    })
+    .onDuplicateKeyUpdate({
+    set: { lastViewedAt: now },
+  });
+}
+
+export async function completeFoundationBlockProgress(data: { churchId: number; enrollmentId: number; studyId: number; blockId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db
+    .insert(foundationBlockProgress)
+    .values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    blockId: data.blockId,
+    status: "concluida",
+    firstViewedAt: now,
+    lastViewedAt: now,
+    completedAt: now,
+    })
+    .onDuplicateKeyUpdate({
+    set: { status: "concluida", lastViewedAt: now, completedAt: now },
+  });
+}
+
+export async function saveFoundationBlockReflection(data: { churchId: number; enrollmentId: number; studyId: number; blockId: number; reflection: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  const reflection = data.reflection?.trim() || null;
+  await db
+    .insert(foundationBlockProgress)
+    .values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    blockId: data.blockId,
+    status: "em_andamento",
+    firstViewedAt: now,
+    lastViewedAt: now,
+    reflection,
+    })
+    .onDuplicateKeyUpdate({
+    set: { lastViewedAt: now, reflection },
+  });
+}
+
+export async function saveFoundationLessonReflection(data: { churchId: number; enrollmentId: number; studyId: number; reflection: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db
+    .insert(foundationLessonProgress)
+    .values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    status: "em_andamento",
+    lastAccessedAt: now,
+    reflection: data.reflection?.trim() || null,
+    })
+    .onDuplicateKeyUpdate({
+    set: { lastAccessedAt: now, reflection: data.reflection?.trim() || null },
+  });
+}
+
+export async function completeFoundationLesson(data: { churchId: number; enrollmentId: number; studyId: number; lastBlockPosition: number; reflection?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db
+    .insert(foundationLessonProgress)
+    .values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    status: "concluida",
+    lastBlockPosition: data.lastBlockPosition,
+    startedAt: now,
+    lastAccessedAt: now,
+    completedAt: now,
+    reflection: data.reflection?.trim() || null,
+    })
+    .onDuplicateKeyUpdate({
+    set: {
+      status: "concluida",
+      lastBlockPosition: data.lastBlockPosition,
+      lastAccessedAt: now,
+      completedAt: now,
+      reflection: data.reflection?.trim() || null,
+    },
+  });
+}
+
+export async function reviewFoundationLesson(data: { churchId: number; enrollmentId: number; studyId: number; reviewStatus: "compreendeu" | "precisa_reforco" | "nao_participou"; reviewNotes?: string | null; reviewedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db
+    .insert(foundationLessonProgress)
+    .values({
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    studyId: data.studyId,
+    reviewStatus: data.reviewStatus,
+    reviewNotes: data.reviewNotes?.trim() || null,
+    reviewedAt: now,
+    reviewedByChurchUserId: data.reviewedByChurchUserId,
+    })
+    .onDuplicateKeyUpdate({
+    set: {
+      reviewStatus: data.reviewStatus,
+      reviewNotes: data.reviewNotes?.trim() || null,
+      reviewedAt: now,
+      reviewedByChurchUserId: data.reviewedByChurchUserId,
+    },
+  });
+}
+
+export async function releaseFoundationNextStudy(data: { churchId: number; enrollmentId: number; studyId: number; releasedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const now = new Date();
+  await db
+    .update(foundationLessonProgress)
+    .set({
+    releasedAt: now,
+    releasedByChurchUserId: data.releasedByChurchUserId,
+    })
+    .where(and(eq(foundationLessonProgress.churchId, data.churchId), eq(foundationLessonProgress.enrollmentId, data.enrollmentId), eq(foundationLessonProgress.studyId, data.studyId)));
+}
+
+export async function getLibraryItemById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(libraryItems)
+    .where(and(eq(libraryItems.id, id), eq(libraryItems.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getLibraryItemsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ id: libraryItems.id, title: libraryItems.title }).from(libraryItems).where(eq(libraryItems.churchId, churchId)).orderBy(libraryItems.title, libraryItems.id);
+}
+
+export async function getFoundationStudyMaterials(churchId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+    id: foundationStudyMaterials.id,
+    studyId: foundationStudyMaterials.studyId,
+    libraryItemId: foundationStudyMaterials.libraryItemId,
+    position: foundationStudyMaterials.position,
+    notes: foundationStudyMaterials.notes,
+    title: libraryItems.title,
+    type: libraryItems.type,
+    fileUrl: libraryItems.fileUrl,
+    thumbnailUrl: libraryItems.thumbnailUrl,
+    description: libraryItems.description,
+  })
+    .from(foundationStudyMaterials)
+    .innerJoin(libraryItems, and(eq(foundationStudyMaterials.libraryItemId, libraryItems.id), eq(foundationStudyMaterials.churchId, libraryItems.churchId)))
+    .where(and(eq(foundationStudyMaterials.churchId, churchId), eq(foundationStudyMaterials.studyId, studyId)))
+    .orderBy(foundationStudyMaterials.position, foundationStudyMaterials.id);
+}
+
+export async function attachFoundationStudyMaterial(data: { churchId: number; studyId: number; libraryItemId: number; position: number; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(foundationStudyMaterials)
+    .values({ ...data, notes: data.notes ?? null })
+    .onDuplicateKeyUpdate({
+      set: { position: data.position, notes: data.notes ?? null },
+    });
+}
+
+export async function updateFoundationStudyMaterialPosition(data: { id: number; churchId: number; studyId: number; position: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(foundationStudyMaterials)
+    .set({ position: data.position })
+    .where(and(eq(foundationStudyMaterials.id, data.id), eq(foundationStudyMaterials.churchId, data.churchId), eq(foundationStudyMaterials.studyId, data.studyId)));
+}
+
+export async function detachFoundationStudyMaterial(data: { id: number; churchId: number; studyId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(foundationStudyMaterials).where(and(eq(foundationStudyMaterials.id, data.id), eq(foundationStudyMaterials.churchId, data.churchId), eq(foundationStudyMaterials.studyId, data.studyId)));
+}
+
+export async function getFoundationStudyAdministrators(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: foundationStudyAdministrators.id,
+      churchUserId: foundationStudyAdministrators.churchUserId,
+      assignedByChurchUserId: foundationStudyAdministrators.assignedByChurchUserId,
+      createdAt: foundationStudyAdministrators.createdAt,
+      name: churchUsers.name,
+      email: churchUsers.email,
+      role: churchUsers.role,
+      active: churchUsers.active,
+    })
+    .from(foundationStudyAdministrators)
+    .innerJoin(churchUsers, eq(foundationStudyAdministrators.churchUserId, churchUsers.id))
+    .where(and(eq(foundationStudyAdministrators.churchId, churchId), eq(churchUsers.churchId, churchId)))
+    .orderBy(churchUsers.name);
+}
+
+export async function isFoundationStudyAdministrator(churchId: number, churchUserId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: foundationStudyAdministrators.id })
+    .from(foundationStudyAdministrators)
+    .innerJoin(churchUsers, eq(foundationStudyAdministrators.churchUserId, churchUsers.id))
+    .where(and(eq(foundationStudyAdministrators.churchId, churchId), eq(foundationStudyAdministrators.churchUserId, churchUserId), eq(churchUsers.churchId, churchId), eq(churchUsers.active, true)))
+    .limit(1);
+  return Boolean(rows[0]);
+}
+
+export async function assignFoundationStudyAdministrator(data: { churchId: number; churchUserId: number; assignedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(foundationStudyAdministrators)
+    .values(data)
+    .onDuplicateKeyUpdate({
+    set: { assignedByChurchUserId: data.assignedByChurchUserId },
+  });
+}
+
+export async function removeFoundationStudyAdministrator(churchId: number, churchUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(foundationStudyAdministrators).where(and(eq(foundationStudyAdministrators.churchId, churchId), eq(foundationStudyAdministrators.churchUserId, churchUserId)));
+}
+
+function normalizeFoundationImportText(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLocaleLowerCase("pt-BR");
+}
+
+export async function createFoundationImportDraft(data: { churchId: number; courseId: number; createdByChurchUserId: number; sourceFilename: string; fileSha256: string; payload: FoundationImportPayload; summary: FoundationImportSummary }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const [result] = await db.insert(foundationImportDrafts).values({
+    churchId: data.churchId,
+    courseId: data.courseId,
+    createdByChurchUserId: data.createdByChurchUserId,
+    sourceFilename: data.sourceFilename,
+    fileSha256: data.fileSha256,
+    status: "pendente",
+    payload: data.payload,
+    summary: data.summary,
+    expiresAt,
+  });
+  const id = Number(result.insertId ?? 0);
+  if (!id) throw new Error("Não foi possível criar a prévia da importação.");
+  return { id, expiresAt };
+}
+
+export async function getFoundationImportDraft(data: { churchId: number; draftId: number; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(foundationImportDrafts)
+    .where(and(eq(foundationImportDrafts.id, data.draftId), eq(foundationImportDrafts.churchId, data.churchId), eq(foundationImportDrafts.createdByChurchUserId, data.createdByChurchUserId)))
+    .limit(1);
+  const draft = rows[0] ?? null;
+  if (draft && draft.status === "pendente" && draft.expiresAt.getTime() <= Date.now()) {
+    await db
+      .update(foundationImportDrafts)
+      .set({ status: "expirado" })
+      .where(and(eq(foundationImportDrafts.id, data.draftId), eq(foundationImportDrafts.churchId, data.churchId), eq(foundationImportDrafts.createdByChurchUserId, data.createdByChurchUserId), eq(foundationImportDrafts.status, "pendente")));
+    return { ...draft, status: "expirado" as const };
+  }
+  return draft;
+}
+
+export async function cancelFoundationImportDraft(data: { churchId: number; draftId: number; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(foundationImportDrafts)
+    .set({ status: "cancelado" })
+    .where(and(eq(foundationImportDrafts.id, data.draftId), eq(foundationImportDrafts.churchId, data.churchId), eq(foundationImportDrafts.createdByChurchUserId, data.createdByChurchUserId), eq(foundationImportDrafts.status, "pendente")));
+}
+
+export async function confirmFoundationImportDraft(data: { churchId: number; draftId: number; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(foundationImportDrafts)
+      .where(and(eq(foundationImportDrafts.id, data.draftId), eq(foundationImportDrafts.churchId, data.churchId), eq(foundationImportDrafts.createdByChurchUserId, data.createdByChurchUserId)))
+      .limit(1)
+      .for("update");
+    const draft = rows[0];
+    if (!draft) throw new FoundationImportError("Prévia de importação não encontrada nesta igreja.", "NOT_FOUND");
+    if (draft.status !== "pendente") throw new FoundationImportError("Esta prévia já foi encerrada e não pode ser confirmada novamente.", "CONFLICT");
+    if (draft.expiresAt.getTime() <= Date.now()) {
+      await tx.update(foundationImportDrafts).set({ status: "expirado" }).where(eq(foundationImportDrafts.id, draft.id));
+      throw new FoundationImportError("A prévia expirou. Envie o Excel novamente.", "PRECONDITION_FAILED");
+    }
+    const summary = draft.summary as FoundationImportSummary;
+    if (summary.errors > 0) throw new FoundationImportError("Corrija os erros apontados na prévia antes de confirmar.", "PRECONDITION_FAILED");
+    const payload = draft.payload as FoundationImportPayload;
+
+    const courseRows = await tx
+      .select({ id: courses.id, name: courses.name })
+      .from(courses)
+      .where(and(eq(courses.id, payload.courseId), eq(courses.churchId, data.churchId), eq(courses.active, true)))
+      .limit(1)
+      .for("update");
+    const course = courseRows[0];
+    if (!course) throw new FoundationImportError("A turma selecionada não existe ou está inativa nesta igreja.", "NOT_FOUND");
+
+    const duplicateStudies = await tx
+      .select({ id: foundationStudies.id })
+      .from(foundationStudies)
+      .where(and(eq(foundationStudies.churchId, data.churchId), eq(foundationStudies.courseId, payload.courseId), eq(foundationStudies.weekStart, payload.study.weekStart)))
+      .limit(1);
+    if (duplicateStudies.length) throw new FoundationImportError("Já existe um estudo para esta turma e esta semana. Edite o estudo existente na gestão normal.", "CONFLICT");
+
+    const lastStudyRows = await tx
+      .select({ position: foundationStudies.position })
+      .from(foundationStudies)
+      .where(and(eq(foundationStudies.churchId, data.churchId), eq(foundationStudies.courseId, payload.courseId)))
+      .orderBy(desc(foundationStudies.position), desc(foundationStudies.id))
+      .limit(1);
+    const studyPosition = (lastStudyRows[0]?.position ?? -1) + 1;
+
+    let moduleId: number | null = null;
+    if (payload.study.moduleTitle) {
+      const moduleRows = await tx
+        .select({ id: foundationModules.id, title: foundationModules.title })
+        .from(foundationModules)
+        .where(and(eq(foundationModules.churchId, data.churchId), eq(foundationModules.courseId, payload.courseId), eq(foundationModules.active, true)));
+      const module = moduleRows.find(item => normalizeFoundationImportText(item.title) === normalizeFoundationImportText(payload.study.moduleTitle ?? ""));
+      if (!module) throw new FoundationImportError("O módulo informado não existe mais nesta turma.", "PRECONDITION_FAILED");
+      moduleId = module.id;
+    }
+
+    const studyResult = await tx.insert(foundationStudies).values({
+      churchId: data.churchId,
+      courseId: payload.courseId,
+      moduleId,
+      title: payload.study.title.trim(),
+      weekStart: payload.study.weekStart,
+      summary: payload.study.summary?.trim() || null,
+      content: payload.study.content?.trim() || null,
+      position: studyPosition,
+      active: payload.study.publish,
+      createdByChurchUserId: data.createdByChurchUserId,
+    });
+    const studyId = Number(studyResult[0]?.insertId ?? 0);
+    if (!studyId) throw new Error("Não foi possível criar o estudo importado.");
+
+    const blockIdsByPosition = new Map<number, number>();
+    for (const block of [...payload.blocks].sort((left, right) => left.position - right.position)) {
+      const result = await tx.insert(foundationStudyBlocks).values({
+        churchId: data.churchId,
+        studyId,
+        title: block.title.trim(),
+        content: block.content.trim(),
+        position: block.position,
+        active: block.publish,
+        createdByChurchUserId: data.createdByChurchUserId,
+      });
+      const blockId = Number(result[0]?.insertId ?? 0);
+      if (!blockId) throw new Error("Não foi possível criar um bloco do estudo importado.");
+      blockIdsByPosition.set(block.position, blockId);
+    }
+
+    const questionPositionByBlock = new Map<number, number>();
+    for (const question of payload.questions) {
+      const blockId = blockIdsByPosition.get(question.blockPosition);
+      if (!blockId) throw new FoundationImportError(`O bloco “${question.blockTitle}” não está disponível para esta pergunta.`, "PRECONDITION_FAILED");
+      const position = questionPositionByBlock.get(question.blockPosition) ?? 0;
+      questionPositionByBlock.set(question.blockPosition, position + 1);
+      await tx.insert(foundationQuestions).values({
+        churchId: data.churchId,
+        blockId,
+        prompt: question.prompt.trim(),
+        options: question.options,
+        correctOptionId: question.correctOptionId,
+        explanation: question.explanation.trim(),
+        position,
+        active: question.publish,
+        createdByChurchUserId: data.createdByChurchUserId,
+      });
+    }
+
+    if (payload.materials.length) {
+      const libraryRows = await tx.select({ id: libraryItems.id, title: libraryItems.title }).from(libraryItems).where(eq(libraryItems.churchId, data.churchId));
+      for (const material of payload.materials) {
+        const matches = libraryRows.filter(item => normalizeFoundationImportText(item.title) === normalizeFoundationImportText(material.title));
+        if (matches.length !== 1) throw new FoundationImportError(`O material “${material.title}” não pode ser resolvido de forma única nesta igreja.`, "PRECONDITION_FAILED");
+        await tx.insert(foundationStudyMaterials).values({
+          churchId: data.churchId,
+          studyId,
+          libraryItemId: matches[0].id,
+          position: material.position,
+          notes: material.notes?.trim() || null,
+        });
+      }
+    }
+
+    let classId: number | null = null;
+    if (payload.class) {
+      const classResult = await tx.insert(foundationClasses).values({
+        churchId: data.churchId,
+        courseId: payload.courseId,
+        studyId,
+        classDate: payload.class.classDate,
+        status: payload.class.status,
+        notes: payload.class.notes?.trim() || null,
+        createdByChurchUserId: data.createdByChurchUserId,
+        updatedByChurchUserId: data.createdByChurchUserId,
+      });
+      classId = Number(classResult[0]?.insertId ?? 0);
+    }
+
+    await tx
+      .update(foundationImportDrafts)
+      .set({ status: "confirmado", confirmedAt: new Date() })
+      .where(and(eq(foundationImportDrafts.id, draft.id), eq(foundationImportDrafts.status, "pendente")));
+    return {
+      draftId: draft.id,
+      studyId,
+      classId,
+      blockCount: payload.blocks.length,
+      questionCount: payload.questions.length,
+      materialCount: payload.materials.length,
+    };
+  });
+}
+
+// ─── BATISMO ──────────────────────────────────────────────────────────────────
+
+export async function getBaptismClassesByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(baptismClasses).where(eq(baptismClasses.churchId, churchId));
+}
+
+export async function getBaptismEnrollments(classId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+    enrollment: baptismEnrollments,
+    person: { id: people.id, fullName: people.fullName, phone: people.phone },
+  })
+  .from(baptismEnrollments)
+  .innerJoin(people, eq(baptismEnrollments.personId, people.id))
+  .where(and(eq(baptismEnrollments.baptismClassId, classId), eq(baptismEnrollments.churchId, churchId)));
+}
+
+export async function createBaptismClass(data: { churchId: number; name: string; date: string; location?: string; pastor?: string; notes?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(baptismClasses).values(data as unknown as typeof baptismClasses.$inferInsert);
+}
+
+export async function enrollInBaptism(data: { baptismClassId: number; personId: number; churchId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(baptismEnrollments).values({
+    ...data,
+    status: "inscrito",
+  } as typeof baptismEnrollments.$inferInsert);
+}
+
+export async function updateBaptismEnrollment(id: number, churchId: number, data: { status?: string; completedAt?: Date | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.status !== undefined) update.status = data.status;
+  if (data.completedAt !== undefined) update.completedAt = data.completedAt;
+  await db
+    .update(baptismEnrollments)
+    .set(update)
+    .where(and(eq(baptismEnrollments.id, id), eq(baptismEnrollments.churchId, churchId)));
+}
+
+// ─── ENCONTRO COM DEUS ────────────────────────────────────────────────────────
+
+export type EncounterEventStatus = "rascunho" | "planejamento" | "confirmado" | "em_andamento" | "encerrado" | "cancelado";
+export type EncounterEnrollmentStatus = "inscrito" | "confirmado" | "participou" | "concluiu" | "cancelado";
+export type EncounterReviewStatus = "recebida" | "em_analise" | "confirmada" | "precisa_correcao" | "rejeitada";
+
+const DEFAULT_ENCOUNTER_TEAMS = [
+  {
+    name: "Supervisor Espiritual",
+    category: "lideranca" as const,
+    requiredCount: 1,
+    sortOrder: 0,
+  },
+  {
+    name: "Coordenador",
+    category: "lideranca" as const,
+    requiredCount: 1,
+    sortOrder: 1,
+  },
+  {
+    name: "Intercessores",
+    category: "espiritual" as const,
+    requiredCount: null,
+    sortOrder: 10,
+  },
+  {
+    name: "Stand-by",
+    category: "apoio" as const,
+    requiredCount: null,
+    sortOrder: 20,
+  },
+  {
+    name: "Cozinha",
+    category: "operacional" as const,
+    requiredCount: null,
+    sortOrder: 30,
+  },
+  {
+    name: "Limpeza",
+    category: "operacional" as const,
+    requiredCount: null,
+    sortOrder: 40,
+  },
+  {
+    name: "Correios",
+    category: "operacional" as const,
+    requiredCount: null,
+    sortOrder: 50,
+  },
+] as const;
+
+function insertIdOf(result: unknown) {
+  return Number(((result as [{ insertId?: number }] | undefined)?.[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+}
+
+export async function getEncounterEventsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(encounterEvents).where(eq(encounterEvents.churchId, churchId)).orderBy(desc(encounterEvents.date), desc(encounterEvents.id));
+}
+
+export async function getEncounterManagedEventIds(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [responsibleEvents, assignmentEvents] = await Promise.all([
+    db
+      .select({ eventId: encounterEvents.id })
+      .from(encounterEvents)
+      .where(and(eq(encounterEvents.churchId, churchId), eq(encounterEvents.responsiblePersonId, personId), eq(encounterEvents.active, true))),
+    db
+      .select({ eventId: encounterServantAssignments.encounterEventId })
+      .from(encounterServantAssignments)
+      .where(and(eq(encounterServantAssignments.churchId, churchId), eq(encounterServantAssignments.personId, personId), eq(encounterServantAssignments.assignmentType, "responsavel"), eq(encounterServantAssignments.active, true))),
+  ]);
+  return Array.from(new Set([...responsibleEvents, ...assignmentEvents].map(item => item.eventId)));
+}
+
+export async function getEncounterEventById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(encounterEvents)
+    .where(and(eq(encounterEvents.id, id), eq(encounterEvents.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getEncounterOverview(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const event = await getEncounterEventById(eventId, churchId);
+  if (!event) return null;
+  const [enrollments, confirmed, completed, teams, servants, pendingItems] = await Promise.all([
+    db
+      .select({ value: count() })
+      .from(encounterEnrollments)
+      .where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), ne(encounterEnrollments.status, "cancelado"))),
+    db
+      .select({ value: count() })
+      .from(encounterEnrollments)
+      .where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), eq(encounterEnrollments.status, "confirmado"))),
+    db
+      .select({ value: count() })
+      .from(encounterEnrollments)
+      .where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), eq(encounterEnrollments.status, "concluiu"))),
+    db
+      .select({ value: count() })
+      .from(encounterTeams)
+      .where(and(eq(encounterTeams.churchId, churchId), eq(encounterTeams.encounterEventId, eventId), eq(encounterTeams.active, true))),
+    db
+      .select({ value: count() })
+      .from(encounterServantAssignments)
+      .where(and(eq(encounterServantAssignments.churchId, churchId), eq(encounterServantAssignments.encounterEventId, eventId), eq(encounterServantAssignments.active, true))),
+    db
+      .select({ value: count() })
+      .from(encounterChecklistItems)
+      .where(and(eq(encounterChecklistItems.churchId, churchId), eq(encounterChecklistItems.encounterEventId, eventId), or(eq(encounterChecklistItems.status, "pendente"), eq(encounterChecklistItems.status, "em_andamento")))),
+  ]);
+  return {
+    event,
+    summary: {
+      enrollmentCount: Number(enrollments[0]?.value ?? 0),
+      confirmedCount: Number(confirmed[0]?.value ?? 0),
+      completedCount: Number(completed[0]?.value ?? 0),
+      teamCount: Number(teams[0]?.value ?? 0),
+      servantCount: Number(servants[0]?.value ?? 0),
+      pendingChecklistCount: Number(pendingItems[0]?.value ?? 0),
+    },
+  };
+}
+
+export async function createEncounterEvent(data: { churchId: number; name: string; date: string; endDate?: string | null; location?: string | null; maxParticipants?: number | null; description?: string | null; status?: EncounterEventStatus; responsiblePersonId?: number | null; generalNotes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const result = await tx.insert(encounterEvents).values({
+      ...data,
+      endDate: data.endDate ?? null,
+      location: data.location ?? null,
+      maxParticipants: data.maxParticipants ?? null,
+      description: data.description ?? null,
+      status: data.status ?? "planejamento",
+      responsiblePersonId: data.responsiblePersonId ?? null,
+      generalNotes: data.generalNotes ?? null,
+    } as unknown as typeof encounterEvents.$inferInsert);
+    const eventId = insertIdOf(result);
+    if (!eventId) throw new Error("Falha ao criar Encontro com Deus");
+
+    let coordinatorTeamId: number | null = null;
+    for (const team of DEFAULT_ENCOUNTER_TEAMS) {
+      const teamResult = await tx.insert(encounterTeams).values({
+        churchId: data.churchId,
+        encounterEventId: eventId,
+        parentTeamId: team.category === "lideranca" ? null : coordinatorTeamId,
+        name: team.name,
+        category: team.category,
+        source: "padrao",
+        requiredCount: team.requiredCount,
+        sortOrder: team.sortOrder,
+        active: true,
+      });
+      if (team.name === "Coordenador") coordinatorTeamId = insertIdOf(teamResult);
+    }
+
+    await tx.insert(encounterHistory).values({
+      churchId: data.churchId,
+      encounterEventId: eventId,
+      actorPersonId: data.responsiblePersonId ?? null,
+      action: "encontro_criado",
+      entityType: "encontro",
+      entityId: eventId,
+      details: { name: data.name, status: data.status ?? "planejamento" },
+    });
+    return { id: eventId };
+  });
+}
+
+export async function updateEncounterEvent(
+  id: number,
+  churchId: number,
+  data: Partial<{
+  name: string;
+  date: string;
+  endDate: string | null;
+  location: string | null;
+  maxParticipants: number | null;
+  description: string | null;
+  status: EncounterEventStatus;
+  responsiblePersonId: number | null;
+  generalNotes: string | null;
+  active: boolean;
+  }>
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(encounterEvents)
+    .set(data as unknown as Partial<typeof encounterEvents.$inferInsert>)
+    .where(and(eq(encounterEvents.id, id), eq(encounterEvents.churchId, churchId)));
+  return getEncounterEventById(id, churchId);
+}
+
+export async function getEncounterEnrollments(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+    enrollment: encounterEnrollments,
+      person: {
+        id: people.id,
+        fullName: people.fullName,
+        phone: people.phone,
+        whatsapp: people.whatsapp,
+      },
+    form: encounterDiscipleForms,
+  })
+    .from(encounterEnrollments)
+    .innerJoin(people, and(eq(encounterEnrollments.personId, people.id), eq(people.churchId, churchId)))
+    .leftJoin(encounterDiscipleForms, and(eq(encounterDiscipleForms.encounterEnrollmentId, encounterEnrollments.id), eq(encounterDiscipleForms.churchId, churchId)))
+    .where(and(eq(encounterEnrollments.encounterEventId, eventId), eq(encounterEnrollments.churchId, churchId)))
+    .orderBy(people.fullName);
+}
+
+export async function getEncounterEnrollmentById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(encounterEnrollments)
+    .where(and(eq(encounterEnrollments.id, id), eq(encounterEnrollments.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function enrollInEncounter(data: { encounterEventId: number; personId: number; churchId: number; source?: "manual" | "public_form"; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const eventRows = await tx
+      .select()
+      .from(encounterEvents)
+      .where(and(eq(encounterEvents.id, data.encounterEventId), eq(encounterEvents.churchId, data.churchId), eq(encounterEvents.active, true)))
+      .limit(1);
+    const event = eventRows[0];
+    if (!event || event.status === "cancelado" || event.status === "encerrado") throw new Error("ENCOUNTER_UNAVAILABLE");
+
+    const personRows = await tx
+      .select({ id: people.id })
+      .from(people)
+      .where(and(eq(people.id, data.personId), eq(people.churchId, data.churchId), eq(people.active, true)))
+      .limit(1);
+    if (!personRows[0]) throw new Error("PERSON_NOT_FOUND");
+
+    const existing = await tx
+      .select()
+      .from(encounterEnrollments)
+      .where(and(eq(encounterEnrollments.churchId, data.churchId), eq(encounterEnrollments.encounterEventId, data.encounterEventId), eq(encounterEnrollments.personId, data.personId)))
+      .limit(1);
+    if (existing[0]) throw new Error("ENCOUNTER_DUPLICATE_ENROLLMENT");
+
+    if (event.maxParticipants) {
+      const totals = await tx
+        .select({ value: count() })
+        .from(encounterEnrollments)
+        .where(and(eq(encounterEnrollments.churchId, data.churchId), eq(encounterEnrollments.encounterEventId, data.encounterEventId), ne(encounterEnrollments.status, "cancelado")));
+      if (Number(totals[0]?.value ?? 0) >= event.maxParticipants) throw new Error("ENCOUNTER_CAPACITY_REACHED");
+    }
+
+    const result = await tx.insert(encounterEnrollments).values({
+      churchId: data.churchId,
+      encounterEventId: data.encounterEventId,
+      personId: data.personId,
+      status: "inscrito",
+      source: data.source ?? "manual",
+      notes: data.notes ?? null,
+    });
+    const enrollmentId = insertIdOf(result);
+    await tx.insert(encounterHistory).values({
+      churchId: data.churchId,
+      encounterEventId: data.encounterEventId,
+      action: "discipulo_inscrito",
+      entityType: "discipulo",
+      entityId: enrollmentId,
+      details: { personId: data.personId, source: data.source ?? "manual" },
+    });
+    return { id: enrollmentId };
+  });
+}
+
+export async function updateEncounterEnrollment(
+  id: number,
+  churchId: number,
+  data: {
+    status?: EncounterEnrollmentStatus;
+    notes?: string | null;
+    completedAt?: Date | null;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const current = await getEncounterEnrollmentById(id, churchId);
+  if (!current) return null;
+  const update: Partial<typeof encounterEnrollments.$inferInsert> = {};
+  if (data.status !== undefined) {
+    update.status = data.status;
+    if (data.status === "confirmado") update.confirmedAt = new Date();
+    if (data.status === "concluiu") update.completedAt = new Date();
+    if (data.status === "cancelado") update.cancelledAt = new Date();
+  }
+  if (data.completedAt !== undefined) update.completedAt = data.completedAt;
+  if (data.notes !== undefined) update.notes = data.notes;
+  await db
+    .update(encounterEnrollments)
+    .set(update)
+    .where(and(eq(encounterEnrollments.id, id), eq(encounterEnrollments.churchId, churchId)));
+  await db.insert(encounterHistory).values({
+    churchId,
+    encounterEventId: current.encounterEventId,
+    action: data.status ? `discipulo_${data.status}` : "discipulo_atualizado",
+    entityType: "discipulo",
+    entityId: id,
+    details: {
+      previousStatus: current.status,
+      status: data.status ?? current.status,
+    },
+  });
+  return getEncounterEnrollmentById(id, churchId);
+}
+
+export async function getEncounterPublicFormByToken(publicToken: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({
+    publicForm: encounterPublicForms,
+    event: encounterEvents,
+    church: {
+      id: churches.id,
+      name: churches.name,
+      slug: churches.slug,
+      logoUrl: churches.logoUrl,
+      primaryColor: churches.primaryColor,
+      secondaryColor: churches.secondaryColor,
+    },
+  })
+    .from(encounterPublicForms)
+    .innerJoin(encounterEvents, and(eq(encounterEvents.id, encounterPublicForms.encounterEventId), eq(encounterEvents.churchId, encounterPublicForms.churchId)))
+    .innerJoin(churches, eq(churches.id, encounterPublicForms.churchId))
+    .where(and(eq(encounterPublicForms.publicToken, publicToken), eq(encounterPublicForms.active, true), isNull(encounterPublicForms.revokedAt), or(isNull(encounterPublicForms.expiresAt), gt(encounterPublicForms.expiresAt, new Date())), eq(encounterEvents.active, true), ne(encounterEvents.status, "cancelado"), ne(encounterEvents.status, "encerrado"), eq(churches.active, true)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getEncounterPublicFormByEvent(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(encounterPublicForms)
+    .where(and(eq(encounterPublicForms.churchId, churchId), eq(encounterPublicForms.encounterEventId, eventId), isNull(encounterPublicForms.revokedAt)))
+    .orderBy(desc(encounterPublicForms.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function rotateEncounterPublicForm(data: { churchId: number; encounterEventId: number; publicToken: string; createdByPersonId?: number | null; expiresAt?: Date | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    await tx
+      .update(encounterPublicForms)
+      .set({ active: false, revokedAt: new Date() })
+      .where(and(eq(encounterPublicForms.churchId, data.churchId), eq(encounterPublicForms.encounterEventId, data.encounterEventId), eq(encounterPublicForms.active, true)));
+    const result = await tx.insert(encounterPublicForms).values({
+      churchId: data.churchId,
+      encounterEventId: data.encounterEventId,
+      publicToken: data.publicToken,
+      active: true,
+      expiresAt: data.expiresAt ?? null,
+      createdByPersonId: data.createdByPersonId ?? null,
+    });
+    const id = insertIdOf(result);
+    await tx.insert(encounterHistory).values({
+      churchId: data.churchId,
+      encounterEventId: data.encounterEventId,
+      actorPersonId: data.createdByPersonId ?? null,
+      action: "link_publico_renovado",
+      entityType: "link_publico",
+      entityId: id,
+    });
+    return { id, publicToken: data.publicToken };
+  });
+}
+
+export async function setEncounterPublicFormActive(data: { churchId: number; encounterEventId: number; active: boolean; actorPersonId?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(encounterPublicForms)
+    .set({ active: data.active })
+    .where(and(eq(encounterPublicForms.churchId, data.churchId), eq(encounterPublicForms.encounterEventId, data.encounterEventId), isNull(encounterPublicForms.revokedAt)));
+  await db.insert(encounterHistory).values({
+    churchId: data.churchId,
+    encounterEventId: data.encounterEventId,
+    actorPersonId: data.actorPersonId ?? null,
+    action: data.active ? "link_publico_ativado" : "link_publico_pausado",
+    entityType: "link_publico",
+    details: { active: data.active },
+  });
+}
+
+export async function submitEncounterDiscipleForm(data: { publicToken: string; fullName: string; age: number; phone: string; guardianName: string; guardianPhone: string; friendName: string; friendPhone: string; attendingChurch: string; invitedByName: string; invitedByPhone: string; consentAccepted: true }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const normalizedPhone = data.phone.replace(/\D/g, "");
+  const normalizedName = data.fullName
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  return db.transaction(async tx => {
+    const resolvedRows = await tx
+      .select({ publicForm: encounterPublicForms, event: encounterEvents })
+      .from(encounterPublicForms)
+      .innerJoin(encounterEvents, and(eq(encounterEvents.id, encounterPublicForms.encounterEventId), eq(encounterEvents.churchId, encounterPublicForms.churchId)))
+      .where(and(eq(encounterPublicForms.publicToken, data.publicToken), eq(encounterPublicForms.active, true), isNull(encounterPublicForms.revokedAt), or(isNull(encounterPublicForms.expiresAt), gt(encounterPublicForms.expiresAt, new Date())), eq(encounterEvents.active, true), ne(encounterEvents.status, "cancelado"), ne(encounterEvents.status, "encerrado")))
+      .limit(1);
+    const resolved = resolvedRows[0];
+    if (!resolved) throw new Error("ENCOUNTER_PUBLIC_FORM_UNAVAILABLE");
+    const churchId = resolved.publicForm.churchId;
+    const eventId = resolved.publicForm.encounterEventId;
+    const phoneExpression = (column: any) => sql`REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(${column}, ''), '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') = ${normalizedPhone}`;
+    const candidates = await tx
+      .select()
+      .from(people)
+      .where(and(eq(people.churchId, churchId), eq(people.active, true), or(phoneExpression(people.phone), phoneExpression(people.whatsapp))))
+      .limit(10);
+    let person =
+      candidates.find(
+        candidate =>
+          candidate.fullName
+            .trim()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase() === normalizedName
+      ) ?? null;
+    if (!person) {
+      const personResult = await tx.insert(people).values({
+        churchId,
+        fullName: data.fullName.trim(),
+        phone: normalizedPhone,
+        whatsapp: normalizedPhone,
+        discipleshipStage: "encontro_com_deus",
+        active: true,
+      });
+      const personId = insertIdOf(personResult);
+      if (!personId) throw new Error("Falha ao criar Pessoa a partir da ficha");
+      const personRows = await tx
+        .select()
+        .from(people)
+        .where(and(eq(people.id, personId), eq(people.churchId, churchId)))
+        .limit(1);
+      person = personRows[0] ?? null;
+    }
+    if (!person) throw new Error("Falha ao vincular Pessoa à ficha");
+
+    let enrollmentRows = await tx
+      .select()
+      .from(encounterEnrollments)
+      .where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), eq(encounterEnrollments.personId, person.id)))
+      .limit(1);
+    let enrollment = enrollmentRows[0] ?? null;
+    if (!enrollment) {
+      if (resolved.event.maxParticipants) {
+        const totals = await tx
+          .select({ value: count() })
+          .from(encounterEnrollments)
+          .where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), ne(encounterEnrollments.status, "cancelado")));
+        if (Number(totals[0]?.value ?? 0) >= resolved.event.maxParticipants) throw new Error("ENCOUNTER_CAPACITY_REACHED");
+      }
+      const enrollmentResult = await tx.insert(encounterEnrollments).values({
+        churchId,
+        encounterEventId: eventId,
+        personId: person.id,
+        status: "inscrito",
+        source: "public_form",
+      });
+      const enrollmentId = insertIdOf(enrollmentResult);
+      enrollmentRows = await tx
+        .select()
+        .from(encounterEnrollments)
+        .where(and(eq(encounterEnrollments.id, enrollmentId), eq(encounterEnrollments.churchId, churchId)))
+        .limit(1);
+      enrollment = enrollmentRows[0] ?? null;
+    } else {
+      if (enrollment.status === "cancelado") {
+        if (resolved.event.maxParticipants) {
+          const totals = await tx
+            .select({ value: count() })
+            .from(encounterEnrollments)
+            .where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId), ne(encounterEnrollments.status, "cancelado")));
+          if (Number(totals[0]?.value ?? 0) >= resolved.event.maxParticipants) throw new Error("ENCOUNTER_CAPACITY_REACHED");
+        }
+        await tx
+          .update(encounterEnrollments)
+          .set({ source: "public_form", status: "inscrito", cancelledAt: null })
+          .where(and(eq(encounterEnrollments.id, enrollment.id), eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId)));
+        enrollment = {
+          ...enrollment,
+          source: "public_form",
+          status: "inscrito",
+          cancelledAt: null,
+        };
+      } else {
+        await tx
+          .update(encounterEnrollments)
+          .set({ source: "public_form" })
+          .where(and(eq(encounterEnrollments.id, enrollment.id), eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.encounterEventId, eventId)));
+      }
+    }
+    if (!enrollment) throw new Error("Falha ao criar inscrição no encontro");
+    const existingFormRows = await tx
+      .select({ id: encounterDiscipleForms.id })
+      .from(encounterDiscipleForms)
+      .where(and(eq(encounterDiscipleForms.churchId, churchId), eq(encounterDiscipleForms.encounterEventId, eventId), eq(encounterDiscipleForms.encounterEnrollmentId, enrollment.id)))
+      .limit(1);
+    if (existingFormRows[0]) throw new Error("ENCOUNTER_FORM_ALREADY_SUBMITTED");
+
+    const formValues = {
+      churchId,
+      encounterEventId: eventId,
+      encounterEnrollmentId: enrollment.id,
+      personId: person.id,
+      fullName: data.fullName.trim(),
+      age: data.age,
+      phone: normalizedPhone,
+      guardianName: data.guardianName.trim(),
+      guardianPhone: data.guardianPhone.replace(/\D/g, ""),
+      friendName: data.friendName.trim(),
+      friendPhone: data.friendPhone.replace(/\D/g, ""),
+      attendingChurch: data.attendingChurch.trim(),
+      invitedByName: data.invitedByName.trim(),
+      invitedByPhone: data.invitedByPhone.replace(/\D/g, ""),
+      reviewStatus: "recebida" as const,
+      reviewNotes: null,
+      consentAccepted: true,
+      consentVersion: "v1",
+      consentAcceptedAt: new Date(),
+      submittedAt: new Date(),
+      reviewedAt: null,
+      reviewedByPersonId: null,
+    };
+    await tx.insert(encounterDiscipleForms).values(formValues);
+    const formRows = await tx
+      .select()
+      .from(encounterDiscipleForms)
+      .where(and(eq(encounterDiscipleForms.churchId, churchId), eq(encounterDiscipleForms.encounterEnrollmentId, enrollment.id)))
+      .limit(1);
+    const form = formRows[0];
+    await tx.insert(encounterHistory).values({
+      churchId,
+      encounterEventId: eventId,
+      action: "ficha_publica_recebida",
+      entityType: "ficha",
+      entityId: form?.id ?? null,
+      details: { personId: person.id, enrollmentId: enrollment.id },
+    });
+    return {
+      eventId,
+      enrollmentId: enrollment.id,
+      personId: person.id,
+      formId: form?.id ?? null,
+    };
+  });
+}
+
+export async function updateEncounterDiscipleFormReview(data: { id: number; eventId: number; churchId: number; reviewStatus: EncounterReviewStatus; reviewNotes?: string | null; reviewedByPersonId?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = await db
+    .select()
+    .from(encounterDiscipleForms)
+    .where(and(eq(encounterDiscipleForms.id, data.id), eq(encounterDiscipleForms.encounterEventId, data.eventId), eq(encounterDiscipleForms.churchId, data.churchId)))
+    .limit(1);
+  const form = rows[0];
+  if (!form) return null;
+  await db
+    .update(encounterDiscipleForms)
+    .set({
+    reviewStatus: data.reviewStatus,
+    reviewNotes: data.reviewNotes ?? null,
+    reviewedAt: new Date(),
+    reviewedByPersonId: data.reviewedByPersonId ?? null,
+    })
+    .where(and(eq(encounterDiscipleForms.id, data.id), eq(encounterDiscipleForms.encounterEventId, data.eventId), eq(encounterDiscipleForms.churchId, data.churchId)));
+  await db.insert(encounterHistory).values({
+    churchId: data.churchId,
+    encounterEventId: form.encounterEventId,
+    actorPersonId: data.reviewedByPersonId ?? null,
+    action: `ficha_${data.reviewStatus}`,
+    entityType: "ficha",
+    entityId: form.id,
+  });
+  return {
+    ...form,
+    reviewStatus: data.reviewStatus,
+    reviewNotes: data.reviewNotes ?? null,
+  };
+}
+
+export async function getEncounterTeams(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(encounterTeams)
+    .where(and(eq(encounterTeams.churchId, churchId), eq(encounterTeams.encounterEventId, eventId), eq(encounterTeams.active, true)))
+    .orderBy(encounterTeams.sortOrder, encounterTeams.name);
+}
+
+export async function getEncounterTeamById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(encounterTeams)
+    .where(and(eq(encounterTeams.id, id), eq(encounterTeams.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createEncounterTeam(data: typeof encounterTeams.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(encounterTeams).values(data);
+  return { id: insertIdOf(result) };
+}
+
+export async function updateEncounterTeam(id: number, churchId: number, data: Partial<typeof encounterTeams.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(encounterTeams)
+    .set(data)
+    .where(and(eq(encounterTeams.id, id), eq(encounterTeams.churchId, churchId)));
+}
+
+export async function getEncounterServants(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      assignment: encounterServantAssignments,
+      person: {
+        id: people.id,
+        fullName: people.fullName,
+        phone: people.phone,
+        whatsapp: people.whatsapp,
+      },
+      team: encounterTeams,
+    })
+    .from(encounterServantAssignments)
+    .innerJoin(people, and(eq(people.id, encounterServantAssignments.personId), eq(people.churchId, churchId)))
+    .leftJoin(encounterTeams, and(eq(encounterTeams.id, encounterServantAssignments.teamId), eq(encounterTeams.churchId, churchId)))
+    .where(and(eq(encounterServantAssignments.churchId, churchId), eq(encounterServantAssignments.encounterEventId, eventId), eq(encounterServantAssignments.active, true)))
+    .orderBy(encounterServantAssignments.roleName, people.fullName);
+}
+
+export async function createEncounterServantAssignment(data: typeof encounterServantAssignments.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const duplicate = await db
+    .select({ id: encounterServantAssignments.id })
+    .from(encounterServantAssignments)
+    .where(and(eq(encounterServantAssignments.churchId, data.churchId), eq(encounterServantAssignments.encounterEventId, data.encounterEventId), eq(encounterServantAssignments.personId, data.personId), eq(encounterServantAssignments.roleName, data.roleName), eq(encounterServantAssignments.active, true)))
+    .limit(1);
+  if (duplicate[0]) throw new Error("ENCOUNTER_DUPLICATE_SERVANT_ASSIGNMENT");
+  const result = await db.insert(encounterServantAssignments).values(data);
+  const id = insertIdOf(result);
+  await db.insert(encounterHistory).values({
+    churchId: data.churchId,
+    encounterEventId: data.encounterEventId,
+    action: "servo_atribuido",
+    entityType: "servo",
+    entityId: id,
+    details: { personId: data.personId, roleName: data.roleName },
+  });
+  return { id };
+}
+
+export async function deactivateEncounterServantAssignment(id: number, eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(encounterServantAssignments)
+    .set({ active: false })
+    .where(and(eq(encounterServantAssignments.id, id), eq(encounterServantAssignments.encounterEventId, eventId), eq(encounterServantAssignments.churchId, churchId)));
+}
+
+export async function getEncounterChecklist(eventId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      item: encounterChecklistItems,
+      assignee: { id: people.id, fullName: people.fullName },
+    })
+    .from(encounterChecklistItems)
+    .leftJoin(people, and(eq(people.id, encounterChecklistItems.assignedPersonId), eq(people.churchId, churchId)))
+    .where(and(eq(encounterChecklistItems.churchId, churchId), eq(encounterChecklistItems.encounterEventId, eventId)))
+    .orderBy(encounterChecklistItems.sortOrder, encounterChecklistItems.dueAt, encounterChecklistItems.id);
+}
+
+export async function createEncounterChecklistItem(data: typeof encounterChecklistItems.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(encounterChecklistItems).values(data);
+  return { id: insertIdOf(result) };
+}
+
+export async function updateEncounterChecklistItem(id: number, eventId: number, churchId: number, data: Partial<typeof encounterChecklistItems.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(encounterChecklistItems)
+    .set(data)
+    .where(and(eq(encounterChecklistItems.id, id), eq(encounterChecklistItems.encounterEventId, eventId), eq(encounterChecklistItems.churchId, churchId)));
+}
+
+export async function addEncounterHistory(data: typeof encounterHistory.$inferInsert) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(encounterHistory).values(data);
+}
+
+export async function getEncounterHistory(eventId: number, churchId: number, limit = 100) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(encounterHistory)
+    .where(and(eq(encounterHistory.churchId, churchId), eq(encounterHistory.encounterEventId, eventId)))
+    .orderBy(desc(encounterHistory.createdAt), desc(encounterHistory.id))
+    .limit(Math.min(Math.max(limit, 1), 200));
+}
+
+// ─── ESCOLA DE LÍDERES ────────────────────────────────────────────────────────
+
+export async function getLeadershipClassesByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(leadershipSchoolClasses).where(eq(leadershipSchoolClasses.churchId, churchId));
+}
+
+export async function getLeadershipEnrollments(classId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+    enrollment: leadershipSchoolEnrollments,
+    person: { id: people.id, fullName: people.fullName, phone: people.phone },
+  })
+  .from(leadershipSchoolEnrollments)
+  .innerJoin(people, eq(leadershipSchoolEnrollments.personId, people.id))
+  .where(and(eq(leadershipSchoolEnrollments.classId, classId), eq(leadershipSchoolEnrollments.churchId, churchId)));
+}
+
+export async function createLeadershipClass(data: { churchId: number; name: string; period?: string; startDate?: string; endDate?: string; pastor?: string; description?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(leadershipSchoolClasses).values(data as unknown as typeof leadershipSchoolClasses.$inferInsert);
+}
+
+export async function enrollInLeadershipSchool(data: { classId: number; personId: number; churchId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(leadershipSchoolEnrollments).values({
+    ...data,
+    status: "matriculado",
+  } as typeof leadershipSchoolEnrollments.$inferInsert);
+}
+
+export async function updateLeadershipEnrollment(
+  id: number,
+  churchId: number,
+  data: {
+    status?: string;
+    grade?: number;
+    attendance?: number;
+    completedAt?: Date | null;
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.status !== undefined) update.status = data.status;
+  if (data.grade !== undefined) update.grade = data.grade;
+  if (data.attendance !== undefined) update.attendance = data.attendance;
+  if (data.completedAt !== undefined) update.completedAt = data.completedAt;
+  await db
+    .update(leadershipSchoolEnrollments)
+    .set(update)
+    .where(and(eq(leadershipSchoolEnrollments.id, id), eq(leadershipSchoolEnrollments.churchId, churchId)));
+}
+
+export async function getLeadershipClassById(classId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(leadershipSchoolClasses)
+    .where(and(eq(leadershipSchoolClasses.id, classId), eq(leadershipSchoolClasses.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getLeadershipLessonsByClass(classId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(leadershipSchoolLessons)
+    .where(and(eq(leadershipSchoolLessons.classId, classId), eq(leadershipSchoolLessons.churchId, churchId)))
+    .orderBy(leadershipSchoolLessons.position, leadershipSchoolLessons.id);
+}
+
+export async function getLeadershipLessonById(lessonId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(leadershipSchoolLessons)
+    .where(and(eq(leadershipSchoolLessons.id, lessonId), eq(leadershipSchoolLessons.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getLeadershipClassesForTeacher(churchUserId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      class: leadershipSchoolClasses,
+      assignment: leadershipSchoolTeachers,
+    })
+    .from(leadershipSchoolTeachers)
+    .innerJoin(leadershipSchoolClasses, eq(leadershipSchoolTeachers.classId, leadershipSchoolClasses.id))
+    .where(and(eq(leadershipSchoolTeachers.churchUserId, churchUserId), eq(leadershipSchoolTeachers.churchId, churchId), eq(leadershipSchoolTeachers.active, true), eq(leadershipSchoolClasses.churchId, churchId), eq(leadershipSchoolClasses.active, true)));
+}
+
+export async function getLeadershipTeachers(classId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      assignment: leadershipSchoolTeachers,
+      user: {
+        id: churchUsers.id,
+        name: churchUsers.name,
+        email: churchUsers.email,
+        personId: churchUsers.personId,
+      },
+    })
+    .from(leadershipSchoolTeachers)
+    .innerJoin(churchUsers, eq(leadershipSchoolTeachers.churchUserId, churchUsers.id))
+    .where(and(eq(leadershipSchoolTeachers.classId, classId), eq(leadershipSchoolTeachers.churchId, churchId), eq(leadershipSchoolTeachers.active, true)));
+}
+
+export async function hasLeadershipTeacherAssignment(churchUserId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: leadershipSchoolTeachers.id })
+    .from(leadershipSchoolTeachers)
+    .where(and(eq(leadershipSchoolTeachers.churchUserId, churchUserId), eq(leadershipSchoolTeachers.churchId, churchId), eq(leadershipSchoolTeachers.active, true)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function assignLeadershipTeacher(data: { churchId: number; classId: number; churchUserId: number; assignedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(leadershipSchoolTeachers)
+    .values({ ...data, active: true })
+    .onDuplicateKeyUpdate({
+      set: {
+        active: true,
+        assignedByChurchUserId: data.assignedByChurchUserId,
+      },
+    });
+}
+
+export async function removeLeadershipTeacher(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(leadershipSchoolTeachers)
+    .set({ active: false })
+    .where(and(eq(leadershipSchoolTeachers.id, id), eq(leadershipSchoolTeachers.churchId, churchId)));
+}
+
+export async function createLeadershipLesson(data: { churchId: number; classId: number; title: string; summary?: string | null; content?: string | null; lessonDate?: string | null; position: number; status?: "rascunho" | "publicada" | "concluida"; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { lessonDate: lessonDateInput, ...rest } = data;
+  const lessonDate = lessonDateInput ? parseCivilDateAsUtcNoon(lessonDateInput) : lessonDateInput === null ? null : undefined;
+  const result = await db.insert(leadershipSchoolLessons).values({ ...rest, lessonDate, status: data.status ?? "rascunho" });
+  return {
+    id: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0),
+  };
+}
+
+export async function updateLeadershipLesson(
+  id: number,
+  churchId: number,
+  data: {
+    title?: string;
+    summary?: string | null;
+    content?: string | null;
+    lessonDate?: string | null;
+    position?: number;
+    status?: "rascunho" | "publicada" | "concluida";
+  }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const { lessonDate, ...rest } = data;
+  await db
+    .update(leadershipSchoolLessons)
+    .set({
+      ...rest,
+      lessonDate: lessonDate === undefined ? undefined : lessonDate ? parseCivilDateAsUtcNoon(lessonDate) : null,
+    })
+    .where(and(eq(leadershipSchoolLessons.id, id), eq(leadershipSchoolLessons.churchId, churchId)));
+}
+
+export async function getLeadershipLessonRoster(lessonId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+    enrollment: leadershipSchoolEnrollments,
+    person: { id: people.id, fullName: people.fullName },
+    attendance: leadershipSchoolAttendance,
+    progress: leadershipSchoolProgress,
+    })
+    .from(leadershipSchoolEnrollments)
+    .innerJoin(people, eq(leadershipSchoolEnrollments.personId, people.id))
+    .leftJoin(leadershipSchoolAttendance, and(eq(leadershipSchoolAttendance.enrollmentId, leadershipSchoolEnrollments.id), eq(leadershipSchoolAttendance.lessonId, lessonId), eq(leadershipSchoolAttendance.churchId, churchId)))
+    .leftJoin(leadershipSchoolProgress, and(eq(leadershipSchoolProgress.enrollmentId, leadershipSchoolEnrollments.id), eq(leadershipSchoolProgress.lessonId, lessonId), eq(leadershipSchoolProgress.churchId, churchId)))
+    .where(
+      and(
+        eq(leadershipSchoolEnrollments.churchId, churchId),
+        eq(
+          leadershipSchoolEnrollments.classId,
+          db
+            .select({ classId: leadershipSchoolLessons.classId })
+            .from(leadershipSchoolLessons)
+            .where(and(eq(leadershipSchoolLessons.id, lessonId), eq(leadershipSchoolLessons.churchId, churchId)))
+            .limit(1)
+        )
+      )
+    )
+    .orderBy(people.fullName);
+}
+
+export async function getLeadershipStudentPath(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const enrollments = await db
+    .select({
+      enrollment: leadershipSchoolEnrollments,
+      class: leadershipSchoolClasses,
+    })
+    .from(leadershipSchoolEnrollments)
+    .innerJoin(leadershipSchoolClasses, eq(leadershipSchoolEnrollments.classId, leadershipSchoolClasses.id))
+    .where(and(eq(leadershipSchoolEnrollments.personId, personId), eq(leadershipSchoolEnrollments.churchId, churchId), eq(leadershipSchoolClasses.churchId, churchId)));
+  return Promise.all(
+    enrollments
+      .filter(({ enrollment }) => enrollment.status !== "cancelado")
+      .map(async ({ enrollment, class: schoolClass }) => {
+    const lessons = await getLeadershipLessonsByClass(schoolClass.id, churchId);
+        const progress = await db
+          .select()
+          .from(leadershipSchoolProgress)
+          .where(and(eq(leadershipSchoolProgress.churchId, churchId), eq(leadershipSchoolProgress.enrollmentId, enrollment.id)));
+        const progressByLesson = new Map(progress.map(item => [item.lessonId, item]));
+        return {
+          enrollment,
+          class: schoolClass,
+          lessons: lessons.map((lesson, index) => ({
+            lesson,
+            progress: progressByLesson.get(lesson.id) ?? null,
+            available: index === 0 || Boolean(progressByLesson.get(lessons[index - 1]?.id ?? 0)?.releasedAt),
+          })),
+        };
+      })
+  );
+}
+
+export async function getLeadershipProgressByEnrollmentLesson(churchId: number, enrollmentId: number, lessonId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(leadershipSchoolProgress)
+    .where(and(eq(leadershipSchoolProgress.churchId, churchId), eq(leadershipSchoolProgress.enrollmentId, enrollmentId), eq(leadershipSchoolProgress.lessonId, lessonId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function saveLeadershipAttendance(data: { churchId: number; lessonId: number; enrollmentId: number; status: "presente" | "ausente" | "justificado"; note?: string | null; recordedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(leadershipSchoolAttendance)
+    .values(data)
+    .onDuplicateKeyUpdate({
+      set: {
+        status: data.status,
+        note: data.note ?? null,
+        recordedByChurchUserId: data.recordedByChurchUserId,
+      },
+    });
+}
+
+export async function saveLeadershipProgress(data: { churchId: number; enrollmentId: number; lessonId: number; status?: "nao_iniciada" | "em_andamento" | "concluida"; reflection?: string | null; reviewStatus?: "pendente" | "compreendeu" | "precisa_reforco" | "nao_participou"; reviewNotes?: string | null; reviewedByChurchUserId?: number | null }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const values = {
+    churchId: data.churchId,
+    enrollmentId: data.enrollmentId,
+    lessonId: data.lessonId,
+    status: data.status ?? "nao_iniciada",
+    reflection: data.reflection ?? null,
+    reviewStatus: data.reviewStatus ?? "pendente",
+    reviewNotes: data.reviewNotes ?? null,
+    reviewedByChurchUserId: data.reviewedByChurchUserId ?? null,
+  };
+  const set: Record<string, unknown> = {};
+  if (data.status !== undefined) set.status = data.status;
+  if (data.reflection !== undefined) set.reflection = data.reflection;
+  if (data.reviewStatus !== undefined) set.reviewStatus = data.reviewStatus;
+  if (data.reviewNotes !== undefined) set.reviewNotes = data.reviewNotes;
+  if (data.reviewedByChurchUserId !== undefined) {
+    set.reviewedAt = data.reviewedByChurchUserId ? new Date() : null;
+    set.reviewedByChurchUserId = data.reviewedByChurchUserId;
+  }
+  await db.insert(leadershipSchoolProgress).values(values).onDuplicateKeyUpdate({ set });
+}
+
+export async function releaseLeadershipLesson(data: { churchId: number; enrollmentId: number; lessonId: number; releasedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(leadershipSchoolProgress)
+    .set({
+      releasedAt: new Date(),
+      releasedByChurchUserId: data.releasedByChurchUserId,
+    })
+    .where(and(eq(leadershipSchoolProgress.churchId, data.churchId), eq(leadershipSchoolProgress.enrollmentId, data.enrollmentId), eq(leadershipSchoolProgress.lessonId, data.lessonId)));
+}
+
+// ─── HISTÓRICO DE LIDERANÇA ───────────────────────────────────────────────────
+
+export async function getLeadershipHistory(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+    history: leadershipHistory,
+    person: { id: people.id, fullName: people.fullName },
+  })
+  .from(leadershipHistory)
+  .innerJoin(people, eq(leadershipHistory.personId, people.id))
+  .where(eq(leadershipHistory.churchId, churchId))
+  .orderBy(desc(leadershipHistory.createdAt));
+}
+
+export async function getLeadershipHistoryByPerson(personId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(leadershipHistory)
+    .where(and(eq(leadershipHistory.personId, personId), eq(leadershipHistory.churchId, churchId)))
+    .orderBy(desc(leadershipHistory.startDate));
+}
+
+export async function addLeadershipHistory(data: { churchId: number; personId: number; role: string; startDate: string; endDate?: string; ministry?: string; notes?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(leadershipHistory).values(data as unknown as typeof leadershipHistory.$inferInsert);
+}
+
+// ─── ACONSELHAMENTO PASTORAL ──────────────────────────────────────────────────
+
+export async function getCounselingSessionsByChurch(churchId: number, counselorId?: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+    session: counselingSessions,
+    person: { id: people.id, fullName: people.fullName },
+  })
+  .from(counselingSessions)
+  .innerJoin(people, eq(counselingSessions.personId, people.id))
+  .where(counselorId ? and(eq(counselingSessions.churchId, churchId), eq(counselingSessions.counselorId, counselorId)) : eq(counselingSessions.churchId, churchId))
+  .orderBy(desc(counselingSessions.scheduledAt));
+}
+
+export async function getCounselingSessionById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(counselingSessions)
+    .where(and(eq(counselingSessions.id, id), eq(counselingSessions.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createCounselingSession(data: { churchId: number; personId: number; counselorId: number; scheduledAt: Date; notes?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(counselingSessions).values(data as typeof counselingSessions.$inferInsert);
+}
+
+export async function updateCounselingSession(id: number, churchId: number, data: { status?: string; notes?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {};
+  if (data.status !== undefined) update.status = data.status;
+  if (data.notes !== undefined) update.notes = data.notes;
+  await db
+    .update(counselingSessions)
+    .set(update)
+    .where(and(eq(counselingSessions.id, id), eq(counselingSessions.churchId, churchId)));
+}
+
+export async function getCounselingNotes(sessionId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(counselingNotes)
+    .where(and(eq(counselingNotes.sessionId, sessionId), eq(counselingNotes.churchId, churchId)));
+}
+
+export async function addCounselingNote(data: { sessionId: number; churchId: number; authorId: number; content: string; confidential?: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(counselingNotes).values(data as typeof counselingNotes.$inferInsert);
+}
+
+// ─── COMUNICAÇÃO ──────────────────────────────────────────────────────────────
+
+export async function getCommunicationLogs(churchId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(communicationLogs).where(eq(communicationLogs.churchId, churchId)).orderBy(desc(communicationLogs.sentAt)).limit(limit);
+}
+
+export async function logCommunication(data: { churchId: number; type: "push" | "email" | "whatsapp" | "sms"; category: "boas_vindas" | "aniversario" | "lembrete_evento" | "lembrete_celula" | "convite" | "aviso" | "outro"; recipientPersonId?: number; recipientName?: string; title?: string; message?: string; status?: "enviado" | "entregue" | "falhou" }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(communicationLogs).values(data as typeof communicationLogs.$inferInsert);
+}
+
+// ─── TESOURARIA ────────────────────────────────────────────────────────────────
+
+const DEFAULT_FINANCIAL_ACCOUNTS = [
+  { name: "Caixa", type: "caixa" as const },
+  { name: "Banco principal", type: "banco" as const },
+];
+
+const DEFAULT_FINANCIAL_CATEGORIES = [
+  { type: "entrada" as const, key: "dizimo", name: "Dízimo" },
+  { type: "entrada" as const, key: "oferta", name: "Oferta" },
+  { type: "entrada" as const, key: "voto", name: "Voto" },
+  { type: "entrada" as const, key: "primicias", name: "Primícias" },
+  { type: "entrada" as const, key: "missoes", name: "Missões" },
+  { type: "entrada" as const, key: "acao_social", name: "Ação social" },
+  { type: "entrada" as const, key: "doacao", name: "Doação" },
+  { type: "entrada" as const, key: "outra_entrada", name: "Outra entrada" },
+  { type: "saida" as const, key: "aluguel", name: "Aluguel" },
+  { type: "saida" as const, key: "agua", name: "Água" },
+  { type: "saida" as const, key: "luz", name: "Luz" },
+  { type: "saida" as const, key: "internet", name: "Internet" },
+  { type: "saida" as const, key: "manutencao", name: "Manutenção" },
+  { type: "saida" as const, key: "ministerios", name: "Ministérios" },
+  { type: "saida" as const, key: "acao_social", name: "Ação social" },
+  { type: "saida" as const, key: "administracao", name: "Administração" },
+  { type: "saida" as const, key: "outra_saida", name: "Outra saída" },
+];
+
+function financialDate(value: string) {
+  return new Date(`${value}T12:00:00.000Z`);
+}
+
+function previousFinancialDate(value: string) {
+  const date = parseCivilDateAsUtcNoon(value);
+  if (!date) throw new Error("Data financeira inválida");
+  date.setUTCDate(date.getUTCDate() - 1);
+  return formatCivilDateInput(date);
+}
+
+export async function ensureTreasuryDefaults(churchId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  let accountsCreated = 0;
+  let categoriesCreated = 0;
+
+  const [existingAccounts, existingCategories] = await Promise.all([db.select({ name: financialAccounts.name }).from(financialAccounts).where(eq(financialAccounts.churchId, churchId)), db.select({ key: financialCategories.key, type: financialCategories.type }).from(financialCategories).where(eq(financialCategories.churchId, churchId))]);
+  const accountNames = new Set(existingAccounts.map(account => account.name));
+  const categoryKeys = new Set(existingCategories.map(category => `${category.type}:${category.key}`));
+  const missingAccounts = DEFAULT_FINANCIAL_ACCOUNTS.filter(account => !accountNames.has(account.name));
+  const missingCategories = DEFAULT_FINANCIAL_CATEGORIES.filter(category => !categoryKeys.has(`${category.type}:${category.key}`));
+
+  if (missingAccounts.length > 0) {
+    await db.insert(financialAccounts).values(
+      missingAccounts.map(account => ({
+        churchId,
+        ...account,
+        openingBalanceCents: 0,
+        active: true,
+      }))
+    );
+    accountsCreated = missingAccounts.length;
+  }
+  if (missingCategories.length > 0) {
+    await db.insert(financialCategories).values(
+      missingCategories.map(category => ({
+        churchId,
+        ...category,
+        isSystem: true,
+        active: true,
+      }))
+    );
+    categoriesCreated = missingCategories.length;
+  }
+  return { accountsCreated, categoriesCreated };
+}
+
+export async function getFinancialAccountsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(financialAccounts)
+    .where(and(eq(financialAccounts.churchId, churchId), eq(financialAccounts.active, true)))
+    .orderBy(financialAccounts.name);
+}
+
+export type FinancialPayableStatusFilter = "todas" | "aberta" | "paga" | "cancelada";
+
+export async function getFinancialPayablesByChurch(churchId: number, status: FinancialPayableStatusFilter = "todas") {
+  const db = await getDb();
+  if (!db) {
+    return {
+      asOfDate: formatCivilDateInput(currentCivilDateAsUtcNoon()),
+      items: [],
+      summary: {
+        openCount: 0,
+        overdueCount: 0,
+        dueSoonCount: 0,
+        paidCount: 0,
+        openAmountCents: 0,
+      },
+    };
+  }
+
+  const rows = await db
+    .select({
+      payable: financialPayables,
+      category: { id: financialCategories.id, name: financialCategories.name },
+      account: { id: financialAccounts.id, name: financialAccounts.name },
+    })
+    .from(financialPayables)
+    .leftJoin(financialCategories, and(eq(financialCategories.id, financialPayables.categoryId), eq(financialCategories.churchId, churchId)))
+    .leftJoin(financialAccounts, and(eq(financialAccounts.id, financialPayables.accountId), eq(financialAccounts.churchId, churchId)))
+    .where(eq(financialPayables.churchId, churchId))
+    .orderBy(asc(financialPayables.dueDate), desc(financialPayables.createdAt));
+
+  const asOfDate = formatCivilDateInput(currentCivilDateAsUtcNoon());
+  const nextSevenDaysDate = currentCivilDateAsUtcNoon();
+  nextSevenDaysDate.setUTCDate(nextSevenDaysDate.getUTCDate() + 7);
+  const nextSevenDays = formatCivilDateInput(nextSevenDaysDate);
+  const items = rows.map(row => {
+    const dueDate = formatCivilDateValue(row.payable.dueDate);
+    const displayStatus = row.payable.status === "aberta" && dueDate < asOfDate ? "vencida" : row.payable.status;
+    return { ...row, displayStatus, dueDate };
+  });
+  const summary = {
+    openCount: items.filter(item => item.payable.status === "aberta").length,
+    overdueCount: items.filter(item => item.displayStatus === "vencida").length,
+    dueSoonCount: items.filter(item => item.payable.status === "aberta" && item.dueDate >= asOfDate && item.dueDate <= nextSevenDays).length,
+    paidCount: items.filter(item => item.payable.status === "paga").length,
+    openAmountCents: items.filter(item => item.payable.status === "aberta").reduce((total, item) => total + item.payable.amountCents, 0),
+  };
+  return {
+    asOfDate,
+    items: status === "todas" ? items : items.filter(item => item.payable.status === status),
+    summary,
+  };
+}
+
+export async function getFinancialPayableById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(financialPayables)
+    .where(and(eq(financialPayables.id, id), eq(financialPayables.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createFinancialPayable(data: { churchId: number; description: string; supplierName?: string; amountCents: number; dueDate: string; categoryId?: number; accountId?: number; paymentMethod?: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; notes?: string; reference?: string; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const result = await tx.insert(financialPayables).values({
+      churchId: data.churchId,
+      description: data.description,
+      supplierName: data.supplierName ?? null,
+      amountCents: data.amountCents,
+      dueDate: financialDate(data.dueDate),
+      categoryId: data.categoryId ?? null,
+      accountId: data.accountId ?? null,
+      paymentMethod: data.paymentMethod ?? null,
+      notes: data.notes ?? null,
+      reference: data.reference ?? null,
+      createdByChurchUserId: data.actorChurchUserId,
+      updatedByChurchUserId: data.actorChurchUserId,
+    });
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    const rows = await tx
+      .select()
+      .from(financialPayables)
+      .where(and(eq(financialPayables.id, id), eq(financialPayables.churchId, data.churchId)))
+      .limit(1);
+    const payable = rows[0];
+    if (!payable) throw new Error("Falha ao criar conta a pagar");
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      payableId: payable.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "conta_pagar_criada",
+      afterData: payable,
+    });
+    return payable;
+  });
+}
+
+export async function updateFinancialPayable(data: { id: number; churchId: number; description: string; supplierName?: string; amountCents: number; dueDate: string; categoryId?: number; accountId?: number; paymentMethod?: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; notes?: string; reference?: string; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const previousRows = await tx
+      .select()
+      .from(financialPayables)
+      .where(and(eq(financialPayables.id, data.id), eq(financialPayables.churchId, data.churchId), eq(financialPayables.status, "aberta")))
+      .limit(1);
+    const previous = previousRows[0];
+    if (!previous) return null;
+    const result = await tx
+      .update(financialPayables)
+      .set({
+        description: data.description,
+        supplierName: data.supplierName ?? null,
+        amountCents: data.amountCents,
+        dueDate: financialDate(data.dueDate),
+        categoryId: data.categoryId ?? null,
+        accountId: data.accountId ?? null,
+        paymentMethod: data.paymentMethod ?? null,
+        notes: data.notes ?? null,
+        reference: data.reference ?? null,
+        updatedByChurchUserId: data.actorChurchUserId,
+      })
+      .where(and(eq(financialPayables.id, data.id), eq(financialPayables.churchId, data.churchId), eq(financialPayables.status, "aberta")));
+    if (Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) {
+      return null;
+    }
+    const updatedRows = await tx
+      .select()
+      .from(financialPayables)
+      .where(and(eq(financialPayables.id, data.id), eq(financialPayables.churchId, data.churchId)))
+      .limit(1);
+    const updated = updatedRows[0];
+    if (!updated) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      payableId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "conta_pagar_atualizada",
+      beforeData: previous,
+      afterData: updated,
+    });
+    return updated;
+  });
+}
+
+export async function cancelFinancialPayable(data: { id: number; churchId: number; reason: string; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const previousRows = await tx
+      .select()
+      .from(financialPayables)
+      .where(and(eq(financialPayables.id, data.id), eq(financialPayables.churchId, data.churchId), eq(financialPayables.status, "aberta")))
+      .limit(1);
+    const previous = previousRows[0];
+    if (!previous) return null;
+    const result = await tx
+      .update(financialPayables)
+      .set({
+        status: "cancelada",
+        cancelledByChurchUserId: data.actorChurchUserId,
+        cancelledAt: new Date(),
+        cancellationReason: data.reason,
+        updatedByChurchUserId: data.actorChurchUserId,
+      })
+      .where(and(eq(financialPayables.id, data.id), eq(financialPayables.churchId, data.churchId), eq(financialPayables.status, "aberta")));
+    if (Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) {
+      return null;
+    }
+    const updatedRows = await tx
+      .select()
+      .from(financialPayables)
+      .where(and(eq(financialPayables.id, data.id), eq(financialPayables.churchId, data.churchId)))
+      .limit(1);
+    const updated = updatedRows[0];
+    if (!updated) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      payableId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "conta_pagar_cancelada",
+      beforeData: previous,
+      afterData: updated,
+      note: data.reason,
+    });
+    return updated;
+  });
+}
+
+export async function payFinancialPayable(data: { id: number; churchId: number; accountId: number; categoryId: number; paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; paymentDate: string; reference?: string; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const payableRows = await tx
+      .select()
+      .from(financialPayables)
+      .where(and(eq(financialPayables.id, data.id), eq(financialPayables.churchId, data.churchId), eq(financialPayables.status, "aberta"), isNull(financialPayables.financialTransactionId)))
+      .limit(1);
+    const payable = payableRows[0];
+    if (!payable) return null;
+
+    const [accountRows, categoryRows] = await Promise.all([
+      tx
+        .select()
+        .from(financialAccounts)
+        .where(and(eq(financialAccounts.id, data.accountId), eq(financialAccounts.churchId, data.churchId), eq(financialAccounts.active, true)))
+        .limit(1),
+      tx
+        .select()
+        .from(financialCategories)
+        .where(and(eq(financialCategories.id, data.categoryId), eq(financialCategories.churchId, data.churchId), eq(financialCategories.type, "saida"), eq(financialCategories.active, true)))
+        .limit(1),
+    ]);
+    if (!accountRows[0] || !categoryRows[0]) {
+      throw new Error("Conta ou categoria de saída não encontrada nesta igreja");
+    }
+
+    const transactionInsert = await tx.insert(financialTransactions).values({
+      churchId: data.churchId,
+      accountId: data.accountId,
+      categoryId: data.categoryId,
+      type: "saida",
+      amountCents: payable.amountCents,
+      transactionDate: financialDate(data.paymentDate),
+      paymentMethod: data.paymentMethod,
+      description: `Pagamento: ${payable.description}`,
+      reference: data.reference ?? payable.reference ?? null,
+      status: "confirmado",
+      createdByChurchUserId: data.actorChurchUserId,
+      confirmedByChurchUserId: data.actorChurchUserId,
+      confirmedAt: new Date(),
+    });
+    const transactionId = Number((transactionInsert[0] as { insertId?: number })?.insertId ?? 0);
+    const transactionRows = await tx
+      .select()
+      .from(financialTransactions)
+      .where(and(eq(financialTransactions.id, transactionId), eq(financialTransactions.churchId, data.churchId)))
+      .limit(1);
+    const transaction = transactionRows[0];
+    if (!transaction) throw new Error("Falha ao criar a saída no livro-caixa");
+
+    const updatedResult = await tx
+      .update(financialPayables)
+      .set({
+        accountId: data.accountId,
+        categoryId: data.categoryId,
+        paymentMethod: data.paymentMethod,
+        paymentDate: financialDate(data.paymentDate),
+        reference: data.reference ?? payable.reference ?? null,
+        status: "paga",
+        financialTransactionId: transactionId,
+        paidByChurchUserId: data.actorChurchUserId,
+        paidAt: new Date(),
+        updatedByChurchUserId: data.actorChurchUserId,
+      })
+      .where(and(eq(financialPayables.id, data.id), eq(financialPayables.churchId, data.churchId), eq(financialPayables.status, "aberta"), isNull(financialPayables.financialTransactionId)));
+    if (Number((updatedResult[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) {
+      throw new Error("A conta a pagar já foi baixada por outra operação");
+    }
+    const updatedRows = await tx
+      .select()
+      .from(financialPayables)
+      .where(and(eq(financialPayables.id, data.id), eq(financialPayables.churchId, data.churchId)))
+      .limit(1);
+    const updated = updatedRows[0];
+    if (!updated) throw new Error("Falha ao atualizar a conta a pagar");
+
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      transactionId,
+      payableId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "confirmado",
+      afterData: transaction,
+    });
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      transactionId,
+      payableId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "conta_pagar_paga",
+      beforeData: payable,
+      afterData: updated,
+    });
+    return { payable: updated, transaction };
+  });
+}
+
+export async function getFinancialAccountById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(financialAccounts)
+    .where(and(eq(financialAccounts.id, id), eq(financialAccounts.churchId, churchId), eq(financialAccounts.active, true)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createFinancialAccount(data: { churchId: number; name: string; type: "caixa" | "banco" | "outro"; openingBalanceCents: number; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const result = await tx.insert(financialAccounts).values({
+      churchId: data.churchId,
+      name: data.name,
+      type: data.type,
+      openingBalanceCents: data.openingBalanceCents,
+      active: true,
+    });
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    const rows = await tx
+      .select()
+      .from(financialAccounts)
+      .where(and(eq(financialAccounts.id, id), eq(financialAccounts.churchId, data.churchId)))
+      .limit(1);
+    const account = rows[0] ?? null;
+    if (!account) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      accountId: account.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "conta_criada",
+      beforeData: null,
+      afterData: account,
+    });
+    return account;
+  });
+}
+
+export async function getFinancialCategoriesByChurch(churchId: number, type?: "entrada" | "saida") {
+  const db = await getDb();
+  if (!db) return [];
+  const filters = [eq(financialCategories.churchId, churchId), eq(financialCategories.active, true)];
+  if (type) filters.push(eq(financialCategories.type, type));
+  return db
+    .select()
+    .from(financialCategories)
+    .where(and(...filters))
+    .orderBy(financialCategories.type, financialCategories.name);
+}
+
+export async function getFinancialCategoryById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(financialCategories)
+    .where(and(eq(financialCategories.id, id), eq(financialCategories.churchId, churchId), eq(financialCategories.active, true)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createFinancialCategory(data: { churchId: number; type: "entrada" | "saida"; key: string; name: string; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const result = await tx.insert(financialCategories).values({
+      churchId: data.churchId,
+      type: data.type,
+      key: data.key,
+      name: data.name,
+      isSystem: false,
+      active: true,
+    });
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    const rows = await tx
+      .select()
+      .from(financialCategories)
+      .where(and(eq(financialCategories.id, id), eq(financialCategories.churchId, data.churchId)))
+      .limit(1);
+    const category = rows[0] ?? null;
+    if (!category) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      categoryId: category.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "categoria_criada",
+      beforeData: null,
+      afterData: category,
+    });
+    return category;
+  });
+}
+
+export async function getFinancialCategoriesForManagement(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(financialCategories).where(eq(financialCategories.churchId, churchId)).orderBy(financialCategories.type, financialCategories.name);
+}
+
+export async function getFinancialCategoryForManagement(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(financialCategories)
+    .where(and(eq(financialCategories.id, id), eq(financialCategories.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function hasFinancialCategoryTransactions(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: financialTransactions.id })
+    .from(financialTransactions)
+    .where(and(eq(financialTransactions.categoryId, id), eq(financialTransactions.churchId, churchId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+export async function updateFinancialCategory(data: { id: number; churchId: number; type: "entrada" | "saida"; name: string; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const beforeRows = await tx
+      .select()
+      .from(financialCategories)
+      .where(and(eq(financialCategories.id, data.id), eq(financialCategories.churchId, data.churchId), eq(financialCategories.isSystem, false)))
+      .limit(1);
+    const before = beforeRows[0] ?? null;
+    if (!before) return null;
+    await tx
+      .update(financialCategories)
+      .set({ type: data.type, name: data.name })
+      .where(and(eq(financialCategories.id, data.id), eq(financialCategories.churchId, data.churchId), eq(financialCategories.isSystem, false)));
+    const afterRows = await tx
+      .select()
+      .from(financialCategories)
+      .where(and(eq(financialCategories.id, data.id), eq(financialCategories.churchId, data.churchId)))
+      .limit(1);
+    const after = afterRows[0] ?? null;
+    if (!after) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      categoryId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "categoria_atualizada",
+      beforeData: before,
+      afterData: after,
+    });
+    return after;
+  });
+}
+
+export async function setFinancialCategoryActive(data: { id: number; churchId: number; active: boolean; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const beforeRows = await tx
+      .select()
+      .from(financialCategories)
+      .where(and(eq(financialCategories.id, data.id), eq(financialCategories.churchId, data.churchId), eq(financialCategories.isSystem, false)))
+      .limit(1);
+    const before = beforeRows[0] ?? null;
+    if (!before) return null;
+    await tx
+      .update(financialCategories)
+      .set({ active: data.active })
+      .where(and(eq(financialCategories.id, data.id), eq(financialCategories.churchId, data.churchId), eq(financialCategories.isSystem, false)));
+    const afterRows = await tx
+      .select()
+      .from(financialCategories)
+      .where(and(eq(financialCategories.id, data.id), eq(financialCategories.churchId, data.churchId)))
+      .limit(1);
+    const after = afterRows[0] ?? null;
+    if (!after) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      categoryId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "categoria_ativada",
+      beforeData: before,
+      afterData: after,
+      note: data.active ? "Categoria ativada" : "Categoria inativada",
+    });
+    return after;
+  });
+}
+
+export async function getFinancialTransactionById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(financialTransactions)
+    .where(and(eq(financialTransactions.id, id), eq(financialTransactions.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function isFinancialPeriodClosed(churchId: number, transactionDate: string) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select()
+    .from(financialPeriodClosures)
+    .where(and(eq(financialPeriodClosures.churchId, churchId), eq(financialPeriodClosures.status, "fechado"), lte(financialPeriodClosures.periodStart, financialDate(transactionDate)), gte(financialPeriodClosures.periodEnd, financialDate(transactionDate))))
+    .limit(1);
+  return rows.length > 0;
+}
+
+type FinancialTransactionFilters = {
+  churchId: number;
+  startDate?: string;
+  endDate?: string;
+  accountId?: number;
+  categoryId?: number;
+  type?: "entrada" | "saida";
+  includeDrafts?: boolean;
+};
+
+export async function getFinancialTransactions(filters: FinancialTransactionFilters) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(financialTransactions.churchId, filters.churchId)];
+  if (filters.startDate) conditions.push(gte(financialTransactions.transactionDate, financialDate(filters.startDate)));
+  if (filters.endDate) conditions.push(lte(financialTransactions.transactionDate, financialDate(filters.endDate)));
+  if (filters.accountId) conditions.push(eq(financialTransactions.accountId, filters.accountId));
+  if (filters.categoryId) conditions.push(eq(financialTransactions.categoryId, filters.categoryId));
+  if (filters.type) conditions.push(eq(financialTransactions.type, filters.type));
+  if (!filters.includeDrafts) conditions.push(sql`${financialTransactions.status} <> 'rascunho'`);
+  return db
+    .select({
+      transaction: financialTransactions,
+      account: financialAccounts,
+      category: financialCategories,
+    })
+    .from(financialTransactions)
+    .innerJoin(financialAccounts, and(eq(financialAccounts.id, financialTransactions.accountId), eq(financialAccounts.churchId, filters.churchId)))
+    .innerJoin(financialCategories, and(eq(financialCategories.id, financialTransactions.categoryId), eq(financialCategories.churchId, filters.churchId)))
+    .where(and(...conditions))
+    .orderBy(desc(financialTransactions.transactionDate), desc(financialTransactions.createdAt));
+}
+
+async function getApprovedOnlineContributionSummary(data: { churchId: number; startDate: string; endDate: string; accountId?: number }) {
+  const db = await getDb();
+  if (!db)
+    return {
+      approvedOnlineContributionsCents: 0,
+      approvedOnlineContributionsCount: 0,
+    };
+  const conditions = [eq(onlineContributions.churchId, data.churchId), eq(onlineContributions.status, "aprovada"), eq(financialTransactions.status, "confirmado"), eq(financialTransactions.type, "entrada"), gte(financialTransactions.transactionDate, financialDate(data.startDate)), lte(financialTransactions.transactionDate, financialDate(data.endDate))];
+  if (data.accountId !== undefined) conditions.push(eq(financialTransactions.accountId, data.accountId));
+  const rows = await db
+    .select({
+      approvedOnlineContributionsCents: sql<number>`COALESCE(SUM(${financialTransactions.amountCents}), 0)`,
+      approvedOnlineContributionsCount: sql<number>`COUNT(*)`,
+    })
+    .from(onlineContributions)
+    .innerJoin(financialTransactions, and(eq(financialTransactions.id, onlineContributions.financialTransactionId), eq(financialTransactions.churchId, data.churchId)))
+    .where(and(...conditions));
+  return {
+    approvedOnlineContributionsCents: Number(rows[0]?.approvedOnlineContributionsCents ?? 0),
+    approvedOnlineContributionsCount: Number(rows[0]?.approvedOnlineContributionsCount ?? 0),
+  };
+}
+
+export async function getTreasuryOverview(data: { churchId: number; startDate: string; endDate: string; accountId?: number }) {
+  const previousPeriodEndDate = previousFinancialDate(data.startDate);
+  const [allAccounts, periodRows, openingRows, allRows, approvedOnlineContributionSummary] = await Promise.all([
+    getFinancialAccountsByChurch(data.churchId),
+    getFinancialTransactions({
+      churchId: data.churchId,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      accountId: data.accountId,
+      includeDrafts: true,
+    }),
+    getFinancialTransactions({
+      churchId: data.churchId,
+      endDate: previousPeriodEndDate,
+      accountId: data.accountId,
+    }),
+    getFinancialTransactions({
+      churchId: data.churchId,
+      endDate: data.endDate,
+      accountId: data.accountId,
+    }),
+    getApprovedOnlineContributionSummary(data),
+  ]);
+  const accounts = data.accountId ? allAccounts.filter(account => account.id === data.accountId) : allAccounts;
+  const confirmedPeriodRows = periodRows.filter(row => row.transaction.status === "confirmado");
+  const confirmedOpeningRows = openingRows.filter(row => row.transaction.status === "confirmado");
+  const sumByType = (type: "entrada" | "saida", rows: typeof confirmedPeriodRows) => rows.filter(row => row.transaction.type === type).reduce((total, row) => total + row.transaction.amountCents, 0);
+  const entriesCents = sumByType("entrada", confirmedPeriodRows);
+  const expensesCents = sumByType("saida", confirmedPeriodRows);
+  const openingBalances = accounts.map(account => {
+    const movement = confirmedOpeningRows.filter(row => row.transaction.accountId === account.id).reduce((total, row) => total + (row.transaction.type === "entrada" ? row.transaction.amountCents : -row.transaction.amountCents), 0);
+    const openingSeed = formatCivilDateValue(account.createdAt) <= previousPeriodEndDate ? account.openingBalanceCents : 0;
+    return { account, balanceCents: openingSeed + movement };
+  });
+  const balances = accounts.map(account => {
+    const movement = allRows.filter(row => row.transaction.status === "confirmado" && row.transaction.accountId === account.id).reduce((total, row) => total + (row.transaction.type === "entrada" ? row.transaction.amountCents : -row.transaction.amountCents), 0);
+    const openingSeed = formatCivilDateValue(account.createdAt) <= data.endDate ? account.openingBalanceCents : 0;
+    return { account, balanceCents: openingSeed + movement };
+  });
+  const categoryTotals = confirmedPeriodRows.reduce<
+    Record<
+      string,
+      {
+        categoryId: number;
+        categoryName: string;
+        type: "entrada" | "saida";
+        amountCents: number;
+      }
+    >
+  >((groups, row) => {
+    const key = `${row.transaction.type}:${row.category.id}`;
+    groups[key] ??= {
+      categoryId: row.category.id,
+      categoryName: row.category.name,
+      type: row.transaction.type,
+      amountCents: 0,
+    };
+    groups[key].amountCents += row.transaction.amountCents;
+    return groups;
+  }, {});
+  return {
+    accounts,
+    transactions: periodRows,
+    entriesCents,
+    expensesCents,
+    ...approvedOnlineContributionSummary,
+    resultCents: entriesCents - expensesCents,
+    openingBalanceCents: openingBalances.reduce((total, item) => total + item.balanceCents, 0),
+    openingAccountBalances: openingBalances,
+    previousPeriodEndDate,
+    balanceCents: balances.reduce((total, item) => total + item.balanceCents, 0),
+    accountBalances: balances,
+    categories: Object.values(categoryTotals).sort((a, b) => b.amountCents - a.amountCents),
+  };
+}
+
+async function writeFinancialAuditLog(data: { churchId: number; transactionId?: number; actorChurchUserId: number; action: "criado" | "atualizado" | "confirmado" | "estornado" | "periodo_fechado" | "periodo_reaberto"; beforeData?: unknown; afterData?: unknown; note?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.insert(financialAuditLogs).values(data);
+}
+
+export async function createFinancialTransaction(data: { churchId: number; accountId: number; categoryId: number; type: "entrada" | "saida"; amountCents: number; transactionDate: string; paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; contributorPersonId?: number; contributorName?: string; serviceId?: number; countSheetId?: number; description?: string; reference?: string; status: "rascunho" | "confirmado"; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.transaction(async tx => {
+    const now = new Date();
+    const insert = await tx.insert(financialTransactions).values({
+      churchId: data.churchId,
+      accountId: data.accountId,
+      categoryId: data.categoryId,
+      type: data.type,
+      amountCents: data.amountCents,
+      transactionDate: financialDate(data.transactionDate),
+      paymentMethod: data.paymentMethod,
+      contributorPersonId: data.contributorPersonId ?? null,
+      contributorName: data.contributorName ?? null,
+      serviceId: data.serviceId ?? null,
+      countSheetId: data.countSheetId ?? null,
+      description: data.description ?? null,
+      reference: data.reference ?? null,
+      status: data.status,
+      createdByChurchUserId: data.actorChurchUserId,
+      confirmedByChurchUserId: data.status === "confirmado" ? data.actorChurchUserId : null,
+      confirmedAt: data.status === "confirmado" ? now : null,
+    });
+    const id = Number((insert[0] as { insertId?: number })?.insertId ?? 0);
+    const rows = await tx.select().from(financialTransactions).where(eq(financialTransactions.id, id)).limit(1);
+    const transaction = rows[0];
+    if (!transaction) throw new Error("Falha ao criar lançamento financeiro");
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      transactionId: id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: data.status === "confirmado" ? "confirmado" : "criado",
+      afterData: transaction,
+    });
+    return transaction;
+  });
+  return result;
+}
+
+export async function updateFinancialDraft(data: { id: number; churchId: number; accountId: number; categoryId: number; type: "entrada" | "saida"; amountCents: number; transactionDate: string; paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro"; contributorPersonId?: number; contributorName?: string; serviceId?: number; countSheetId?: number; description?: string; reference?: string; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const previousRows = await tx
+      .select()
+      .from(financialTransactions)
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")))
+      .limit(1);
+    const previous = previousRows[0];
+    if (!previous) return null;
+    const result = await tx
+      .update(financialTransactions)
+      .set({
+        accountId: data.accountId,
+        categoryId: data.categoryId,
+        type: data.type,
+        amountCents: data.amountCents,
+        transactionDate: financialDate(data.transactionDate),
+        paymentMethod: data.paymentMethod,
+        contributorPersonId: data.contributorPersonId ?? null,
+        contributorName: data.contributorName ?? null,
+        serviceId: data.serviceId ?? null,
+        countSheetId: data.countSheetId ?? null,
+        description: data.description ?? null,
+        reference: data.reference ?? null,
+      })
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")));
+    if (Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) return null;
+    const updatedRows = await tx
+      .select()
+      .from(financialTransactions)
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId)))
+      .limit(1);
+    const updated = updatedRows[0];
+    if (!updated) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      transactionId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "atualizado",
+      beforeData: previous,
+      afterData: updated,
+    });
+    return updated;
+  });
+}
+
+export async function confirmFinancialTransaction(data: { id: number; churchId: number; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const previousRows = await tx
+      .select()
+      .from(financialTransactions)
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")))
+      .limit(1);
+    const previous = previousRows[0];
+    if (!previous) return null;
+    const result = await tx
+      .update(financialTransactions)
+      .set({
+        status: "confirmado",
+        confirmedByChurchUserId: data.actorChurchUserId,
+        confirmedAt: new Date(),
+      })
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "rascunho")));
+    if (Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) return null;
+    const updatedRows = await tx
+      .select()
+      .from(financialTransactions)
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId)))
+      .limit(1);
+    const updated = updatedRows[0];
+    if (!updated || updated.status !== "confirmado") return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      transactionId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "confirmado",
+      beforeData: previous,
+      afterData: updated,
+    });
+    return updated;
+  });
+}
+
+export async function reverseFinancialTransaction(data: { id: number; churchId: number; actorChurchUserId: number; reason: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const previousRows = await tx
+      .select()
+      .from(financialTransactions)
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "confirmado")))
+      .limit(1);
+    const previous = previousRows[0];
+    if (!previous) return null;
+    const result = await tx
+      .update(financialTransactions)
+      .set({
+        status: "estornado",
+        reversedByChurchUserId: data.actorChurchUserId,
+        reversedAt: new Date(),
+        reversalReason: data.reason,
+      })
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.status, "confirmado")));
+    if (Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) return null;
+    const updatedRows = await tx
+      .select()
+      .from(financialTransactions)
+      .where(and(eq(financialTransactions.id, data.id), eq(financialTransactions.churchId, data.churchId)))
+      .limit(1);
+    const updated = updatedRows[0];
+    if (!updated || updated.status !== "estornado") return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      transactionId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "estornado",
+      beforeData: previous,
+      afterData: updated,
+      note: data.reason,
+    });
+    return updated;
+  });
+}
+
+export async function getFinancialPeriodClosure(churchId: number, periodStart: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(financialPeriodClosures)
+    .where(and(eq(financialPeriodClosures.churchId, churchId), sql`DATE(${financialPeriodClosures.periodStart}) = DATE(${periodStart})`))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFinancialReceiptData(transactionId: number, churchId: number) {
+  const transaction = await getFinancialTransactionById(transactionId, churchId);
+  if (!transaction) return null;
+  const db = await getDb();
+  if (!db) return null;
+  const [account, category, contributorRows] = await Promise.all([
+    getFinancialAccountById(transaction.accountId, churchId),
+    getFinancialCategoryById(transaction.categoryId, churchId),
+    transaction.contributorPersonId
+      ? db
+          .select({ id: people.id, fullName: people.fullName })
+          .from(people)
+          .where(and(eq(people.id, transaction.contributorPersonId), eq(people.churchId, churchId)))
+          .limit(1)
+      : Promise.resolve([]),
+  ]);
+  if (!account || !category) return null;
+  return {
+    transaction,
+    account,
+    category,
+    contributor: contributorRows[0] ?? null,
+  };
+}
+
+export async function getFinancialReconciliation(data: { churchId: number; accountId: number; periodStart: string }) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(financialReconciliations)
+    .where(and(eq(financialReconciliations.churchId, data.churchId), eq(financialReconciliations.accountId, data.accountId), sql`DATE(${financialReconciliations.periodStart}) = DATE(${data.periodStart})`))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFinancialReconciliationById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(financialReconciliations)
+    .where(and(eq(financialReconciliations.id, id), eq(financialReconciliations.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getFinancialReconciliationAttachments(reconciliationId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(financialReconciliationAttachments)
+    .where(and(eq(financialReconciliationAttachments.reconciliationId, reconciliationId), eq(financialReconciliationAttachments.churchId, churchId)))
+    .orderBy(desc(financialReconciliationAttachments.createdAt));
+}
+
+export async function createFinancialReconciliationAttachment(data: { churchId: number; reconciliationId: number; fileKey: string; url: string; fileName: string; mimeType: string; sizeBytes: number; uploadedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const result = await tx.insert(financialReconciliationAttachments).values(data);
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    const rows = await tx
+      .select()
+      .from(financialReconciliationAttachments)
+      .where(and(eq(financialReconciliationAttachments.id, id), eq(financialReconciliationAttachments.churchId, data.churchId)))
+      .limit(1);
+    const attachment = rows[0];
+    if (!attachment) throw new Error("Falha ao registrar comprovante bancário");
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      reconciliationId: data.reconciliationId,
+      attachmentId: attachment.id,
+      actorChurchUserId: data.uploadedByChurchUserId,
+      action: "comprovante_adicionado",
+      afterData: attachment,
+    });
+    return attachment;
+  });
+}
+
+/** Remove apenas o vínculo no banco; a política de exclusão física do storage é tratada separadamente. */
+export async function removeFinancialReconciliationAttachment(data: { id: number; reconciliationId: number; churchId: number; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(financialReconciliationAttachments)
+      .where(and(eq(financialReconciliationAttachments.id, data.id), eq(financialReconciliationAttachments.reconciliationId, data.reconciliationId), eq(financialReconciliationAttachments.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const attachment = rows[0];
+    if (!attachment) return false;
+    const result = await tx.delete(financialReconciliationAttachments).where(and(eq(financialReconciliationAttachments.id, data.id), eq(financialReconciliationAttachments.reconciliationId, data.reconciliationId), eq(financialReconciliationAttachments.churchId, data.churchId)));
+    if (Number((result[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) return false;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      reconciliationId: data.reconciliationId,
+      attachmentId: attachment.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "comprovante_desvinculado",
+      beforeData: attachment,
+    });
+    return true;
+  });
+}
+
+export async function getBookBalanceAt(data: { churchId: number; accountId: number; endDate: string }) {
+  const account = await getFinancialAccountById(data.accountId, data.churchId);
+  if (!account) return null;
+  const rows = await getFinancialTransactions({
+    churchId: data.churchId,
+    accountId: data.accountId,
+    endDate: data.endDate,
+  });
+  const movement = rows.filter(row => row.transaction.status === "confirmado").reduce((total, row) => total + (row.transaction.type === "entrada" ? row.transaction.amountCents : -row.transaction.amountCents), 0);
+  return account.openingBalanceCents + movement;
+}
+
+export async function saveFinancialReconciliation(data: { churchId: number; accountId: number; periodStart: string; periodEnd: string; bankClosingBalanceCents: number; bookBalanceCents: number; differenceCents: number; status: "em_andamento" | "conciliada" | "com_divergencia"; notes?: string; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const existingRows = await tx
+      .select()
+      .from(financialReconciliations)
+      .where(and(eq(financialReconciliations.churchId, data.churchId), eq(financialReconciliations.accountId, data.accountId), sql`DATE(${financialReconciliations.periodStart}) = DATE(${data.periodStart})`))
+      .limit(1)
+      .for("update");
+    const existing = existingRows[0] ?? null;
+    let reconciliationId = existing?.id;
+    if (existing) {
+      await tx
+        .update(financialReconciliations)
+        .set({
+          periodEnd: financialDate(data.periodEnd),
+          bankClosingBalanceCents: data.bankClosingBalanceCents,
+          bookBalanceCents: data.bookBalanceCents,
+          differenceCents: data.differenceCents,
+          status: data.status,
+          notes: data.notes ?? null,
+          reconciledByChurchUserId: data.actorChurchUserId,
+          reconciledAt: new Date(),
+        })
+        .where(and(eq(financialReconciliations.id, existing.id), eq(financialReconciliations.churchId, data.churchId)));
+    } else {
+      const result = await tx.insert(financialReconciliations).values({
+        churchId: data.churchId,
+        accountId: data.accountId,
+        periodStart: financialDate(data.periodStart),
+        periodEnd: financialDate(data.periodEnd),
+        bankClosingBalanceCents: data.bankClosingBalanceCents,
+        bookBalanceCents: data.bookBalanceCents,
+        differenceCents: data.differenceCents,
+        status: data.status,
+        notes: data.notes ?? null,
+        reconciledByChurchUserId: data.actorChurchUserId,
+      });
+      reconciliationId = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    }
+    if (!reconciliationId) throw new Error("Falha ao identificar a conciliação bancária");
+    const updatedRows = await tx
+      .select()
+      .from(financialReconciliations)
+      .where(and(eq(financialReconciliations.id, reconciliationId), eq(financialReconciliations.churchId, data.churchId)))
+      .limit(1);
+    const reconciliation = updatedRows[0];
+    if (!reconciliation) throw new Error("Falha ao recuperar a conciliação bancária");
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      reconciliationId: reconciliation.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: existing ? "reconciliacao_atualizada" : "reconciliacao_criada",
+      beforeData: existing ?? undefined,
+      afterData: reconciliation,
+    });
+    return reconciliation;
+  });
+}
+
+export async function closeFinancialPeriod(data: { churchId: number; periodStart: string; periodEnd: string; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const existingRows = await tx
+      .select()
+      .from(financialPeriodClosures)
+      .where(and(eq(financialPeriodClosures.churchId, data.churchId), sql`DATE(${financialPeriodClosures.periodStart}) = DATE(${data.periodStart})`))
+      .limit(1)
+      .for("update");
+    const existing = existingRows[0] ?? null;
+    if (existing?.status === "fechado") return existing;
+
+    if (existing) {
+      await tx
+        .update(financialPeriodClosures)
+        .set({
+        periodEnd: financialDate(data.periodEnd),
+        status: "fechado",
+        closedByChurchUserId: data.actorChurchUserId,
+        closedAt: new Date(),
+        })
+        .where(and(eq(financialPeriodClosures.id, existing.id), eq(financialPeriodClosures.churchId, data.churchId), eq(financialPeriodClosures.status, "reaberto")));
+      const closedAgainRows = await tx
+        .select()
+        .from(financialPeriodClosures)
+        .where(and(eq(financialPeriodClosures.id, existing.id), eq(financialPeriodClosures.churchId, data.churchId)))
+        .limit(1);
+      const closedAgain = closedAgainRows[0];
+      if (!closedAgain || closedAgain.status !== "fechado") throw new Error("Falha ao fechar o período financeiro");
+      await tx.insert(financialAuditLogs).values({
+        churchId: data.churchId,
+        actorChurchUserId: data.actorChurchUserId,
+        action: "periodo_fechado",
+        beforeData: existing,
+        afterData: closedAgain,
+        note: "Período fechado novamente após reabertura.",
+      });
+      return closedAgain;
+    }
+
+    try {
+      const result = await tx.insert(financialPeriodClosures).values({
+        churchId: data.churchId,
+        periodStart: financialDate(data.periodStart),
+        periodEnd: financialDate(data.periodEnd),
+        status: "fechado",
+        closedByChurchUserId: data.actorChurchUserId,
+      });
+      const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+      if (!id) throw new Error("Falha ao identificar o período financeiro");
+      const createdRows = await tx
+        .select()
+        .from(financialPeriodClosures)
+        .where(and(eq(financialPeriodClosures.id, id), eq(financialPeriodClosures.churchId, data.churchId)))
+        .limit(1);
+      const created = createdRows[0];
+      if (!created) throw new Error("Falha ao recuperar o período financeiro");
+      await tx.insert(financialAuditLogs).values({
+        churchId: data.churchId,
+        actorChurchUserId: data.actorChurchUserId,
+        action: "periodo_fechado",
+        beforeData: null,
+        afterData: created,
+      });
+      return created;
+    } catch (error) {
+      if (!isDuplicateTreasuryRecord(error)) throw error;
+      const concurrentRows = await tx
+        .select()
+        .from(financialPeriodClosures)
+        .where(and(eq(financialPeriodClosures.churchId, data.churchId), sql`DATE(${financialPeriodClosures.periodStart}) = DATE(${data.periodStart})`))
+        .limit(1);
+      return concurrentRows[0] ?? null;
+    }
+  });
+}
+
+export async function reopenFinancialPeriod(data: { churchId: number; periodStart: string; actorChurchUserId: number; reason: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const closureRows = await tx
+      .select()
+      .from(financialPeriodClosures)
+      .where(and(eq(financialPeriodClosures.churchId, data.churchId), sql`DATE(${financialPeriodClosures.periodStart}) = DATE(${data.periodStart})`))
+      .limit(1)
+      .for("update");
+    const closure = closureRows[0];
+    if (!closure || closure.status === "reaberto") return closure ?? null;
+
+    const now = new Date();
+    await tx
+      .update(financialPeriodClosures)
+      .set({
+      status: "reaberto",
+      reopenedByChurchUserId: data.actorChurchUserId,
+      reopenedAt: now,
+      reopeningReason: data.reason,
+      })
+      .where(and(eq(financialPeriodClosures.id, closure.id), eq(financialPeriodClosures.churchId, data.churchId), eq(financialPeriodClosures.status, "fechado")));
+    const updatedRows = await tx
+      .select()
+      .from(financialPeriodClosures)
+      .where(and(eq(financialPeriodClosures.id, closure.id), eq(financialPeriodClosures.churchId, data.churchId)))
+      .limit(1);
+    const updated = updatedRows[0];
+    if (!updated || updated.status !== "reaberto") throw new Error("Falha ao reabrir o período financeiro");
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "periodo_reaberto",
+      beforeData: closure,
+      afterData: updated,
+      note: data.reason,
+    });
+    return updated;
+  });
+}
+
+// ─── PRESTAÇÃO DE CONTAS POR CULTO ────────────────────────────────────────────
+function isDuplicateTreasuryRecord(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "ER_DUP_ENTRY";
+}
+
+export type TreasuryCountAmounts = {
+  cashCents: number;
+  pixCents: number;
+  transferCents: number;
+  cardCents: number;
+  checkCents: number;
+  otherCents: number;
+};
+
+export function getTreasuryCountTotal(amounts: TreasuryCountAmounts) {
+  return amounts.cashCents + amounts.pixCents + amounts.transferCents + amounts.cardCents + amounts.checkCents + amounts.otherCents;
+}
+
+export async function getTreasuryServices(churchId: number, includeCancelled = false) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(treasuryServices)
+    .where(includeCancelled ? eq(treasuryServices.churchId, churchId) : and(eq(treasuryServices.churchId, churchId), ne(treasuryServices.status, "cancelado")))
+    .orderBy(desc(treasuryServices.serviceDate), desc(treasuryServices.id));
+}
+
+export async function getTreasuryRecurringSchedules(churchId: number, includeInactive = false) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(treasuryRecurringSchedules)
+    .where(includeInactive ? eq(treasuryRecurringSchedules.churchId, churchId) : and(eq(treasuryRecurringSchedules.churchId, churchId), eq(treasuryRecurringSchedules.active, true)))
+    .orderBy(treasuryRecurringSchedules.weekday, treasuryRecurringSchedules.startTime, treasuryRecurringSchedules.id);
+}
+
+export async function getTreasuryRecurringScheduleById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(treasuryRecurringSchedules)
+    .where(and(eq(treasuryRecurringSchedules.id, id), eq(treasuryRecurringSchedules.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createTreasuryRecurringSchedule(data: { churchId: number; name: string; weekday: number; startTime: string; location?: string | null; notes?: string | null; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  try {
+    return await db.transaction(async tx => {
+      const result = await tx.insert(treasuryRecurringSchedules).values({
+        churchId: data.churchId,
+        name: data.name,
+        weekday: data.weekday,
+        startTime: data.startTime,
+        location: data.location ?? null,
+        notes: data.notes ?? null,
+        active: true,
+        createdByChurchUserId: data.createdByChurchUserId,
+      });
+      const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+      const rows = await tx
+        .select()
+        .from(treasuryRecurringSchedules)
+        .where(and(eq(treasuryRecurringSchedules.id, id), eq(treasuryRecurringSchedules.churchId, data.churchId)))
+        .limit(1);
+      const schedule = rows[0] ?? null;
+      if (!schedule) return null;
+      await tx.insert(financialAuditLogs).values({
+        churchId: data.churchId,
+        recurringScheduleId: schedule.id,
+        actorChurchUserId: data.createdByChurchUserId,
+        action: "programacao_criada",
+        beforeData: null,
+        afterData: schedule,
+      });
+      return schedule;
+    });
+  } catch (error) {
+    if (isDuplicateTreasuryRecord(error)) return null;
+    throw error;
+  }
+}
+
+export async function updateTreasuryRecurringSchedule(data: { id: number; churchId: number; name: string; weekday: number; startTime: string; location?: string | null; notes?: string | null; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const beforeRows = await tx
+      .select()
+      .from(treasuryRecurringSchedules)
+      .where(and(eq(treasuryRecurringSchedules.id, data.id), eq(treasuryRecurringSchedules.churchId, data.churchId)))
+      .limit(1);
+    const before = beforeRows[0] ?? null;
+    if (!before) return null;
+    await tx
+      .update(treasuryRecurringSchedules)
+      .set({
+      name: data.name,
+      weekday: data.weekday,
+      startTime: data.startTime,
+      location: data.location ?? null,
+      notes: data.notes ?? null,
+      })
+      .where(and(eq(treasuryRecurringSchedules.id, data.id), eq(treasuryRecurringSchedules.churchId, data.churchId)));
+    const afterRows = await tx
+      .select()
+      .from(treasuryRecurringSchedules)
+      .where(and(eq(treasuryRecurringSchedules.id, data.id), eq(treasuryRecurringSchedules.churchId, data.churchId)))
+      .limit(1);
+    const after = afterRows[0] ?? null;
+    if (!after) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      recurringScheduleId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "programacao_atualizada",
+      beforeData: before,
+      afterData: after,
+    });
+    return after;
+  });
+}
+
+export async function setTreasuryRecurringScheduleActive(data: { id: number; churchId: number; active: boolean; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const beforeRows = await tx
+      .select()
+      .from(treasuryRecurringSchedules)
+      .where(and(eq(treasuryRecurringSchedules.id, data.id), eq(treasuryRecurringSchedules.churchId, data.churchId)))
+      .limit(1);
+    const before = beforeRows[0] ?? null;
+    if (!before) return null;
+    if (before.active === data.active) return before;
+    await tx
+      .update(treasuryRecurringSchedules)
+      .set({ active: data.active })
+      .where(and(eq(treasuryRecurringSchedules.id, data.id), eq(treasuryRecurringSchedules.churchId, data.churchId)));
+    const afterRows = await tx
+      .select()
+      .from(treasuryRecurringSchedules)
+      .where(and(eq(treasuryRecurringSchedules.id, data.id), eq(treasuryRecurringSchedules.churchId, data.churchId)))
+      .limit(1);
+    const after = afterRows[0] ?? null;
+    if (!after) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      recurringScheduleId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "programacao_ativada",
+      beforeData: before,
+      afterData: after,
+      note: data.active ? "Programação ativada" : "Programação inativada",
+    });
+    return after;
+  });
+}
+
+function dateToIsoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function addUtcDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+export async function materializeTreasuryRecurringOccurrences(data: { churchId: number; actorChurchUserId: number; fromDate?: string; toDate?: string }) {
+  const db = await getDb();
+  if (!db) return { created: 0 };
+  const today = new Date();
+  const from = new Date(`${data.fromDate ?? dateToIsoDate(addUtcDays(today, -31))}T12:00:00.000Z`);
+  const to = new Date(`${data.toDate ?? dateToIsoDate(addUtcDays(today, 62))}T12:00:00.000Z`);
+  const schedules = await db
+    .select()
+    .from(treasuryRecurringSchedules)
+    .where(and(eq(treasuryRecurringSchedules.churchId, data.churchId), eq(treasuryRecurringSchedules.active, true)));
+  let created = 0;
+  for (let cursor = from; cursor <= to; cursor = addUtcDays(cursor, 1)) {
+    const serviceDate = dateToIsoDate(cursor);
+    const weekday = cursor.getUTCDay();
+    for (const schedule of schedules.filter(item => item.weekday === weekday)) {
+      const existing = await db
+        .select({ id: treasuryServices.id })
+        .from(treasuryServices)
+        .where(and(eq(treasuryServices.churchId, data.churchId), eq(treasuryServices.recurringScheduleId, schedule.id), eq(treasuryServices.serviceDate, financialDate(serviceDate))))
+        .limit(1);
+      if (existing.length > 0) continue;
+      try {
+        await db.insert(treasuryServices).values({
+          churchId: data.churchId,
+          name: schedule.name,
+          serviceDate: financialDate(serviceDate),
+          startTime: schedule.startTime,
+          location: schedule.location,
+          notes: schedule.notes,
+          origin: "recorrente",
+          recurringScheduleId: schedule.id,
+          occurrenceOverride: false,
+          status: "aberto",
+          createdByChurchUserId: data.actorChurchUserId,
+        });
+        created += 1;
+      } catch (error) {
+        if (!isDuplicateTreasuryRecord(error)) throw error;
+      }
+    }
+  }
+  return { created };
+}
+
+export async function getTreasuryServiceById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(treasuryServices)
+    .where(and(eq(treasuryServices.id, id), eq(treasuryServices.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function createTreasuryService(data: { churchId: number; name: string; serviceDate: string; startTime?: string | null; location?: string | null; notes?: string | null; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const result = await tx.insert(treasuryServices).values({
+      churchId: data.churchId,
+      name: data.name,
+      serviceDate: financialDate(data.serviceDate),
+      startTime: data.startTime ?? null,
+      location: data.location ?? null,
+      notes: data.notes ?? null,
+      origin: "manual",
+      recurringScheduleId: null,
+      occurrenceOverride: false,
+      status: "aberto",
+      createdByChurchUserId: data.createdByChurchUserId,
+    });
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    const rows = await tx
+      .select()
+      .from(treasuryServices)
+      .where(and(eq(treasuryServices.id, id), eq(treasuryServices.churchId, data.churchId)))
+      .limit(1);
+    const service = rows[0] ?? null;
+    if (!service) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      serviceId: service.id,
+      actorChurchUserId: data.createdByChurchUserId,
+      action: "servico_criado",
+      beforeData: null,
+      afterData: service,
+    });
+    return service;
+  });
+}
+
+export async function updateTreasuryService(data: { id: number; churchId: number; name: string; serviceDate: string; startTime?: string | null; location?: string | null; notes?: string | null; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const beforeRows = await tx
+      .select()
+      .from(treasuryServices)
+      .where(and(eq(treasuryServices.id, data.id), eq(treasuryServices.churchId, data.churchId), eq(treasuryServices.status, "aberto")))
+      .limit(1);
+    const before = beforeRows[0] ?? null;
+    if (!before) return null;
+    await tx
+      .update(treasuryServices)
+      .set({
+      name: data.name,
+      serviceDate: financialDate(data.serviceDate),
+      startTime: data.startTime ?? null,
+      location: data.location ?? null,
+      notes: data.notes ?? null,
+      occurrenceOverride: before.origin === "recorrente" ? true : before.occurrenceOverride,
+      })
+      .where(and(eq(treasuryServices.id, data.id), eq(treasuryServices.churchId, data.churchId), eq(treasuryServices.status, "aberto")));
+    const afterRows = await tx
+      .select()
+      .from(treasuryServices)
+      .where(and(eq(treasuryServices.id, data.id), eq(treasuryServices.churchId, data.churchId)))
+      .limit(1);
+    const after = afterRows[0] ?? null;
+    if (!after) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      serviceId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "servico_atualizado",
+      beforeData: before,
+      afterData: after,
+    });
+    return after;
+  });
+}
+
+export async function cancelTreasuryService(data: { id: number; churchId: number; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const beforeRows = await tx
+      .select()
+      .from(treasuryServices)
+      .where(and(eq(treasuryServices.id, data.id), eq(treasuryServices.churchId, data.churchId), eq(treasuryServices.status, "aberto")))
+      .limit(1);
+    const before = beforeRows[0] ?? null;
+    if (!before) return null;
+    await tx
+      .update(treasuryServices)
+      .set({ status: "cancelado" })
+      .where(and(eq(treasuryServices.id, data.id), eq(treasuryServices.churchId, data.churchId), eq(treasuryServices.status, "aberto")));
+    const afterRows = await tx
+      .select()
+      .from(treasuryServices)
+      .where(and(eq(treasuryServices.id, data.id), eq(treasuryServices.churchId, data.churchId)))
+      .limit(1);
+    const after = afterRows[0] ?? null;
+    if (!after) return null;
+    await tx.insert(financialAuditLogs).values({
+      churchId: data.churchId,
+      serviceId: data.id,
+      actorChurchUserId: data.actorChurchUserId,
+      action: "servico_cancelado",
+      beforeData: before,
+      afterData: after,
+    });
+    return after;
+  });
+}
+
+export async function getTreasuryCountSheetsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(treasuryCountSheets).where(eq(treasuryCountSheets.churchId, churchId)).orderBy(desc(treasuryCountSheets.updatedAt), desc(treasuryCountSheets.id));
+}
+
+export async function getTreasuryCountSheetById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(treasuryCountSheets)
+    .where(and(eq(treasuryCountSheets.id, id), eq(treasuryCountSheets.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function saveTreasuryCountSheet(data: { id?: number; churchId: number; serviceId: number; counterOnePersonId: number; counterTwoPersonId: number; amounts: TreasuryCountAmounts; notes?: string | null; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const totalCents = getTreasuryCountTotal(data.amounts);
+  const values = {
+    churchId: data.churchId,
+    serviceId: data.serviceId,
+    counterOnePersonId: data.counterOnePersonId,
+    counterTwoPersonId: data.counterTwoPersonId,
+    ...data.amounts,
+    totalCents,
+    notes: data.notes ?? null,
+  };
+  if (data.id) {
+    const existing = await getTreasuryCountSheetById(data.id, data.churchId);
+    if (!existing || existing.status === "fechada") return null;
+    await db
+      .update(treasuryCountSheets)
+      .set(values)
+      .where(and(eq(treasuryCountSheets.id, data.id), eq(treasuryCountSheets.churchId, data.churchId), ne(treasuryCountSheets.status, "fechada")));
+    return getTreasuryCountSheetById(data.id, data.churchId);
+  }
+  try {
+    const result = await db.insert(treasuryCountSheets).values({
+      ...values,
+      status: "rascunho",
+      createdByChurchUserId: data.createdByChurchUserId,
+    });
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    return id ? getTreasuryCountSheetById(id, data.churchId) : null;
+  } catch (error) {
+    if (isDuplicateTreasuryRecord(error)) return null;
+    throw error;
+  }
+}
+
+export type TreasuryEntryLineInput = {
+  contributionType: "dizimo" | "oferta" | "oferta_especial" | "outra";
+  paymentMethod: "dinheiro" | "pix" | "transferencia" | "cartao" | "cheque" | "outro";
+  amountCents: number;
+  description?: string | null;
+};
+
+type TreasuryEntrySheetRow = {
+  sheet: typeof treasuryEntrySheets.$inferSelect;
+  line: typeof treasuryEntrySheetLines.$inferSelect | null;
+};
+
+function groupTreasuryEntrySheetRows(rows: TreasuryEntrySheetRow[]) {
+  const grouped = new Map<number, { sheet: TreasuryEntrySheet; lines: TreasuryEntrySheetLine[] }>();
+  for (const row of rows) {
+    const current = grouped.get(row.sheet.id) ?? {
+      sheet: row.sheet,
+      lines: [],
+    };
+    if (row.line) current.lines.push(row.line);
+    grouped.set(row.sheet.id, current);
+  }
+  return Array.from(grouped.values());
+}
+
+async function getTreasuryEntrySheetWithTx(tx: any, id: number, churchId: number) {
+  const rows = await tx
+    .select({ sheet: treasuryEntrySheets, line: treasuryEntrySheetLines })
+    .from(treasuryEntrySheets)
+    .leftJoin(treasuryEntrySheetLines, and(eq(treasuryEntrySheetLines.entrySheetId, treasuryEntrySheets.id), eq(treasuryEntrySheetLines.churchId, churchId)))
+    .where(and(eq(treasuryEntrySheets.id, id), eq(treasuryEntrySheets.churchId, churchId)))
+    .orderBy(asc(treasuryEntrySheetLines.id));
+  return groupTreasuryEntrySheetRows(rows as TreasuryEntrySheetRow[])[0] ?? null;
+}
+
+export async function getTreasuryEntrySheetsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({ sheet: treasuryEntrySheets, line: treasuryEntrySheetLines })
+    .from(treasuryEntrySheets)
+    .leftJoin(treasuryEntrySheetLines, and(eq(treasuryEntrySheetLines.entrySheetId, treasuryEntrySheets.id), eq(treasuryEntrySheetLines.churchId, churchId)))
+    .where(eq(treasuryEntrySheets.churchId, churchId))
+    .orderBy(desc(treasuryEntrySheets.updatedAt), desc(treasuryEntrySheets.id), asc(treasuryEntrySheetLines.id));
+  return groupTreasuryEntrySheetRows(rows as TreasuryEntrySheetRow[]);
+}
+
+export async function getTreasuryEntrySheetByService(serviceId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({ sheet: treasuryEntrySheets, line: treasuryEntrySheetLines })
+    .from(treasuryEntrySheets)
+    .leftJoin(treasuryEntrySheetLines, and(eq(treasuryEntrySheetLines.entrySheetId, treasuryEntrySheets.id), eq(treasuryEntrySheetLines.churchId, churchId)))
+    .where(and(eq(treasuryEntrySheets.serviceId, serviceId), eq(treasuryEntrySheets.churchId, churchId)))
+    .orderBy(asc(treasuryEntrySheetLines.id));
+  return groupTreasuryEntrySheetRows(rows as TreasuryEntrySheetRow[])[0] ?? null;
+}
+
+export async function getTreasuryEntrySheetHistoryByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const sheets = await getTreasuryEntrySheetsByChurch(churchId);
+  if (sheets.length === 0) return [];
+  const serviceIds = Array.from(new Set(sheets.map(({ sheet }) => sheet.serviceId)));
+  const services = await db
+    .select()
+    .from(treasuryServices)
+    .where(and(eq(treasuryServices.churchId, churchId), inArray(treasuryServices.id, serviceIds)));
+  const serviceById = new Map(services.map(service => [service.id, service]));
+  return sheets.map(entrySheet => ({
+    ...entrySheet,
+    service: serviceById.get(entrySheet.sheet.serviceId) ?? null,
+  }));
+}
+
+export async function saveTreasuryEntrySheet(data: { id?: number; churchId: number; serviceId: number; lines: TreasuryEntryLineInput[]; notes?: string | null; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async tx => {
+    const serviceRows = await tx
+      .select({ id: treasuryServices.id, status: treasuryServices.status })
+      .from(treasuryServices)
+      .where(and(eq(treasuryServices.id, data.serviceId), eq(treasuryServices.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const service = serviceRows[0];
+    if (!service || service.status === "cancelado") return null;
+
+    const totalCents = data.lines.reduce((sum, line) => sum + line.amountCents, 0);
+    let sheetId = data.id;
+    const existingRows = await tx
+      .select()
+      .from(treasuryEntrySheets)
+      .where(and(eq(treasuryEntrySheets.churchId, data.churchId), eq(treasuryEntrySheets.serviceId, data.serviceId), ...(data.id ? [eq(treasuryEntrySheets.id, data.id)] : [])))
+      .limit(1)
+      .for("update");
+    const existing = existingRows[0];
+    if (data.id && !existing) return null;
+
+    if (existing && (existing.status !== "rascunho" || existing.postingStatus !== "nao_lancada")) return null;
+
+    if (existing) {
+      sheetId = existing.id;
+      await tx
+        .update(treasuryEntrySheets)
+        .set({
+          totalCents,
+          notes: data.notes ?? null,
+          updatedByChurchUserId: data.createdByChurchUserId,
+        })
+        .where(and(eq(treasuryEntrySheets.id, existing.id), eq(treasuryEntrySheets.churchId, data.churchId)));
+      await tx.delete(treasuryEntrySheetLines).where(and(eq(treasuryEntrySheetLines.entrySheetId, existing.id), eq(treasuryEntrySheetLines.churchId, data.churchId)));
+    } else {
+      const result = await tx.insert(treasuryEntrySheets).values({
+        churchId: data.churchId,
+        serviceId: data.serviceId,
+        status: "rascunho",
+        totalCents,
+        notes: data.notes ?? null,
+        createdByChurchUserId: data.createdByChurchUserId,
+        updatedByChurchUserId: data.createdByChurchUserId,
+      });
+      sheetId = Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      if (!sheetId) throw new Error("Não foi possível criar a ficha financeira.");
+    }
+
+    if (data.lines.length > 0) {
+      await tx.insert(treasuryEntrySheetLines).values(
+        data.lines.map(line => ({
+          churchId: data.churchId,
+          entrySheetId: sheetId!,
+          contributionType: line.contributionType,
+          paymentMethod: line.paymentMethod,
+          amountCents: line.amountCents,
+          description: line.description ?? null,
+        }))
+      );
+    }
+    return getTreasuryEntrySheetWithTx(tx, sheetId!, data.churchId);
+  });
+}
+
+export async function finalizeTreasuryEntrySheet(data: { id: number; churchId: number; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const sheetRows = await tx
+      .select()
+      .from(treasuryEntrySheets)
+      .where(and(eq(treasuryEntrySheets.id, data.id), eq(treasuryEntrySheets.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const sheet = sheetRows[0];
+    if (!sheet) return null;
+    if (sheet.postingStatus === "lancada" || sheet.status === "finalizada") {
+      return getTreasuryEntrySheetWithTx(tx, data.id, data.churchId);
+    }
+    const lines = await tx
+      .select()
+      .from(treasuryEntrySheetLines)
+      .where(and(eq(treasuryEntrySheetLines.entrySheetId, data.id), eq(treasuryEntrySheetLines.churchId, data.churchId)))
+      .orderBy(asc(treasuryEntrySheetLines.id));
+    if (lines.length === 0 || lines.every(line => line.amountCents <= 0)) return null;
+    await tx
+      .update(treasuryEntrySheets)
+      .set({
+        status: "finalizada",
+        finalizedAt: new Date(),
+        finalizedByChurchUserId: data.actorChurchUserId,
+        updatedByChurchUserId: data.actorChurchUserId,
+      })
+      .where(and(eq(treasuryEntrySheets.id, data.id), eq(treasuryEntrySheets.churchId, data.churchId), eq(treasuryEntrySheets.status, "rascunho")));
+    return getTreasuryEntrySheetWithTx(tx, data.id, data.churchId);
+  });
+}
+
+export type TreasuryEntrySheetSignatureResult =
+  | {
+      sheet: Awaited<ReturnType<typeof getTreasuryEntrySheetWithTx>>;
+      conflict: false;
+    }
+  | { conflict: true }
+  | null;
+
+export async function signTreasuryEntrySheet(data: { id: number; churchId: number; signedByChurchUserId: number }): Promise<TreasuryEntrySheetSignatureResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select()
+      .from(treasuryEntrySheets)
+      .where(and(eq(treasuryEntrySheets.id, data.id), eq(treasuryEntrySheets.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const sheet = rows[0];
+    if (!sheet) return null;
+    if (sheet.status !== "finalizada") return null;
+    if (sheet.signedAt) return { conflict: true };
+    const signedAt = new Date();
+    await tx
+      .update(treasuryEntrySheets)
+      .set({
+        signedAt,
+        signedByChurchUserId: data.signedByChurchUserId,
+        updatedByChurchUserId: data.signedByChurchUserId,
+      })
+      .where(and(eq(treasuryEntrySheets.id, data.id), eq(treasuryEntrySheets.churchId, data.churchId), isNull(treasuryEntrySheets.signedAt)));
+    return {
+      sheet: await getTreasuryEntrySheetWithTx(tx, data.id, data.churchId),
+      conflict: false,
+    };
+  });
+}
+
+const ENTRY_SHEET_CATEGORY_KEY: Record<TreasuryEntryLineInput["contributionType"], string> = {
+  dizimo: "dizimo",
+  oferta: "oferta",
+  oferta_especial: "oferta",
+  outra: "outra_entrada",
+};
+
+export type TreasuryEntrySheetPostingAccount = {
+  paymentMethod: TreasuryEntryLineInput["paymentMethod"];
+  accountId: number;
+};
+
+export type TreasuryEntrySheetPostingResult =
+  | {
+      sheet: Awaited<ReturnType<typeof getTreasuryEntrySheetWithTx>>;
+      transactions: Array<typeof financialTransactions.$inferSelect>;
+      alreadyPosted: boolean;
+    }
+  | { conflict: "existing_transactions" }
+  | null;
+
+export async function postTreasuryEntrySheet(data: { id: number; churchId: number; actorChurchUserId: number; accounts: TreasuryEntrySheetPostingAccount[] }): Promise<TreasuryEntrySheetPostingResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const sheetRows = await tx
+      .select()
+      .from(treasuryEntrySheets)
+      .where(and(eq(treasuryEntrySheets.id, data.id), eq(treasuryEntrySheets.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const sheet = sheetRows[0];
+    if (!sheet) return null;
+    const lines = await tx
+      .select()
+      .from(treasuryEntrySheetLines)
+      .where(and(eq(treasuryEntrySheetLines.entrySheetId, data.id), eq(treasuryEntrySheetLines.churchId, data.churchId)))
+      .orderBy(asc(treasuryEntrySheetLines.id));
+    if (sheet.postingStatus === "lancada") {
+      const transactions = await tx
+        .select()
+        .from(financialTransactions)
+        .where(and(eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.serviceId, sheet.serviceId), eq(financialTransactions.reference, `ficha-culto:${sheet.id}`)))
+        .orderBy(asc(financialTransactions.id));
+      return {
+        sheet: await getTreasuryEntrySheetWithTx(tx, data.id, data.churchId),
+        transactions,
+        alreadyPosted: true,
+      };
+    }
+    if (sheet.status !== "finalizada" || lines.length === 0 || lines.some(line => line.amountCents <= 0)) return null;
+    const serviceRows = await tx
+      .select()
+      .from(treasuryServices)
+      .where(and(eq(treasuryServices.id, sheet.serviceId), eq(treasuryServices.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const service = serviceRows[0];
+    if (!service || service.status === "cancelado") return null;
+    const existingTransactions = await tx
+      .select({ id: financialTransactions.id })
+      .from(financialTransactions)
+      .where(and(eq(financialTransactions.churchId, data.churchId), eq(financialTransactions.serviceId, sheet.serviceId), sql`${financialTransactions.status} <> 'estornado'`))
+      .limit(1);
+    if (existingTransactions.length > 0) return { conflict: "existing_transactions" };
+
+    const accountByMethod = new Map(data.accounts.map(item => [item.paymentMethod, item.accountId]));
+    const lineAccountIds = lines.map(line => accountByMethod.get(line.paymentMethod));
+    if (lineAccountIds.some(accountId => !accountId)) return null;
+    const accountIds = Array.from(new Set(lineAccountIds as number[]));
+    const accounts = await tx
+      .select()
+      .from(financialAccounts)
+      .where(and(eq(financialAccounts.churchId, data.churchId), inArray(financialAccounts.id, accountIds), eq(financialAccounts.active, true)));
+    if (accounts.length !== accountIds.length) return null;
+
+    const categoryKeys = Array.from(new Set(lines.map(line => ENTRY_SHEET_CATEGORY_KEY[line.contributionType])));
+    const categories = await tx
+      .select()
+      .from(financialCategories)
+      .where(and(eq(financialCategories.churchId, data.churchId), eq(financialCategories.type, "entrada"), eq(financialCategories.active, true), inArray(financialCategories.key, categoryKeys)));
+    const categoryByKey = new Map(categories.map(category => [category.key, category]));
+    if (categories.length !== categoryKeys.length) return null;
+
+    const serviceDate = formatCivilDateValue(service.serviceDate);
+    const closedPeriod = await tx
+      .select({ id: financialPeriodClosures.id })
+      .from(financialPeriodClosures)
+      .where(and(eq(financialPeriodClosures.churchId, data.churchId), eq(financialPeriodClosures.status, "fechado"), lte(financialPeriodClosures.periodStart, financialDate(serviceDate)), gte(financialPeriodClosures.periodEnd, financialDate(serviceDate))))
+      .limit(1);
+    if (closedPeriod.length > 0) return null;
+
+    const createdTransactions: Array<typeof financialTransactions.$inferSelect> = [];
+    for (const line of lines) {
+      const category = categoryByKey.get(ENTRY_SHEET_CATEGORY_KEY[line.contributionType]);
+      const accountId = accountByMethod.get(line.paymentMethod);
+      if (!category || !accountId) return null;
+      const insert = await tx.insert(financialTransactions).values({
+        churchId: data.churchId,
+        accountId,
+        categoryId: category.id,
+        type: "entrada",
+        amountCents: line.amountCents,
+        transactionDate: financialDate(serviceDate),
+        paymentMethod: line.paymentMethod,
+        serviceId: sheet.serviceId,
+        description: line.description ?? `Ficha do culto · ${category.name}`,
+        reference: `ficha-culto:${sheet.id}`,
+        status: "confirmado",
+        createdByChurchUserId: data.actorChurchUserId,
+        confirmedByChurchUserId: data.actorChurchUserId,
+        confirmedAt: new Date(),
+      });
+      const transactionId = Number((insert[0] as { insertId?: number } | undefined)?.insertId ?? 0);
+      if (!transactionId) throw new Error("Não foi possível criar o lançamento da ficha.");
+      const transactionRows = await tx
+        .select()
+        .from(financialTransactions)
+        .where(and(eq(financialTransactions.id, transactionId), eq(financialTransactions.churchId, data.churchId)))
+        .limit(1);
+      const transaction = transactionRows[0];
+      if (!transaction) throw new Error("Lançamento da ficha não encontrado após a gravação.");
+      const lineUpdate = await tx
+        .update(treasuryEntrySheetLines)
+        .set({ financialTransactionId: transactionId })
+        .where(and(eq(treasuryEntrySheetLines.id, line.id), eq(treasuryEntrySheetLines.churchId, data.churchId), isNull(treasuryEntrySheetLines.financialTransactionId)));
+      if (Number((lineUpdate[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) throw new Error("A linha da ficha já possui um lançamento financeiro.");
+      await tx.insert(financialAuditLogs).values({
+        churchId: data.churchId,
+        transactionId,
+        serviceId: sheet.serviceId,
+        actorChurchUserId: data.actorChurchUserId,
+        action: "confirmado",
+        afterData: {
+          ...transaction,
+          entrySheetId: sheet.id,
+          entrySheetLineId: line.id,
+        },
+      });
+      createdTransactions.push(transaction);
+    }
+    await tx
+      .update(treasuryEntrySheets)
+      .set({
+        postingStatus: "lancada",
+        postedAt: new Date(),
+        postedByChurchUserId: data.actorChurchUserId,
+        updatedByChurchUserId: data.actorChurchUserId,
+      })
+      .where(and(eq(treasuryEntrySheets.id, data.id), eq(treasuryEntrySheets.churchId, data.churchId), eq(treasuryEntrySheets.postingStatus, "nao_lancada")));
+    return {
+      sheet: await getTreasuryEntrySheetWithTx(tx, data.id, data.churchId),
+      transactions: createdTransactions,
+      alreadyPosted: false,
+    };
+  });
+}
+
+export async function closeTreasuryCountSheet(data: { id: number; churchId: number; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.transaction(async tx => {
+    const sheetRows = await tx
+      .select()
+      .from(treasuryCountSheets)
+      .where(and(eq(treasuryCountSheets.id, data.id), eq(treasuryCountSheets.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const existing = sheetRows[0];
+    if (!existing) return null;
+    if (existing.status === "fechada") return existing;
+
+    const serviceRows = await tx
+      .select()
+      .from(treasuryServices)
+      .where(and(eq(treasuryServices.id, existing.serviceId), eq(treasuryServices.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const service = serviceRows[0];
+    if (!service || service.status === "cancelado") return null;
+
+    const sheetUpdate = await tx
+      .update(treasuryCountSheets)
+      .set({
+      status: "fechada",
+      confirmedAt: new Date(),
+      confirmedByChurchUserId: data.actorChurchUserId,
+      })
+      .where(and(eq(treasuryCountSheets.id, data.id), eq(treasuryCountSheets.churchId, data.churchId), ne(treasuryCountSheets.status, "fechada")));
+    if (Number((sheetUpdate[0] as { affectedRows?: number })?.affectedRows ?? 0) !== 1) {
+      const currentRows = await tx
+        .select()
+        .from(treasuryCountSheets)
+        .where(and(eq(treasuryCountSheets.id, data.id), eq(treasuryCountSheets.churchId, data.churchId)))
+        .limit(1);
+      return currentRows[0]?.status === "fechada" ? currentRows[0] : null;
+    }
+
+    const serviceUpdate = await tx
+      .update(treasuryServices)
+      .set({ status: "fechado" })
+      .where(and(eq(treasuryServices.id, service.id), eq(treasuryServices.churchId, data.churchId), eq(treasuryServices.status, "aberto")));
+    const serviceChanged = Number((serviceUpdate[0] as { affectedRows?: number })?.affectedRows ?? 0) === 1;
+    if (!serviceChanged && service.status !== "fechado") {
+      throw new Error("Falha ao fechar o culto vinculado à folha de contagem");
+    }
+
+    const updatedRows = await tx
+      .select()
+      .from(treasuryCountSheets)
+      .where(and(eq(treasuryCountSheets.id, data.id), eq(treasuryCountSheets.churchId, data.churchId)))
+      .limit(1);
+    return updatedRows[0] ?? null;
+  });
+}
+
+export async function getTreasuryDepositsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(treasuryDeposits).where(eq(treasuryDeposits.churchId, churchId)).orderBy(desc(treasuryDeposits.depositDate), desc(treasuryDeposits.id));
+}
+
+export async function getTreasuryDepositByCountSheet(countSheetId: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(treasuryDeposits)
+    .where(and(eq(treasuryDeposits.countSheetId, countSheetId), eq(treasuryDeposits.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function saveTreasuryDeposit(data: { id?: number; churchId: number; countSheetId: number; accountId: number; amountCents: number; depositDate: string; reference?: string | null; notes?: string | null; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const values = {
+    accountId: data.accountId,
+    amountCents: data.amountCents,
+    depositDate: financialDate(data.depositDate),
+    reference: data.reference ?? null,
+    notes: data.notes ?? null,
+    status: "depositado" as const,
+    depositedByChurchUserId: data.actorChurchUserId,
+    depositedAt: new Date(),
+  };
+  if (data.id) {
+    await db
+      .update(treasuryDeposits)
+      .set(values)
+      .where(and(eq(treasuryDeposits.id, data.id), eq(treasuryDeposits.churchId, data.churchId), eq(treasuryDeposits.countSheetId, data.countSheetId)));
+    return db
+      .select()
+      .from(treasuryDeposits)
+      .where(and(eq(treasuryDeposits.id, data.id), eq(treasuryDeposits.churchId, data.churchId)))
+      .limit(1)
+      .then(rows => rows[0] ?? null);
+  }
+  try {
+    const result = await db.insert(treasuryDeposits).values({
+      ...values,
+      churchId: data.churchId,
+      countSheetId: data.countSheetId,
+      createdByChurchUserId: data.actorChurchUserId,
+    });
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    return id
+      ? db
+          .select()
+          .from(treasuryDeposits)
+          .where(and(eq(treasuryDeposits.id, id), eq(treasuryDeposits.churchId, data.churchId)))
+          .limit(1)
+          .then(rows => rows[0] ?? null)
+      : null;
+  } catch (error) {
+    if (isDuplicateTreasuryRecord(error)) return null;
+    throw error;
+  }
+}
+
+export type TreasuryReportSnapshot = {
+  service: Record<string, unknown>;
+  countSheet: Record<string, unknown>;
+  counters: { one: string; two: string };
+  deposit: Record<string, unknown> | null;
+  transactions: Array<Record<string, unknown>>;
+  issuedAt: string;
+};
+
+export async function getTreasuryReportsByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(treasuryReports).where(eq(treasuryReports.churchId, churchId)).orderBy(desc(treasuryReports.issuedAt), desc(treasuryReports.id));
+}
+
+export async function getTreasuryReportById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(treasuryReports)
+    .where(and(eq(treasuryReports.id, id), eq(treasuryReports.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function issueTreasuryReport(data: { churchId: number; serviceId: number; countSheetId: number; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async tx => {
+    // Serializa emissões do mesmo culto sem bloquear outros tenants ou cultos.
+    const serviceRows = await tx
+      .select()
+      .from(treasuryServices)
+      .where(and(eq(treasuryServices.id, data.serviceId), eq(treasuryServices.churchId, data.churchId)))
+      .limit(1)
+      .for("update");
+    const service = serviceRows[0];
+    if (!service) return null;
+
+    const [countSheetRows, depositRows, transactionRows, latestVersionRows] = await Promise.all([
+      tx
+        .select()
+        .from(treasuryCountSheets)
+        .where(and(eq(treasuryCountSheets.id, data.countSheetId), eq(treasuryCountSheets.churchId, data.churchId)))
+        .limit(1),
+      tx
+        .select()
+        .from(treasuryDeposits)
+        .where(and(eq(treasuryDeposits.countSheetId, data.countSheetId), eq(treasuryDeposits.churchId, data.churchId)))
+        .limit(1),
+      tx
+        .select()
+        .from(financialTransactions)
+        .where(and(eq(financialTransactions.churchId, data.churchId), sql`${financialTransactions.status} <> 'rascunho'`, or(eq(financialTransactions.serviceId, data.serviceId), eq(financialTransactions.countSheetId, data.countSheetId))))
+        .orderBy(financialTransactions.transactionDate, financialTransactions.id),
+      tx
+        .select({
+          maxVersion: sql<number | null>`max(${treasuryReports.version})`,
+        })
+        .from(treasuryReports)
+        .where(and(eq(treasuryReports.churchId, data.churchId), eq(treasuryReports.serviceId, data.serviceId))),
+    ]);
+    const countSheet = countSheetRows[0];
+    const deposit = depositRows[0] ?? null;
+    if (!countSheet || countSheet.serviceId !== data.serviceId || countSheet.status !== "fechada") return null;
+
+    const peopleIds = [countSheet.counterOnePersonId, countSheet.counterTwoPersonId];
+    const namedPeople = await tx
+      .select({ id: people.id, fullName: people.fullName })
+      .from(people)
+      .where(and(eq(people.churchId, data.churchId), or(eq(people.id, peopleIds[0]), eq(people.id, peopleIds[1]))));
+    const nameById = new Map(namedPeople.map(person => [person.id, person.fullName]));
+    const snapshot: TreasuryReportSnapshot = {
+      service: service as unknown as Record<string, unknown>,
+      countSheet: countSheet as unknown as Record<string, unknown>,
+      counters: {
+        one: nameById.get(peopleIds[0]) ?? "Não informado",
+        two: nameById.get(peopleIds[1]) ?? "Não informado",
+      },
+      deposit: deposit as unknown as Record<string, unknown> | null,
+      transactions: transactionRows as unknown as Array<Record<string, unknown>>,
+      issuedAt: new Date().toISOString(),
+    };
+    const version = Number(latestVersionRows[0]?.maxVersion ?? 0) + 1;
+    const result = await tx.insert(treasuryReports).values({
+      churchId: data.churchId,
+      serviceId: data.serviceId,
+      countSheetId: data.countSheetId,
+      reportType: "culto_diario",
+      version,
+      status: "emitido",
+      snapshot,
+      issuedByChurchUserId: data.actorChurchUserId,
+    });
+    const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
+    if (!id) return null;
+    const reportRows = await tx
+      .select()
+      .from(treasuryReports)
+      .where(and(eq(treasuryReports.id, id), eq(treasuryReports.churchId, data.churchId)))
+      .limit(1);
+    return reportRows[0] ?? null;
+  });
+}
+
+export type TreasuryReportSignatureResult = { report: TreasuryReport; signature: TreasuryReportSignature } | { conflict: true } | null;
+
+export async function signTreasuryReport(data: { id: number; churchId: number; role: "contador1" | "contador2" | "tesoureiro" | "pastor"; signedByChurchUserId: number; signedByPersonId: number | null }): Promise<TreasuryReportSignatureResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const field = data.role === "contador1" ? "signedByCounterOneAt" : data.role === "contador2" ? "signedByCounterTwoAt" : data.role === "tesoureiro" ? "signedByTreasurerAt" : "signedByPastorAt";
+
+  try {
+    return await db.transaction(async tx => {
+      const reportRows = await tx
+        .select()
+        .from(treasuryReports)
+        .where(and(eq(treasuryReports.id, data.id), eq(treasuryReports.churchId, data.churchId)))
+        .limit(1);
+      const report = reportRows[0];
+      if (!report) return null;
+      const existingSignature = await tx
+        .select()
+        .from(treasuryReportSignatures)
+        .where(and(eq(treasuryReportSignatures.reportId, data.id), eq(treasuryReportSignatures.churchId, data.churchId), eq(treasuryReportSignatures.role, data.role)))
+        .limit(1);
+      if (existingSignature[0]) return { conflict: true };
+
+      const signedAt = new Date();
+      await tx.insert(treasuryReportSignatures).values({
+        churchId: data.churchId,
+        reportId: data.id,
+        role: data.role,
+        signedByChurchUserId: data.signedByChurchUserId,
+        signedByPersonId: data.signedByPersonId,
+        signedAt,
+      });
+      await tx
+        .update(treasuryReports)
+        .set({ [field]: signedAt, status: "assinado" })
+        .where(and(eq(treasuryReports.id, data.id), eq(treasuryReports.churchId, data.churchId)));
+      const updatedRows = await tx
+        .select()
+        .from(treasuryReports)
+        .where(and(eq(treasuryReports.id, data.id), eq(treasuryReports.churchId, data.churchId)))
+        .limit(1);
+      const signatureRows = await tx
+        .select()
+        .from(treasuryReportSignatures)
+        .where(and(eq(treasuryReportSignatures.reportId, data.id), eq(treasuryReportSignatures.churchId, data.churchId), eq(treasuryReportSignatures.role, data.role)))
+        .limit(1);
+      if (!updatedRows[0] || !signatureRows[0]) return null;
+      return { report: updatedRows[0], signature: signatureRows[0] };
+    });
+  } catch (error) {
+    if (isDuplicateTreasuryRecord(error)) return { conflict: true };
+    throw error;
+  }
+}
+
+export async function getFinancialTransactionsByService(churchId: number, serviceId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(financialTransactions)
+    .where(and(eq(financialTransactions.churchId, churchId), eq(financialTransactions.serviceId, serviceId)))
+    .orderBy(financialTransactions.transactionDate, financialTransactions.id);
+}
+
+export async function getFinancialTransactionsByCountSheet(churchId: number, countSheetId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(financialTransactions)
+    .where(and(eq(financialTransactions.churchId, churchId), eq(financialTransactions.countSheetId, countSheetId)))
+    .orderBy(financialTransactions.transactionDate, financialTransactions.id);
+}
+
+export async function getTreasuryServiceParticipantNames(churchId: number, ids: number[]) {
+  const db = await getDb();
+  if (!db || ids.length === 0) return [];
+  const uniqueIds = Array.from(new Set(ids.filter(id => Number.isInteger(id) && id > 0)));
+  if (uniqueIds.length === 0) return [];
+  return db
+    .select({ id: people.id, fullName: people.fullName })
+    .from(people)
+    .where(and(eq(people.churchId, churchId), or(...uniqueIds.map(id => eq(people.id, id)))));
+}
+
+// ─── ESTUDOS SEMANAIS DE CÉLULAS ─────────────────────────────────────────────
+
+export async function getCellStudyById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(cellStudies)
+    .where(and(eq(cellStudies.id, id), eq(cellStudies.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCellStudiesByChurch(churchId: number, includeDrafts = false) {
+  const db = await getDb();
+  if (!db) return [];
+  const where = includeDrafts ? eq(cellStudies.churchId, churchId) : and(eq(cellStudies.churchId, churchId), eq(cellStudies.status, "publicado"));
+  return db.select().from(cellStudies).where(where).orderBy(desc(cellStudies.weekStart), desc(cellStudies.id));
+}
+
+export async function createCellStudy(data: { churchId: number; title: string; weekStart: string; biblicalText?: string | null; objective?: string | null; introduction?: string | null; development?: string | null; discussionQuestions?: string | null; practicalApplication?: string | null; prayer?: string | null; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(cellStudies).values({
+    ...data,
+    title: data.title.trim(),
+    weekStart: data.weekStart,
+    biblicalText: data.biblicalText?.trim() || null,
+    objective: data.objective?.trim() || null,
+    introduction: data.introduction?.trim() || null,
+    development: data.development?.trim() || null,
+    discussionQuestions: data.discussionQuestions?.trim() || null,
+    practicalApplication: data.practicalApplication?.trim() || null,
+    prayer: data.prayer?.trim() || null,
+    updatedByChurchUserId: data.createdByChurchUserId,
+    status: "rascunho",
+  });
+  return getCellStudyById(Number(result.insertId), data.churchId);
+}
+
+/** Cria um estudo pronto e seu material principal de forma atômica, sem criar uma biblioteca paralela. */
+export async function createReadyCellStudy(data: { churchId: number; title: string; weekStart: string; biblicalText?: string | null; observation?: string | null; mediaAssetId: number; url: string; mimeType?: string | null; originalFilename?: string | null; createdByChurchUserId: number; publish: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async tx => {
+    const assetRows = await tx
+      .select({
+        id: mediaAssets.id,
+        url: mediaAssets.url,
+        secureUrl: mediaAssets.secureUrl,
+        mimeType: mediaAssets.mimeType,
+        originalFilename: mediaAssets.originalFilename,
+      })
+      .from(mediaAssets)
+      .where(and(eq(mediaAssets.id, data.mediaAssetId), eq(mediaAssets.churchId, data.churchId), eq(mediaAssets.purpose, "cell_study_attachment"), eq(mediaAssets.status, "active")))
+      .limit(1);
+    const asset = assetRows[0];
+    if (!asset || (asset.url !== data.url && asset.secureUrl !== data.url)) {
+      throw new Error("O arquivo não pertence a esta igreja ou não corresponde ao asset enviado.");
+    }
+
+    const title = data.title.trim();
+    const status = data.publish ? "publicado" : "rascunho";
+    const [studyResult] = await tx.insert(cellStudies).values({
+      churchId: data.churchId,
+      title,
+      weekStart: data.weekStart,
+      biblicalText: data.biblicalText?.trim() || null,
+      objective: data.observation?.trim() || null,
+      introduction: null,
+      development: null,
+      discussionQuestions: null,
+      practicalApplication: null,
+      prayer: null,
+      status,
+      publishedAt: data.publish ? new Date() : null,
+      createdByChurchUserId: data.createdByChurchUserId,
+      updatedByChurchUserId: data.createdByChurchUserId,
+    });
+    const studyId = Number(studyResult.insertId);
+    if (!studyId) throw new Error("Não foi possível criar o estudo pronto.");
+
+    const [attachmentResult] = await tx.insert(cellStudyAttachments).values({
+      churchId: data.churchId,
+      studyId,
+      title,
+      kind: "arquivo",
+      mediaAssetId: data.mediaAssetId,
+      url: data.url,
+      mimeType: data.mimeType ?? asset.mimeType,
+      originalFilename: data.originalFilename ?? asset.originalFilename,
+      position: 0,
+      createdByChurchUserId: data.createdByChurchUserId,
+    });
+    const attachmentId = Number(attachmentResult.insertId);
+    if (!attachmentId) throw new Error("Não foi possível registrar o arquivo principal do estudo.");
+
+    const [studyRows, attachmentRows] = await Promise.all([
+      tx
+        .select()
+        .from(cellStudies)
+        .where(and(eq(cellStudies.id, studyId), eq(cellStudies.churchId, data.churchId)))
+        .limit(1),
+      tx
+        .select()
+        .from(cellStudyAttachments)
+        .where(and(eq(cellStudyAttachments.id, attachmentId), eq(cellStudyAttachments.churchId, data.churchId), eq(cellStudyAttachments.studyId, studyId)))
+        .limit(1),
+    ]);
+    return {
+      study: studyRows[0] ?? null,
+      attachment: attachmentRows[0] ?? null,
+    };
+  });
+}
+
+export async function updateCellStudy(data: { id: number; churchId: number; updatedByChurchUserId: number; title?: string; weekStart?: string; biblicalText?: string | null; objective?: string | null; introduction?: string | null; development?: string | null; discussionQuestions?: string | null; practicalApplication?: string | null; prayer?: string | null; status?: "rascunho" | "publicado" | "arquivado" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const update: Record<string, unknown> = {
+    updatedByChurchUserId: data.updatedByChurchUserId,
+  };
+  if (data.title !== undefined) update.title = data.title.trim();
+  if (data.weekStart !== undefined) update.weekStart = data.weekStart;
+  if (data.biblicalText !== undefined) update.biblicalText = data.biblicalText?.trim() || null;
+  if (data.objective !== undefined) update.objective = data.objective?.trim() || null;
+  if (data.introduction !== undefined) update.introduction = data.introduction?.trim() || null;
+  if (data.development !== undefined) update.development = data.development?.trim() || null;
+  if (data.discussionQuestions !== undefined) update.discussionQuestions = data.discussionQuestions?.trim() || null;
+  if (data.practicalApplication !== undefined) update.practicalApplication = data.practicalApplication?.trim() || null;
+  if (data.prayer !== undefined) update.prayer = data.prayer?.trim() || null;
+  if (data.status !== undefined) {
+    update.status = data.status;
+    update.publishedAt = data.status === "publicado" ? new Date() : null;
+  }
+  await db
+    .update(cellStudies)
+    .set(update)
+    .where(and(eq(cellStudies.id, data.id), eq(cellStudies.churchId, data.churchId)));
+  return getCellStudyById(data.id, data.churchId);
+}
+
+export async function getCellStudyAttachments(churchId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(cellStudyAttachments)
+    .where(and(eq(cellStudyAttachments.churchId, churchId), eq(cellStudyAttachments.studyId, studyId)))
+    .orderBy(cellStudyAttachments.position, cellStudyAttachments.id);
+}
+
+export async function createCellStudyAttachment(data: { churchId: number; studyId: number; title: string; kind: "arquivo" | "link"; mediaAssetId?: number | null; url?: string | null; mimeType?: string | null; originalFilename?: string | null; position: number; createdByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(cellStudyAttachments).values({
+    ...data,
+    title: data.title.trim(),
+    mediaAssetId: data.mediaAssetId ?? null,
+    url: data.url ?? null,
+    mimeType: data.mimeType ?? null,
+    originalFilename: data.originalFilename ?? null,
+  });
+  const rows = await db
+    .select()
+    .from(cellStudyAttachments)
+    .where(and(eq(cellStudyAttachments.id, Number(result.insertId)), eq(cellStudyAttachments.churchId, data.churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function updateCellStudyAttachmentPosition(data: { id: number; churchId: number; studyId: number; position: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(cellStudyAttachments)
+    .set({ position: data.position })
+    .where(and(eq(cellStudyAttachments.id, data.id), eq(cellStudyAttachments.churchId, data.churchId), eq(cellStudyAttachments.studyId, data.studyId)));
+}
+
+export async function deleteCellStudyAttachment(data: { id: number; churchId: number; studyId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(cellStudyAttachments).where(and(eq(cellStudyAttachments.id, data.id), eq(cellStudyAttachments.churchId, data.churchId), eq(cellStudyAttachments.studyId, data.studyId)));
+}
+
+export async function getCellStudyAdministrators(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+    id: cellStudyAdministrators.id,
+    churchUserId: cellStudyAdministrators.churchUserId,
+    assignedByChurchUserId: cellStudyAdministrators.assignedByChurchUserId,
+    createdAt: cellStudyAdministrators.createdAt,
+    name: churchUsers.name,
+    email: churchUsers.email,
+    role: churchUsers.role,
+    active: churchUsers.active,
+    })
+    .from(cellStudyAdministrators)
+    .innerJoin(churchUsers, eq(cellStudyAdministrators.churchUserId, churchUsers.id))
+    .where(and(eq(cellStudyAdministrators.churchId, churchId), eq(churchUsers.churchId, churchId), eq(churchUsers.active, true)))
+    .orderBy(churchUsers.name);
+}
+
+export async function isCellStudyAdministrator(churchId: number, churchUserId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ id: cellStudyAdministrators.id })
+    .from(cellStudyAdministrators)
+    .innerJoin(churchUsers, eq(cellStudyAdministrators.churchUserId, churchUsers.id))
+    .where(and(eq(cellStudyAdministrators.churchId, churchId), eq(cellStudyAdministrators.churchUserId, churchUserId), eq(churchUsers.churchId, churchId), eq(churchUsers.active, true)))
+    .limit(1);
+  return Boolean(rows[0]);
+}
+
+export async function assignCellStudyAdministrator(data: { churchId: number; churchUserId: number; assignedByChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(cellStudyAdministrators)
+    .values(data)
+    .onDuplicateKeyUpdate({
+      set: { assignedByChurchUserId: data.assignedByChurchUserId },
+    });
+}
+
+export async function removeCellStudyAdministrator(churchId: number, churchUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(cellStudyAdministrators).where(and(eq(cellStudyAdministrators.churchId, churchId), eq(cellStudyAdministrators.churchUserId, churchUserId)));
+}
+
+export async function getActiveChurchStudyAsset(churchId: number, mediaAssetId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({
+      id: mediaAssets.id,
+      url: mediaAssets.url,
+      secureUrl: mediaAssets.secureUrl,
+      mimeType: mediaAssets.mimeType,
+      originalFilename: mediaAssets.originalFilename,
+      bytes: mediaAssets.bytes,
+      purpose: mediaAssets.purpose,
+      resourceType: mediaAssets.resourceType,
+    })
+    .from(mediaAssets)
+    .where(and(eq(mediaAssets.id, mediaAssetId), eq(mediaAssets.churchId, churchId), eq(mediaAssets.purpose, "cell_study_attachment"), eq(mediaAssets.status, "active")))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function getCellStudyReaders(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      personId: cellMembers.personId,
+      cellId: cells.id,
+      leaderId: cells.leaderId,
+      coLeaderId: cells.coLeaderId,
+      supervisorId: cells.supervisorId,
+    })
+    .from(cellMembers)
+    .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+    .where(and(eq(cells.churchId, churchId), eq(cells.active, true), eq(cellMembers.active, true)));
+}
+
+export async function getCellStudyReaderPersonIds(churchId: number) {
+  const db = await getDb();
+  if (!db) return new Set<number>();
+  const rows = await getCellStudyReaders(churchId);
+  const ids = new Set<number>();
+  for (const row of rows) {
+    ids.add(row.personId);
+    if (row.leaderId) ids.add(row.leaderId);
+    if (row.coLeaderId) ids.add(row.coLeaderId);
+    if (row.supervisorId) ids.add(row.supervisorId);
+  }
+  return ids;
+}
+
+export async function getCellStudyReaderLeaderIds(churchId: number) {
+  const db = await getDb();
+  if (!db) return new Set<number>();
+  const rows = await db
+    .select({
+      leaderId: cells.leaderId,
+      coLeaderId: cells.coLeaderId,
+      supervisorId: cells.supervisorId,
+    })
+    .from(cells)
+    .where(and(eq(cells.churchId, churchId), eq(cells.active, true)));
+  const ids = new Set<number>();
+  for (const row of rows) {
+    if (row.leaderId) ids.add(row.leaderId);
+    if (row.coLeaderId) ids.add(row.coLeaderId);
+    if (row.supervisorId) ids.add(row.supervisorId);
+  }
+  return ids;
+}
+
+export async function getCellStudyAccessByChurchUser(churchId: number, churchUserId: number) {
+  const [isAdministrator, leaderIds] = await Promise.all([isCellStudyAdministrator(churchId, churchUserId), getCellStudyReaderLeaderIds(churchId)]);
+  return { isAdministrator, leaderIds };
+}
+
+export async function getCellStudiesWithAttachments(churchId: number, includeDrafts = false) {
+  const studies = await getCellStudiesByChurch(churchId, includeDrafts);
+  const byStudy = await Promise.all(
+    studies.map(async study => ({
+      study,
+      attachments: await getCellStudyAttachments(churchId, study.id),
+    }))
+  );
+  return byStudy;
+}
+
+// ─── FIM DOS ESTUDOS SEMANAIS DE CÉLULAS ──────────────────────────────────────
+
+export async function getFamilyMembersByFamily(input: { churchId: number; familyId: number }) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: familyMembers.id,
+      familyId: familyMembers.familyId,
+      personId: familyMembers.personId,
+      relation: familyMembers.relation,
+      fullName: people.fullName,
+    })
+    .from(familyMembers)
+    .innerJoin(families, eq(families.id, familyMembers.familyId))
+    .innerJoin(people, eq(people.id, familyMembers.personId))
+    .where(and(eq(families.id, input.familyId), eq(families.churchId, input.churchId), eq(people.churchId, input.churchId)))
+    .orderBy(people.fullName);
+}
+
+export async function addFamilyMember(input: { churchId: number; familyId: number; personId: number; relation: "pai" | "mae" | "filho" | "filha" | "outro" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [family] = await db
+    .select({ id: families.id })
+    .from(families)
+    .where(and(eq(families.id, input.familyId), eq(families.churchId, input.churchId)))
+    .limit(1);
+  if (!family) throw new Error("Núcleo familiar não encontrado nesta igreja.");
+  const [person] = await db
+    .select({ id: people.id })
+    .from(people)
+    .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)))
+    .limit(1);
+  if (!person) throw new Error("A Pessoa selecionada não pertence a esta igreja.");
+  const [existing] = await db
+    .select({ id: familyMembers.id })
+    .from(familyMembers)
+    .where(and(eq(familyMembers.familyId, input.familyId), eq(familyMembers.personId, input.personId)))
+    .limit(1);
+  if (existing) throw new Error("Esta Pessoa já pertence a este núcleo familiar.");
+  const result = await db.insert(familyMembers).values({
+    familyId: input.familyId,
+    personId: input.personId,
+    relation: input.relation,
+  });
+  return {
+    success: true,
+    id: Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0),
+  };
+}
+
+export async function removeFamilyMember(input: { churchId: number; familyId: number; memberId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [member] = await db
+    .select({ id: familyMembers.id })
+    .from(familyMembers)
+    .innerJoin(families, eq(families.id, familyMembers.familyId))
+    .where(and(eq(familyMembers.id, input.memberId), eq(familyMembers.familyId, input.familyId), eq(families.churchId, input.churchId)))
+    .limit(1);
+  if (!member) throw new Error("Membro da família não encontrado.");
+  await db.delete(familyMembers).where(and(eq(familyMembers.id, input.memberId), eq(familyMembers.familyId, input.familyId)));
+  return { success: true };
+}
+
+export async function getFamilyById(churchId: number, familyId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [family] = await db
+    .select()
+    .from(families)
+    .where(and(eq(families.id, familyId), eq(families.churchId, churchId)))
+    .limit(1);
+  return family ?? null;
+}

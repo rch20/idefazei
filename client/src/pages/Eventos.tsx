@@ -1,0 +1,861 @@
+import { useChurch } from "@/components/ChurchLayout";
+import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { trpc } from "@/lib/trpc";
+import { uploadChurchMedia } from "@/lib/mediaUpload";
+import { getWhatsAppLinkWithMessage } from "@/lib/whatsapp";
+import { formatBrl, formatDatePtBr, formatEventTimeRange, formatMonthShortPtBr, getCivilDateParts, getTodayCivilDateInput, parseBrlToCents } from "@/lib/treasury";
+import { createEventReportPdf, eventReportPdfFileName } from "@/lib/eventReportPdf";
+import { TreasuryPdfPreview } from "@/components/TreasuryPdfPreview";
+import { BarChart3, CalendarDays, CheckCircle2, ClipboardCheck, Clock, Copy, Download, ExternalLink, Image as ImageIcon, Link2, Loader2, MapPin, MessageCircle, Pencil, Plus, Printer, QrCode, Send, Share2, Trash2, Upload, UserCheck, UserPlus, UserRound, UserX, Users } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { QRCodeSVG } from "qrcode.react";
+
+type RegistrationMode = "none" | "individual" | "casal";
+type PresenceStatus = "pendente" | "presente" | "ausente" | "cancelado";
+type PaymentStatus = "pendente" | "pago" | "isento" | "reembolsado";
+type FlyerFormat = "mobile" | "screen" | "stories";
+type EventType = "congresso" | "conferencia" | "vigilia" | "retiro" | "seminario" | "culto" | "outro";
+type EventEditDraft = {
+  name: string;
+  type: EventType;
+  description: string;
+  startDate: string;
+  endDate: string;
+  startTime: string;
+  endTime: string;
+  location: string;
+  maxCapacity: string;
+};
+
+type ManualRegistrationDraft = {
+  participantName: string;
+  participantPhone: string;
+  companionName: string;
+  email: string;
+};
+
+const emptyManualRegistrationDraft: ManualRegistrationDraft = {
+  participantName: "",
+  participantPhone: "",
+  companionName: "",
+  email: "",
+};
+
+type EventRecord = {
+  id: number;
+  churchId: number;
+  name: string;
+  type: EventType;
+  description: string | null;
+  startDate: Date | string;
+  endDate: Date | string | null;
+  startTime: string | null;
+  endTime: string | null;
+  location: string | null;
+  maxCapacity: number | null;
+  registrationMode: RegistrationMode;
+  registrationFeeCents: number;
+  paymentDueDate: Date | string | null;
+  paymentInstructions: string | null;
+  registrationToken: string | null;
+  qrCode: string | null;
+  flyerMediaAssetId: number | null;
+  flyerFormat: FlyerFormat;
+  flyer: {
+    mediaAssetId: number;
+    url: string;
+    optimizedUrl: string;
+    webpUrl: string | null;
+    avifUrl: string | null;
+    width: number | null;
+    height: number | null;
+  } | null;
+};
+
+const EVENT_TYPES = [
+  { value: "congresso", label: "Congresso" },
+  { value: "conferencia", label: "Conferência" },
+  { value: "vigilia", label: "Vigília" },
+  { value: "retiro", label: "Retiro" },
+  { value: "seminario", label: "Seminário" },
+  { value: "culto", label: "Culto" },
+  { value: "outro", label: "Outro" },
+];
+
+const REGISTRATION_MODES: Array<{ value: RegistrationMode; label: string; description: string }> = [
+  { value: "none", label: "Sem inscrição online", description: "Use apenas a agenda e o controle interno." },
+  { value: "individual", label: "Inscrição individual", description: "Cada ficha representa uma pessoa." },
+  { value: "casal", label: "Inscrição de casal", description: "Cada ficha representa duas pessoas." },
+];
+
+const FLYER_FORMATS: Array<{ value: FlyerFormat; label: string; description: string }> = [
+  { value: "mobile", label: "Celular — 4:5", description: "Convite vertical equilibrado para WhatsApp e página pública." },
+  { value: "screen", label: "Tela — 16:9", description: "Formato horizontal para TV, projetor e computador." },
+  { value: "stories", label: "Stories — 9:16", description: "Formato vertical para Status e Stories." },
+];
+
+function flyerAspectClass(format: FlyerFormat | null | undefined) {
+  if (format === "screen") return "aspect-video";
+  if (format === "stories") return "aspect-[9/16]";
+  return "aspect-[4/5]";
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  congresso: "bg-purple-50 text-purple-700 border-purple-200",
+  conferencia: "bg-blue-50 text-blue-700 border-blue-200",
+  vigilia: "bg-indigo-50 text-indigo-700 border-indigo-200",
+  retiro: "bg-green-50 text-green-700 border-green-200",
+  seminario: "bg-amber-50 text-amber-700 border-amber-200",
+  culto: "bg-rose-50 text-rose-700 border-rose-200",
+  outro: "bg-gray-50 text-gray-700 border-gray-200",
+};
+
+const defaultForm = {
+  name: "",
+  type: "culto" as const,
+  description: "",
+  startDate: getTodayCivilDateInput(),
+  endDate: "",
+  startTime: "",
+  endTime: "",
+  location: "",
+  maxCapacity: "",
+  registrationMode: "none" as RegistrationMode,
+  isPaid: false,
+  registrationFee: "",
+  paymentDueDate: "",
+  paymentInstructions: "",
+};
+
+const escapeHtml = (value: string) => value.replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character);
+
+function registrationModeLabel(mode: RegistrationMode | null | undefined) {
+  return REGISTRATION_MODES.find((item) => item.value === (mode ?? "none"))?.label ?? "Sem inscrição online";
+}
+
+function getEventRegistrationWhatsAppLink({ phone, participantName, companionName, eventName, churchName }: { phone?: string | null; participantName?: string | null; companionName?: string | null; eventName: string; churchName?: string | null }) {
+  const name = participantName?.trim() || "você";
+  const church = churchName?.trim() || "equipe da igreja";
+  const companionText = companionName?.trim() ? ` A inscrição também inclui ${companionName.trim()}.` : "";
+  return getWhatsAppLinkWithMessage(phone, `Olá, ${name}! Aqui é da equipe da ${church}. Estamos entrando em contato sobre sua inscrição no evento ${eventName}.${companionText} Podemos ajudar com alguma informação?`);
+}
+
+function formatCentsForInput(cents: number | null | undefined) {
+  if (!cents) return "";
+  return (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  pendente: "Pendente",
+  pago: "Pago",
+  isento: "Isento",
+  reembolsado: "Reembolsado",
+};
+
+function paymentStatusLabel(status: PaymentStatus | null | undefined) {
+  return PAYMENT_STATUS_LABELS[status ?? "pendente"];
+}
+
+function formatDateInput(value: Date | string | null | undefined) {
+  if (!value) return "";
+  const parts = getCivilDateParts(value);
+  return parts ? `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}` : "";
+}
+
+function formatDate(value: Date | string | null | undefined) {
+  if (!value) return "";
+  return formatDatePtBr(value);
+}
+
+function buildEventReportWhatsappText(report: any) {
+  const event = report.event;
+  const summary = report.summary;
+  const registrations = report.registrations.slice(0, 20).map((registration: any) => {
+    const person = registration.companionName ? `${registration.displayName} e ${registration.companionName}` : registration.displayName;
+    const payment = event.registrationFeeCents > 0 ? ` · ${paymentStatusLabel(registration.paymentStatus as PaymentStatus)}` : "";
+    const presence = registration.presenceStatus === "presente" ? "Presente" : registration.presenceStatus === "ausente" ? "Não compareceu" : "Pendente";
+    return `• ${person} — ${presence}${payment}`;
+  });
+  const more = report.registrations.length > 20 ? `\n... e mais ${report.registrations.length - 20} inscrição(ões).` : "";
+  const financial = event.registrationFeeCents > 0 ? `\nRecebido: ${formatBrl(summary.paidAmountCents)} · Pendente: ${formatBrl(summary.pendingAmountCents)}` : "";
+  return [
+    `Relatório do evento: ${event.name}`,
+    `${formatDate(event.startDate)}${event.startTime ? ` · ${formatEventTimeRange(event.startTime, event.endTime)}` : ""}${event.location ? ` · ${event.location}` : ""}`,
+    `Inscritos: ${summary.registeredCount} · Pessoas: ${summary.attendeeCount} · Presentes: ${summary.checkedInAttendeeCount} · Não compareceram: ${summary.absentAttendeeCount}${financial}`,
+    "",
+    "Participantes:",
+    registrations.length ? registrations.join("\\n") : "Nenhuma inscrição registrada.",
+    more,
+  ].join("\\n").trim();
+}
+
+function publicEventUrl(slug: string | null | undefined, token: string) {
+  if (typeof window === "undefined") return `/evento/inscricao/${token}`;
+  const hostname = window.location.hostname;
+  const port = window.location.port ? `:${window.location.port}` : "";
+  const tenantAlreadyInHost = Boolean(slug && (hostname === `${slug}.idefazei.com.br` || hostname === `${slug}.localhost`));
+  const origin = slug && !tenantAlreadyInHost
+    ? hostname.endsWith(".localhost") || hostname === "localhost"
+      ? `${window.location.protocol}//${slug}.localhost${port}`
+      : `https://${slug}.idefazei.com.br`
+    : window.location.origin;
+  return `${origin}/evento/inscricao/${token}`;
+}
+
+export default function Eventos() {
+  const { churchId, churchSlug } = useChurch();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState(defaultForm);
+  const [flyerFile, setFlyerFile] = useState<File | null>(null);
+  const [flyerPreviewUrl, setFlyerPreviewUrl] = useState<string | null>(null);
+  const [flyerFormat, setFlyerFormat] = useState<FlyerFormat>("mobile");
+  const [isUploadingFlyer, setIsUploadingFlyer] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const { data: events, isLoading, refetch } = trpc.events.list.useQuery({ churchId });
+  const createEvent = trpc.events.create.useMutation();
+  const setEventFlyer = trpc.events.setFlyer.useMutation();
+  const createBusy = createEvent.isPending || isUploadingFlyer || setEventFlyer.isPending;
+
+  function clearFlyerSelection() {
+    if (flyerPreviewUrl) URL.revokeObjectURL(flyerPreviewUrl);
+    setFlyerFile(null);
+    setFlyerPreviewUrl(null);
+  }
+
+  function handleFlyerChange(file: File | undefined) {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      toast.error("Envie o flyer em PNG, JPEG ou WebP.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error("O flyer deve ter no máximo 4 MB.");
+      return;
+    }
+    if (flyerPreviewUrl) URL.revokeObjectURL(flyerPreviewUrl);
+    setFlyerFile(file);
+    setFlyerPreviewUrl(URL.createObjectURL(file));
+  }
+
+  function resetCreateDraft() {
+    clearFlyerSelection();
+    setForm(defaultForm);
+    setFlyerFormat("mobile");
+    setCreateError(null);
+  }
+
+  function handleCreateOpenChange(nextOpen: boolean) {
+    if (!nextOpen && createBusy) return;
+    setOpen(nextOpen);
+    if (nextOpen) {
+      setCreateError(null);
+      return;
+    }
+    resetCreateDraft();
+  }
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setCreateError(null);
+    const parsedRegistrationFeeCents = form.isPaid ? parseBrlToCents(form.registrationFee) : 0;
+    const maxCapacity = form.maxCapacity.trim() ? Number(form.maxCapacity) : undefined;
+    const failValidation = (message: string) => {
+      setCreateError(message);
+      toast.error(message);
+    };
+    if (!form.name.trim()) {
+      failValidation("Informe o nome do evento.");
+      return;
+    }
+    if (form.endDate && form.startDate && form.endDate < form.startDate) {
+      failValidation("A data de fim não pode ser anterior à data de início.");
+      return;
+    }
+    if (form.startDate && form.endDate === form.startDate && form.startTime && form.endTime && form.endTime <= form.startTime) {
+      failValidation("O horário de término deve ser depois do horário de início.");
+      return;
+    }
+    if (maxCapacity !== undefined && (!Number.isInteger(maxCapacity) || maxCapacity <= 0)) {
+      failValidation("Informe uma capacidade máxima inteira maior que zero.");
+      return;
+    }
+    if (form.isPaid && form.registrationMode === "none") {
+      const message = "Ative uma inscrição individual ou de casal antes de cobrar.";
+      failValidation(message);
+      return;
+    }
+    if (form.isPaid && (parsedRegistrationFeeCents === null || parsedRegistrationFeeCents <= 0)) {
+      const message = "Informe um valor de inscrição válido.";
+      failValidation(message);
+      return;
+    }
+    const registrationFeeCents = parsedRegistrationFeeCents ?? 0;
+    try {
+      const created = await createEvent.mutateAsync({
+        churchId,
+        name: form.name.trim(),
+        type: form.type,
+        description: form.description.trim() || undefined,
+        startDate: form.startDate,
+        endDate: form.endDate || undefined,
+        startTime: form.startTime || undefined,
+        endTime: form.endTime || undefined,
+        location: form.location.trim() || undefined,
+        maxCapacity,
+        registrationMode: form.registrationMode,
+        registrationFeeCents,
+        paymentDueDate: form.isPaid ? form.paymentDueDate || undefined : undefined,
+        paymentInstructions: form.isPaid ? form.paymentInstructions.trim() || undefined : undefined,
+      });
+      const createdId = created && typeof created === "object" && "id" in created ? Number(created.id) : 0;
+      let flyerSaved = !flyerFile;
+      if (flyerFile && createdId > 0) {
+        setIsUploadingFlyer(true);
+        try {
+          const uploaded = await uploadChurchMedia(flyerFile, { purpose: "event_flyer", resourceType: "image" });
+          if (!uploaded.mediaAssetId) throw new Error("O flyer foi enviado, mas não foi possível vinculá-lo ao evento.");
+          await setEventFlyer.mutateAsync({ churchId, eventId: createdId, mediaAssetId: uploaded.mediaAssetId, flyerFormat });
+          flyerSaved = true;
+        } catch (error) {
+          toast.error(error instanceof Error ? `Evento criado, mas o flyer não foi associado: ${error.message}` : "Evento criado, mas o flyer não foi associado. Você pode adicioná-lo em Gerenciar.");
+        }
+      }
+      toast.success(flyerSaved ? (flyerFile ? "Evento criado com flyer!" : "Evento criado com sucesso!") : "Evento criado. Você pode adicionar o flyer em Gerenciar.");
+      setCreateError(null);
+      setOpen(false);
+      resetCreateDraft();
+      await refetch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro ao criar evento";
+      setCreateError(message);
+      toast.error(message);
+    } finally {
+      setIsUploadingFlyer(false);
+    }
+  }
+
+  const todayCivilDate = getTodayCivilDateInput();
+  const upcoming = (events ?? []).filter((event) => formatDateInput(event.startDate) >= todayCivilDate);
+  const past = (events ?? []).filter((event) => formatDateInput(event.startDate) < todayCivilDate);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold font-display text-navy">Eventos</h1>
+          <p className="text-sm text-muted-foreground mt-1">Gerencie eventos, inscrições e presença em um só lugar.</p>
+        </div>
+        <Button type="button" onClick={() => handleCreateOpenChange(true)} className="w-full bg-navy hover:bg-navy-light text-white gap-2 sm:w-auto">
+          <Plus className="w-4 h-4" /> Novo Evento
+        </Button>
+      </div>
+
+      <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-950">
+        <p className="font-semibold">Como funciona</p>
+        <p className="mt-1 text-blue-900/75">Crie o evento, escolha se a inscrição será individual ou de casal e compartilhe o link. O Mural pode divulgar esse mesmo link; inscrições e presença ficam nesta aba.</p>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-24 bg-muted rounded-xl animate-pulse" />)}</div>
+      ) : (
+        <div className="space-y-6">
+          {upcoming.length > 0 && (
+            <div>
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Próximos Eventos</h2>
+              <div className="space-y-3 animate-stagger">{upcoming.map((event) => <EventCard key={event.id} event={event as EventRecord} churchSlug={churchSlug} onChanged={refetch} />)}</div>
+            </div>
+          )}
+          {past.length > 0 && (
+            <div>
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Eventos Passados</h2>
+              <div className="space-y-3 opacity-80">{past.slice(0, 5).map((event) => <EventCard key={event.id} event={event as EventRecord} churchSlug={churchSlug} onChanged={refetch} />)}</div>
+            </div>
+          )}
+          {(events ?? []).length === 0 && (
+            <div className="card-sacred p-12 flex flex-col items-center gap-3 text-center">
+              <div className="w-14 h-14 rounded-full bg-amber-50 flex items-center justify-center"><CalendarDays className="w-7 h-7 text-amber-500" /></div>
+              <p className="font-semibold text-navy">Nenhum evento por aqui</p>
+              <p className="max-w-sm text-sm text-muted-foreground">Crie um evento para organizar inscrições, presença e comunicação.</p>
+              <Button type="button" className="mt-1 bg-navy text-white hover:bg-navy-light" onClick={() => handleCreateOpenChange(true)}><Plus className="mr-2 h-4 w-4" />Criar primeiro evento</Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={handleCreateOpenChange}>
+        <AdaptiveFormDialogContent className="sm:max-w-lg">
+          <div className={adaptiveFormDialogHeaderClassName}><DialogTitle className="font-display text-navy flex items-center gap-2"><CalendarDays className="w-5 h-5 text-amber-500" />Novo Evento</DialogTitle><DialogDescription className="mt-1 text-sm text-muted-foreground">Cadastre os dados, inscrições, pagamento e flyer do evento.</DialogDescription></div>
+          <form onSubmit={handleSubmit} className="contents">
+            <AdaptiveFormDialogBody className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2"><Label htmlFor="event-name">Nome do Evento *</Label><Input id="event-name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required maxLength={255} /></div>
+              <div className="sm:col-span-2"><Label htmlFor="event-type">Tipo *</Label><Select value={form.type} onValueChange={(value) => setForm({ ...form, type: value as typeof form.type })}><SelectTrigger id="event-type"><SelectValue /></SelectTrigger><SelectContent>{EVENT_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+              <div><Label htmlFor="event-start-date">Data de início *</Label><Input id="event-start-date" type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} required /></div>
+              <div><Label htmlFor="event-end-date">Data de fim <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input id="event-end-date" type="date" min={form.startDate || undefined} value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} /></div>
+              <div><Label htmlFor="event-start-time">Horário de início <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input id="event-start-time" type="time" value={form.startTime} onChange={(event) => setForm({ ...form, startTime: event.target.value })} /></div>
+              <div><Label htmlFor="event-end-time">Horário de término <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input id="event-end-time" type="time" value={form.endTime} onChange={(event) => setForm({ ...form, endTime: event.target.value })} /><p className="mt-1 text-xs text-muted-foreground">Deixe em branco se não houver término definido.</p></div>
+              <div className="sm:col-span-2"><Label htmlFor="event-location">Local</Label><Input id="event-location" value={form.location} onChange={(event) => setForm({ ...form, location: event.target.value })} placeholder="Endereço ou nome do local" maxLength={500} /></div>
+              <div><Label htmlFor="event-capacity">Capacidade máxima</Label><Input id="event-capacity" type="number" min={1} step={1} value={form.maxCapacity} onChange={(event) => setForm({ ...form, maxCapacity: event.target.value })} placeholder="Ex.: 100" /></div>
+              <div className="sm:col-span-2"><Label htmlFor="event-registration-mode">Inscrições</Label><Select value={form.registrationMode} onValueChange={(value) => setForm({ ...form, registrationMode: value as RegistrationMode })}><SelectTrigger id="event-registration-mode"><SelectValue /></SelectTrigger><SelectContent>{REGISTRATION_MODES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select><p className="mt-1 text-xs text-muted-foreground">{REGISTRATION_MODES.find((item) => item.value === form.registrationMode)?.description}</p></div>
+              <div className="sm:col-span-2 rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/55 p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1e3a5f]"><BarChart3 className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Inscrição e pagamento</p><p className="mt-1 text-xs leading-5 text-muted-foreground">O pagamento é conferido manualmente e não cria lançamento automático na Tesouraria.</p></div></div><div className="mt-3"><Label htmlFor="event-payment-mode">Cobrança</Label><Select value={form.isPaid ? "paid" : "free"} onValueChange={(value) => setForm({ ...form, isPaid: value === "paid" })}><SelectTrigger id="event-payment-mode" className="mt-1 bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="free">Evento gratuito</SelectItem><SelectItem value="paid">Inscrição paga</SelectItem></SelectContent></Select></div>{form.isPaid && <div className="mt-3 grid gap-3 sm:grid-cols-2"><div><Label htmlFor="event-registration-fee">Valor {form.registrationMode === "casal" ? "por casal" : "por pessoa"} *</Label><Input id="event-registration-fee" value={form.registrationFee} onChange={(event) => setForm({ ...form, registrationFee: event.target.value })} inputMode="decimal" placeholder="Ex.: 120,00" required={form.isPaid} className="mt-1 bg-white" /></div><div><Label htmlFor="event-payment-due-date">Pagamento até <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input id="event-payment-due-date" type="date" min={form.startDate || undefined} value={form.paymentDueDate} onChange={(event) => setForm({ ...form, paymentDueDate: event.target.value })} className="mt-1 bg-white" /></div><div className="sm:col-span-2"><Label htmlFor="event-payment-instructions">Instruções de pagamento <span className="font-normal text-muted-foreground">(opcional)</span></Label><Textarea id="event-payment-instructions" value={form.paymentInstructions} onChange={(event) => setForm({ ...form, paymentInstructions: event.target.value })} rows={3} maxLength={1200} placeholder="Ex.: Faça o Pix e envie o comprovante para a secretaria." className="mt-1 bg-white" /></div></div>}</div>
+              <div className="sm:col-span-2"><Label htmlFor="event-description">Descrição</Label><Textarea id="event-description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={3} maxLength={4000} /></div>
+            </div>
+            <section className="space-y-3 rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/55 p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[#1e3a5f]"><ImageIcon className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Flyer do convite <span className="font-normal text-muted-foreground">(opcional)</span></p><p className="mt-1 text-xs leading-5 text-muted-foreground">PNG, JPEG ou WebP até 4 MB. O flyer fica ligado a este evento, não ao Mural.</p></div></div><Label htmlFor="event-flyer" className="sr-only">Selecionar flyer do evento</Label><Input id="event-flyer" type="file" accept="image/png,image/jpeg,image/webp" className="bg-white" onChange={(event) => handleFlyerChange(event.target.files?.[0])} />{flyerPreviewUrl && <div className="grid gap-3 sm:grid-cols-[9rem_1fr] sm:items-start"><div className={`overflow-hidden rounded-xl border border-[#1e3a5f]/10 bg-white ${flyerAspectClass(flyerFormat)}`}><img src={flyerPreviewUrl} alt="Pré-visualização do flyer" className="h-full w-full object-contain" /></div><div className="space-y-3"><div><Label htmlFor="event-flyer-format">Formato de uso</Label><Select value={flyerFormat} onValueChange={(value) => setFlyerFormat(value as FlyerFormat)}><SelectTrigger id="event-flyer-format" className="mt-1 bg-white"><SelectValue /></SelectTrigger><SelectContent>{FLYER_FORMATS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select><p className="mt-1 text-xs leading-5 text-muted-foreground">{FLYER_FORMATS.find((item) => item.value === flyerFormat)?.description}</p></div><Button type="button" variant="ghost" size="sm" className="px-0 text-rose-700 hover:bg-transparent hover:text-rose-800" onClick={clearFlyerSelection}><Trash2 className="mr-1 h-3.5 w-3.5" /> Remover flyer</Button></div></div>}</section>
+            {createError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{createError}</div>}
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button type="button" variant="outline" onClick={() => handleCreateOpenChange(false)} disabled={createBusy}>Cancelar</Button>
+              <Button type="submit" className="bg-navy hover:bg-navy-light text-white" disabled={createBusy}>{createBusy ? "Salvando..." : "Criar Evento"}</Button>
+            </AdaptiveFormDialogFooter>
+          </form>
+        </AdaptiveFormDialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function EventCard({ event, churchSlug, onChanged }: { event: EventRecord; churchSlug?: string | null; onChanged: () => void }) {
+  const { churchId, churchName } = useChurch();
+  const typeLabel = EVENT_TYPES.find((item) => item.value === event.type)?.label ?? event.type;
+  const colorClass = TYPE_COLORS[event.type] ?? TYPE_COLORS.outro;
+  const [qrOpen, setQrOpen] = useState(false);
+  const [managementOpen, setManagementOpen] = useState(false);
+  const [qrValue, setQrValue] = useState<string | null>(event.qrCode ?? null);
+  const [modeDraft, setModeDraft] = useState<RegistrationMode>(event.registrationMode ?? "none");
+  const [flyerDraftFormat, setFlyerDraftFormat] = useState<FlyerFormat>(event.flyerFormat ?? "mobile");
+  const [flyerFile, setFlyerFile] = useState<File | null>(null);
+  const [flyerPreviewUrl, setFlyerPreviewUrl] = useState<string | null>(null);
+  const [isUploadingFlyer, setIsUploadingFlyer] = useState(false);
+  const [flyerShareFile, setFlyerShareFile] = useState<File | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<EventEditDraft>(() => ({ name: event.name, type: event.type, description: event.description ?? "", startDate: formatDateInput(event.startDate), endDate: formatDateInput(event.endDate), startTime: event.startTime ?? "", endTime: event.endTime ?? "", location: event.location ?? "", maxCapacity: event.maxCapacity?.toString() ?? "" }));
+  const [paymentFeeDraft, setPaymentFeeDraft] = useState(() => formatCentsForInput(event.registrationFeeCents));
+  const [paymentDueDateDraft, setPaymentDueDateDraft] = useState(() => formatDateInput(event.paymentDueDate));
+  const [paymentInstructionsDraft, setPaymentInstructionsDraft] = useState(() => event.paymentInstructions ?? "");
+  const [manualRegistrationOpen, setManualRegistrationOpen] = useState(false);
+  const [manualRegistrationMode, setManualRegistrationMode] = useState<Exclude<RegistrationMode, "none">>("individual");
+  const [manualRegistrationDraft, setManualRegistrationDraft] = useState<ManualRegistrationDraft>(emptyManualRegistrationDraft);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportBlob, setReportBlob] = useState<Blob | null>(null);
+  const [reportFileName, setReportFileName] = useState("relatorio-evento.pdf");
+  const [reportLoading, setReportLoading] = useState(false);
+  const registrationUrl = event.registrationToken ? publicEventUrl(churchSlug, event.registrationToken) : null;
+  const attendanceReport = trpc.events.attendanceReport.useQuery({ churchId, eventId: event.id }, { enabled: managementOpen });
+
+  const generateQr = trpc.events.generateQrCode.useMutation({
+    onSuccess: (data) => { setQrValue(data.qrCode); setQrOpen(true); toast.success("QR Code de check-in gerado!"); },
+    onError: (error) => toast.error(error.message || "Erro ao gerar QR Code"),
+  });
+  const setRegistrationMode = trpc.events.setRegistrationMode.useMutation({
+    onSuccess: (updatedEvent) => { toast.success(updatedEvent.registrationMode === "none" ? "Inscrições online pausadas." : "Link de inscrição atualizado."); onChanged(); },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar a inscrição"),
+  });
+  const setPresence = trpc.events.setPresence.useMutation({
+    onSuccess: async () => { await attendanceReport.refetch(); toast.success("Presença atualizada."); },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar a presença"),
+  });
+  const setPaymentStatus = trpc.events.setPaymentStatus.useMutation({
+    onSuccess: async () => { await attendanceReport.refetch(); toast.success("Pagamento atualizado."); },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar o pagamento"),
+  });
+  const createManualRegistration = trpc.events.createManualRegistration.useMutation({
+    onSuccess: async (result) => {
+      await attendanceReport.refetch();
+      setManualRegistrationDraft(emptyManualRegistrationDraft);
+      setManualRegistrationOpen(false);
+      toast.success(result.attendeeCount === 2 ? "Casal adicionado à lista do evento." : "Participante adicionado à lista do evento.");
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível adicionar a inscrição manual."),
+  });
+  const setPaymentSettings = trpc.events.setPaymentSettings.useMutation({
+    onSuccess: () => { toast.success("Configuração de pagamento salva."); onChanged(); },
+    onError: (error) => toast.error(error.message || "Não foi possível salvar a configuração de pagamento"),
+  });
+  const setFlyer = trpc.events.setFlyer.useMutation({
+    onSuccess: () => { toast.success("Flyer do evento atualizado."); setFlyerFile(null); if (flyerPreviewUrl) URL.revokeObjectURL(flyerPreviewUrl); setFlyerPreviewUrl(null); onChanged(); },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar o flyer"),
+  });
+  const updateEvent = trpc.events.update.useMutation({
+    onSuccess: () => { toast.success("Evento atualizado."); setEditError(null); setEditOpen(false); onChanged(); },
+    onError: (error) => { setEditError(error.message || "Não foi possível atualizar o evento"); toast.error(error.message || "Não foi possível atualizar o evento"); },
+  });
+  const removeEvent = trpc.events.remove.useMutation({
+    onSuccess: (result) => {
+      setRemoveError(null);
+      setRemoveConfirmOpen(false);
+      toast.success(result.mode === "archived" ? "Evento arquivado para preservar as inscrições." : "Evento excluído.");
+      setManagementOpen(false);
+      setEditOpen(false);
+      onChanged();
+    },
+    onError: (error) => {
+      const message = error.message || "Não foi possível remover o evento.";
+      setRemoveError(message);
+      toast.error(message);
+    },
+  });
+
+  const checkinUrl = qrValue ? `${window.location.origin}/checkin?event=${event.id}&token=${qrValue.split(":")[2]}` : null;
+  const typeHasRegistration = event.registrationMode !== "none";
+
+  function invitationText() {
+    const paymentLine = event.registrationFeeCents > 0
+      ? `\nInscrição: ${formatBrl(event.registrationFeeCents)} ${event.registrationMode === "casal" ? "por casal" : "por pessoa"}${event.paymentDueDate ? ` · pagamento até ${formatDatePtBr(event.paymentDueDate)}` : ""}`
+      : "\nEvento gratuito";
+    const timeLine = formatEventTimeRange(event.startTime, event.endTime);
+    return `Olá! Faça sua inscrição para o evento ${event.name}.${paymentLine}${timeLine ? `\nHorário: ${timeLine}` : ""}`;
+  }
+
+  function invitationMessage() {
+    return `${invitationText()}\n\n${registrationUrl ?? ""}`.trim();
+  }
+
+  useEffect(() => {
+    setPaymentFeeDraft(formatCentsForInput(event.registrationFeeCents));
+    setPaymentDueDateDraft(formatDateInput(event.paymentDueDate));
+    setPaymentInstructionsDraft(event.paymentInstructions ?? "");
+  }, [event.id, event.registrationFeeCents, event.paymentDueDate, event.paymentInstructions]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFlyerShareFile(null);
+    if (!event.flyer?.url) return () => { cancelled = true; };
+    void fetch(event.flyer.optimizedUrl || event.flyer.url)
+      .then((response) => response.ok ? response.blob() : null)
+      .then((blob) => {
+        if (!blob || cancelled) return;
+        const slug = event.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "evento";
+        const type = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
+        setFlyerShareFile(new File([blob], `flyer-${slug}.${type}`, { type: blob.type || "image/jpeg" }));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [event.flyer?.optimizedUrl, event.flyer?.url, event.name]);
+
+  async function copyRegistrationLink() {
+    if (!registrationUrl) return;
+    try { await navigator.clipboard.writeText(registrationUrl); toast.success("Link de inscrição copiado."); }
+    catch { window.prompt("Copie o link de inscrição:", registrationUrl); }
+  }
+
+  function shareWhatsApp() {
+    if (!registrationUrl) return;
+    window.open(`https://wa.me/?text=${encodeURIComponent(invitationMessage())}`, "_blank", "noopener,noreferrer");
+  }
+
+  async function shareInvite() {
+    if (!registrationUrl) return;
+    const message = invitationMessage();
+    try {
+      if (flyerShareFile && typeof navigator.share === "function" && (!navigator.canShare || navigator.canShare({ files: [flyerShareFile] }))) {
+        await navigator.share({ files: [flyerShareFile], title: event.name, text: message });
+        return;
+      }
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: event.name, text: invitationText(), url: registrationUrl });
+        return;
+      }
+      shareWhatsApp();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      toast.error("Não foi possível abrir o compartilhamento. Use WhatsApp ou abra o flyer.");
+    }
+  }
+
+  function handleExistingFlyerChange(file: File | undefined) {
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) { toast.error("Envie o flyer em PNG, JPEG ou WebP."); return; }
+    if (file.size > 4 * 1024 * 1024) { toast.error("O flyer deve ter no máximo 4 MB."); return; }
+    if (flyerPreviewUrl) URL.revokeObjectURL(flyerPreviewUrl);
+    setFlyerFile(file);
+    setFlyerPreviewUrl(URL.createObjectURL(file));
+  }
+
+  async function saveExistingFlyer() {
+    const selectedFlyer = flyerFile;
+    if (!selectedFlyer && !event.flyer?.mediaAssetId) return;
+    if (!selectedFlyer && event.flyer?.mediaAssetId) {
+      setFlyer.mutate({ churchId, eventId: event.id, mediaAssetId: event.flyer.mediaAssetId, flyerFormat: flyerDraftFormat });
+      return;
+    }
+    if (!selectedFlyer) return;
+    setIsUploadingFlyer(true);
+    try {
+      const uploaded = await uploadChurchMedia(selectedFlyer, { purpose: "event_flyer", resourceType: "image" });
+      if (!uploaded.mediaAssetId) throw new Error("O flyer foi enviado, mas não foi possível vinculá-lo ao evento.");
+      await setFlyer.mutateAsync({ churchId, eventId: event.id, mediaAssetId: uploaded.mediaAssetId, flyerFormat: flyerDraftFormat });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível atualizar o flyer");
+    } finally {
+      setIsUploadingFlyer(false);
+    }
+  }
+
+  function removeExistingFlyer() {
+    setFlyer.mutate({ churchId, eventId: event.id, mediaAssetId: null, flyerFormat: flyerDraftFormat });
+  }
+
+  function openEdit() {
+    setEditError(null);
+    setEditDraft({
+      name: event.name,
+      type: event.type,
+      description: event.description ?? "",
+      startDate: formatDateInput(event.startDate),
+      endDate: formatDateInput(event.endDate),
+      startTime: event.startTime ?? "",
+      endTime: event.endTime ?? "",
+      location: event.location ?? "",
+      maxCapacity: event.maxCapacity?.toString() ?? "",
+    });
+    setManagementOpen(false);
+    setEditOpen(true);
+  }
+
+  function saveEventEdit(formEvent: React.FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    setEditError(null);
+    const maxCapacity = editDraft.maxCapacity.trim() ? Number(editDraft.maxCapacity) : null;
+    if (!editDraft.name.trim()) {
+      const message = "Informe o nome do evento.";
+      setEditError(message);
+      toast.error(message);
+      return;
+    }
+    if (editDraft.endDate && editDraft.startDate && editDraft.endDate < editDraft.startDate) {
+      const message = "A data de fim não pode ser anterior à data de início.";
+      setEditError(message);
+      toast.error(message);
+      return;
+    }
+    if (editDraft.startDate && editDraft.endDate === editDraft.startDate && editDraft.startTime && editDraft.endTime && editDraft.endTime <= editDraft.startTime) {
+      const message = "O horário de término deve ser depois do horário de início.";
+      setEditError(message);
+      toast.error(message);
+      return;
+    }
+    if (maxCapacity !== null && (!Number.isInteger(maxCapacity) || maxCapacity <= 0)) {
+      const message = "Informe uma capacidade máxima válida ou deixe o campo em branco.";
+      setEditError(message);
+      toast.error(message);
+      return;
+    }
+    updateEvent.mutate({
+      churchId,
+      eventId: event.id,
+      name: editDraft.name.trim(),
+      type: editDraft.type,
+      description: editDraft.description.trim() || null,
+      startDate: editDraft.startDate,
+      endDate: editDraft.endDate || null,
+      startTime: editDraft.startTime || null,
+      endTime: editDraft.endTime || null,
+      location: editDraft.location.trim() || null,
+      maxCapacity,
+    });
+  }
+
+  function requestRemove() {
+    setRemoveError(null);
+    setRemoveConfirmOpen(true);
+  }
+
+  function saveRegistrationMode(mode: RegistrationMode = modeDraft) {
+    setRegistrationMode.mutate({ churchId, eventId: event.id, registrationMode: mode });
+  }
+
+  function savePaymentSettings() {
+    const registrationFeeCents = paymentFeeDraft.trim() ? parseBrlToCents(paymentFeeDraft) : 0;
+    if (registrationFeeCents === null || registrationFeeCents < 0) {
+      toast.error("Informe um valor válido ou deixe em branco para evento gratuito.");
+      return;
+    }
+    if (event.registrationMode === "none" && registrationFeeCents > 0) {
+      toast.error("Ative uma inscrição individual ou de casal antes de cobrar.");
+      return;
+    }
+    setPaymentSettings.mutate({
+      churchId,
+      eventId: event.id,
+      registrationFeeCents,
+      paymentDueDate: paymentDueDateDraft || null,
+      paymentInstructions: paymentInstructionsDraft.trim() || null,
+    });
+  }
+
+  function openManualRegistration() {
+    setManualRegistrationMode(event.registrationMode === "casal" ? "casal" : "individual");
+    setManualRegistrationDraft(emptyManualRegistrationDraft);
+    setManualRegistrationOpen(true);
+  }
+
+  function submitManualRegistration(formEvent: React.FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    createManualRegistration.mutate({
+      churchId,
+      eventId: event.id,
+      registrationMode: manualRegistrationMode,
+      participantName: manualRegistrationDraft.participantName.trim(),
+      participantPhone: manualRegistrationDraft.participantPhone.trim(),
+      companionName: manualRegistrationMode === "casal" ? manualRegistrationDraft.companionName.trim() : "",
+      email: manualRegistrationDraft.email.trim(),
+    });
+  }
+
+  async function openEventReportPreview() {
+    const report = attendanceReport.data;
+    if (!report || reportLoading) {
+      toast.error("Aguarde o carregamento dos dados do relatório.");
+      return;
+    }
+    setReportLoading(true);
+    setReportBlob(null);
+    setReportFileName(eventReportPdfFileName(report.event.name, report.event.startDate));
+    setManagementOpen(false);
+    setReportOpen(true);
+    try {
+      const blob = await createEventReportPdf({
+        churchName,
+        eventName: report.event.name,
+        startDate: report.event.startDate,
+        startTime: event.startTime,
+        endTime: event.endTime,
+        location: report.event.location,
+        registrationFeeCents: event.registrationFeeCents,
+        summary: report.summary,
+        registrations: report.registrations,
+      });
+      setReportBlob(blob);
+    } catch (error) {
+      console.error("Falha ao gerar relatório do evento", error);
+      setReportOpen(false);
+      setManagementOpen(true);
+      toast.error("Não foi possível gerar o PDF do relatório.");
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
+  return <>
+    <div className="card-sacred p-4 flex flex-col gap-4 sm:flex-row sm:items-center">
+      {event.flyer && <div className={`hidden w-14 shrink-0 overflow-hidden rounded-xl border border-[#1e3a5f]/10 bg-white sm:block ${flyerAspectClass(event.flyerFormat)}`}><img src={event.flyer.optimizedUrl || event.flyer.url} alt={`Flyer de ${event.name}`} className="h-full w-full object-contain" /></div>}
+      <div className="w-14 h-14 rounded-xl bg-cream-dark flex flex-col items-center justify-center flex-shrink-0 text-center"><span className="text-lg font-bold font-display text-navy leading-none">{getCivilDateParts(event.startDate)?.day ?? "—"}</span><span className="text-[10px] text-muted-foreground uppercase tracking-wide">{formatMonthShortPtBr(event.startDate)}</span></div>
+      <div className="flex-1 min-w-0"><p className="font-semibold text-navy truncate">{event.name}</p><div className="flex flex-wrap items-center gap-2 mt-1">{event.startTime && <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock className="w-3 h-3" />{formatEventTimeRange(event.startTime, event.endTime)}</span>}{event.location && <span className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="w-3 h-3" />{event.location}</span>}{event.maxCapacity && <span className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3 h-3" />{event.maxCapacity} vagas</span>}</div><div className="mt-2 flex flex-wrap items-center gap-2"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${colorClass}`}>{typeLabel}</span>{typeHasRegistration && <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"><Link2 className="h-3 w-3" />{registrationModeLabel(event.registrationMode)}</span>}{event.registrationFeeCents > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800">{formatBrl(event.registrationFeeCents)} {event.registrationMode === "casal" ? "por casal" : "por pessoa"}</span>}</div></div>
+      <div className="flex flex-wrap items-center gap-2 shrink-0 sm:justify-end">
+        {registrationUrl && <Button type="button" size="sm" variant="outline" className="h-8 px-2 border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => void shareInvite()} title="Compartilhar convite"><Share2 className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Convite</span></Button>}
+        <Button type="button" size="sm" variant="outline" className="h-8 px-2 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5" onClick={openEdit} title="Editar evento"><Pencil className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Editar</span></Button>
+        <Button type="button" size="sm" variant="outline" className="h-8 px-2 border-rose-200 text-rose-700 hover:bg-rose-50" onClick={requestRemove} disabled={removeEvent.isPending} title="Excluir ou arquivar evento"><Trash2 className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Excluir</span></Button>
+        <Button type="button" size="sm" variant="outline" className="h-8 px-2 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5" onClick={() => setManagementOpen(true)} title="Gerenciar inscrições e presença"><ClipboardCheck className="w-4 h-4" /><span className="ml-1 hidden sm:inline">Gerenciar</span></Button>
+        <Button type="button" size="sm" variant="outline" className="h-8 w-8 px-0 border-[#1e3a5f]/20 text-[#1e3a5f] hover:bg-[#1e3a5f]/5" onClick={() => { if (qrValue) setQrOpen(true); else generateQr.mutate({ eventId: event.id, churchId }); }} disabled={generateQr.isPending} title="QR Code de check-in" aria-label="Abrir QR Code de check-in"><QrCode className="w-4 h-4" /></Button>
+      </div>
+    </div>
+
+    <Dialog open={managementOpen} onOpenChange={setManagementOpen}>
+      <AdaptiveFormDialogContent className="sm:max-w-3xl">
+        <div className={adaptiveFormDialogHeaderClassName}><DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2"><ClipboardCheck className="w-5 h-5 text-[#c9a84c]" />Gestão — {event.name}</DialogTitle><DialogDescription className="mt-1 text-sm text-muted-foreground">Inscrições, presença e relatório deste evento. O Mural apenas divulga o link.</DialogDescription></div>
+        <AdaptiveFormDialogBody className="space-y-5">
+          <section className="rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/45 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-semibold text-[#1e3a5f]">Inscrição pública</p><p className="mt-1 text-xs text-muted-foreground">{typeHasRegistration ? `${registrationModeLabel(event.registrationMode)} ativa para este evento.` : "Ative um formulário simples para receber inscrições sem login."}</p></div>{registrationUrl && <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Recebendo inscrições</span>}</div>
+            {registrationUrl ? <><div className="mt-3 flex items-start gap-2 rounded-xl border bg-white p-3"><Link2 className="mt-0.5 h-4 w-4 shrink-0 text-[#c9a84c]" /><p className="break-all font-mono text-xs text-[#1e3a5f]">{registrationUrl}</p></div><div className="mt-3 flex flex-col gap-2 sm:flex-row"><Button variant="outline" className="flex-1 gap-2" onClick={() => void copyRegistrationLink()}><Copy className="h-4 w-4" /> Copiar link</Button><Button variant="outline" className="flex-1 gap-2" onClick={shareWhatsApp}><Send className="h-4 w-4" /> WhatsApp</Button><a href={registrationUrl} target="_blank" rel="noreferrer" className="inline-flex flex-1 items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"><ExternalLink className="h-4 w-4" /> Abrir página</a></div></> : <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end"><div className="flex-1"><Label>Modelo de inscrição</Label><Select value={modeDraft} onValueChange={(value) => setModeDraft(value as RegistrationMode)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{REGISTRATION_MODES.filter((item) => item.value !== "none").map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div><Button className="gap-2 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={() => saveRegistrationMode()} disabled={setRegistrationMode.isPending}><Link2 className="h-4 w-4" />{setRegistrationMode.isPending ? "Criando..." : "Criar link"}</Button></div>}
+            {registrationUrl && <div className="mt-3 flex flex-col gap-2 border-t border-[#1e3a5f]/10 pt-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">Trocar o modelo renova o link atual e o endereço antigo deixa de funcionar.</p><Button variant="ghost" size="sm" className="justify-start text-amber-700 hover:bg-amber-50 hover:text-amber-800 sm:justify-center" onClick={() => { setModeDraft("none"); saveRegistrationMode("none"); }} disabled={setRegistrationMode.isPending}>Pausar inscrições</Button></div>}
+          </section>
+
+          <section className="rounded-2xl border border-[#c9a84c]/35 bg-[#fffdf7] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#c9a84c]/15 text-[#8a6a16]"><UserPlus className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Inscrição assistida</p><p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">Adicione pelo painel quem não consegue usar o link. Não é necessário criar login ou cadastrar a pessoa na igreja.</p></div></div>
+              <Button type="button" size="sm" className="gap-1.5 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={openManualRegistration} disabled={createManualRegistration.isPending}><UserPlus className="h-4 w-4" /> Adicionar inscrição manual</Button>
+            </div>
+            {!typeHasRegistration && <p className="mt-3 rounded-lg bg-white px-3 py-2 text-xs text-muted-foreground">O link público está pausado, mas você ainda pode registrar uma inscrição pelo painel.</p>}
+            {manualRegistrationOpen && <form onSubmit={submitManualRegistration} className="mt-4 space-y-4 border-t border-[#c9a84c]/25 pt-4">
+              <div className="flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-[#1e3a5f]">Nova inscrição {manualRegistrationMode === "casal" ? "de casal" : "individual"}</p><p className="mt-1 text-xs text-muted-foreground">Ela aparecerá junto com as inscrições feitas pelo link público.</p></div><span className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-[#1e3a5f]">{manualRegistrationMode === "casal" ? "2 pessoas" : "1 pessoa"}</span></div>
+              {event.registrationMode === "none" && <div><Label>Tipo da inscrição *</Label><Select value={manualRegistrationMode} onValueChange={(value) => { setManualRegistrationMode(value as Exclude<RegistrationMode, "none">); setManualRegistrationDraft({ ...manualRegistrationDraft, companionName: "" }); }}><SelectTrigger className="mt-1 bg-white"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="individual">Individual — 1 pessoa</SelectItem><SelectItem value="casal">Casal — 2 pessoas</SelectItem></SelectContent></Select><p className="mt-1 text-xs text-muted-foreground">O tipo escolhido define a quantidade contabilizada no evento.</p></div>}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2"><Label>Nome completo *</Label><Input className="mt-1 bg-white" value={manualRegistrationDraft.participantName} onChange={(inputEvent) => setManualRegistrationDraft({ ...manualRegistrationDraft, participantName: inputEvent.target.value })} placeholder="Nome do participante" required minLength={2} maxLength={255} /></div>
+                {manualRegistrationMode === "casal" && <div className="sm:col-span-2"><Label>Nome do segundo participante *</Label><Input className="mt-1 bg-white" value={manualRegistrationDraft.companionName} onChange={(inputEvent) => setManualRegistrationDraft({ ...manualRegistrationDraft, companionName: inputEvent.target.value })} placeholder="Nome do cônjuge ou acompanhante" required maxLength={255} /></div>}
+                <div><Label>Telefone <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input className="mt-1 bg-white" value={manualRegistrationDraft.participantPhone} onChange={(inputEvent) => setManualRegistrationDraft({ ...manualRegistrationDraft, participantPhone: inputEvent.target.value })} placeholder="(00) 00000-0000" inputMode="tel" maxLength={20} /><p className="mt-1 text-xs text-muted-foreground">Recomendado para evitar duplicidade.</p></div>
+                <div><Label>E-mail <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="email" className="mt-1 bg-white" value={manualRegistrationDraft.email} onChange={(inputEvent) => setManualRegistrationDraft({ ...manualRegistrationDraft, email: inputEvent.target.value })} placeholder="pessoa@email.com" maxLength={320} /></div>
+              </div>
+              <p className="rounded-lg bg-white px-3 py-2 text-xs leading-5 text-muted-foreground">O cadastro será salvo como inscrição manual, começará com pagamento pendente e usará o valor configurado neste evento. Depois você poderá atualizar pagamento e presença na mesma lista.</p>
+              <div className="flex flex-col-reverse gap-2 border-t border-[#c9a84c]/25 pt-3 sm:flex-row sm:justify-end"><Button type="button" variant="outline" onClick={() => { setManualRegistrationOpen(false); setManualRegistrationDraft(emptyManualRegistrationDraft); }} className="sm:min-w-28">Cancelar</Button><Button type="submit" className="gap-1.5 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90 sm:min-w-44" disabled={createManualRegistration.isPending}>{createManualRegistration.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />} {createManualRegistration.isPending ? "Adicionando..." : "Adicionar à lista"}</Button></div>
+            </form>}
+          </section>
+
+          <section className="rounded-2xl border border-[#1e3a5f]/10 bg-white p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#1e3a5f]/5 text-[#1e3a5f]"><BarChart3 className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Inscrição e pagamento</p><p className="mt-1 text-xs leading-5 text-muted-foreground">O valor é informado no convite. A equipe confirma o recebimento manualmente; nenhuma entrada é lançada automaticamente na Tesouraria.</p></div></div><div className="mt-4 grid gap-3 sm:grid-cols-2"><div><Label>Valor {event.registrationMode === "casal" ? "por casal" : "por pessoa"}</Label><Input value={paymentFeeDraft} onChange={(inputEvent) => setPaymentFeeDraft(inputEvent.target.value)} inputMode="decimal" placeholder="Em branco = evento gratuito" className="mt-1" disabled={!typeHasRegistration} /></div><div><Label>Pagamento até <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="date" value={paymentDueDateDraft} onChange={(inputEvent) => setPaymentDueDateDraft(inputEvent.target.value)} className="mt-1" disabled={!typeHasRegistration} /></div><div className="sm:col-span-2"><Label>Instruções de pagamento <span className="font-normal text-muted-foreground">(opcional)</span></Label><Textarea value={paymentInstructionsDraft} onChange={(inputEvent) => setPaymentInstructionsDraft(inputEvent.target.value)} rows={3} maxLength={1200} placeholder="Ex.: Faça o Pix e envie o comprovante para a secretaria." className="mt-1" disabled={!typeHasRegistration} /></div></div><div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs text-muted-foreground">{event.registrationFeeCents > 0 ? `Atual: ${formatBrl(event.registrationFeeCents)} ${event.registrationMode === "casal" ? "por casal" : "por pessoa"}.` : "Este evento está configurado como gratuito."}</p><Button type="button" size="sm" className="gap-1.5 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={savePaymentSettings} disabled={setPaymentSettings.isPending || !typeHasRegistration}>{setPaymentSettings.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />} Salvar pagamento</Button></div></section>
+
+          <section className="rounded-2xl border border-[#1e3a5f]/10 bg-white p-4">
+            <div className="flex items-start gap-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#1e3a5f]/5 text-[#1e3a5f]"><ImageIcon className="h-4 w-4" /></span><div><p className="font-semibold text-[#1e3a5f]">Flyer do convite</p><p className="mt-1 text-xs leading-5 text-muted-foreground">Associe uma imagem a este evento. Ela aparecerá na inscrição pública e poderá ser enviada pelo compartilhamento do celular.</p></div></div>
+            {event.flyer && <div className="mt-4 flex flex-col gap-4 rounded-xl bg-[#f5f0e8]/60 p-3 sm:flex-row sm:items-start"><div className={`w-24 shrink-0 overflow-hidden rounded-lg border border-[#1e3a5f]/10 bg-white ${flyerAspectClass(event.flyerFormat)}`}><img src={event.flyer.optimizedUrl || event.flyer.url} alt={`Flyer atual de ${event.name}`} className="h-full w-full object-contain" /></div><div className="min-w-0 flex-1"><p className="text-sm font-semibold text-[#1e3a5f]">{FLYER_FORMATS.find((item) => item.value === event.flyerFormat)?.label ?? "Formato do convite"}</p><p className="mt-1 text-xs leading-5 text-muted-foreground">O mesmo flyer é usado na página pública. Escolha outro arquivo abaixo para substituir.</p><div className="mt-3 flex flex-wrap gap-2">{registrationUrl && <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => void shareInvite()}><Share2 className="h-3.5 w-3.5" /> Compartilhar convite</Button>}<a href={event.flyer.optimizedUrl || event.flyer.url} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium hover:bg-accent"><Download className="h-3.5 w-3.5" /> Abrir flyer</a><Button type="button" size="sm" variant="ghost" className="gap-1.5 text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={removeExistingFlyer} disabled={setFlyer.isPending}><Trash2 className="h-3.5 w-3.5" /> Remover</Button></div></div></div>}
+            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem_auto] sm:items-end"><div><Label>Substituir ou adicionar</Label><Input type="file" accept="image/png,image/jpeg,image/webp" className="mt-1" onChange={(event) => handleExistingFlyerChange(event.target.files?.[0])} /></div><div><Label>Formato</Label><Select value={flyerDraftFormat} onValueChange={(value) => setFlyerDraftFormat(value as FlyerFormat)}><SelectTrigger className="mt-1"><SelectValue /></SelectTrigger><SelectContent>{FLYER_FORMATS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div><Button type="button" className="gap-1.5 bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" onClick={() => void saveExistingFlyer()} disabled={(!flyerFile && !event.flyer) || isUploadingFlyer || setFlyer.isPending}>{isUploadingFlyer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Salvar flyer</Button></div>
+            {flyerPreviewUrl && <div className="mt-4 flex items-start gap-3 rounded-xl border border-dashed border-[#c9a84c] bg-[#fffdf7] p-3"><div className={`w-20 shrink-0 overflow-hidden rounded-lg bg-white ${flyerAspectClass(flyerDraftFormat)}`}><img src={flyerPreviewUrl} alt="Pré-visualização do novo flyer" className="h-full w-full object-contain" /></div><p className="text-xs leading-5 text-muted-foreground">Pré-visualização pronta. Clique em <strong>Salvar flyer</strong> para associar esta imagem ao evento.</p></div>}
+          </section>
+
+          {attendanceReport.isLoading ? <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[1, 2, 3, 4].map((item) => <div key={item} className="h-20 animate-pulse rounded-xl bg-muted" />)}</div> : attendanceReport.error ? <div className="rounded-xl bg-rose-50 p-4 text-sm text-rose-800">Você não tem permissão para consultar este relatório ou o evento não foi encontrado.</div> : attendanceReport.data ? <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5"><AttendanceMetric icon={Users} label="Inscritos" value={attendanceReport.data.summary.registeredCount} tone="navy" /><AttendanceMetric icon={UserRound} label="Pessoas" value={attendanceReport.data.summary.attendeeCount} tone="navy" /><AttendanceMetric icon={UserCheck} label="Presentes" value={attendanceReport.data.summary.checkedInAttendeeCount} tone="green" /><AttendanceMetric icon={UserX} label="Não vieram" value={attendanceReport.data.summary.absentAttendeeCount} tone="amber" /><AttendanceMetric icon={Loader2} label="Pendentes" value={attendanceReport.data.summary.pendingAttendeeCount} tone="slate" /></div>
+            {event.registrationFeeCents > 0 && <div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><AttendanceMetric icon={BarChart3} label="Valor previsto" value={formatBrl(attendanceReport.data.summary.expectedAmountCents)} tone="navy" /><AttendanceMetric icon={CheckCircle2} label="Recebido" value={formatBrl(attendanceReport.data.summary.paidAmountCents)} tone="green" /><AttendanceMetric icon={Loader2} label="Pendente" value={formatBrl(attendanceReport.data.summary.pendingAmountCents)} tone="slate" /><AttendanceMetric icon={UserRound} label="Pagos" value={attendanceReport.data.summary.paymentPaidCount} tone="navy" /></div>}
+            <div className="overflow-hidden rounded-xl border border-[#1e3a5f]/10"><div className="hidden grid-cols-[1.2fr_1fr_8rem_9rem_9rem] gap-3 bg-[#f5f0e8] px-4 py-2 text-xs font-semibold uppercase tracking-wide text-[#1e3a5f]/70 sm:grid"><span>Inscrição</span><span>Acompanhante</span><span>Telefone</span><span>Pagamento</span><span>Presença</span></div><div className="max-h-80 overflow-y-auto divide-y divide-[#1e3a5f]/10">{attendanceReport.data.registrations.length === 0 ? <p className="px-4 py-8 text-center text-sm text-muted-foreground">Ainda não há inscrições para este evento.</p> : attendanceReport.data.registrations.map((registration: any) => { const whatsappLink = getEventRegistrationWhatsAppLink({ phone: registration.participantPhone, participantName: registration.displayName, companionName: registration.companionName, eventName: event.name, churchName }); return <div key={registration.id} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1.2fr_1fr_8rem_9rem_9rem] sm:items-center"><div className="min-w-0"><p className="truncate font-medium text-[#1e3a5f]">{registration.displayName}</p><p className="mt-0.5 text-[11px] font-medium text-[#8a6a16]">{registration.source === "manual" ? "Adicionada pelo painel" : "Inscrição pelo link"}</p><div className="mt-0.5 flex items-center gap-2 sm:hidden"><p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{registration.participantPhone || "Sem telefone"}{registration.companionName ? ` · ${registration.companionName}` : ""} · {event.registrationFeeCents > 0 ? `${formatBrl(registration.amountCents ?? 0)} · ${paymentStatusLabel(registration.paymentStatus as PaymentStatus)}` : "Sem cobrança"}</p>{whatsappLink && <a href={whatsappLink} target="_blank" rel="noreferrer" aria-label={`Conversar com ${registration.displayName} pelo WhatsApp`} title="Conversar no WhatsApp" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-emerald-600 transition hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"><MessageCircle className="h-5 w-5" /><span className="sr-only">Conversar no WhatsApp</span></a>}</div></div><p className="hidden truncate text-xs text-muted-foreground sm:block">{registration.companionName || "—"}</p><div className="hidden min-w-0 items-center gap-2 sm:flex"><p className="truncate text-xs text-muted-foreground">{registration.participantPhone || "—"}</p>{whatsappLink && <a href={whatsappLink} target="_blank" rel="noreferrer" aria-label={`Conversar com ${registration.displayName} pelo WhatsApp`} title="Conversar no WhatsApp" className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-emerald-600 transition hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"><MessageCircle className="h-5 w-5" /><span className="sr-only">Conversar no WhatsApp</span></a>}</div>{event.registrationFeeCents > 0 ? <Select value={(registration.paymentStatus ?? "pendente") as PaymentStatus} onValueChange={(value) => setPaymentStatus.mutate({ churchId, eventId: event.id, registrationId: registration.id, paymentStatus: value as PaymentStatus })} disabled={setPaymentStatus.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="pago">Pago</SelectItem><SelectItem value="isento">Isento</SelectItem><SelectItem value="reembolsado">Reembolsado</SelectItem></SelectContent></Select> : <span className="text-xs text-muted-foreground">Sem cobrança</span>}<Select value={(registration.presenceStatus ?? "pendente") as PresenceStatus} onValueChange={(value) => setPresence.mutate({ churchId, eventId: event.id, registrationId: registration.id, presenceStatus: value as PresenceStatus })} disabled={setPresence.isPending}><SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pendente">Pendente</SelectItem><SelectItem value="presente">Presente</SelectItem><SelectItem value="ausente">Não compareceu</SelectItem><SelectItem value="cancelado">Cancelado</SelectItem></SelectContent></Select></div>; })}</div></div>
+            <div className="flex flex-col gap-2 sm:flex-row"><Button variant="outline" className="flex-1 gap-2 border-[#1e3a5f]/20 text-[#1e3a5f]" onClick={() => void openEventReportPreview()} disabled={reportLoading}><Printer className="w-4 h-4" /> {reportLoading ? "Preparando relatório..." : "Abrir relatório / PDF"}</Button><Button variant="ghost" className="flex-1" onClick={() => void attendanceReport.refetch()}>Atualizar lista</Button></div>
+          </> : null}
+        </AdaptiveFormDialogBody>
+      </AdaptiveFormDialogContent>
+    </Dialog>
+
+    <Dialog open={editOpen} onOpenChange={setEditOpen}>
+      <AdaptiveFormDialogContent>
+        <div className={adaptiveFormDialogHeaderClassName}>
+          <DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2"><Pencil className="h-5 w-5 text-[#c9a84c]" />Editar evento</DialogTitle>
+          <DialogDescription>Atualize os dados do evento. As inscrições, pagamentos e flyer continuam preservados.</DialogDescription>
+        </div>
+        <form onSubmit={saveEventEdit} className="contents">
+          <AdaptiveFormDialogBody className="space-y-4">
+          <div><Label>Nome do evento *</Label><Input value={editDraft.name} onChange={(inputEvent) => setEditDraft({ ...editDraft, name: inputEvent.target.value })} required minLength={2} maxLength={255} /></div>
+          <div><Label>Tipo *</Label><Select value={editDraft.type} onValueChange={(value) => setEditDraft({ ...editDraft, type: value as EventType })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{EVENT_TYPES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent></Select></div>
+          <div className="grid gap-4 sm:grid-cols-2"><div><Label>Data de início *</Label><Input type="date" value={editDraft.startDate} onChange={(inputEvent) => setEditDraft({ ...editDraft, startDate: inputEvent.target.value })} required /></div><div><Label>Data de fim <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="date" value={editDraft.endDate} onChange={(inputEvent) => setEditDraft({ ...editDraft, endDate: inputEvent.target.value })} /></div><div><Label>Horário de início <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="time" value={editDraft.startTime} onChange={(inputEvent) => setEditDraft({ ...editDraft, startTime: inputEvent.target.value })} /></div><div><Label>Horário de término <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input type="time" value={editDraft.endTime} onChange={(inputEvent) => setEditDraft({ ...editDraft, endTime: inputEvent.target.value })} /></div></div>
+          <div><Label>Local</Label><Input value={editDraft.location} onChange={(inputEvent) => setEditDraft({ ...editDraft, location: inputEvent.target.value })} maxLength={500} /></div>
+          <div><Label>Capacidade máxima</Label><Input type="number" min={1} value={editDraft.maxCapacity} onChange={(inputEvent) => setEditDraft({ ...editDraft, maxCapacity: inputEvent.target.value })} placeholder="Em branco = sem limite" /></div>
+          <div><Label>Descrição</Label><Textarea value={editDraft.description} onChange={(inputEvent) => setEditDraft({ ...editDraft, description: inputEvent.target.value })} rows={5} maxLength={4000} placeholder="Descreva o objetivo e os detalhes do evento." /><p className="mt-1 text-right text-xs text-muted-foreground">{editDraft.description.length}/4000</p></div>
+          {editError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{editError}</div>}
+        </AdaptiveFormDialogBody>
+        <AdaptiveFormDialogFooter>
+          <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
+          <Button type="submit" className="bg-[#1e3a5f] text-white hover:bg-[#1e3a5f]/90" disabled={updateEvent.isPending}>{updateEvent.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Salvar alterações</Button>
+        </AdaptiveFormDialogFooter>
+        </form>
+      </AdaptiveFormDialogContent>
+    </Dialog>
+
+    <AlertDialog open={removeConfirmOpen} onOpenChange={(nextOpen) => { if (removeEvent.isPending) return; setRemoveConfirmOpen(nextOpen); if (!nextOpen) setRemoveError(null); }}>
+      <AlertDialogContent className="z-[220] max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Remover ou arquivar evento?</AlertDialogTitle>
+          <AlertDialogDescription>O evento “{event.name}” será excluído se não houver inscrições. Se já houver inscrições, ele será arquivado para preservar participantes, pagamentos e histórico.</AlertDialogDescription>
+        </AlertDialogHeader>
+        {removeError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{removeError}</div>}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={removeEvent.isPending}>Cancelar</AlertDialogCancel>
+          <AlertDialogAction className="bg-rose-700 text-white hover:bg-rose-800" disabled={removeEvent.isPending} onClick={(clickEvent) => { clickEvent.preventDefault(); removeEvent.mutate({ churchId, eventId: event.id }); }}>{removeEvent.isPending ? "Processando..." : "Continuar"}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    <Dialog open={qrOpen} onOpenChange={setQrOpen}><DialogContent className="max-w-sm"><DialogHeader><DialogTitle className="font-display text-[#1e3a5f] flex items-center gap-2"><QrCode className="w-5 h-5 text-[#c9a84c]" />Check-in — {event.name}</DialogTitle></DialogHeader><div className="flex flex-col items-center gap-4 py-4">{checkinUrl && <><div className="p-4 bg-white rounded-2xl border border-[#1e3a5f]/10 shadow-sm"><QRCodeSVG value={checkinUrl} size={200} fgColor="#1e3a5f" bgColor="#ffffff" level="M" /></div><p className="text-xs text-center text-[#1e3a5f]/50 leading-relaxed">Mostre este QR Code na entrada do evento.<br />Os participantes escaneiam para confirmar presença.</p><div className="w-full p-3 bg-[#f5f0e8] rounded-xl"><p className="text-[10px] text-[#1e3a5f]/40 uppercase tracking-wider mb-1">Link de check-in</p><p className="text-xs text-[#1e3a5f] font-mono break-all">{checkinUrl}</p></div></>}</div></DialogContent></Dialog>
+
+    <TreasuryPdfPreview open={reportOpen} blob={reportBlob} fileName={reportFileName} title={`Relatório — ${event.name}`} whatsappText={attendanceReport.data ? buildEventReportWhatsappText(attendanceReport.data) : undefined} onClose={() => { setReportOpen(false); setReportBlob(null); }} />
+  </>;
+}
+
+function AttendanceMetric({ icon: Icon, label, value, tone }: { icon: typeof Users; label: string; value: number | string; tone: "navy" | "green" | "amber" | "slate" }) {
+  const toneClass = tone === "green" ? "bg-emerald-50 text-emerald-700" : tone === "amber" ? "bg-amber-50 text-amber-700" : tone === "slate" ? "bg-slate-100 text-slate-600" : "bg-[#1e3a5f]/5 text-[#1e3a5f]";
+  return <div className="rounded-xl border border-[#1e3a5f]/10 bg-white p-3"><div className={`mb-2 flex h-7 w-7 items-center justify-center rounded-lg ${toneClass}`}><Icon className={`h-4 w-4 ${tone === "slate" ? "animate-pulse" : ""}`} /></div><p className="text-xl font-bold text-[#1e3a5f]">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>;
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `cell_members` ADD `leftAt` timestamp;

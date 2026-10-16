@@ -1,0 +1,139 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const compactSource = (source: string) =>
+  source
+    .replace(/\s+/g, " ")
+    .replace(/\basync\s+\(\s*([A-Za-z_$][\w$]*)\s*\)/g, "async $1")
+    .replace(/\(\s*([A-Za-z_$][\w$]*)\s*\)\s*=>/g, "$1 =>")
+    .replace(/\s+\./g, ".")
+    .replace(/\.\s+/g, ".")
+    .replace(/\(\s+/g, "(")
+    .replace(/\s+\)/g, ")")
+    .replace(/,\s*}/g, "}")
+    .replace(/\s+}/g, "}")
+    .trim();
+
+describe("Tesouraria: leitura sem materialização oculta", () => {
+  const root = resolve(__dirname, "..");
+  const dbSource = compactSource(
+    readFileSync(resolve(root, "server/db.ts"), "utf8")
+  );
+  const routerSource = compactSource(
+    readFileSync(resolve(root, "server/routers.ts"), "utf8")
+  );
+  const pageSource = readFileSync(
+    resolve(root, "client/src/pages/Tesouraria.tsx"),
+    "utf8"
+  );
+  const sectionSource = readFileSync(
+    resolve(root, "client/src/components/TreasuryServiceSection.tsx"),
+    "utf8"
+  );
+
+  const functionBody = (
+    source: string,
+    signature: string,
+    nextSignature: string
+  ) => {
+    const start = source.indexOf(signature);
+    const end = source.indexOf(nextSignature, start + signature.length);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    return source.slice(start, end);
+  };
+
+  it("mantém contas e categorias como consultas puras", () => {
+    expect(
+      functionBody(
+        dbSource,
+        "export async function getFinancialAccountsByChurch",
+        "export async function createFinancialAccount"
+      )
+    ).not.toContain("ensureTreasuryDefaults");
+    expect(
+      functionBody(
+        dbSource,
+        "export async function getFinancialCategoriesByChurch",
+        "export async function createFinancialCategory"
+      )
+    ).not.toContain("ensureTreasuryDefaults");
+    expect(
+      functionBody(
+        dbSource,
+        "export async function getFinancialCategoriesForManagement",
+        "export async function getFinancialCategoryForManagement"
+      )
+    ).not.toContain("ensureTreasuryDefaults");
+  });
+
+  it("expõe a inicialização padrão como mutação autorizada", () => {
+    expect(routerSource).toContain(
+      compactSource("initializeDefaults: protectedProcedure")
+    );
+    expect(routerSource).toContain(
+      compactSource(
+        "Somente a administração autorizada pode inicializar a estrutura padrão da Tesouraria."
+      )
+    );
+    expect(pageSource).toContain("initializeDefaults.mutate");
+    expect(pageSource).toContain("Inicializar padrões");
+  });
+
+  it("mantém a lista de serviços pura e materializa ocorrências por ação explícita", () => {
+    expect(
+      functionBody(
+        dbSource,
+        "export async function getTreasuryServices",
+        "export async function getTreasuryRecurringSchedules"
+      )
+    ).not.toContain("materializeTreasuryRecurringOccurrences");
+    expect(routerSource).toContain(
+      compactSource("materializeOccurrences: protectedProcedure")
+    );
+    expect(routerSource).toContain(
+      compactSource(
+        "Somente a administração autorizada pode materializar ocorrências recorrentes."
+      )
+    );
+    expect(sectionSource).toContain("materializeOccurrences.mutate");
+    expect(sectionSource).toContain("Atualizar ocorrências");
+  });
+  it("leva o fechamento anterior para a abertura seguinte por derivação, sem saldo duplicado", () => {
+    const overview = functionBody(
+      dbSource,
+      "export async function getTreasuryOverview",
+      "async function writeFinancialAuditLog"
+    );
+    expect(overview).toContain(
+      compactSource(
+        "const previousPeriodEndDate = previousFinancialDate(data.startDate);"
+      )
+    );
+    expect(overview).toContain(
+      compactSource(
+        "getFinancialTransactions({ churchId: data.churchId, endDate: previousPeriodEndDate"
+      )
+    );
+    expect(overview).toContain(
+      compactSource("openingBalanceCents: openingBalances.reduce")
+    );
+    expect(overview).toContain(compactSource("previousPeriodEndDate,"));
+    expect(overview).not.toContain(compactSource("createFinancialTransaction"));
+    expect(overview).not.toContain(compactSource("financialPeriodClosures"));
+  });
+});
+
+describe("Tesouraria: seeds continuam disponíveis no backend", () => {
+  const dbSource = readFileSync(resolve(__dirname, "db.ts"), "utf8");
+
+  it("retorna contadores da inicialização sem alterar históricos", () => {
+    expect(dbSource).toContain("export async function ensureTreasuryDefaults");
+    expect(dbSource).toContain("accountsCreated");
+    expect(dbSource).toContain("categoriesCreated");
+    expect(dbSource).toContain("return { accountsCreated, categoriesCreated }");
+  });
+});
+
+export {};

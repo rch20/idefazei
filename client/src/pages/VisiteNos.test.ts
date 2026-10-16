@@ -1,0 +1,74 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const pageSource = readFileSync(resolve(process.cwd(), "client/src/pages/VisiteNos.tsx"), "utf8");
+const appSource = readFileSync(resolve(process.cwd(), "client/src/App.tsx"), "utf8");
+const homeSource = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
+const dbSource = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
+
+describe("Visite-nos público", () => {
+  it("expõe uma rota própria e corrige o destino do card da página inicial", () => {
+    expect(appSource).toContain('<Route path="/visite-nos" component={VisiteNos} />');
+    expect(homeSource).toContain('href="/visite-nos"');
+    expect(homeSource).not.toContain('href="/visitante" className="tenant-public-contact-card"><CalendarDays');
+  });
+
+  it("oferece no Hero um CTA discreto, alinhado ao principal, para encontrar uma Célula", () => {
+    expect(homeSource).toContain('className="tenant-public-cell-cta"');
+    expect(homeSource).toContain('href="/visite-nos#tenant-public-cells"');
+    expect(homeSource).toContain("Encontrar uma Célula perto de você");
+    expect(homeSource).toContain("aria-label=\"Encontrar uma Célula perto de você\"");
+    expect(homeSource).toContain("tenant-public-cta");
+    expect(homeSource).toContain("tenant-public-cell-cta");
+    expect(pageSource).toContain('id="tenant-public-cells"');
+  });
+
+  it("usa apenas células públicas retornadas pelo tenant e mantém a proximidade no navegador", () => {
+    expect(pageSource).toContain("data?.publicCells");
+    expect(pageSource).toContain("isSuspiciousCoordinatePair");
+    expect(pageSource).toContain("geocodeMapLocation");
+    expect(pageSource).toContain("resolvedLocations");
+    expect(pageSource).toContain("navigator.geolocation.getCurrentPosition");
+    expect(pageSource).toContain("distanceInKilometers(visitorLocation");
+    expect(pageSource).toContain("Localizando a região da Célula para calcular a proximidade");
+    expect(pageSource).toContain("buildMapLocationQuery");
+    expect(pageSource).toContain('coordinatesSource: resolved ? "geocoded" : "address"');
+    expect(pageSource).toContain('cell.coordinatesSource !== "address"');
+    expect(pageSource).toContain("Uma Célula está publicada, mas o ponto do mapa precisa ser revisado");
+    expect(pageSource).not.toContain("visitorLocation:");
+  });
+
+  it("oferece mapa, WhatsApp autorizado e rota sem expor endereço aproximado", () => {
+    expect(pageSource).toContain("<OpenStreetMap");
+    expect(pageSource).toContain("const mapCells = cellsWithDistance.filter");
+    expect(pageSource).toContain("Ver mapa das Células");
+    expect(pageSource).toContain("Ocultar mapa");
+    expect(pageSource).toContain("lg:block lg:col-start-1 lg:row-start-1");
+    expect(pageSource).toContain("lg:col-start-2 lg:row-start-1");
+    expect(pageSource).toContain("function cellMessageName(name: string)");
+    expect(pageSource).toContain("replace(/^célula\\s+/i, \"\")");
+    expect(pageSource).toContain("getWhatsAppLinkWithMessage(cell.leaderWhatsapp");
+    expect(pageSource).toContain("sobre a ${cellMessageName(cell.name)}");
+    expect(pageSource).toContain('cell.locationMode === "exact" && cell.coordinatesSource !== "address"');
+    expect(pageSource).toContain("function mapsSearchLink(cell: PublicCell)");
+    expect(pageSource).toContain("function mapsDestination(cell: PublicCell)");
+    expect(pageSource).toContain("function mapsDirectionsLink(cell: PublicCell)");
+    expect(pageSource).toContain("const street = [addressWithoutComplement, hasNumber ? null : cell.addressNumber?.trim()]");
+    expect(pageSource).toContain("const postalCode = digits.length === 8");
+    const destinationSource = pageSource.slice(pageSource.indexOf("function mapsDestination"), pageSource.indexOf("function mapsSearchLink"));
+    expect(destinationSource).not.toContain("cell.neighborhood");
+    expect(destinationSource).not.toContain("cell.city");
+    expect(destinationSource).not.toContain("cell.state");
+    expect(destinationSource).toContain("return [street, postalCode].filter(Boolean).join");
+    expect(pageSource).toContain("href={mapsSearchLink(cell)}");
+    expect(pageSource).toContain("href={mapsDirectionsLink(cell)}");
+    expect(pageSource).toContain("hasRouteDestination(cell)");
+    expect(dbSource).toContain("state: cells.state");
+    expect(dbSource).toContain("addressNumber: cells.addressNumber");
+    expect(dbSource).toContain("zipCode: cells.zipCode");
+    expect(dbSource).toContain("address: exactLocation ? row.address : null");
+    expect(dbSource).toContain("Math.round(latitude * 100) / 100");
+    expect(dbSource).not.toContain("cell.latitude !== 0 || cell.longitude !== 0");
+  });
+});

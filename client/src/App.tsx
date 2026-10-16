@@ -1,0 +1,426 @@
+import { Toaster } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import NotFound from "@/pages/NotFound";
+import { Redirect, Route, Switch } from "wouter";
+import { lazy, Suspense } from "react";
+import ErrorBoundary from "./components/ErrorBoundary";
+import { ThemeProvider } from "./contexts/ThemeContext";
+import ChurchLayout, { useChurch, type ChurchAccessSummary } from "./components/ChurchLayout";
+import UnderConstruction from "./components/UnderConstruction";
+
+// Carregamento sob demanda reduz o JavaScript inicial no Safari iOS e mantém
+// um retorno visual claro enquanto a página solicitada é baixada.
+const LandingPage = lazy(() => import("./pages/LandingPage"));
+const TenantPublicPage = lazy(() => import("./pages/TenantPublicPage"));
+const DoacaoPublica = lazy(() => import("./pages/DoacaoPublica"));
+const DevocionalDiario = lazy(() => import("./pages/DevocionalDiario"));
+const LoginIgreja = lazy(() => import("./pages/LoginIgreja"));
+const RedefinirSenha = lazy(() => import("./pages/RedefinirSenha"));
+const ConfirmarEmail = lazy(() => import("./pages/ConfirmarEmail"));
+const CadastroIgreja = lazy(() => import("./pages/CadastroIgreja"));
+const CadastroDiscipulo = lazy(() => import("./pages/CadastroDiscipulo"));
+const CadastroPublico = lazy(() => import("./pages/CadastroPublico"));
+const PortalVisitante = lazy(() => import("./pages/PortalVisitante"));
+const VisiteNos = lazy(() => import("./pages/VisiteNos"));
+const AdminPanel = lazy(() => import("./pages/AdminPanel"));
+const Planos = lazy(() => import("./pages/Planos"));
+const Recursos = lazy(() => import("./pages/Recursos"));
+const Contato = lazy(() => import("./pages/Contato"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Inicio = lazy(() => import("./pages/Inicio"));
+const GanharAlmas = lazy(() => import("./pages/GanharAlmas"));
+const Consolidacao = lazy(() => import("./pages/Consolidacao"));
+const FunilDiscipulado = lazy(() => import("./pages/FunilDiscipulado"));
+const Pessoas = lazy(() => import("./pages/Pessoas"));
+const Celulas = lazy(() => import("./pages/Celulas"));
+const EstudosCelulas = lazy(() => import("./pages/EstudosCelulas"));
+const Eventos = lazy(() => import("./pages/Eventos"));
+const Oracao = lazy(() => import("./pages/Oracao"));
+const Mural = lazy(() => import("./pages/Mural"));
+const Placeholder = lazy(() => import("./pages/Placeholder"));
+const Familias = lazy(() => import("./pages/Familias"));
+const Ministerios = lazy(() => import("./pages/Ministerios"));
+const EstruturaOrganizacional = lazy(() => import("./pages/EstruturaOrganizacional"));
+const Escalas = lazy(() => import("./pages/Escalas"));
+const Configuracoes = lazy(() => import("./pages/Configuracoes"));
+const Biblioteca = lazy(() => import("./pages/Biblioteca"));
+const AreaMembro = lazy(() => import("./pages/AreaMembro"));
+const AppLider = lazy(() => import("./pages/AppLider"));
+const CheckinEvento = lazy(() => import("./pages/CheckinEvento"));
+const EventoInscricaoPublica = lazy(() => import("./pages/EventoInscricaoPublica"));
+const Demo = lazy(() => import("./pages/Demo"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
+const CadastroSucesso = lazy(() => import("./pages/CadastroSucesso"));
+const EscolaFundamentos = lazy(() => import("./pages/EscolaFundamentos"));
+const FoundationStudyPreviewPage = lazy(() => import("./pages/foundation/FoundationStudyPreviewPage"));
+const FoundationStudyPreview = import.meta.env.DEV ? lazy(() => import("./pages/foundation/FoundationStudyPreview")) : null;
+const Batismo = lazy(() => import("./pages/Batismo"));
+const EncontroComDeus = lazy(() => import("./pages/EncontroComDeus"));
+const EncontroComDeusDetalhe = lazy(() => import("./pages/EncontroComDeusDetalhe"));
+const EncontroFichaPublica = lazy(() => import("./pages/EncontroFichaPublica"));
+const EscolaLideres = lazy(() => import("./pages/EscolaLideres"));
+const EscolaLideresProfessor = lazy(() => import("./pages/EscolaLideresProfessor"));
+const EscolaLideresAluno = lazy(() => import("./pages/EscolaLideresAluno"));
+const GestaoLideranca = lazy(() => import("./pages/GestaoLideranca"));
+const Aconselhamento = lazy(() => import("./pages/Aconselhamento"));
+const Comunicacao = lazy(() => import("./pages/Comunicacao"));
+const ConfiguracoesCertificados = lazy(() => import("./pages/ConfiguracoesCertificados"));
+const Faturamento = lazy(() => import("./pages/Faturamento"));
+const CentralCuidado = lazy(() => import("./pages/CentralCuidado"));
+const RadarEspiritual = lazy(() => import("./pages/RadarEspiritual"));
+const Tesouraria = lazy(() => import("./pages/Tesouraria"));
+
+function DevFoundationPreviewRoute() {
+  if (!import.meta.env.DEV || !FoundationStudyPreview) return <NotFound />;
+  const Preview = FoundationStudyPreview;
+  return <Preview />;
+}
+
+function PublicRoot() {
+  const hostname = typeof window === "undefined" ? "" : window.location.hostname;
+  const parts = hostname.split(".");
+  // O preview técnico também possui subdomínios. A experiência pública de tenant
+  // só deve ser acionada no domínio produtivo (ou em subdomínios localhost).
+  const isIdeFazeiHost = hostname.endsWith(".idefazei.com.br") || hostname.endsWith(".localhost");
+  const isTenantSubdomain = isIdeFazeiHost && parts.length >= 3 && !["www", "admin"].includes(parts[0]);
+  return isTenantSubdomain ? <TenantPublicPage /> : <LandingPage />;
+}
+
+function RouteLoading() {
+  return <div className="flex min-h-[40vh] items-center justify-center bg-background p-6"><div className="flex flex-col items-center gap-3 text-center"><div className="h-9 w-9 animate-spin rounded-full border-2 border-gold border-t-transparent" /><p className="text-sm font-medium text-muted-foreground">Carregando...</p></div></div>;
+}
+
+// ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
+
+type RequiredAccess = keyof Pick<ChurchAccessSummary, "isExecutive" | "isPastoralWorker" | "isCommunicationManager" | "canAccessTreasury" | "isPastor" | "canManageChurch" | "canManageEncounter" | "canManageCells" | "canManageMinistry" | "canAccessMinistry" | "canReadPeople" | "canAccessVisits">;
+
+function AccessDenied({ title }: { title?: string }) {
+  return (
+    <div className="mx-auto flex min-h-[45vh] max-w-xl items-center justify-center p-6">
+      <div className="rounded-2xl border border-gold/25 bg-card p-8 text-center shadow-sm">
+        <h1 className="font-display text-xl font-semibold text-navy">Acesso restrito</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">Seu perfil não possui permissão para acessar {title ? `a área “${title}”` : "esta área"}. Se você acredita que deveria ter acesso, fale com a liderança da sua igreja.</p>
+      </div>
+    </div>
+  );
+}
+
+function ChurchAccessGate({ children, title, requiredAccess }: { children: React.ReactNode; title?: string; requiredAccess?: RequiredAccess }) {
+  const { accessSummary } = useChurch();
+  if (requiredAccess && accessSummary === null) return null;
+  return requiredAccess && !accessSummary?.[requiredAccess] ? <AccessDenied title={title} /> : <>{children}</>;
+}
+function AppPage({ children, title, requiredAccess, underConstruction = false }: { children: React.ReactNode; title?: string; requiredAccess?: RequiredAccess; underConstruction?: boolean }) {
+  return (
+    <ChurchLayout title={title}>
+      <ChurchAccessGate title={title} requiredAccess={requiredAccess}>
+        {underConstruction ? <UnderConstruction title={title ?? "Área"} /> : children}
+      </ChurchAccessGate>
+    </ChurchLayout>
+  );
+}
+
+// ─── ROUTER ───────────────────────────────────────────────────────────────────
+
+function Router() {
+  return (
+    <Suspense fallback={<RouteLoading />}>
+    <Switch>
+      {/* ── Domínio Principal ── */}
+      <Route path="/" component={PublicRoot} />
+      <Route path="/doacao" component={DoacaoPublica} />
+      <Route path="/cadastro-igreja" component={CadastroIgreja} />
+      <Route path="/planos" component={Planos} />
+      <Route path="/recursos" component={Recursos} />
+      <Route path="/contato" component={Contato} />
+
+      {/* Prévia visual estática: nunca é publicada nem substitui o gate Em construção. */}
+      <Route path="/preview/escola-fundamentos">
+        <DevFoundationPreviewRoute />
+      </Route>
+
+      {/* ── Super Admin ── */}
+      <Route path="/admin" component={AdminPanel} />
+      <Route path="/admin/login" component={AdminPanel} />
+
+      {/* ── Login e Portal da Igreja ── */}
+      <Route path="/login" component={LoginIgreja} />
+      <Route path="/redefinir-senha" component={RedefinirSenha} />
+      <Route path="/confirmar-email" component={ConfirmarEmail} />
+      <Route path="/cadastro" component={CadastroDiscipulo} />
+      {/* Links antigos de QR Code continuam abrindo o cadastro completo com senha. */}
+      <Route path="/cadastro-publico" component={CadastroDiscipulo} />
+      <Route path="/cadastro-interesse" component={CadastroPublico} />
+      <Route path="/devocional" component={DevocionalDiario} />
+      <Route path="/encontro/ficha/:token" component={EncontroFichaPublica} />
+      <Route path="/evento/inscricao/:token" component={EventoInscricaoPublica} />
+      <Route path="/visite-nos" component={VisiteNos} />
+      <Route path="/visitante" component={PortalVisitante} />
+      <Route path="/cadastro-sucesso" component={CadastroSucesso} />
+
+      {/* ── App — Home interna global ── */}
+      <Route path="/app/inicio">
+        <AppPage title="Início">
+          <Inicio />
+        </AppPage>
+      </Route>
+
+      {/* ── App — Dashboard executivo ── */}
+      <Route path="/app/dashboard">
+        <AppPage title="Visão geral" requiredAccess="isExecutive">
+          <Dashboard />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/cuidado">
+        <AppPage title="Cuidado" requiredAccess="isPastoralWorker">
+          <CentralCuidado />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/radar">
+        <AppPage title="Radar Espiritual" requiredAccess="isExecutive">
+          <RadarEspiritual />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/arvore">
+        <AppPage title="Árvore de Discipulado" requiredAccess="isExecutive">
+          <Placeholder title="Árvore de Discipulado" description="Genealogia espiritual visual da sua igreja" />
+        </AppPage>
+      </Route>
+
+      {/* ── App — Ciclo de Discipulado ── */}
+      <Route path="/app/almas">
+        <AppPage title="Novas Almas">
+          <GanharAlmas />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/ganhar-almas">
+        <Redirect to="/app/almas" />
+      </Route>
+
+      <Route path="/app/consolidacao">
+        <AppPage title="Consolidação" requiredAccess="canAccessVisits">
+          <Consolidacao />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/funil">
+        <AppPage title="Funil de Discipulado" requiredAccess="isExecutive">
+          <FunilDiscipulado />
+        </AppPage>
+      </Route>
+
+      {/* ── App — Membros ── */}
+      <Route path="/app/pessoas">
+        <AppPage title="Pessoas" requiredAccess="canReadPeople">
+          <Pessoas />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/familias">
+        <AppPage title="Famílias" requiredAccess="isExecutive">
+          <Familias />
+        </AppPage>
+      </Route>
+
+      {/* ── App — Células ── */}
+      <Route path="/app/celulas">
+        <AppPage title="Células">
+          <Celulas />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/mapa">
+        <AppPage title="Mapa de Células">
+          <Celulas initialTab="mapa" />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/estudos-celulas">
+        <AppPage title="Estudos de Células">
+          <EstudosCelulas />
+        </AppPage>
+      </Route>
+
+      {/* ── App — Ministério ── */}
+      <Route path="/app/eventos">
+        <AppPage title="Eventos" requiredAccess="isExecutive">
+          <Eventos />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/ministerios">
+        <AppPage title="Ministérios" requiredAccess="canAccessMinistry">
+          <Ministerios />
+        </AppPage>
+      </Route>
+      <Route path="/app/estrutura-organizacional">
+        <AppPage title="Estrutura Organizacional" requiredAccess="isExecutive">
+          <EstruturaOrganizacional />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/escalas">
+        <AppPage title="Escalas" requiredAccess="canManageCells">
+          <Escalas />
+        </AppPage>
+      </Route>
+
+      {/* ── App — Comunicação ── */}
+      <Route path="/app/oracao">
+        <AppPage title="Pedidos de Oração">
+          <Oracao />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/mural">
+        <AppPage title="Mural de Avisos" requiredAccess="isCommunicationManager">
+          <Mural />
+        </AppPage>
+      </Route>
+
+      {/* ── App — Novos Módulos ── */}
+      <Route path="/app/escola-fundamentos/preview">
+        <AppPage title="Prévia do estudo">
+          <FoundationStudyPreviewPage />
+        </AppPage>
+      </Route>
+      <Route path="/app/escola-fundamentos">
+        <AppPage title="Escola de Fundamentos">
+          <EscolaFundamentos />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/batismo">
+        <AppPage title="Batismo nas Águas" requiredAccess="isExecutive">
+          <Batismo />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/encontro-com-deus/:eventId">
+        <AppPage title="Encontro com Deus" requiredAccess="canManageEncounter">
+          <EncontroComDeusDetalhe />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/encontro-com-deus">
+        <AppPage title="Encontro com Deus" requiredAccess="canManageEncounter">
+          <EncontroComDeus />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/escola-lideres/aluno">
+        <AppPage title="Minha formação — Escola de Líderes">
+          <EscolaLideresAluno />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/escola-lideres/professor">
+        <AppPage title="Painel do Professor — Escola de Líderes">
+          <EscolaLideresProfessor />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/escola-lideres">
+        <AppPage title="Escola de Líderes" requiredAccess="isExecutive">
+          <EscolaLideres />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/gestao-lideranca">
+        <AppPage title="Gestão de Liderança" requiredAccess="isExecutive">
+          <GestaoLideranca />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/aconselhamento">
+        <AppPage title="Aconselhamento Pastoral" requiredAccess="isExecutive">
+          <Aconselhamento />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/comunicacao">
+        <AppPage title="Comunicação" requiredAccess="isCommunicationManager">
+          <Comunicacao />
+        </AppPage>
+      </Route>
+
+      {/* ── App — Admin ── */}
+      <Route path="/app/biblioteca">
+        <AppPage title="Biblioteca Digital">
+          <Biblioteca />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/configuracoes">
+        <AppPage title="Igreja" requiredAccess="canManageChurch">
+          <Configuracoes />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/configuracoes/certificados">
+        <AppPage title="Certificados" requiredAccess="canManageChurch" underConstruction>
+          <ConfiguracoesCertificados />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/faturamento">
+        <AppPage title="Faturamento" requiredAccess="canManageChurch" underConstruction>
+          <Faturamento />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/tesouraria">
+        <AppPage title="Tesouraria" requiredAccess="canAccessTreasury">
+          <Tesouraria />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/membro">
+        <AppPage title="Área do Membro">
+          <AreaMembro />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/lider">
+        <AppPage title="Minha equipe" requiredAccess="canManageCells">
+          <AppLider />
+        </AppPage>
+      </Route>
+
+      {/* ── Demo interativa ── */}
+      <Route path="/demo" component={Demo} />
+
+      {/* ── Check-in público ── */}
+      <Route path="/checkin" component={CheckinEvento} />
+
+      {/* ── Onboarding ── */}
+      <Route path="/onboarding" component={Onboarding} />
+
+      {/* Fallback */}
+      <Route path="/404" component={NotFound} />
+      <Route component={NotFound} />
+    </Switch>
+    </Suspense>
+  );
+}
+
+// ─── APP ──────────────────────────────────────────────────────────────────────
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <ThemeProvider defaultTheme="light">
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
+  );
+}
+
+export default App;

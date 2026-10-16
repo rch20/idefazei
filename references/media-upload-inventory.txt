@@ -1,0 +1,172 @@
+## Inputs e endpoints
+client/src/components/TenantPublicSettings.tsx:92:      const response = await fetch("/api/tenant-public-media", { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData });
+client/src/components/TenantPublicSettings.tsx:114:            {section.enabled && <div className="mt-4 grid gap-3"><label><Label>Título</Label><Input className="mt-1" value={section.content.title ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { title: event.target.value } })} /></label>{section.sectionType === "hero" && <><label><Label>Subtítulo</Label><Textarea className="mt-1" rows={3} value={section.content.subtitle ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { subtitle: event.target.value } })} /></label><div className="grid gap-3 sm:grid-cols-2"><label><Label>Texto do botão</Label><Input className="mt-1" value={section.content.primaryCtaLabel ?? ""} onChange={(event) => patchSection("hero", { content: { primaryCtaLabel: event.target.value } })} /></label><label><Label>Destino do botão</Label><Input className="mt-1" value={section.content.primaryCtaHref ?? ""} onChange={(event) => patchSection("hero", { content: { primaryCtaHref: event.target.value } })} /></label></div></>}{["about", "schedule"].includes(section.sectionType) && <label><Label>{section.sectionType === "schedule" ? "Mensagem de acolhimento" : "Texto"}</Label><Textarea className="mt-1" rows={3} value={section.content.body ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { body: event.target.value } })} /></label>}{section.sectionType === "schedule" && <div className="rounded-xl border border-gold/25 bg-gold/5 p-3"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-navy">Horários publicados</strong><Button type="button" size="sm" variant="outline" onClick={addService} disabled={(section.content.services ?? []).length >= 7}><Plus className="mr-1 h-3.5 w-3.5" />Adicionar horário</Button></div><div className="space-y-3">{(section.content.services ?? []).map((service, serviceIndex) => <div key={serviceIndex} className="grid gap-2 rounded-lg border border-border bg-background p-3 sm:grid-cols-2"><label><Label>Dia</Label><Input className="mt-1" value={service.day} maxLength={32} placeholder="Ex.: Domingo" onChange={(event) => patchService(serviceIndex, { day: event.target.value })} /></label><label><Label>Horário</Label><Input className="mt-1" value={service.time} maxLength={24} placeholder="Ex.: 19h" onChange={(event) => patchService(serviceIndex, { time: event.target.value })} /></label><label><Label>Descrição</Label><Input className="mt-1" value={service.label ?? ""} maxLength={80} placeholder="Ex.: Culto da Família" onChange={(event) => patchService(serviceIndex, { label: event.target.value })} /></label><label><Label>Local</Label><div className="mt-1 flex gap-2"><Input value={service.location ?? ""} maxLength={160} placeholder="Ex.: Templo principal" onChange={(event) => patchService(serviceIndex, { location: event.target.value })} /><Button type="button" size="icon" variant="outline" aria-label={`Remover horário ${serviceIndex + 1}`} onClick={() => removeService(serviceIndex)}><Trash2 className="h-4 w-4" /></Button></div></label></div>)}{(section.content.services ?? []).length === 0 && <p className="text-sm text-muted-foreground">Nenhum horário será exibido até você adicionar um encontro.</p>}</div></div>}{section.sectionType === "gallery" && <div className="rounded-xl border border-gold/25 bg-gold/5 p-3"><div className="mb-3 flex flex-wrap items-center justify-between gap-2"><strong className="text-sm text-navy">Imagens da galeria</strong><label><input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" disabled={isUploadingGallery || galleryItems.length >= 8} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void uploadGalleryImage(file); }} /><Button type="button" size="sm" variant="outline" disabled={isUploadingGallery || galleryItems.length >= 8} asChild><span><ImagePlus className="mr-1 h-3.5 w-3.5" />{isUploadingGallery ? "Enviando..." : "Adicionar imagem"}</span></Button></label></div><p className="mb-3 text-xs text-muted-foreground">PNG, JPEG ou WebP, até 4 MB. Inclua uma descrição para acessibilidade.</p><div className="space-y-3">{galleryItems.map((item, itemIndex) => <div key={item.url} className="grid gap-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-[96px_minmax(0,1fr)]"><img src={item.url} alt="Prévia da mídia" className="h-24 w-24 rounded-md object-cover" /><div className="grid gap-2"><label><Label>Texto alternativo</Label><Input value={item.alt} maxLength={180} onChange={(event) => patchSection("gallery", { content: { items: galleryItems.map((current, index) => index === itemIndex ? { ...current, alt: event.target.value } : current) } })} /></label><label><Label>Legenda opcional</Label><div className="mt-1 flex gap-2"><Input value={item.caption ?? ""} maxLength={180} onChange={(event) => patchSection("gallery", { content: { items: galleryItems.map((current, index) => index === itemIndex ? { ...current, caption: event.target.value } : current) } })} /><Button type="button" size="icon" variant="outline" aria-label={`Remover imagem ${itemIndex + 1}`} onClick={() => patchSection("gallery", { content: { items: galleryItems.filter((_, index) => index !== itemIndex) } })}><Trash2 className="h-4 w-4" /></Button></div></label></div></div>)}{galleryItems.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma imagem será exibida até você adicionar e publicar a galeria.</p>}</div></div>}{["events", "ministries", "gallery", "contact"].includes(section.sectionType) && <label><Label>Mensagem</Label><Input className="mt-1" value={section.content.subtitle ?? ""} onChange={(event) => patchSection(section.sectionType, { content: { subtitle: event.target.value } })} /></label>}</div>}</article>)}</div>
+client/src/pages/Configuracoes.tsx:166:      const response = await fetch("/api/upload", {
+client/src/pages/Configuracoes.tsx:265:                    <input ref={logoInputRef} aria-label="Selecionar logo da igreja" type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={handleLogoUpload} />
+client/src/pages/ConfiguracoesCertificados.tsx:85:      const res = await fetch("/api/upload", { method: "POST", body: formData });
+client/src/pages/ConfiguracoesCertificados.tsx:220:                  type="file"
+client/src/pages/ConfiguracoesCertificados.tsx:221:                  accept="image/png,image/jpeg,image/webp"
+client/src/pages/Onboarding.tsx:354:                    type="file"
+client/src/pages/Tesouraria.tsx:492:          <div className="rounded-xl border border-dashed border-gold/50 bg-cream/20 p-4"><div className="flex items-start gap-3"><Paperclip className="mt-0.5 h-5 w-5 text-gold" /><div className="min-w-0 flex-1"><p className="font-semibold text-navy">Comprovantes bancários</p><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Salve a conciliação e envie PDF, PNG, JPEG ou WebP de até 8 MB. O servidor também valida a assinatura real do arquivo.</p>{reconciliationId ? <div className="mt-3 space-y-2">{attachmentsQuery.isLoading ? <p className="text-xs text-muted-foreground">Carregando comprovantes…</p> : (attachmentsQuery.data ?? []).length === 0 ? <p className="text-xs text-muted-foreground">Nenhum comprovante anexado.</p> : (attachmentsQuery.data ?? []).map((attachment) => <div key={attachment.id} className="rounded-lg bg-white/70 px-3 py-2 text-sm text-navy"><div className="flex items-center justify-between gap-3"><a href={attachment.url} target="_blank" rel="noreferrer" className="min-w-0 truncate font-medium hover:underline">{attachment.fileName}</a><ExternalLink className="h-4 w-4 shrink-0" /></div><div className="mt-2 flex flex-wrap gap-2"><label className="inline-flex cursor-pointer items-center gap-1 rounded border border-navy/20 px-2 py-1 text-xs font-medium text-navy hover:bg-navy hover:text-white"><RefreshCw className="h-3 w-3" /> Substituir<input type="file" className="sr-only" accept="application/pdf,image/png,image/jpeg,image/webp" disabled={uploadingAttachment || removeReconciliationAttachment.isPending} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadAttachment(file, attachment.id); event.currentTarget.value = ""; }} /></label><Button type="button" variant="outline" size="sm" className="h-7 border-rose-200 px-2 text-xs text-rose-700 hover:bg-rose-50" disabled={uploadingAttachment || removeReconciliationAttachment.isPending} onClick={() => void removeAttachment(attachment.id)}><Trash2 className="mr-1 h-3 w-3" /> Remover</Button></div></div>)}<label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-navy/20 bg-white px-3 py-2 text-sm font-medium text-navy transition-colors hover:bg-navy hover:text-white"><Upload className="h-4 w-4" />{uploadingAttachment ? "Enviando…" : "Anexar comprovante"}<input type="file" className="sr-only" accept="application/pdf,image/png,image/jpeg,image/webp" disabled={uploadingAttachment || removeReconciliationAttachment.isPending} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadAttachment(file); event.currentTarget.value = ""; }} /></label></div> : <p className="mt-3 text-xs font-medium text-amber-800">Salve a conciliação para liberar o anexo.</p>}          </div></div></div>
+server/_core/index.ts:126:  app.post("/api/upload", async (req, res) => {
+server/_core/index.ts:212:  app.post("/api/tenant-public-media", async (req, res) => {
+server/tenant-public.test.ts:297:    const uploadStart = indexSource.indexOf('app.post("/api/tenant-public-media"');
+
+## Campos de mídia
+client/src/components/ChurchLayout.tsx:54:  logoUrl?: string | null;
+client/src/components/ChurchLayout.tsx:131:  const { churchName, logoUrl } = useChurch();
+client/src/components/ChurchLayout.tsx:168:            {logoUrl ? (
+client/src/components/ChurchLayout.tsx:169:              <img src={logoUrl} alt={churchName} className="w-9 h-9 rounded-lg object-cover" />
+client/src/components/ChurchLayout.tsx:381:    logoUrl: church?.logoUrl,
+client/src/components/TenantPublicSettings.tsx:31:  const [theme, setTheme] = useState({ primaryColor: "#1e3a5f", secondaryColor: "#c9a84c", accentColor: "#c9a84c", fontPair: "sacred_serif" as const, logoUrl: null as string | null, faviconUrl: null as string | null });
+client/src/components/TenantPublicSettings.tsx:40:    if (currentTheme) setTheme({ primaryColor: currentTheme.primaryColor, secondaryColor: currentTheme.secondaryColor, accentColor: currentTheme.accentColor ?? currentTheme.secondaryColor, fontPair: "sacred_serif", logoUrl: currentTheme.logoUrl, faviconUrl: currentTheme.faviconUrl });
+client/src/components/TreasuryPdfPreview.tsx:10:  fileName: string;
+client/src/components/TreasuryPdfPreview.tsx:15:export function downloadTreasuryPdf(blob: Blob, fileName: string) {
+client/src/components/TreasuryPdfPreview.tsx:19:  link.download = fileName;
+client/src/components/TreasuryPdfPreview.tsx:26:export async function shareTreasuryPdf(blob: Blob, fileName: string, title: string) {
+client/src/components/TreasuryPdfPreview.tsx:27:  const file = new File([blob], fileName, { type: "application/pdf", lastModified: Date.now() });
+client/src/components/TreasuryPdfPreview.tsx:34:export function TreasuryPdfPreview({ open, blob, fileName, title, onClose }: TreasuryPdfPreviewProps) {
+client/src/components/TreasuryPdfPreview.tsx:45:      const shared = await shareTreasuryPdf(blob, fileName, title);
+client/src/components/TreasuryPdfPreview.tsx:47:        downloadTreasuryPdf(blob, fileName);
+client/src/components/TreasuryPdfPreview.tsx:52:      downloadTreasuryPdf(blob, fileName);
+client/src/components/TreasuryPdfPreview.tsx:66:      if (blob) downloadTreasuryPdf(blob, fileName);
+client/src/components/TreasuryPdfPreview.tsx:81:            <Button variant="outline" size="sm" aria-label="Baixar" onClick={() => blob && downloadTreasuryPdf(blob, fileName)} disabled={!blob} className="min-w-0 gap-1.5 px-2 sm:px-3"><Download className="h-4 w-4" /><span className="sr-only sm:not-sr-only">Baixar</span></Button>
+client/src/components/TreasuryPdfPreview.test.ts:17:    expect(source).toContain("downloadTreasuryPdf(blob, fileName)");
+client/src/pages/Configuracoes.tsx:47:    logoUrl: church?.logoUrl ?? "",
+client/src/pages/Configuracoes.tsx:69:      logoUrl: church.logoUrl ?? "",
+client/src/pages/Configuracoes.tsx:173:      setChurchForm((current) => ({ ...current, logoUrl: result.url! }));
+client/src/pages/Configuracoes.tsx:174:      updateMutation.mutate({ id: churchId!, logoUrl: result.url }, { onSuccess: () => { refetch(); toast.success("Logo atualizada com sucesso!"); } });
+client/src/pages/Configuracoes.tsx:267:                      {churchForm.logoUrl ? <img src={churchForm.logoUrl} alt="Logo atual da igreja" className="h-20 w-20 rounded-2xl object-contain shadow-sm" /> : <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-slate-400 shadow-sm"><Upload className="h-8 w-8" /></span>}
+client/src/pages/Configuracoes.tsx:268:                      <span className="text-sm font-semibold text-navy">{isUploadingLogo ? "Enviando logo..." : churchForm.logoUrl ? "Clique para substituir a logo" : "Clique para enviar a logo"}</span>
+client/src/pages/Configuracoes.tsx:271:                    <div className="mt-3 flex justify-end"><Button type="button" variant="outline" size="sm" disabled={isUploadingLogo} onClick={() => logoInputRef.current?.click()}>{isUploadingLogo ? "Enviando..." : churchForm.logoUrl ? "Substituir arquivo" : "Selecionar arquivo"}</Button></div>
+client/src/pages/Configuracoes.tsx:286:                <div className="mt-5 flex min-w-0 items-center gap-3 rounded-2xl bg-white/10 p-4 sm:p-5"><div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-white/95 text-lg font-bold text-navy">{churchForm.logoUrl ? <img src={churchForm.logoUrl} alt="Prévia da logo da igreja" className="h-full w-full object-contain p-1" /> : churchForm.name?.[0] ?? "I"}</div><div className="min-w-0"><p className="truncate text-sm font-semibold text-white">{churchForm.name || "Nome da Igreja"}</p><p className="truncate text-xs" style={{ color: churchForm.secondaryColor }}>{churchForm.slug || "slug"}.igrejaapp.com</p></div><div className="ml-auto hidden h-8 w-8 shrink-0 rounded-full sm:block" style={{ backgroundColor: churchForm.secondaryColor }} /></div>
+client/src/pages/ConfiguracoesCertificados.tsx:35:  const [logoUrl, setLogoUrl] = useState("");
+client/src/pages/ConfiguracoesCertificados.tsx:47:      setLogoUrl(config.logoUrl);
+client/src/pages/ConfiguracoesCertificados.tsx:101:      logoUrl,
+client/src/pages/ConfiguracoesCertificados.tsx:184:            {logoUrl && (
+client/src/pages/ConfiguracoesCertificados.tsx:186:                src={logoUrl}
+client/src/pages/ConfiguracoesCertificados.tsx:192:              <Label htmlFor="logoUrl">URL do Logo</Label>
+client/src/pages/ConfiguracoesCertificados.tsx:194:                id="logoUrl"
+client/src/pages/ConfiguracoesCertificados.tsx:196:                value={logoUrl}
+client/src/pages/LoginIgreja.tsx:48:  const logoUrl = tenantPublic?.theme?.logoUrl ?? tenantPublic?.church.logoUrl ?? null;
+client/src/pages/LoginIgreja.tsx:112:              {logoUrl ? <img src={logoUrl} alt={`Logo ${tenantName}`} /> : <span aria-hidden="true">{isTenantLogin ? logoLetters : "✦"}</span>}
+client/src/pages/LoginIgreja.tsx:132:              {logoUrl ? <img src={logoUrl} alt={`Logo ${tenantName}`} /> : <span aria-hidden="true">{isTenantLogin ? logoLetters : "✦"}</span>}
+client/src/pages/TenantPublicPage.tsx:48:            {data.theme?.logoUrl ?? data.church.logoUrl ? (
+client/src/pages/TenantPublicPage.tsx:49:              <img className="tenant-public-logo" src={data.theme?.logoUrl ?? data.church.logoUrl ?? ""} alt={`Logo ${data.church.name}`} />
+client/src/pages/Tesouraria.tsx:455:      <TreasuryPdfPreview open={reportOpen} blob={reportBlob} fileName={reportFileName} title={reportTitle} onClose={() => setReportOpen(false)} />
+client/src/pages/Tesouraria.tsx:492:          <div className="rounded-xl border border-dashed border-gold/50 bg-cream/20 p-4"><div className="flex items-start gap-3"><Paperclip className="mt-0.5 h-5 w-5 text-gold" /><div className="min-w-0 flex-1"><p className="font-semibold text-navy">Comprovantes bancários</p><p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Salve a conciliação e envie PDF, PNG, JPEG ou WebP de até 8 MB. O servidor também valida a assinatura real do arquivo.</p>{reconciliationId ? <div className="mt-3 space-y-2">{attachmentsQuery.isLoading ? <p className="text-xs text-muted-foreground">Carregando comprovantes…</p> : (attachmentsQuery.data ?? []).length === 0 ? <p className="text-xs text-muted-foreground">Nenhum comprovante anexado.</p> : (attachmentsQuery.data ?? []).map((attachment) => <div key={attachment.id} className="rounded-lg bg-white/70 px-3 py-2 text-sm text-navy"><div className="flex items-center justify-between gap-3"><a href={attachment.url} target="_blank" rel="noreferrer" className="min-w-0 truncate font-medium hover:underline">{attachment.fileName}</a><ExternalLink className="h-4 w-4 shrink-0" /></div><div className="mt-2 flex flex-wrap gap-2"><label className="inline-flex cursor-pointer items-center gap-1 rounded border border-navy/20 px-2 py-1 text-xs font-medium text-navy hover:bg-navy hover:text-white"><RefreshCw className="h-3 w-3" /> Substituir<input type="file" className="sr-only" accept="application/pdf,image/png,image/jpeg,image/webp" disabled={uploadingAttachment || removeReconciliationAttachment.isPending} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadAttachment(file, attachment.id); event.currentTarget.value = ""; }} /></label><Button type="button" variant="outline" size="sm" className="h-7 border-rose-200 px-2 text-xs text-rose-700 hover:bg-rose-50" disabled={uploadingAttachment || removeReconciliationAttachment.isPending} onClick={() => void removeAttachment(attachment.id)}><Trash2 className="mr-1 h-3 w-3" /> Remover</Button></div></div>)}<label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-navy/20 bg-white px-3 py-2 text-sm font-medium text-navy transition-colors hover:bg-navy hover:text-white"><Upload className="h-4 w-4" />{uploadingAttachment ? "Enviando…" : "Anexar comprovante"}<input type="file" className="sr-only" accept="application/pdf,image/png,image/jpeg,image/webp" disabled={uploadingAttachment || removeReconciliationAttachment.isPending} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadAttachment(file); event.currentTarget.value = ""; }} /></label></div> : <p className="mt-3 text-xs font-medium text-amber-800">Salve a conciliação para liberar o anexo.</p>}          </div></div></div>
+client/src/pages/VisiteNos.tsx:116:            {data.theme?.logoUrl ?? data.church.logoUrl ? <img className="tenant-public-logo" src={data.theme?.logoUrl ?? data.church.logoUrl ?? ""} alt={`Logo ${data.church.name}`} /> : <span className="tenant-public-mark" aria-hidden="true">✦</span>}
+server/_core/imageGeneration.ts:5: *   const { url: imageUrl } = await generateImage({
+server/_core/imageGeneration.ts:10: *   const { url: imageUrl } = await generateImage({
+server/_core/imageGeneration.ts:14: *       mimeType: "image/jpeg"
+server/_core/imageGeneration.ts:26:    mimeType?: string;
+server/_core/imageGeneration.ts:77:      mimeType: string;
+server/_core/imageGeneration.ts:87:    result.image.mimeType
+server/_core/index.ts:155:    let mimeType = "image/png";
+server/_core/index.ts:166:      mimeType = info.mimeType || "image/png";
+server/_core/index.ts:167:      if (!allowedMimeTypes.has(mimeType)) {
+server/_core/index.ts:192:        const ext = extensions[mimeType] ?? "png";
+server/_core/index.ts:194:        const { url } = await storagePut(key, fileBuffer, mimeType);
+server/_core/index.ts:229:    let mimeType = "image/png";
+server/_core/index.ts:233:      mimeType = info.mimeType || "image/png";
+server/_core/index.ts:234:      if (!allowedMimeTypes.has(mimeType)) { invalidMimeType = true; stream.resume(); return; }
+server/_core/index.ts:245:        const ext = extensions[mimeType] ?? "png";
+server/_core/index.ts:247:        const { key: storedKey, url } = await storagePut(key, fileBuffer, mimeType);
+server/_core/index.ts:293:    let mimeType = "application/pdf";
+server/_core/index.ts:302:      mimeType = info.mimeType || "application/pdf";
+server/_core/index.ts:304:      if (!TREASURY_ATTACHMENT_MIME_TYPES.has(mimeType)) {
+server/_core/index.ts:320:      if (!matchesTreasuryAttachmentSignature(fileBuffer, mimeType)) return res.status(415).json({ error: "O conteúdo do arquivo não corresponde ao formato informado." });
+server/_core/index.ts:324:        const safeName = safeTreasuryAttachmentName(originalFileName, mimeType);
+server/_core/index.ts:326:        const { url } = await storagePut(key, fileBuffer, mimeType);
+server/_core/index.ts:328:          churchId: churchUser.churchId, reconciliationId: reconciliation.id, fileKey: key, url,
+server/_core/index.ts:329:          fileName: safeName, mimeType, sizeBytes: fileBuffer.length, uploadedByChurchUserId: churchUser.id,
+server/_core/voiceTranscription.ts:22: *   audioUrl: uploadedAudioUrl,
+server/_core/voiceTranscription.ts:31:  audioUrl: string; // URL to the audio file (e.g., S3 URL)
+server/_core/voiceTranscription.ts:95:    let mimeType: string;
+server/_core/voiceTranscription.ts:97:      const response = await fetch(options.audioUrl);
+server/_core/voiceTranscription.ts:107:      mimeType = response.headers.get('content-type') || 'audio/mpeg';
+server/_core/voiceTranscription.ts:130:    const filename = `audio.${getFileExtension(mimeType)}`;
+server/_core/voiceTranscription.ts:131:    const audioBlob = new Blob([new Uint8Array(audioBuffer)], { type: mimeType });
+server/_core/voiceTranscription.ts:200:function getFileExtension(mimeType: string): string {
+server/_core/voiceTranscription.ts:212:  return mimeToExt[mimeType] || 'audio';
+server/_core/voiceTranscription.ts:254: *       audioUrl: z.string(),
+server/_core/voiceTranscription.ts:276: *         audioUrl: input.audioUrl,
+server/certificates.ts:21:  logoUrl?: string; // URL do logo da igreja para incluir no certificado
+server/certificates.ts:184:  if (data.logoUrl) {
+server/certificates.ts:186:      const logoResp = await fetch(data.logoUrl);
+server/certificates.ts:192:        if (contentType.includes("png") || data.logoUrl.endsWith(".png")) {
+server/db.ts:352:      logoUrl: church.logoUrl,
+server/db.ts:393:  theme: { primaryColor: string; secondaryColor: string; accentColor?: string | null; fontPair?: "sacred_serif"; logoUrl?: string | null; faviconUrl?: string | null };
+server/db.ts:417:  await db.insert(tenantThemes).values({ churchId, primaryColor: church.primaryColor || "#1e3a5f", secondaryColor: church.secondaryColor || "#c9a84c", logoUrl: church.logoUrl }).onDuplicateKeyUpdate({ set: { churchId: sql`churchId` } });
+server/db.ts:2837:    thumbnailUrl: libraryItems.thumbnailUrl,
+server/db.ts:3499:  churchId: number; reconciliationId: number; fileKey: string; url: string; fileName: string; mimeType: string; sizeBytes: number; uploadedByChurchUserId: number;
+server/discipleship.flow.test.ts:42:    certLogoUrl: null,
+server/discipleship.flow.test.ts:160:  getFinancialReconciliationAttachments: vi.fn().mockResolvedValue([{ id: 9, churchId: 100, reconciliationId: 4, fileName: "extrato-agosto.pdf", url: "/manus-storage/churches/100/proof.pdf" }]),
+server/discipleship.flow.test.ts:1052:      expect(result.fileName).toContain("batismo");
+server/discipleship.flow.test.ts:1090:      expect(result.fileName).toContain("fundamentos");
+server/discipleship.flow.test.ts:1106:      expect(result.fileName).toContain("lideres");
+server/routers.ts:689:    return churches.map(({ id, name, slug, logoUrl, primaryColor, secondaryColor, city, state }) => ({
+server/routers.ts:693:      logoUrl,
+server/routers.ts:710:        logoUrl: church.logoUrl,
+server/routers.ts:730:        logoUrl: z.string().optional(),
+server/routers.ts:758:        logoUrl: z.string().optional(),
+server/routers.ts:804:      logoUrl: z.string().trim().max(500).refine((value) => value.startsWith("/") || /^https:\/\//.test(value), "Informe uma URL HTTPS ou um arquivo interno.").nullable().optional(),
+server/routers.ts:3928:        logoUrl: church.certLogoUrl ?? "",
+server/routers.ts:3942:        logoUrl: z.string().max(2048).optional(),
+server/routers.ts:3959:          certLogoUrl: input.logoUrl,
+server/routers.ts:4011:      const logoUrl = church?.certLogoUrl ?? undefined;
+server/routers.ts:4028:        logoUrl,
+server/routers.ts:4037:      const fileKey = `churches/${input.churchId}/certificates/${input.type}-${safeName}-${timestamp}.pdf`;
+server/routers.ts:4039:      const { url } = await storagePut(fileKey, Buffer.from(pdfBytes), "application/pdf");
+server/routers.ts:4041:      return { url, fileName: `certificado-${input.type}-${safeName}.pdf` };
+server/tenant-public.test.ts:29:  theme: { primaryColor: "#1e3a5f", secondaryColor: "#c9a84c", accentColor: "#c9a84c", fontPair: "sacred_serif" as const, logoUrl: null, faviconUrl: null },
+server/treasury-files.ts:10:export function matchesTreasuryAttachmentSignature(buffer: Buffer, mimeType: string) {
+server/treasury-files.ts:11:  if (mimeType === "application/pdf") return buffer.subarray(0, 5).toString("ascii") === "%PDF-";
+server/treasury-files.ts:12:  if (mimeType === "image/png") return buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+server/treasury-files.ts:13:  if (mimeType === "image/jpeg") return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+server/treasury-files.ts:14:  if (mimeType === "image/webp") return buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP";
+server/treasury-files.ts:18:export function safeTreasuryAttachmentName(originalFileName: string, mimeType: string) {
+server/treasury-files.ts:19:  const extension = EXTENSIONS[mimeType];
+drizzle/0001_deep_luminals.sql:8:	`imageUrl` text,
+drizzle/0001_deep_luminals.sql:83:	`logoUrl` text,
+drizzle/0001_deep_luminals.sql:219:	`thumbnailUrl` text,
+drizzle/0005_large_spiral.sql:2:ALTER TABLE `churches` ADD `certLogoUrl` text;--> statement-breakpoint
+drizzle/0019_amused_lake.sql:5:	`fileKey` varchar(512) NOT NULL,
+drizzle/0019_amused_lake.sql:7:	`fileName` varchar(255) NOT NULL,
+drizzle/0019_amused_lake.sql:8:	`mimeType` varchar(100) NOT NULL,
+drizzle/0027_sour_shinobi_shaw.sql:49:	`logoUrl` text,
+drizzle/schema.ts:39:  logoUrl: text("logoUrl"),
+drizzle/schema.ts:57:  certLogoUrl: text("certLogoUrl"),
+drizzle/schema.ts:99:  logoUrl: text("logoUrl"),
+drizzle/schema.ts:606:  imageUrl: text("imageUrl"),
+drizzle/schema.ts:621:  thumbnailUrl: text("thumbnailUrl"),
+drizzle/schema.ts:1417:    fileKey: varchar("fileKey", { length: 512 }).notNull(),
+drizzle/schema.ts:1419:    fileName: varchar("fileName", { length: 255 }).notNull(),
+drizzle/schema.ts:1420:    mimeType: varchar("mimeType", { length: 100 }).notNull(),
+
+## Rotas de upload e storage
+server/_core/imageGeneration.ts:18:import { storagePut } from "server/storage";
+server/_core/imageGeneration.ts:83:  // Save to S3
+server/_core/imageGeneration.ts:84:  const { url } = await storagePut(
+server/_core/index.ts:15:import { storagePut } from "../storage";
+server/_core/index.ts:74:  app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhookHandler);
+server/_core/index.ts:83:  app.post("/api/scheduled/daily-notifications", dailyNotificationsHandler);
+server/_core/index.ts:84:  app.post("/api/scheduled/schedule-reminders", scheduleRemindersHandler);
+server/_core/index.ts:88:  app.post("/api/diagnostics/startup", async (req, res) => {
+server/_core/index.ts:126:  app.post("/api/upload", async (req, res) => {
+server/_core/index.ts:194:        const { url } = await storagePut(key, fileBuffer, mimeType);
+server/_core/index.ts:212:  app.post("/api/tenant-public-media", async (req, res) => {
+server/_core/index.ts:247:        const { key: storedKey, url } = await storagePut(key, fileBuffer, mimeType);
+server/_core/index.ts:259:  app.post("/api/treasury/reconciliation-attachments", async (req, res) => {
+server/_core/index.ts:326:        const { url } = await storagePut(key, fileBuffer, mimeType);
+server/_core/voiceTranscription.ts:6: * 2. Upload audio to storage (e.g., S3) to get URL
+server/_core/voiceTranscription.ts:31:  audioUrl: string; // URL to the audio file (e.g., S3 URL)
+server/discipleship.flow.test.ts:277:// Mock do storage.ts — evita chamadas reais ao S3
+server/discipleship.flow.test.ts:279:  storagePut: vi.fn().mockResolvedValue({
+server/routers.ts:4020:      const { storagePut } = await import("./storage");
+server/routers.ts:4039:      const { url } = await storagePut(fileKey, Buffer.from(pdfBytes), "application/pdf");
+server/storage.ts:2:// Uploads via Forge Server presigned URL to S3 (PUT direct).
+server/storage.ts:31:export async function storagePut(
+server/storage.ts:55:  // 2. PUT file directly to S3
+server/storage.ts:68:    throw new Error(`Storage upload to S3 failed (${uploadResp.status})`);
+server/tenant-public.test.ts:297:    const uploadStart = indexSource.indexOf('app.post("/api/tenant-public-media"');

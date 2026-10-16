@@ -1,0 +1,2 @@
+ALTER TABLE `care_visit_events` MODIFY COLUMN `action` enum('criada','atribuida','aceita','reatribuida','agendada','reagendada','iniciada','concluida','cancelada') NOT NULL;--> statement-breakpoint
+ALTER TABLE `ministries` MODIFY COLUMN `type` enum('louvor','infantil','recepcao','midia','intercessao','evangelismo','casais','jovens','consolidacao','visitas','outro') NOT NULL;

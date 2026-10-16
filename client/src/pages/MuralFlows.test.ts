@@ -1,0 +1,83 @@
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const page = readFileSync(resolve(process.cwd(), "client/src/pages/Mural.tsx"), "utf8");
+const publicPage = readFileSync(resolve(process.cwd(), "client/src/pages/TenantPublicPage.tsx"), "utf8");
+const publicStyles = readFileSync(resolve(process.cwd(), "client/src/index.css"), "utf8");
+
+describe("Mural — Avisos Públicos", () => {
+  it("separa o mural interno da publicação pública", () => {
+    expect(page).toContain("Exibir na página pública");
+    expect(page).toContain("announcements.list.useQuery");
+    expect(page).toContain("announcements.create.useMutation");
+    expect(page).toContain("announcements.update.useMutation");
+    expect(page).toContain("announcements.archivePublic.useMutation");
+  });
+
+  it("protege a experiência de publicação com datas, destaque e ação", () => {
+    expect(page).toContain('id="announcement-start"');
+    expect(page).toContain('id="announcement-expiry"');
+    expect(page).toContain("Fixar como destaque no mural");
+    expect(page).toContain('id="announcement-cta-label"');
+    expect(page).toContain('id="announcement-cta-href"');
+    expect(page).toContain("publicVisible");
+  });
+
+  it("usa o upload unificado do Cloudinary para imagem de aviso", () => {
+    expect(page).toContain("uploadChurchMedia");
+    expect(page).toContain('purpose: "announcement_image"');
+    expect(page).toContain('resourceType: "image"');
+    expect(page).toContain("Imagem vinculada ao aviso");
+    expect(page).toContain("1200 × 600 px (proporção 2:1)");
+    expect(page).toContain("imagens em outra proporção serão recortadas");
+  });
+
+  it("mantém ações claras e responsivas", () => {
+    expect(page).toContain("Novo aviso");
+    expect(page).toContain("Salvar e publicar");
+    expect(page).toContain("Retirar");
+    expect(page).toContain("AdaptiveFormDialogContent");
+    expect(page).toContain("AdaptiveFormDialogBody");
+    expect(page).toContain("AdaptiveFormDialogFooter");
+  });
+
+  it("permite excluir um anúncio com confirmação e feedback explícitos", () => {
+    expect(page).toContain("announcements.remove.useMutation");
+    expect(page).toContain("Excluir anúncio?");
+    expect(page).toContain("Excluir definitivamente");
+    expect(page).toContain("Esta ação não pode ser desfeita");
+    expect(page).toContain("remove.mutate({ churchId, id: deleteTarget.id })");
+    expect(page).toContain("Não foi possível excluir o anúncio");
+  });
+
+  it("compacta avisos longos do painel sem retirar acesso ao conteúdo integral", () => {
+    expect(page).toContain("ANNOUNCEMENT_ADMIN_SUMMARY_CHAR_LIMIT");
+    expect(page).toContain("mural-announcement-summary");
+    expect(page).toContain("Ver conteúdo completo");
+    expect(page).toContain("mural-announcement-preview-dialog");
+    expect(page).toContain("mural-announcement-preview-body");
+    expect(page).toContain('maxLength={4000}');
+    expect(publicStyles).toContain(".mural-announcement-summary");
+    expect(publicStyles).toContain("-webkit-line-clamp: 3");
+  });
+
+  it("deixa explícita a diferença entre avisos do mural e avisos publicados", () => {
+    expect(page).toContain("totalCount");
+    expect(page).toContain("publicCount");
+    expect(page).toContain("notPublicCount");
+    expect(page).toContain("fora da página pública");
+    expect(page).toContain("Exibir na página pública");
+  });
+
+  it("oferece expansão acessível da imagem sem conflitar com o CTA", () => {
+    expect(publicPage).toContain("Ampliar imagem do aviso");
+    expect(publicPage).toContain("tenant-public-image-dialog");
+    expect(publicPage).toContain("Visualização ampliada do aviso público");
+    expect(publicPage).toContain("onOpenChange");
+    expect(publicStyles).toContain(".tenant-public-announcement-image-trigger");
+    expect(publicStyles).toContain("cursor: zoom-in");
+    expect(publicStyles).toContain(".tenant-public-image-dialog-viewport");
+    expect(publicStyles).toContain("overscroll-behavior: contain");
+  });
+});

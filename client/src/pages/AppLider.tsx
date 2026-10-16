@@ -1,0 +1,372 @@
+import { useState } from "react";
+import { useChurch } from "@/components/ChurchLayout";
+import { trpc } from "@/lib/trpc";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
+import { Link } from "wouter";
+import { createIdempotencyKey } from "@/lib/idempotency";
+import {
+  Users, Heart, Star, CheckCircle2, Clock, AlertCircle,
+  Phone, MapPin, TrendingUp, UserPlus, BookOpen, Send
+} from "lucide-react";
+
+const STAGE_COLORS: Record<string, string> = {
+  "Nova Alma": "bg-orange-100 text-orange-700",
+  "Consolidação": "bg-yellow-100 text-yellow-700",
+  "Fundamentos": "bg-blue-100 text-blue-700",
+  "Célula": "bg-green-100 text-green-700",
+  "Batismo": "bg-purple-100 text-purple-700",
+  "Encontro com Deus": "bg-pink-100 text-pink-700",
+  "Escola de Líderes": "bg-indigo-100 text-indigo-700",
+  "Liderança": "bg-teal-100 text-teal-700",
+  "Multiplicador": "bg-[#c9a84c]/10 text-[#c9a84c]",
+};
+
+export default function AppLider() {
+  const { churchId } = useChurch();
+  const [activeTab, setActiveTab] = useState("celula");
+  const [referralByCell, setReferralByCell] = useState<Record<number, { personId: string; reason: string; priority: "normal" | "alta" | "urgente"; idempotencyKey: string }>>({});
+
+  const { data: overview, isLoading: loadingOverview, isError: overviewError, refetch: refetchOverview } = trpc.leader.overview.useQuery(
+    { churchId: churchId! },
+    { enabled: !!churchId }
+  );
+  const cells = overview?.cells ?? [];
+  const souls = overview?.souls ?? [];
+  const consolidations = overview?.consolidations ?? [];
+  const people = overview?.people ?? [];
+  const loadingCells = loadingOverview;
+  const loadingSouls = loadingOverview;
+  const loadingConsolidations = loadingOverview;
+  const loadingPeople = loadingOverview;
+
+  // Estatísticas rápidas do líder
+  const myCells = cells;
+  const membersInCells = myCells.reduce((total, cell) => total + cell.members.length, 0);
+  const pendingConsolidations = consolidations.filter((c: { status?: string | null }) => c.status !== "consolidado") ?? [];
+  const recentSouls = souls.slice(0, 5);
+
+  const updateConsolidation = trpc.consolidation.updateChecklist.useMutation({
+    onSuccess: () => {
+      refetchOverview();
+      toast.success("Consolidação atualizada!");
+    },
+    onError: (error: { message: string }) => toast.error(error.message),
+  });
+  const createReferral = trpc.consolidation.createReferral.useMutation({
+    onSuccess: () => {
+      toast.success("Discípulo encaminhado para a fila de Consolidação.");
+      setReferralByCell({});
+    },
+    onError: (error: { message: string }) => toast.error(error.message || "Não foi possível encaminhar o discípulo."),
+  });
+
+  if (overviewError) return <div className="mx-auto max-w-xl space-y-3 p-6" role="alert"><h1 className="text-lg font-semibold text-navy">Não foi possível carregar sua equipe.</h1><p className="text-sm text-muted-foreground">Os dados de células e cuidados não foram confirmados. Tente novamente.</p><Button type="button" variant="outline" onClick={() => refetchOverview()}>Tentar novamente</Button></div>;
+
+  return (
+    <div className="space-y-6">
+      {/* Header do Líder */}
+      <div className="bg-gradient-to-br from-[#1e3a5f] via-[#2a4f7a] to-[#1e3a5f] rounded-2xl p-6 text-white relative overflow-hidden">
+        {/* Decoração */}
+        <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-[#c9a84c]/10 -translate-y-1/2 translate-x-1/2" />
+        <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full bg-white/5 translate-y-1/2 -translate-x-1/2" />
+
+        <div className="relative">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-[#c9a84c]/20 border border-[#c9a84c]/30 flex items-center justify-center">
+              <Star className="w-5 h-5 text-[#c9a84c]" />
+            </div>
+            <div>
+              <h1 className="font-serif text-xl font-bold">Minha equipe</h1>
+              <p className="text-white/50 text-xs">Acompanhe sua equipe e os próximos cuidados</p>
+            </div>
+          </div>
+
+          {/* KPIs rápidos */}
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: "Pessoas na equipe", value: loadingCells ? "—" : membersInCells, icon: Users },
+              { label: "Cuidados pendentes", value: loadingConsolidations ? "—" : pendingConsolidations.length, icon: Clock },
+              { label: "Novas pessoas", value: loadingSouls ? "—" : recentSouls.length, icon: Heart },
+            ].map(({ label, value, icon: Icon }) => (
+              <div key={label} className="bg-white/10 rounded-xl p-3 text-center">
+                <Icon className="w-5 h-5 text-[#c9a84c] mx-auto mb-1" />
+                <p className="text-2xl font-bold">{value}</p>
+                <p className="text-white/40 text-[10px] leading-tight mt-0.5">{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="bg-white border border-[#1e3a5f]/10 p-1 rounded-xl w-full">
+          {[
+            { id: "celula", label: "Minha Célula", icon: Users },
+            { id: "consolidacoes", label: "Cuidados", icon: CheckCircle2 },
+            { id: "novas-almas", label: "Novas pessoas", icon: Heart },
+            { id: "membros", label: "Pessoas sob cuidado", icon: BookOpen },
+          ].map(({ id, label, icon: Icon }) => (
+            <TabsTrigger
+              key={id}
+              value={id}
+              className="flex-1 flex items-center justify-center gap-1.5 data-[state=active]:bg-[#1e3a5f] data-[state=active]:text-white rounded-lg py-2 text-xs"
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{label}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {/* Minha Célula */}
+        <TabsContent value="celula" className="mt-4">
+          {loadingCells ? (
+            <Skeleton className="h-48 w-full rounded-2xl" />
+          ) : myCells.length > 0 ? (
+            <div className="space-y-3">
+              {myCells.map((myCell) => (
+                <Card key={myCell.id} className="border-[#1e3a5f]/10">
+                  <CardHeader>
+                    <CardTitle className="text-[#1e3a5f] font-serif flex items-center gap-2">
+                      <Users className="w-5 h-5 text-[#c9a84c]" />
+                      {myCell.name}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {[
+                      { icon: MapPin, label: "Endereço", value: myCell.address ?? "—" },
+                      { icon: Clock, label: "Horário", value: myCell.meetingDay ? `${myCell.meetingDay} às ${myCell.meetingTime ?? "—"}` : "—" },
+                      { icon: TrendingUp, label: "Membros ativos", value: `${myCell.members.length} membro${myCell.members.length === 1 ? "" : "s"}` },
+                    ].map(({ icon: Icon, label, value }) => (
+                      <div key={label} className="flex items-center gap-3 p-3 rounded-xl bg-[#f5f0e8]/50">
+                        <Icon className="w-4 h-4 text-[#c9a84c] shrink-0" />
+                        <div>
+                          <p className="text-[10px] text-[#1e3a5f]/40 uppercase tracking-wider">{label}</p>
+                          <p className="text-[#1e3a5f] text-sm font-medium">{value}</p>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="rounded-xl border border-rose-200 bg-rose-50/45 p-3">
+                      <div className="flex items-start gap-2">
+                        <Send className="mt-0.5 h-4 w-4 shrink-0 text-rose-600" />
+                        <div>
+                          <p className="text-sm font-semibold text-[#1e3a5f]">Pedir atenção para uma pessoa</p>
+                          <p className="mt-0.5 text-xs text-[#1e3a5f]/55">Escolha alguém desta equipe e explique por que precisa de acompanhamento.</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-2">
+                        <Select value={referralByCell[myCell.id]?.personId ?? ""} onValueChange={(personId) => setReferralByCell((current) => ({ ...current, [myCell.id]: { personId, reason: current[myCell.id]?.reason ?? "", priority: current[myCell.id]?.priority ?? "normal", idempotencyKey: current[myCell.id]?.idempotencyKey ?? createIdempotencyKey() } }))}>
+                          <SelectTrigger className="bg-background text-sm"><SelectValue placeholder="Selecione um discípulo" /></SelectTrigger>
+                          <SelectContent>
+                            {myCell.members.map((member: any) => <SelectItem key={member.person.id} value={String(member.person.id)}>{member.person.fullName}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                        <Select value={referralByCell[myCell.id]?.priority ?? "normal"} onValueChange={(priority: "normal" | "alta" | "urgente") => setReferralByCell((current) => ({ ...current, [myCell.id]: { personId: current[myCell.id]?.personId ?? "", reason: current[myCell.id]?.reason ?? "", priority, idempotencyKey: current[myCell.id]?.idempotencyKey ?? createIdempotencyKey() } }))}><SelectTrigger className="bg-background text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="normal">Prioridade normal</SelectItem><SelectItem value="alta">Prioridade alta</SelectItem><SelectItem value="urgente">Prioridade urgente</SelectItem></SelectContent></Select>
+                        <Textarea rows={2} className="resize-none bg-background text-sm" value={referralByCell[myCell.id]?.reason ?? ""} onChange={(event) => setReferralByCell((current) => ({ ...current, [myCell.id]: { personId: current[myCell.id]?.personId ?? "", reason: event.target.value, priority: current[myCell.id]?.priority ?? "normal", idempotencyKey: current[myCell.id]?.idempotencyKey ?? createIdempotencyKey() } }))} placeholder="Ex.: faltou às últimas reuniões e não responde às mensagens" />
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-rose-600 text-white hover:bg-rose-700"
+                          disabled={createReferral.isPending || !(referralByCell[myCell.id]?.personId) || (referralByCell[myCell.id]?.reason.trim().length ?? 0) < 3}
+                          onClick={() => createReferral.mutate({ churchId: churchId!, personId: Number(referralByCell[myCell.id].personId), idempotencyKey: referralByCell[myCell.id].idempotencyKey, reason: referralByCell[myCell.id].reason.trim(), priority: referralByCell[myCell.id].priority ?? "normal" })}
+                        >
+                          <Send className="mr-2 h-3.5 w-3.5" />{createReferral.isPending ? "Enviando…" : "Enviar para cuidado"}
+                        </Button>
+                      </div>
+                    </div>
+                    <Button asChild className="mt-2 w-full bg-[#1e3a5f] text-white hover:bg-[#162d4a]">
+                      <Link href="/app/celulas"><CheckCircle2 className="mr-2 h-4 w-4" />Ver Célula e registrar presença</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-16">
+              <Users className="w-12 h-12 text-[#1e3a5f]/20 mx-auto mb-3" />
+              <p className="text-[#1e3a5f]/40 text-sm">Nenhuma célula atribuída</p>
+              <p className="text-[#1e3a5f]/30 text-xs mt-1">Solicite ao pastor que atribua uma célula ao seu perfil</p>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Consolidações */}
+        <TabsContent value="consolidacoes" className="mt-4">
+          <Card className="border-[#1e3a5f]/10">
+            <CardHeader>
+              <CardTitle className="text-[#1e3a5f] font-serif flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-[#c9a84c]" />
+                Cuidados pendentes
+                {pendingConsolidations.length > 0 && (
+                  <Badge className="bg-orange-100 text-orange-700 border-orange-200 ml-auto">
+                    {pendingConsolidations.length} pendentes
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loadingConsolidations ? (
+                Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-20 w-full mb-3" />)
+              ) : pendingConsolidations.length > 0 ? (
+                <div className="space-y-3">
+                  {pendingConsolidations.map((c: { id: number; personId?: number | null; callMade?: boolean | null; visitMade?: boolean | null; bibleDelivered?: boolean | null; addedToCell?: boolean | null; status?: string | null }) => (
+                    <div key={c.id} className="p-4 rounded-xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/30">
+                      <div className="flex items-center justify-between mb-3">
+                        <p className="text-[#1e3a5f] font-semibold text-sm">Consolidação #{c.id}</p>
+                        <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200 text-xs">Pendente</Badge>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        {[
+                          { key: "callMade", label: "Ligação", done: c.callMade },
+                          { key: "visitMade", label: "Visita", done: c.visitMade },
+                          { key: "bibleDelivered", label: "Bíblia", done: c.bibleDelivered },
+                        ].map(({ key, label, done }) => key === "callMade" ? (
+                          <Link
+                            key={key}
+                            href="/app/consolidacao"
+                            className="p-2 rounded-lg text-center text-xs font-medium transition-all bg-white border border-[#1e3a5f]/10 text-[#1e3a5f]/70 hover:bg-[#1e3a5f]/5"
+                          >
+                            <Phone className="w-4 h-4 mx-auto mb-0.5" />
+                            {done ? "Ver Consolidação" : "Abrir Consolidação"}
+                          </Link>
+                        ) : (
+                          <button
+                            key={key}
+                            onClick={() => updateConsolidation.mutate({ id: c.id, churchId: churchId!, [key]: !done })}
+                            className={`p-2 rounded-lg text-center text-xs font-medium transition-all ${
+                              done
+                                ? "bg-green-100 text-green-700 border border-green-200"
+                                : "bg-white border border-[#1e3a5f]/10 text-[#1e3a5f]/50 hover:bg-[#1e3a5f]/5"
+                            }`}
+                          >
+                            {done ? <CheckCircle2 className="w-4 h-4 mx-auto mb-0.5" /> : <AlertCircle className="w-4 h-4 mx-auto mb-0.5 opacity-40" />}
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {!c.addedToCell && (
+                        <Link href="/app/consolidacao" className="mt-3 inline-flex text-xs font-medium text-navy underline decoration-gold/70 underline-offset-4">
+                          Continuar o cuidado na área de Consolidação
+                        </Link>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-3" />
+                  <p className="text-[#1e3a5f]/60 text-sm font-medium">Tudo em dia!</p>
+                  <p className="text-[#1e3a5f]/30 text-xs mt-1">Nenhuma consolidação pendente</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Novas Almas */}
+        <TabsContent value="novas-almas" className="mt-4">
+          <Card className="border-[#1e3a5f]/10">
+            <CardHeader>
+              <CardTitle className="text-[#1e3a5f] font-serif flex items-center gap-2">
+                <Heart className="w-5 h-5 text-[#c9a84c]" />
+                Novas pessoas
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loadingSouls ? (
+                Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 w-full mb-3" />)
+              ) : recentSouls.length > 0 ? (
+                <div className="space-y-3">
+                  {recentSouls.map((soul: { id: number; personId?: number | null; origin?: string | null; conversionDate?: Date | null; status?: string | null }) => (
+                    <div key={soul.id} className="flex items-center gap-4 p-4 rounded-xl border border-[#1e3a5f]/10">
+                      <div className="w-10 h-10 rounded-full bg-[#c9a84c]/10 flex items-center justify-center shrink-0">
+                        <Heart className="w-5 h-5 text-[#c9a84c]" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-[#1e3a5f] font-semibold text-sm">Alma #{soul.id}</p>
+                        <p className="text-[#1e3a5f]/40 text-xs">
+                          {soul.origin ?? "Origem não informada"} •{" "}
+                          {soul.conversionDate ? new Date(soul.conversionDate).toLocaleDateString("pt-BR") : "Data não informada"}
+                        </p>
+                      </div>
+                      <Badge className={`text-xs ${soul.status === "consolidado" ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"}`}>
+                        {soul.status ?? "Nova"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Heart className="w-10 h-10 text-[#1e3a5f]/20 mx-auto mb-3" />
+                  <p className="text-[#1e3a5f]/40 text-sm">Nenhuma nova alma registrada</p>
+                  <Button asChild size="sm" className="mt-4 bg-[#c9a84c] text-white hover:bg-[#b8963e]">
+                    <Link href="/app/almas"><UserPlus className="mr-2 h-4 w-4" />Registrar Nova Alma</Link>
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Membros */}
+        <TabsContent value="membros" className="mt-4">
+          <Card className="border-[#1e3a5f]/10">
+            <CardHeader>
+              <CardTitle className="text-[#1e3a5f] font-serif flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-[#c9a84c]" />
+                Pessoas sob cuidado
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loadingPeople ? (
+                Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 w-full mb-2" />)
+              ) : people && people.length > 0 ? (
+                <div className="space-y-2">
+                  {people.slice(0, 10).map((person: { id: number; fullName: string; phone?: string | null; discipleshipStage?: string | null }) => (
+                    <div key={person.id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#f5f0e8]/50 transition-colors">
+                      <div className="w-9 h-9 rounded-full bg-[#1e3a5f]/10 flex items-center justify-center shrink-0">
+                        <span className="text-[#1e3a5f] font-bold text-xs">
+                          {person.fullName.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[#1e3a5f] font-medium text-sm truncate">{person.fullName}</p>
+                        {person.phone && (
+                          <p className="text-[#1e3a5f]/40 text-xs flex items-center gap-1">
+                            <Phone className="w-3 h-3" /> {person.phone}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {person.discipleshipStage && (
+                          <Badge className={`text-[10px] ${STAGE_COLORS[person.discipleshipStage] ?? "bg-gray-100 text-gray-600"}`}>
+                            {person.discipleshipStage}
+                          </Badge>
+                        )}
+                        <Link href={`/app/pessoas?personId=${person.id}&section=jornada`} className="rounded-md border border-[#1e3a5f]/15 px-2 py-1 text-[11px] font-medium text-[#1e3a5f] hover:bg-[#1e3a5f]/5">
+                          Ficha
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Users className="w-10 h-10 text-[#1e3a5f]/20 mx-auto mb-3" />
+                  <p className="text-[#1e3a5f]/40 text-sm">Nenhum membro cadastrado</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

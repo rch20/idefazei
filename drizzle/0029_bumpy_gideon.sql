@@ -1,0 +1,1 @@
+ALTER TABLE `tenant_page_sections` MODIFY COLUMN `sectionType` enum('hero','welcome','about','schedule','events','ministries','gallery','contact','footer') NOT NULL;

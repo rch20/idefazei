@@ -1,0 +1,72 @@
+name: CI — testes e integridade do bundle
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Build and bundle integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript check
+        run: pnpm check
+
+      - name: Tests
+        run: pnpm test
+
+      - name: Build frontend and server artifacts
+        run: pnpm build
+        env:
+          VITE_APP_ID: ${{ secrets.VITE_APP_ID_HOMOLOG }}
+          VITE_OAUTH_PORTAL_URL: ${{ secrets.VITE_OAUTH_PORTAL_URL_HOMOLOG }}
+
+      - name: Check bundle size, imports and cycles
+        run: pnpm bundle:check
+
+      - name: Smoke somente leitura da homologação
+        env:
+          BUNDLE_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+        run: |
+          set -Eeuo pipefail
+          if [ -z "${BUNDLE_BASE_URL:-}" ]; then
+            echo "STAGING_BASE_URL não configurada; smoke remoto foi pulado com segurança."
+            echo "Configure o secret STAGING_BASE_URL para habilitar o smoke HTTPS da homologação."
+            exit 0
+          fi
+          pnpm bundle:smoke
+
+      - name: Upload bundle reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-reports-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            artifacts/bundle-report.json
+            artifacts/bundle-smoke-report.json

@@ -1,0 +1,3027 @@
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useChurch } from "@/components/ChurchLayout";
+import { trpc } from "@/lib/trpc";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AdaptiveFormDialogBody,
+  AdaptiveFormDialogContent,
+  AdaptiveFormDialogFooter,
+  adaptiveFormDialogHeaderClassName,
+} from "@/components/AdaptiveFormDialog";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { getChurchToken } from "@/hooks/useChurchAuth";
+import {
+  buildTreasuryReceiptHtml,
+  formatApprovedOnlineContributionsDisclosure,
+  formatBrl,
+  formatDatePtBr,
+  openTreasuryPrintDocument,
+  parseBrlToCents,
+} from "@/lib/treasury";
+import { TreasuryPdfPreview } from "@/components/TreasuryPdfPreview";
+import {
+  TreasuryQuickActionHost,
+  type TreasuryQuickAction,
+  type TreasuryServiceContext,
+} from "@/components/TreasuryQuickActionHost";
+import { TreasuryEntrySheetSection } from "@/components/TreasuryEntrySheetSection";
+import { TreasuryQuickAccessSection, type TreasuryQuickActionGroup, type TreasuryQuickActionTile } from "@/components/TreasuryQuickAccessSection";
+import { toast } from "sonner";
+import { currentCivilDateKey } from "@/lib/civilDate";
+import {
+  ArrowDownCircle,
+  ArrowRightLeft,
+  ArrowUpCircle,
+  CalendarClock,
+  CalendarDays,
+  BookOpenCheck,
+  CheckCircle2,
+  CircleDollarSign,
+  CreditCard,
+  ExternalLink,
+  FileDown,
+  FileText,
+  HeartHandshake,
+  Landmark,
+  Loader2,
+  MoreHorizontal,
+  Pencil,
+  Power,
+  Paperclip,
+  Plus,
+  Printer,
+  QrCode,
+  ReceiptText,
+  Search,
+  RefreshCw,
+  RotateCcw,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  WalletCards,
+  XCircle,
+} from "lucide-react";
+
+type TransactionType = "entrada" | "saida";
+type TransactionStatus = "rascunho" | "confirmado";
+type PaymentMethod =
+  | "dinheiro"
+  | "pix"
+  | "transferencia"
+  | "cartao"
+  | "cheque"
+  | "outro";
+type PeriodAction = "close" | "reopen" | null;
+type ReportMode = "summary" | "detailed";
+
+const MAX_FINANCIAL_CENTS = 2_147_483_647;
+const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string }> = [
+  { value: "dinheiro", label: "Dinheiro" },
+  { value: "pix", label: "Pix" },
+  { value: "transferencia", label: "Transferência" },
+  { value: "cartao", label: "Cartão" },
+  { value: "cheque", label: "Cheque" },
+  { value: "outro", label: "Outro" },
+];
+
+function PaymentMethodIcon({ method }: { method: PaymentMethod }) {
+  const iconClassName =
+    "pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy/65";
+  switch (method) {
+    case "dinheiro":
+      return <WalletCards aria-hidden="true" className={iconClassName} />;
+    case "pix":
+      return <QrCode aria-hidden="true" className={iconClassName} />;
+    case "transferencia":
+      return <ArrowRightLeft aria-hidden="true" className={iconClassName} />;
+    case "cartao":
+      return <CreditCard aria-hidden="true" className={iconClassName} />;
+    case "cheque":
+      return <FileText aria-hidden="true" className={iconClassName} />;
+    case "outro":
+      return <MoreHorizontal aria-hidden="true" className={iconClassName} />;
+  }
+}
+
+const today = () => currentCivilDateKey();
+type BookFilter = "todos" | "entrada" | "saida";
+function monthBounds(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const last = new Date(year, monthNumber, 0).getDate();
+  return {
+    startDate: `${month}-01`,
+    endDate: `${month}-${String(last).padStart(2, "0")}`,
+  };
+}
+function previousMonthKey(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  if (!year || !monthNumber) return month;
+  const previousYear = monthNumber === 1 ? year - 1 : year;
+  const previousMonth = monthNumber === 1 ? 12 : monthNumber - 1;
+  return `${previousYear}-${String(previousMonth).padStart(2, "0")}`;
+}
+
+const QUICK_ACTION_TILES: TreasuryQuickActionTile[] = [
+  {
+    action: "livro-caixa",
+    label: "Livro-caixa",
+    description: "Lançamentos e categorias do período",
+    icon: BookOpenCheck,
+    tone: "text-navy bg-navy/8",
+  },
+  {
+    action: "contribuicoes-online",
+    label: "Contribuições de membros",
+    description: "Revisar contribuições e comprovantes do aplicativo",
+    icon: QrCode,
+    tone: "text-emerald-700 bg-emerald-50",
+  },
+  {
+    action: "doacoes-publicas",
+    label: "Doações pela página pública",
+    description: "Revisar envios e comprovantes do site da igreja",
+    icon: HeartHandshake,
+    tone: "text-teal-700 bg-teal-50",
+  },
+  {
+    action: "contas-a-pagar",
+    label: "Contas a pagar",
+    description: "Obrigações, valores e vencimentos",
+    icon: CalendarClock,
+    tone: "text-rose-700 bg-rose-50",
+  },
+  {
+    action: "pix",
+    label: "Chave PIX e mensagem",
+    description: "Configurar recebimento e agradecimento",
+    icon: QrCode,
+    tone: "text-gold bg-gold/12",
+  },
+  {
+    action: "programacao",
+    label: "Programação de cultos",
+    description: "Cultos fixos e ocorrências",
+    icon: CalendarDays,
+    tone: "text-indigo-700 bg-indigo-50",
+  },
+  {
+    action: "relatorios-culto",
+    label: "Relatórios de culto",
+    description: "Filtrar por data, culto e compartilhar",
+    icon: FileText,
+    tone: "text-indigo-700 bg-indigo-50",
+  },
+  {
+    action: "conciliacao",
+    label: "Conciliação bancária",
+    description: "Conferir extrato e livro-caixa",
+    icon: ArrowRightLeft,
+    tone: "text-sky-700 bg-sky-50",
+  },
+  {
+    action: "relatorios",
+    label: "Relatórios / PDF",
+    description: "Resumo ou relatório detalhado",
+    icon: FileDown,
+    tone: "text-violet-700 bg-violet-50",
+  },
+  {
+    action: "categorias-contas",
+    label: "Categorias e contas",
+    description: "Organizar a estrutura financeira",
+    icon: Landmark,
+    tone: "text-slate-700 bg-slate-100",
+  },
+  {
+    action: "fechamento",
+    label: "Fechamento mensal",
+    description: "Fechar ou reabrir o período",
+    icon: ShieldCheck,
+    tone: "text-rose-700 bg-rose-50",
+  },
+];
+
+const LAZY_QUICK_ACTIONS: TreasuryQuickAction[] = [
+  "contribuicoes-online",
+  "contas-a-pagar",
+  "pix",
+  "programacao",
+  "relatorios-culto",
+];
+
+const QUICK_ACTION_GROUPS: TreasuryQuickActionGroup[] = [
+  {
+    id: "cultos-prestacoes",
+    label: "Cultos e prestações",
+    description: "Mantenha os cultos e consulte as fichas no histórico.",
+    actions: ["programacao", "relatorios-culto"],
+  },
+  {
+    id: "movimentacoes",
+    label: "Movimentações",
+    description: "Registre, confira e acompanhe os movimentos financeiros.",
+    actions: [
+      "livro-caixa",
+      "contribuicoes-online",
+      "doacoes-publicas",
+      "contas-a-pagar",
+      "conciliacao",
+    ],
+  },
+  {
+    id: "configuracoes-relatorios",
+    label: "Configurações e relatórios",
+    description: "Acesse configurações e relatórios gerais da Tesouraria.",
+    actions: ["pix", "relatorios", "categorias-contas", "fechamento"],
+  },
+];
+
+function centsToInput(cents: number) {
+  return (cents / 100).toFixed(2).replace(".", ",");
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
+const TREASURY_DIALOG_CLASS =
+  "!flex z-[200] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] min-w-0 flex-col overflow-hidden p-4 sm:max-h-[calc(100dvh-2rem)] sm:p-6";
+
+function TreasuryDialogBody({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1 ${className}`}
+      style={{ scrollbarGutter: "stable" }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export default function Tesouraria() {
+  const { churchId, churchName, accessSummary } = useChurch();
+  const utils = trpc.useUtils();
+  const [month, setMonth] = useState(() => today().slice(0, 7));
+  const [accountFilter, setAccountFilter] = useState("todas");
+  const [transactionOpen, setTransactionOpen] = useState(false);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<{
+    id: number;
+    name: string;
+    type: TransactionType;
+  } | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [reverseOpen, setReverseOpen] = useState<number | null>(null);
+  const [receiptOpen, setReceiptOpen] = useState<number | null>(null);
+  const [reconciliationOpen, setReconciliationOpen] = useState(false);
+  const [reconciliationHydratedKey, setReconciliationHydratedKey] =
+    useState("");
+  const [reconciliationForm, setReconciliationForm] = useState({
+    accountId: "",
+    bankClosingBalance: "",
+    notes: "",
+  });
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [categoryName, setCategoryName] = useState("");
+  const [categoryType, setCategoryType] = useState<TransactionType>("entrada");
+  const [newAccount, setNewAccount] = useState({
+    name: "",
+    type: "caixa" as "caixa" | "banco" | "outro",
+    openingBalance: "0,00",
+  });
+  const [reverseReason, setReverseReason] = useState("");
+  const [periodAction, setPeriodAction] = useState<PeriodAction>(null);
+  const [reopenReason, setReopenReason] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [structureError, setStructureError] = useState<string | null>(null);
+  const [reportBlob, setReportBlob] = useState<Blob | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportChoiceOpen, setReportChoiceOpen] = useState(false);
+  const [reportGenerating, setReportGenerating] = useState(false);
+  const [reportMode, setReportMode] = useState<ReportMode>("summary");
+  const [reportFileName, setReportFileName] = useState("");
+  const [bookFilter, setBookFilter] = useState<BookFilter>("todos");
+  const [quickAction, setQuickAction] = useState<TreasuryQuickAction | null>(
+    null
+  );
+  const [quickActionBusy, setQuickActionBusy] = useState(false);
+  const [entrySheetOpen, setEntrySheetOpen] = useState(false);
+  const [entrySheetServiceId, setEntrySheetServiceId] = useState<number | null>(null);
+  const bookRef = useRef<HTMLDivElement | null>(null);
+  const [form, setForm] = useState({
+    type: "entrada" as TransactionType,
+    accountId: "",
+    categoryId: "",
+    amount: "",
+    transactionDate: today(),
+    paymentMethod: "dinheiro" as PaymentMethod,
+    contributorPersonId: "",
+    contributorName: "",
+    description: "",
+    reference: "",
+    serviceId: "",
+    countSheetId: "",
+    status: "confirmado" as TransactionStatus,
+  });
+
+  const { startDate, endDate } = useMemo(() => monthBounds(month), [month]);
+  const previousMonth = previousMonthKey(month);
+  const selectedAccountId =
+    accountFilter === "todas" ? undefined : Number(accountFilter);
+  const overviewQuery = trpc.treasury.overview.useQuery(
+    { churchId, startDate, endDate, accountId: selectedAccountId },
+    { enabled: Boolean(churchId) }
+  );
+  const accountsQuery = trpc.treasury.accounts.useQuery(
+    { churchId },
+    { enabled: Boolean(churchId) }
+  );
+  const categoriesQuery = trpc.treasury.categories.useQuery(
+    { churchId },
+    { enabled: Boolean(churchId) }
+  );
+  const closureQuery = trpc.treasury.periodClosure.useQuery(
+    { churchId, periodStart: startDate },
+    { enabled: Boolean(churchId) }
+  );
+  const peopleQuery = trpc.people.list.useQuery(
+    { churchId },
+    { enabled: Boolean(churchId) }
+  );
+  const servicesQuery = trpc.treasury.services.useQuery(
+    { churchId },
+    { enabled: Boolean(churchId) }
+  );
+  const countSheetsQuery = trpc.treasury.countSheets.useQuery(
+    { churchId },
+    { enabled: Boolean(churchId) }
+  );
+  const receiptQuery = trpc.treasury.receipt.useQuery(
+    { churchId, id: receiptOpen ?? 0 },
+    { enabled: Boolean(churchId && receiptOpen) }
+  );
+  const bankAccounts = (accountsQuery.data ?? []).filter(
+    account => account.type === "banco"
+  );
+  const reconciliationAccountId = Number(reconciliationForm.accountId || 0);
+  const reconciliationQuery = trpc.treasury.reconciliation.useQuery(
+    {
+      churchId,
+      accountId: reconciliationAccountId,
+      periodStart: startDate,
+      periodEnd: endDate,
+    },
+    {
+      enabled: Boolean(
+        churchId && reconciliationOpen && reconciliationAccountId
+      ),
+    }
+  );
+  const reconciliationId = reconciliationQuery.data?.reconciliation?.id ?? 0;
+  const attachmentsQuery = trpc.treasury.reconciliationAttachments.useQuery(
+    { churchId, reconciliationId },
+    { enabled: Boolean(churchId && reconciliationId) }
+  );
+
+  const effectiveRoles = useMemo(
+    () => Array.from(new Set([accessSummary?.actorRole, ...(accessSummary?.roles ?? [])])).filter((role): role is string => typeof role === "string" && role.length > 0),
+    [accessSummary?.actorRole, accessSummary?.roles]
+  );
+  const periodClosed = closureQuery.data?.status === "fechado";
+  const canManageStructure = effectiveRoles.some(role =>
+    ["pastor_presidente", "pastor_local"].includes(String(role))
+  );
+  const categoryManagementQuery = trpc.treasury.categoriesManagement.useQuery(
+    { churchId },
+    { enabled: Boolean(churchId && canManageStructure) }
+  );
+  const canClosePeriod = effectiveRoles.includes("pastor_presidente");
+  const selectedCategories = (categoriesQuery.data ?? []).filter(
+    category => category.type === form.type
+  );
+  const selectedAccount = selectedAccountId
+    ? (accountsQuery.data ?? []).find(
+        account => account.id === selectedAccountId
+      )
+    : (accountsQuery.data ?? [])[0];
+  const periodLabel = new Date(`${month}-01T12:00:00`).toLocaleDateString(
+    "pt-BR",
+    { month: "long", year: "numeric" }
+  );
+  const previousPeriodLabel = new Date(
+    `${previousMonth}-01T12:00:00`
+  ).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const accountLabel = selectedAccountId
+    ? (selectedAccount?.name ?? "Conta selecionada")
+    : "Todas as contas";
+  const canManageThankYouMessage = effectiveRoles.some(role =>
+    ["pastor_presidente", "pastor_local", "tesoureiro"].includes(String(role))
+  );
+  const lazyQuickAction =
+    quickAction && LAZY_QUICK_ACTIONS.includes(quickAction)
+      ? quickAction
+      : null;
+  const reportTitle =
+    reportMode === "summary"
+      ? "Resumo de Tesouraria"
+      : "Relatório detalhado de Tesouraria";
+  const overview = overviewQuery.data;
+  const onlineContributionDisclosure =
+    formatApprovedOnlineContributionsDisclosure({
+      approvedOnlineContributionsCents:
+        overview?.approvedOnlineContributionsCents ?? 0,
+      approvedOnlineContributionsCount:
+        overview?.approvedOnlineContributionsCount ?? 0,
+    });
+  const bookFilterLabel =
+    bookFilter === "entrada"
+      ? "Entradas"
+      : bookFilter === "saida"
+        ? "Saídas"
+        : "Todos os lançamentos";
+  const filteredTransactions = (overview?.transactions ?? []).filter(
+    ({ transaction }) =>
+      bookFilter === "todos" || transaction.type === bookFilter
+  );
+  const focusBookFilter = (filter: Exclude<BookFilter, "todos">) => {
+    setBookFilter(filter);
+    setQuickAction("livro-caixa");
+    requestAnimationFrame(() =>
+      bookRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+    );
+  };
+  const openQuickAction = (action: TreasuryQuickAction) => {
+    setQuickAction(action);
+    if (action === "relatorios") setReportChoiceOpen(true);
+  };
+  const bankBalanceInput = parseBrlToCents(
+    reconciliationForm.bankClosingBalance
+  );
+  const reconciliationDifference =
+    bankBalanceInput === null
+      ? null
+      : bankBalanceInput - (reconciliationQuery.data?.bookBalanceCents ?? 0);
+
+  useEffect(() => {
+    if (
+      !reconciliationOpen ||
+      !reconciliationAccountId ||
+      !reconciliationQuery.isFetched
+    )
+      return;
+    const key = `${reconciliationAccountId}:${startDate}`;
+    if (reconciliationHydratedKey === key) return;
+    const saved = reconciliationQuery.data?.reconciliation;
+    setReconciliationForm(current => ({
+      ...current,
+      bankClosingBalance: saved
+        ? centsToInput(saved.bankClosingBalanceCents)
+        : "",
+      notes: saved?.notes ?? "",
+    }));
+    setReconciliationHydratedKey(key);
+  }, [
+    reconciliationOpen,
+    reconciliationAccountId,
+    startDate,
+    reconciliationQuery.isFetched,
+    reconciliationQuery.data,
+    reconciliationHydratedKey,
+  ]);
+
+  const invalidateTreasury = async () => {
+    await Promise.all([
+      utils.treasury.overview.invalidate(),
+      utils.treasury.accounts.invalidate(),
+      utils.treasury.categories.invalidate(),
+      utils.treasury.categoriesManagement.invalidate(),
+      utils.treasury.periodClosure.invalidate(),
+      utils.treasury.reconciliation.invalidate(),
+      utils.treasury.services.invalidate(),
+      utils.treasury.countSheets.invalidate(),
+      utils.treasury.serviceTransactions.invalidate(),
+    ]);
+  };
+
+  const initializeDefaults = trpc.treasury.initializeDefaults.useMutation({
+    onSuccess: async result => {
+      await Promise.all([
+        accountsQuery.refetch(),
+        categoriesQuery.refetch(),
+        categoryManagementQuery.refetch(),
+      ]);
+      const created = result.accountsCreated + result.categoriesCreated;
+      toast.success(
+        created > 0
+          ? `${created} itens padrão foram inicializados.`
+          : "A estrutura padrão já estava inicializada."
+      );
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const createTransaction = trpc.treasury.createTransaction.useMutation({
+    onSuccess: async () => {
+      await invalidateTreasury();
+      setTransactionOpen(false);
+      setFormError(null);
+      toast.success("Lançamento registrado com sucesso.");
+    },
+  });
+  const createCategory = trpc.treasury.createCategory.useMutation({
+    onSuccess: async () => {
+      await invalidateTreasury();
+      setCategoryName("");
+      setEditingCategory(null);
+      setCategoryOpen(false);
+      setStructureError(null);
+      toast.success("Categoria criada.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const updateCategory = trpc.treasury.updateCategory.useMutation({
+    onSuccess: async () => {
+      await invalidateTreasury();
+      setCategoryName("");
+      setEditingCategory(null);
+      setCategoryOpen(false);
+      setStructureError(null);
+      toast.success("Categoria atualizada.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const setCategoryActive = trpc.treasury.setCategoryActive.useMutation({
+    onSuccess: async (_category, variables) => {
+      await invalidateTreasury();
+      toast.success(
+        variables.active ? "Categoria reativada." : "Categoria inativada."
+      );
+    },
+    onError: error => toast.error(error.message),
+  });
+  const createAccount = trpc.treasury.createAccount.useMutation({
+    onSuccess: async () => {
+      await invalidateTreasury();
+      setNewAccount({ name: "", type: "caixa", openingBalance: "0,00" });
+      setAccountOpen(false);
+      setStructureError(null);
+      toast.success("Conta financeira criada.");
+    },
+  });
+  const confirmTransaction = trpc.treasury.confirmTransaction.useMutation({
+    onSuccess: async () => {
+      await invalidateTreasury();
+      toast.success("Rascunho confirmado.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const reverseTransaction = trpc.treasury.reverseTransaction.useMutation({
+    onSuccess: async () => {
+      await invalidateTreasury();
+      setReverseOpen(null);
+      setReverseReason("");
+      toast.success("Lançamento estornado com trilha de auditoria.");
+    },
+  });
+  const closePeriod = trpc.treasury.closePeriod.useMutation({
+    onSuccess: async () => {
+      await invalidateTreasury();
+      setPeriodAction(null);
+      toast.success("Período fechado.");
+    },
+  });
+  const reopenPeriod = trpc.treasury.reopenPeriod.useMutation({
+    onSuccess: async () => {
+      await invalidateTreasury();
+      setPeriodAction(null);
+      setReopenReason("");
+      toast.success("Período reaberto.");
+    },
+  });
+  const saveReconciliation = trpc.treasury.saveReconciliation.useMutation({
+    onSuccess: async saved => {
+      setAttachmentError(null);
+      await invalidateTreasury();
+      await reconciliationQuery.refetch();
+      toast.success(
+        saved?.status === "conciliada"
+          ? "Conciliação salva sem divergência."
+          : "Conciliação salva com divergência registrada."
+      );
+    },
+  });
+  const removeReconciliationAttachment =
+    trpc.treasury.removeReconciliationAttachment.useMutation({
+      onSuccess: async () => {
+        await attachmentsQuery.refetch();
+        toast.success("Comprovante removido.");
+      },
+    });
+
+  const openTransaction = (
+    type: TransactionType,
+    serviceContext?: TreasuryServiceContext
+  ) => {
+    const firstCategory = (categoriesQuery.data ?? []).find(
+      category => category.type === type
+    );
+    createTransaction.reset();
+    setFormError(null);
+    setForm({
+      type,
+      accountId: String(selectedAccount?.id ?? ""),
+      categoryId: String(firstCategory?.id ?? ""),
+      amount: "",
+      transactionDate: serviceContext?.serviceDate ?? today(),
+      paymentMethod: type === "entrada" ? "dinheiro" : "pix",
+      contributorPersonId: "",
+      contributorName: "",
+      description: "",
+      reference: "",
+      serviceId: serviceContext ? String(serviceContext.serviceId) : "",
+      countSheetId: serviceContext?.countSheetId
+        ? String(serviceContext.countSheetId)
+        : "",
+      status: "confirmado",
+    });
+    setTransactionOpen(true);
+  };
+
+  const openEntrySheet = (context?: TreasuryServiceContext) => {
+    setQuickActionBusy(false);
+    setQuickAction(null);
+    setEntrySheetServiceId(context?.serviceId ?? null);
+    setEntrySheetOpen(true);
+  };
+
+  const updateTransactionForm = (patch: Partial<typeof form>) => {
+    setForm(current => ({ ...current, ...patch }));
+    setFormError(null);
+    createTransaction.reset();
+  };
+
+  const submitTransaction = (event: React.FormEvent) => {
+    event.preventDefault();
+    setFormError(null);
+    const amountCents = parseBrlToCents(form.amount);
+    if (amountCents === null || amountCents <= 0)
+      return setFormError(
+        "Informe um valor monetário válido e maior que zero."
+      );
+    if (amountCents > MAX_FINANCIAL_CENTS)
+      return setFormError("O valor excede o limite permitido por lançamento.");
+    if (!Number(form.accountId) || !Number(form.categoryId))
+      return setFormError("Selecione uma conta e uma categoria válidas.");
+    if (form.contributorName.trim() && form.contributorName.trim().length < 2)
+      return setFormError(
+        "O nome para recibo deve ter pelo menos 2 caracteres."
+      );
+    createTransaction.mutate({
+      churchId,
+      accountId: Number(form.accountId),
+      categoryId: Number(form.categoryId),
+      type: form.type,
+      amountCents,
+      transactionDate: form.transactionDate,
+      paymentMethod: form.paymentMethod,
+      contributorPersonId: form.contributorPersonId
+        ? Number(form.contributorPersonId)
+        : undefined,
+      contributorName: form.contributorPersonId
+        ? undefined
+        : form.contributorName.trim() || undefined,
+      description: form.description.trim() || undefined,
+      reference: form.reference.trim() || undefined,
+      serviceId: form.serviceId ? Number(form.serviceId) : undefined,
+      countSheetId: form.countSheetId ? Number(form.countSheetId) : undefined,
+      status: form.status,
+    });
+  };
+
+  const submitCategory = (event: React.FormEvent) => {
+    event.preventDefault();
+    setStructureError(null);
+    if (categoryName.trim().length < 2)
+      return setStructureError("Informe um nome com pelo menos 2 caracteres.");
+    if (editingCategory) {
+      updateCategory.mutate({
+        churchId,
+        id: editingCategory.id,
+        type: categoryType,
+        name: categoryName.trim(),
+      });
+      return;
+    }
+    createCategory.mutate({
+      churchId,
+      type: categoryType,
+      name: categoryName.trim(),
+    });
+  };
+
+  const submitAccount = (event: React.FormEvent) => {
+    event.preventDefault();
+    setStructureError(null);
+    const openingBalanceCents = parseBrlToCents(newAccount.openingBalance);
+    if (openingBalanceCents === null || openingBalanceCents < 0)
+      return setStructureError(
+        "Informe um saldo inicial válido e não negativo."
+      );
+    if (openingBalanceCents > MAX_FINANCIAL_CENTS)
+      return setStructureError("O saldo inicial excede o limite permitido.");
+    createAccount.mutate({
+      churchId,
+      name: newAccount.name.trim(),
+      type: newAccount.type,
+      openingBalanceCents,
+    });
+  };
+
+  const generateReport = async (mode: ReportMode) => {
+    if (!overview) return toast.error("Aguarde o carregamento do relatório.");
+    setReportGenerating(true);
+    try {
+      const {
+        createTreasuryReportPdf,
+        createTreasurySummaryPdf,
+        treasuryPdfFileName,
+      } = await import("@/lib/treasuryPdf");
+      const input = {
+        churchName,
+        periodLabel,
+        startDate,
+        endDate,
+        accountLabel,
+        data: overview,
+      };
+      const blob =
+        mode === "summary"
+          ? await createTreasurySummaryPdf(input)
+          : await createTreasuryReportPdf(input);
+      setReportMode(mode);
+      setReportFileName(treasuryPdfFileName(month, mode));
+      setReportBlob(blob);
+      setReportChoiceOpen(false);
+      setQuickAction(null);
+      setReportOpen(true);
+    } catch (error) {
+      toast.error(
+        errorMessage(error, "Não foi possível gerar o PDF. Tente novamente.")
+      );
+    } finally {
+      setReportGenerating(false);
+    }
+  };
+
+  const printReceipt = () => {
+    const data = receiptQuery.data;
+    if (!data) return;
+    const contributorName =
+      data.contributor?.fullName ||
+      data.transaction.contributorName ||
+      "Contribuinte não identificado";
+    const opened = openTreasuryPrintDocument(
+      buildTreasuryReceiptHtml({
+        churchName,
+        receiptNumber: data.transaction.id,
+        contributorName,
+        date: data.transaction.transactionDate,
+        categoryName: data.category.name,
+        paymentMethod: data.transaction.paymentMethod,
+        amountCents: data.transaction.amountCents,
+        description:
+          data.transaction.description ||
+          "Contribuição registrada na Tesouraria da igreja.",
+      })
+    );
+    if (!opened)
+      toast.error(
+        "O navegador bloqueou a janela do recibo. Libere pop-ups e tente novamente."
+      );
+  };
+
+  const openReconciliation = () => {
+    const firstBank = bankAccounts[0];
+    if (!firstBank) {
+      toast.info("Cadastre uma conta bancária para iniciar a conciliação.");
+      return;
+    }
+    setReconciliationForm({
+      accountId: String(firstBank.id),
+      bankClosingBalance: "",
+      notes: "",
+    });
+    setReconciliationHydratedKey("");
+    setAttachmentError(null);
+    saveReconciliation.reset();
+    setReconciliationOpen(true);
+  };
+
+  const uploadAttachment = async (file: File, replaceAttachmentId?: number) => {
+    if (!reconciliationId)
+      return setAttachmentError(
+        "Salve a conciliação antes de anexar um comprovante."
+      );
+    const allowedTypes = [
+      "application/pdf",
+      "image/png",
+      "image/jpeg",
+      "image/webp",
+    ];
+    if (!allowedTypes.includes(file.type))
+      return setAttachmentError("Envie um arquivo PDF, PNG, JPEG ou WebP.");
+    if (file.size > 8 * 1024 * 1024)
+      return setAttachmentError("O comprovante deve ter no máximo 8 MB.");
+    const token = getChurchToken();
+    if (!token)
+      return setAttachmentError(
+        "Sua sessão expirou. Entre novamente para enviar o comprovante."
+      );
+    setUploadingAttachment(true);
+    setAttachmentError(null);
+    try {
+      const formData = new FormData();
+      formData.append("reconciliationId", String(reconciliationId));
+      formData.append("file", file);
+      const response = await fetch("/api/treasury/reconciliation-attachments", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok)
+        throw new Error(
+          payload.error || "Não foi possível enviar o comprovante."
+        );
+      if (replaceAttachmentId)
+        await removeReconciliationAttachment.mutateAsync({
+          churchId,
+          reconciliationId,
+          attachmentId: replaceAttachmentId,
+        });
+      else await attachmentsQuery.refetch();
+      toast.success(
+        replaceAttachmentId
+          ? "Comprovante substituído."
+          : "Comprovante anexado."
+      );
+    } catch (error) {
+      setAttachmentError(
+        errorMessage(error, "Não foi possível enviar o comprovante.")
+      );
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const removeAttachment = async (attachmentId: number) => {
+    if (
+      !reconciliationId ||
+      !window.confirm(
+        "Remover este comprovante? A conciliação e os lançamentos financeiros não serão alterados."
+      )
+    )
+      return;
+    setAttachmentError(null);
+    try {
+      await removeReconciliationAttachment.mutateAsync({
+        churchId,
+        reconciliationId,
+        attachmentId,
+      });
+    } catch (error) {
+      setAttachmentError(
+        errorMessage(error, "Não foi possível remover o comprovante.")
+      );
+    }
+  };
+
+  if (overviewQuery.error?.data?.code === "FORBIDDEN") return <AccessDenied />;
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-gold text-xs font-semibold uppercase tracking-[0.16em]">
+            Administração financeira
+          </p>
+          <h1 className="mt-1 font-display text-3xl text-navy">Tesouraria</h1>
+          <p className="mt-1 text-muted-foreground">
+            Acompanhe o dinheiro da igreja por culto, conta e período, com
+            histórico auditável.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <Button
+            variant="outline"
+            onClick={() => openTransaction("saida")}
+            disabled={
+              periodClosed ||
+              accountsQuery.isLoading ||
+              categoriesQuery.isLoading
+            }
+            title={
+              periodClosed
+                ? "Reabra o período para registrar uma saída."
+                : undefined
+            }
+            className="h-10 gap-2 border-rose-200 text-rose-700 hover:bg-rose-50"
+          >
+            <ArrowUpCircle className="h-4 w-4" /> Registrar saída
+          </Button>
+          <Button
+            onClick={() => openEntrySheet()}
+            aria-label="Abrir ficha financeira de entrada"
+            title="Preencher a ficha financeira de dízimos, ofertas e outras contribuições."
+            className="h-10 gap-2 bg-navy hover:bg-navy/90"
+          >
+            <ArrowDownCircle className="h-4 w-4" /> Registrar entrada
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="col-span-2 h-9 gap-2 sm:col-span-1 sm:h-10"
+                aria-label="Mais ações da Tesouraria"
+              >
+                <MoreHorizontal className="h-4 w-4" /> Mais ações
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuLabel>Operações da Tesouraria</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={
+                  !overview || overviewQuery.isFetching || reportGenerating
+                }
+                onSelect={() => setReportChoiceOpen(true)}
+              >
+                <FileDown className="h-4 w-4" /> Gerar PDF
+              </DropdownMenuItem>
+              {canManageStructure &&
+                (accountsQuery.data?.length === 0 ||
+                  categoriesQuery.data?.length === 0) && (
+                  <DropdownMenuItem
+                    disabled={initializeDefaults.isPending}
+                    onSelect={() => initializeDefaults.mutate({ churchId })}
+                  >
+                    <RefreshCw className="h-4 w-4" /> Inicializar padrões
+                  </DropdownMenuItem>
+                )}
+              {bankAccounts.length > 0 && (
+                <DropdownMenuItem onSelect={openReconciliation}>
+                  <BookOpenCheck className="h-4 w-4" /> Conciliar banco
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      <section className="flex flex-col gap-2.5 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-end sm:p-4">
+        <label className="grid gap-1.5 text-sm font-medium text-navy">
+          Período
+          <Input
+            type="month"
+            value={month}
+            onChange={event => setMonth(event.target.value)}
+            className="w-full sm:w-48"
+          />
+        </label>
+        <label className="grid gap-1.5 text-sm font-medium text-navy">
+          Conta
+          <select
+            value={accountFilter}
+            onChange={event => setAccountFilter(event.target.value)}
+            className="h-10 rounded-md border border-input bg-background px-3 text-sm sm:w-52"
+          >
+            <option value="todas">Todas as contas</option>
+            {(accountsQuery.data ?? []).map(account => (
+              <option key={account.id} value={account.id}>
+                {account.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {canManageStructure && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                createCategory.reset();
+                updateCategory.reset();
+                setEditingCategory(null);
+                setCategoryName("");
+                setCategoryType("entrada");
+                setStructureError(null);
+                setCategoryOpen(true);
+              }}
+            >
+              <Plus className="mr-1 h-4 w-4" /> Categoria
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setCategoryManagerOpen(true);
+                categoryManagementQuery.refetch();
+              }}
+            >
+              <Pencil className="mr-1 h-4 w-4" /> Gerenciar categorias
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                createAccount.reset();
+                setStructureError(null);
+                setAccountOpen(true);
+              }}
+            >
+              <Landmark className="mr-1 h-4 w-4" /> Conta
+            </Button>
+          </div>
+        )}
+        <div className="sm:ml-auto">
+          {periodClosed ? (
+            <Badge className="bg-slate-800 text-white">
+              Período fechado · lançamentos bloqueados
+            </Badge>
+          ) : (
+            <Badge
+              variant="outline"
+              className="border-emerald-200 bg-emerald-50 text-emerald-800"
+            >
+              Período em aberto
+            </Badge>
+          )}
+        </div>
+      </section>
+
+      {overviewQuery.error && (
+        <InlineError message={overviewQuery.error.message} />
+      )}
+      {overviewQuery.isLoading ? (
+        <TreasurySkeleton />
+      ) : (
+        <>
+          <section className="grid grid-cols-2 items-start gap-2.5 sm:gap-3 xl:grid-cols-4">
+            <MetricCard
+              icon={WalletCards}
+              label="Saldo anterior"
+              value={formatBrl(overview?.openingBalanceCents ?? 0)}
+              tone="navy"
+              helper={`Fechamento de ${previousPeriodLabel} · ${accountLabel}`}
+            />
+            <MetricCard
+              icon={ArrowDownCircle}
+              label="Entradas"
+              value={formatBrl(overview?.entriesCents ?? 0)}
+              tone="green"
+              helper={periodLabel}
+              onClick={() => focusBookFilter("entrada")}
+            />
+            <MetricCard
+              icon={ArrowUpCircle}
+              label="Saídas"
+              value={formatBrl(overview?.expensesCents ?? 0)}
+              tone="rose"
+              helper={periodLabel}
+              onClick={() => focusBookFilter("saida")}
+            />
+            <MetricCard
+              icon={CircleDollarSign}
+              label="Saldo atual"
+              value={formatBrl(overview?.balanceCents ?? 0)}
+              tone="gold"
+              helper={`Resultado ${formatBrl(overview?.resultCents ?? 0)} · Até ${formatDatePtBr(endDate)}`}
+            />
+          </section>
+
+          <TreasuryQuickAccessSection
+            tiles={QUICK_ACTION_TILES}
+            groups={QUICK_ACTION_GROUPS}
+            onSelect={(action) => {
+              if (action === "conciliacao") {
+                setQuickAction(null);
+                openReconciliation();
+                return;
+              }
+              openQuickAction(action);
+            }}
+          />
+
+          <TreasuryEntrySheetSection
+            churchId={churchId}
+            open={entrySheetOpen}
+            onOpenChange={open => {
+              setEntrySheetOpen(open);
+              if (!open) setEntrySheetServiceId(null);
+            }}
+            services={servicesQuery.data ?? []}
+            initialServiceId={entrySheetServiceId}
+            canManageStructure={canManageStructure}
+            onServiceCreated={() => {
+              void servicesQuery.refetch();
+            }}
+          />
+
+          <TreasuryQuickActionHost
+            action={lazyQuickAction}
+            onClose={() => {
+              setQuickActionBusy(false);
+              setQuickAction(null);
+            }}
+            onRequestEntry={context => {
+              openEntrySheet(context);
+            }}
+            churchId={churchId}
+            canManageStructure={canManageStructure}
+            canManageThankYouMessage={canManageThankYouMessage}
+            accounts={(accountsQuery.data ?? []).map(account => ({
+              id: account.id,
+              name: account.name,
+              type: account.type,
+            }))}
+            entryCategories={(categoriesQuery.data ?? [])
+              .filter(category => category.type === "entrada")
+              .map(category => ({
+                id: category.id,
+                name: category.name,
+                key: category.key,
+              }))}
+            people={(peopleQuery.data ?? []).map(person => ({
+              id: person.id,
+              fullName: person.fullName,
+            }))}
+            bookFilter={bookFilter}
+            onBookFilterChange={setBookFilter}
+            isBusy={quickActionBusy}
+            onBusyChange={setQuickActionBusy}
+            releaseId={
+              typeof document !== "undefined"
+                ? document.documentElement.dataset.release
+                : undefined
+            }
+          />
+
+          <Dialog
+            open={quickAction === "livro-caixa"}
+            onOpenChange={open => {
+              if (!open) setQuickAction(null);
+            }}
+          >
+            <DialogContent className={`${TREASURY_DIALOG_CLASS} sm:max-w-6xl`}>
+              <DialogHeader className="shrink-0 pr-8">
+                <DialogTitle className="font-display text-2xl text-navy">
+                  Livro-caixa ·{" "}
+                  <span className="capitalize">{periodLabel}</span>
+                </DialogTitle>
+                <DialogDescription>
+                  Consulte os lançamentos confirmados e rascunhos. Os quatro
+                  saldos permanecem preservados ao fechar este painel.
+                </DialogDescription>
+              </DialogHeader>
+              <div
+                aria-label="Contribuições de membros aprovadas no relatório"
+                className="shrink-0 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-sm text-navy"
+              >
+                <strong>{onlineContributionDisclosure}</strong>
+                <p className="mt-1 text-xs text-emerald-900/75">
+                  Este subtotal já está incluído em Entradas e não é somado
+                  novamente.
+                </p>
+              </div>
+              <TreasuryDialogBody>
+                <section className="grid gap-5 lg:grid-cols-3">
+                  <Card
+                    ref={bookRef}
+                    className="scroll-mt-4 border-slate-200 shadow-sm lg:col-span-2"
+                  >
+                    <CardHeader className="space-y-3 pb-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <CardTitle className="font-display text-xl text-navy">
+                          Livro-caixa ·{" "}
+                          <span className="capitalize">{periodLabel}</span>
+                        </CardTitle>
+                        <Badge variant="outline">
+                          {filteredTransactions.length} lançamentos
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={
+                            bookFilter === "entrada"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                              : bookFilter === "saida"
+                                ? "border-rose-200 bg-rose-50 text-rose-800"
+                                : "border-slate-200 bg-slate-50 text-slate-700"
+                          }
+                        >
+                          Filtro: {bookFilterLabel}
+                        </Badge>
+                        {bookFilter !== "todos" && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-xs text-navy"
+                            onClick={() => setBookFilter("todos")}
+                          >
+                            Limpar filtro
+                          </Button>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      {filteredTransactions.length === 0 ? (
+                        <EmptyTransactions
+                          filterLabel={
+                            bookFilter === "todos"
+                              ? undefined
+                              : bookFilterLabel.toLowerCase()
+                          }
+                        />
+                      ) : (
+                        <div className="divide-y divide-border">
+                          {filteredTransactions.map(
+                            ({ transaction, account, category }) => (
+                              <div
+                                key={transaction.id}
+                                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50/70"
+                              >
+                                <div
+                                  className={`shrink-0 rounded-full p-2 ${transaction.type === "entrada" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
+                                >
+                                  {transaction.type === "entrada" ? (
+                                    <ArrowDownCircle className="h-4 w-4" />
+                                  ) : (
+                                    <ArrowUpCircle className="h-4 w-4" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="truncate text-sm font-semibold text-navy">
+                                      {category.name}
+                                    </p>
+                                    {transaction.status === "rascunho" && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px]"
+                                      >
+                                        Rascunho
+                                      </Badge>
+                                    )}
+                                    {transaction.status === "estornado" && (
+                                      <Badge className="bg-slate-200 text-[10px] text-slate-700">
+                                        Estornado
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {account.name} ·{" "}
+                                    {formatDatePtBr(
+                                      transaction.transactionDate
+                                    )}
+                                    {transaction.description
+                                      ? ` · ${transaction.description}`
+                                      : ""}
+                                  </p>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <p
+                                    className={`text-sm font-semibold ${transaction.type === "entrada" ? "text-emerald-700" : "text-rose-700"}`}
+                                  >
+                                    {transaction.type === "entrada" ? "+" : "−"}
+                                    {formatBrl(transaction.amountCents)}
+                                  </p>
+                                  <p className="text-[10px] uppercase text-muted-foreground">
+                                    {transaction.paymentMethod}
+                                  </p>
+                                </div>
+                                <div className="flex gap-1">
+                                  {transaction.status === "rascunho" && (
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      aria-label="Confirmar rascunho"
+                                      title="Confirmar rascunho"
+                                      disabled={confirmTransaction.isPending}
+                                      onClick={() =>
+                                        confirmTransaction.mutate({
+                                          churchId,
+                                          id: transaction.id,
+                                        })
+                                      }
+                                    >
+                                      {confirmTransaction.isPending &&
+                                      confirmTransaction.variables?.id ===
+                                        transaction.id ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                      )}
+                                    </Button>
+                                  )}
+                                  {transaction.status === "confirmado" &&
+                                    transaction.type === "entrada" && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label="Emitir recibo"
+                                        title="Emitir recibo"
+                                        onClick={() =>
+                                          setReceiptOpen(transaction.id)
+                                        }
+                                      >
+                                        <ReceiptText className="h-4 w-4 text-navy" />
+                                      </Button>
+                                    )}
+                                  {transaction.status === "confirmado" &&
+                                    canManageStructure && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        aria-label="Estornar lançamento"
+                                        title="Estornar lançamento"
+                                        disabled={reverseTransaction.isPending}
+                                        onClick={() => {
+                                          reverseTransaction.reset();
+                                          setReverseReason("");
+                                          setReverseOpen(transaction.id);
+                                        }}
+                                      >
+                                        <RotateCcw className="h-4 w-4 text-slate-600" />
+                                      </Button>
+                                    )}
+                                </div>
+                              </div>
+                            )
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <div className="space-y-5">
+                    <Card className="border-slate-200 shadow-sm">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-base text-navy">
+                          <Landmark className="h-4 w-4 text-gold" /> Saldos por
+                          conta
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {(overview?.accountBalances ?? []).map(
+                          ({ account, balanceCents }) => (
+                            <div
+                              key={account.id}
+                              className="flex justify-between gap-3 text-sm"
+                            >
+                              <span className="text-muted-foreground">
+                                {account.name}
+                              </span>
+                              <strong className="text-navy">
+                                {formatBrl(balanceCents)}
+                              </strong>
+                            </div>
+                          )
+                        )}
+                        {(overview?.accountBalances.length ?? 0) === 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhuma conta disponível.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                    <Card className="border-slate-200 shadow-sm">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-base text-navy">
+                          <ReceiptText className="h-4 w-4 text-gold" />{" "}
+                          Categorias do período
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {(overview?.categories ?? [])
+                          .slice(0, 8)
+                          .map(category => (
+                            <div
+                              key={`${category.type}-${category.categoryId}`}
+                              className="flex justify-between gap-3 text-sm"
+                            >
+                              <span className="truncate text-muted-foreground">
+                                {category.categoryName}
+                              </span>
+                              <strong
+                                className={
+                                  category.type === "entrada"
+                                    ? "text-emerald-700"
+                                    : "text-rose-700"
+                                }
+                              >
+                                {formatBrl(category.amountCents)}
+                              </strong>
+                            </div>
+                          ))}
+                        {(overview?.categories.length ?? 0) === 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            Sem movimentos confirmados neste período.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                    <Card className="border-dashed border-gold/40 bg-gold/5">
+                      <CardContent className="pt-5">
+                        <div className="flex gap-3">
+                          <ShieldCheck className="h-5 w-5 shrink-0 text-gold" />
+                          <div>
+                            <p className="text-sm font-semibold text-navy">
+                              Fechamento mensal
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Bloqueia novos lançamentos e preserva a trilha de
+                              auditoria do período.
+                            </p>
+                            {canClosePeriod &&
+                              (periodClosed ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="mt-3"
+                                  onClick={() => {
+                                    reopenPeriod.reset();
+                                    setReopenReason("");
+                                    setPeriodAction("reopen");
+                                  }}
+                                >
+                                  Reabrir período
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  className="mt-3 bg-navy hover:bg-navy/90"
+                                  onClick={() => {
+                                    closePeriod.reset();
+                                    setPeriodAction("close");
+                                  }}
+                                >
+                                  Fechar {periodLabel}
+                                </Button>
+                              ))}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </section>
+              </TreasuryDialogBody>
+              <AdaptiveFormDialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setQuickAction(null)}
+                >
+                  Fechar e voltar ao Acesso rápido
+                </Button>
+              </AdaptiveFormDialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      )}
+
+      <Dialog
+        open={quickAction === "categorias-contas"}
+        onOpenChange={open => {
+          if (!open) setQuickAction(null);
+        }}
+      >
+        <DialogContent className={`${TREASURY_DIALOG_CLASS} sm:max-w-xl`}>
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle className="font-display text-2xl text-navy">
+              Categorias e contas
+            </DialogTitle>
+            <DialogDescription>
+              Organize a estrutura financeira sem apagar o histórico do
+              livro-caixa.
+            </DialogDescription>
+          </DialogHeader>
+          <TreasuryDialogBody>
+            {canManageStructure ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto min-h-24 justify-start gap-2 whitespace-normal p-4 text-left"
+                  onClick={() => {
+                    setQuickAction(null);
+                    createCategory.reset();
+                    updateCategory.reset();
+                    setEditingCategory(null);
+                    setCategoryName("");
+                    setCategoryType("entrada");
+                    setStructureError(null);
+                    setCategoryOpen(true);
+                  }}
+                >
+                  <Plus className="h-5 w-5 shrink-0 text-gold" />
+                  <span>
+                    <strong className="block text-navy">Nova categoria</strong>
+                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                      Criar uma categoria personalizada.
+                    </span>
+                  </span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto min-h-24 justify-start gap-2 whitespace-normal p-4 text-left"
+                  onClick={() => {
+                    setQuickAction(null);
+                    setCategoryManagerOpen(true);
+                    categoryManagementQuery.refetch();
+                  }}
+                >
+                  <Pencil className="h-5 w-5 shrink-0 text-navy" />
+                  <span>
+                    <strong className="block text-navy">
+                      Gerenciar categorias
+                    </strong>
+                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                      Editar ou inativar sem apagar lançamentos.
+                    </span>
+                  </span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-auto min-h-24 justify-start gap-2 whitespace-normal p-4 text-left"
+                  onClick={() => {
+                    setQuickAction(null);
+                    createAccount.reset();
+                    setStructureError(null);
+                    setAccountOpen(true);
+                  }}
+                >
+                  <Landmark className="h-5 w-5 shrink-0 text-gold" />
+                  <span>
+                    <strong className="block text-navy">Nova conta</strong>
+                    <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                      Adicionar caixa, banco ou outra conta.
+                    </span>
+                  </span>
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                A estrutura financeira pode ser alterada somente por Pastores
+                autorizados.
+              </div>
+            )}
+            </TreasuryDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setQuickAction(null)}
+              >
+                Fechar e voltar ao Acesso rápido
+              </Button>
+            </AdaptiveFormDialogFooter>
+          </DialogContent>
+        </Dialog>
+
+      <Dialog
+        open={quickAction === "fechamento"}
+        onOpenChange={open => {
+          if (!open) setQuickAction(null);
+        }}
+      >
+        <DialogContent className={`${TREASURY_DIALOG_CLASS} sm:max-w-xl`}>
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle className="font-display text-2xl text-navy">
+              Fechamento mensal
+            </DialogTitle>
+            <DialogDescription>
+              O fechamento bloqueia novos lançamentos no período e preserva a
+              trilha de auditoria.
+            </DialogDescription>
+          </DialogHeader>
+          <TreasuryDialogBody>
+            <div className="rounded-xl border border-gold/30 bg-gold/5 p-4">
+              <p className="text-sm font-semibold text-navy">{periodLabel}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Status atual:{" "}
+                <strong>{periodClosed ? "fechado" : "aberto"}</strong>.
+              </p>
+            </div>
+            {!canClosePeriod && (
+              <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                Somente o Pastor Presidente pode fechar ou reabrir um período.
+              </p>
+            )}
+          </TreasuryDialogBody>
+          <AdaptiveFormDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setQuickAction(null)}
+            >
+              Fechar e voltar ao Acesso rápido
+            </Button>
+            {canClosePeriod && (
+              <Button
+                type="button"
+                className={periodClosed ? "" : "bg-navy hover:bg-navy/90"}
+                variant={periodClosed ? "outline" : "default"}
+                onClick={() => {
+                  setQuickAction(null);
+                  if (periodClosed) {
+                    reopenPeriod.reset();
+                    setReopenReason("");
+                    setPeriodAction("reopen");
+                  } else {
+                    closePeriod.reset();
+                    setPeriodAction("close");
+                  }
+                }}
+              >
+                {periodClosed ? "Reabrir período" : "Fechar período"}
+              </Button>
+            )}
+          </AdaptiveFormDialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={reportChoiceOpen}
+        onOpenChange={open => {
+          if (!reportGenerating) {
+            setReportChoiceOpen(open);
+            if (!open) setQuickAction(null);
+          }
+        }}
+      >
+        <DialogContent className={`${TREASURY_DIALOG_CLASS} sm:max-w-xl`}>
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle className="font-display text-2xl text-navy">
+              Escolha o formato do PDF
+            </DialogTitle>
+            <DialogDescription>
+              O resumo cabe em uma página; o detalhado inclui todo o livro-caixa
+              do período.
+            </DialogDescription>
+          </DialogHeader>
+          <TreasuryDialogBody>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={reportGenerating}
+                onClick={() => void generateReport("summary")}
+                className="h-auto items-start justify-start gap-3 whitespace-normal p-4 text-left"
+              >
+                <FileText className="mt-0.5 h-5 w-5 shrink-0 text-gold" />
+                <span>
+                  <strong className="block text-navy">Resumo · 1 página</strong>
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                    Indicadores, contas, categorias, movimentação consolidada e
+                    assinaturas.
+                  </span>
+                </span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={reportGenerating}
+                onClick={() => void generateReport("detailed")}
+                className="h-auto items-start justify-start gap-3 whitespace-normal p-4 text-left"
+              >
+                <BookOpenCheck className="mt-0.5 h-5 w-5 shrink-0 text-gold" />
+                <span>
+                  <strong className="block text-navy">
+                    Relatório detalhado
+                  </strong>
+                  <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                    Resumo completo mais todas as linhas do livro-caixa, com
+                    paginação.
+                  </span>
+                </span>
+              </Button>
+            </div>
+            {reportGenerating && (
+              <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" /> Preparando PDF…
+              </p>
+            )}
+          </TreasuryDialogBody>
+          <AdaptiveFormDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={reportGenerating}
+              onClick={() => {
+                setReportChoiceOpen(false);
+                setQuickAction(null);
+              }}
+            >
+              Voltar
+            </Button>
+          </AdaptiveFormDialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <TreasuryPdfPreview
+        open={reportOpen}
+        blob={reportBlob}
+        fileName={reportFileName}
+        title={reportTitle}
+        onClose={() => setReportOpen(false)}
+      />
+
+      <Dialog
+        open={transactionOpen}
+        onOpenChange={open => {
+          if (!createTransaction.isPending) {
+            setTransactionOpen(open);
+            if (!open) {
+              setFormError(null);
+              createTransaction.reset();
+            }
+          }
+        }}
+      >
+        <AdaptiveFormDialogContent className="sm:max-w-4xl">
+          <div className={adaptiveFormDialogHeaderClassName}>
+            <DialogTitle className="font-display text-2xl text-navy">
+              {form.type === "entrada"
+                ? "Registrar entrada"
+                : "Registrar saída"}
+            </DialogTitle>
+            <DialogDescription>
+              Preencha o essencial primeiro. O lançamento será vinculado à conta e à categoria selecionadas.
+            </DialogDescription>
+          </div>
+          <form onSubmit={submitTransaction} className="contents">
+            <AdaptiveFormDialogBody className="grid gap-4">
+              <div className="grid gap-3 rounded-xl border border-gold/30 bg-gold/5 p-3 sm:grid-cols-[1fr_auto] sm:items-center sm:p-4" aria-live="polite">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-gold">Resumo do lançamento</p>
+                  <p className="mt-1 text-sm text-navy">{form.type === "entrada" ? "Entrada que será registrada no livro-caixa." : "Saída que será registrada no livro-caixa."}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{form.status === "rascunho" ? "Ficará pendente de confirmação." : "Será confirmada imediatamente após salvar."}</p>
+                </div>
+                <div className="rounded-lg border border-white/80 bg-white px-3 py-2 text-left sm:min-w-32 sm:text-right"><p className="text-[11px] text-muted-foreground">Valor informado</p><p className="mt-0.5 text-lg font-semibold text-navy">{formatBrl(parseBrlToCents(form.amount) ?? 0)}</p></div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1.5">
+                  <Label>Conta</Label>
+                  <select
+                    required
+                    value={form.accountId}
+                    onChange={event =>
+                      updateTransactionForm({ accountId: event.target.value })
+                    }
+                    className="h-11 min-w-0 touch-manipulation rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="" disabled>
+                      Selecione
+                    </option>
+                    {(accountsQuery.data ?? []).map(account => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1.5">
+                  <Label>Categoria</Label>
+                  <select
+                    required
+                    value={form.categoryId}
+                    onChange={event =>
+                      updateTransactionForm({ categoryId: event.target.value })
+                    }
+                    className="h-11 min-w-0 touch-manipulation rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="" disabled>
+                      Selecione
+                    </option>
+                    {selectedCategories.map(category => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1.5">
+                  <Label>Valor (R$)</Label>
+                  <Input
+                    required
+                    inputMode="decimal"
+                    placeholder="0,00"
+                    value={form.amount}
+                    onChange={event =>
+                      updateTransactionForm({ amount: event.target.value })
+                    }
+                    className="h-11"
+                  />
+                </label>
+                <label className="grid gap-1.5">
+                  <Label>Data</Label>
+                  <Input
+                    required
+                    type="date"
+                    value={form.transactionDate}
+                    onChange={event =>
+                      updateTransactionForm({
+                        transactionDate: event.target.value,
+                      })
+                    }
+                    className="h-11"
+                  />
+                </label>
+              </div>
+              <label className="grid gap-1.5">
+                <Label>
+                  Forma de{" "}
+                  {form.type === "entrada" ? "recebimento" : "pagamento"}
+                </Label>
+                <div className="relative">
+                  <PaymentMethodIcon method={form.paymentMethod} />
+                  <select
+                    aria-label={`Forma de ${form.type === "entrada" ? "recebimento" : "pagamento"}`}
+                    value={form.paymentMethod}
+                    onChange={event =>
+                      updateTransactionForm({
+                        paymentMethod: event.target.value as PaymentMethod,
+                      })
+                    }
+                    className="h-11 w-full touch-manipulation rounded-md border border-input bg-background pl-10 pr-3 text-sm"
+                  >
+                    {PAYMENT_METHODS.map(method => (
+                      <option key={method.value} value={method.value}>
+                        {method.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </label>
+              {form.type === "entrada" && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <Label>Contribuinte cadastrado</Label>
+                    <select
+                      value={form.contributorPersonId}
+                      onChange={event =>
+                        updateTransactionForm({
+                          contributorPersonId: event.target.value,
+                          contributorName: event.target.value
+                            ? ""
+                            : form.contributorName,
+                        })
+                      }
+                      className="h-11 touch-manipulation rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Não vincular a uma Pessoa</option>
+                      {(peopleQuery.data ?? []).map(person => (
+                        <option key={person.id} value={person.id}>
+                          {person.fullName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <Label>Nome para recibo</Label>
+                    <Input
+                      disabled={Boolean(form.contributorPersonId)}
+                      value={form.contributorName}
+                      onChange={event =>
+                        updateTransactionForm({
+                          contributorName: event.target.value,
+                        })
+                      }
+                      placeholder="Ex.: Visitante ou família"
+                      className="h-11"
+                    />
+                  </label>
+                </div>
+              )}
+              <label className="grid gap-1.5">
+                <Label>Descrição</Label>
+                <Textarea
+                  value={form.description}
+                  onChange={event =>
+                    updateTransactionForm({ description: event.target.value })
+                  }
+                  placeholder={
+                    form.type === "entrada"
+                      ? "Ex.: Culto de domingo à noite"
+                      : "Ex.: Referência ou fornecedor"
+                  }
+                  className="min-h-20"
+                />
+              </label>
+              <label className="grid gap-1.5">
+                <Label>Referência opcional</Label>
+                <Input
+                  value={form.reference}
+                  onChange={event =>
+                    updateTransactionForm({ reference: event.target.value })
+                  }
+                  placeholder="Comprovante, recibo ou nota"
+                  className="h-11"
+                />
+              </label>
+              {form.type === "entrada" && (
+                <div className="grid gap-3 rounded-xl border border-gold/30 bg-gold/5 p-3 sm:grid-cols-2">
+                  <label className="grid gap-1.5">
+                    <Label>Vincular ao culto</Label>
+                    <select
+                      value={form.serviceId}
+                      onChange={event =>
+                        updateTransactionForm({
+                          serviceId: event.target.value,
+                          countSheetId: "",
+                        })
+                      }
+                      className="h-11 touch-manipulation rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Não vincular</option>
+                      {(servicesQuery.data ?? [])
+                        .filter(service => service.status !== "cancelado")
+                        .map(service => (
+                          <option key={service.id} value={service.id}>
+                            {service.name} ·{" "}
+                            {formatDatePtBr(service.serviceDate)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5">
+                    <Label>Vincular à folha de contagem</Label>
+                    <select
+                      value={form.countSheetId}
+                      disabled={!form.serviceId}
+                      onChange={event =>
+                        updateTransactionForm({
+                          countSheetId: event.target.value,
+                        })
+                      }
+                      className="h-11 touch-manipulation rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Não vincular</option>
+                      {(countSheetsQuery.data ?? [])
+                        .filter(
+                          sheet =>
+                            !form.serviceId ||
+                            sheet.serviceId === Number(form.serviceId)
+                        )
+                        .map(sheet => (
+                          <option key={sheet.id} value={sheet.id}>
+                            {sheet.status === "fechada"
+                              ? "Fechada"
+                              : "Rascunho"}{" "}
+                            · {formatBrl(sheet.totalCents)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  <p className="text-xs text-muted-foreground sm:col-span-2">
+                    Use esta opção para que a entrada apareça na prestação do
+                    culto. O vínculo não altera o lançamento nem o fechamento
+                    mensal.
+                  </p>
+                </div>
+              )}
+              <label className="flex min-h-11 touch-manipulation items-center gap-2 rounded-lg px-1 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={form.status === "rascunho"}
+                  onChange={event =>
+                    updateTransactionForm({
+                      status: event.target.checked ? "rascunho" : "confirmado",
+                    })
+                  }
+                />{" "}
+                Salvar como rascunho
+              </label>
+            {(formError || createTransaction.error) && (
+              <InlineError
+                message={
+                    formError ||
+                    createTransaction.error?.message ||
+                    "Não foi possível registrar o lançamento."
+                  }
+                compact
+              />
+            )}
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={createTransaction.isPending}
+                onClick={() => setTransactionOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={createTransaction.isPending}
+                className="bg-navy hover:bg-navy/90"
+              >
+                {createTransaction.isPending && (
+                  <Loader2 className="mr-2 h-4 w-4" />
+                )}
+                {createTransaction.isPending
+                  ? "Salvando…"
+                  : form.status === "rascunho"
+                    ? "Salvar rascunho"
+                    : form.type === "entrada"
+                      ? "Salvar entrada"
+                      : "Salvar saída"}
+              </Button>
+            </AdaptiveFormDialogFooter>
+          </form>
+        </AdaptiveFormDialogContent>
+      </Dialog>
+
+      <Dialog
+        open={categoryManagerOpen}
+        onOpenChange={open => {
+          if (!setCategoryActive.isPending && !updateCategory.isPending)
+            setCategoryManagerOpen(open);
+        }}
+      >
+        <DialogContent className={`${TREASURY_DIALOG_CLASS} sm:max-w-2xl`}>
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle className="font-display text-2xl text-navy">
+              Categorias financeiras
+            </DialogTitle>
+            <DialogDescription>
+              As categorias padrão são protegidas. Categorias personalizadas
+              podem ser editadas e inativadas sem apagar o histórico.
+            </DialogDescription>
+          </DialogHeader>
+          <TreasuryDialogBody>
+            <div className="space-y-2">
+              {categoryManagementQuery.isLoading ? (
+                <div className="h-32 animate-pulse rounded-xl bg-muted" />
+              ) : (categoryManagementQuery.data ?? []).length === 0 ? (
+                <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
+                  Nenhuma categoria encontrada.
+                </p>
+              ) : (
+                (categoryManagementQuery.data ?? []).map(category => (
+                  <div
+                    key={category.id}
+                    className={`flex min-w-0 items-center gap-3 rounded-xl border p-3 ${category.active ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50 opacity-75"}`}
+                  >
+                    <div
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${category.type === "entrada" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}
+                    >
+                      {category.type === "entrada" ? (
+                        <ArrowDownCircle className="h-4 w-4" />
+                      ) : (
+                        <ArrowUpCircle className="h-4 w-4" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-semibold text-navy">
+                          {category.name}
+                        </p>
+                        <Badge variant="outline" className="text-[10px]">
+                          {category.type === "entrada" ? "Entrada" : "Saída"}
+                        </Badge>
+                        {category.isSystem && (
+                          <Badge className="bg-slate-200 text-[10px] text-slate-700">
+                            Padrão
+                          </Badge>
+                        )}
+                        {!category.active && (
+                          <Badge className="bg-amber-100 text-[10px] text-amber-800">
+                            Inativa
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-1 truncate text-[11px] text-muted-foreground">
+                        {category.isSystem
+                          ? "Categoria protegida do sistema"
+                          : "Categoria personalizada"}
+                      </p>
+                    </div>
+                    {!category.isSystem && (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Editar categoria ${category.name}`}
+                          title="Editar categoria"
+                          onClick={() => {
+                            setEditingCategory({
+                              id: category.id,
+                              name: category.name,
+                              type: category.type,
+                            });
+                            setCategoryName(category.name);
+                            setCategoryType(category.type);
+                            setStructureError(null);
+                            updateCategory.reset();
+                            setCategoryManagerOpen(false);
+                            setCategoryOpen(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4 text-navy" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`${category.active ? "Inativar" : "Reativar"} categoria ${category.name}`}
+                          title={
+                            category.active
+                              ? "Inativar categoria"
+                              : "Reativar categoria"
+                          }
+                          disabled={setCategoryActive.isPending}
+                          onClick={() =>
+                            setCategoryActive.mutate({
+                              churchId,
+                              id: category.id,
+                              active: !category.active,
+                            })
+                          }
+                        >
+                          <Power
+                            className={`h-4 w-4 ${category.active ? "text-rose-600" : "text-emerald-600"}`}
+                          />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </TreasuryDialogBody>
+          <AdaptiveFormDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={setCategoryActive.isPending || updateCategory.isPending}
+              onClick={() => setCategoryManagerOpen(false)}
+            >
+              Fechar
+            </Button>
+          </AdaptiveFormDialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={categoryOpen}
+        onOpenChange={open => {
+          if (!createCategory.isPending && !updateCategory.isPending) {
+            setCategoryOpen(open);
+            if (!open) {
+              setStructureError(null);
+              setEditingCategory(null);
+              createCategory.reset();
+              updateCategory.reset();
+            }
+          }
+        }}
+      >
+        <DialogContent className={TREASURY_DIALOG_CLASS}>
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle className="font-display text-2xl text-navy">
+              {editingCategory ? "Editar categoria" : "Nova categoria"}
+            </DialogTitle>
+            <DialogDescription>
+              {editingCategory
+                ? "Atualize uma categoria personalizada sem apagar seus lançamentos."
+                : "Crie uma categoria exclusiva para esta igreja."}
+            </DialogDescription>
+          </DialogHeader>
+          <form className="contents" onSubmit={submitCategory}>
+            <AdaptiveFormDialogBody className="grid gap-4">
+              <label className="grid gap-1.5">
+                <Label>Tipo</Label>
+                <select
+                  value={categoryType}
+                  onChange={event =>
+                    setCategoryType(event.target.value as TransactionType)
+                  }
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="entrada">Entrada</option>
+                  <option value="saida">Saída</option>
+                </select>
+              </label>
+              <label className="grid gap-1.5">
+                <Label>Nome</Label>
+                <Input
+                  required
+                  value={categoryName}
+                  onChange={event => setCategoryName(event.target.value)}
+                  placeholder="Ex.: Missões internacionais"
+                />
+              </label>
+              {(structureError ||
+                createCategory.error ||
+                updateCategory.error) && (
+                <InlineError
+                  compact
+                  message={
+                    structureError ||
+                    createCategory.error?.message ||
+                    updateCategory.error?.message ||
+                    "Não foi possível salvar a categoria."
+                  }
+                />
+              )}
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={createCategory.isPending || updateCategory.isPending}
+                onClick={() => setCategoryOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={createCategory.isPending || updateCategory.isPending}
+                className="bg-navy hover:bg-navy/90"
+              >
+                {createCategory.isPending || updateCategory.isPending
+                  ? "Salvando…"
+                  : editingCategory
+                    ? "Salvar categoria"
+                    : "Criar categoria"}
+              </Button>
+            </AdaptiveFormDialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={accountOpen}
+        onOpenChange={open => {
+          if (!createAccount.isPending) {
+            setAccountOpen(open);
+            if (!open) {
+              setStructureError(null);
+              createAccount.reset();
+            }
+          }
+        }}
+      >
+        <DialogContent className={TREASURY_DIALOG_CLASS}>
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle className="font-display text-2xl text-navy">
+              Nova conta financeira
+            </DialogTitle>
+            <DialogDescription>
+              O saldo inicial só deve ser usado na implantação ou na abertura de
+              uma nova conta.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="contents" onSubmit={submitAccount}>
+            <AdaptiveFormDialogBody className="grid gap-4">
+              <label className="grid gap-1.5">
+                <Label>Nome</Label>
+                <Input
+                  required
+                  value={newAccount.name}
+                  onChange={event =>
+                    setNewAccount({ ...newAccount, name: event.target.value })
+                  }
+                  placeholder="Ex.: Banco Missões"
+                />
+              </label>
+              <label className="grid gap-1.5">
+                <Label>Tipo</Label>
+                <select
+                  value={newAccount.type}
+                  onChange={event =>
+                    setNewAccount({
+                      ...newAccount,
+                      type: event.target.value as "caixa" | "banco" | "outro",
+                    })
+                  }
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="caixa">Caixa</option>
+                  <option value="banco">Banco</option>
+                  <option value="outro">Outro</option>
+                </select>
+              </label>
+              <label className="grid gap-1.5">
+                <Label>Saldo inicial (R$)</Label>
+                <Input
+                  inputMode="decimal"
+                  value={newAccount.openingBalance}
+                  onChange={event =>
+                    setNewAccount({
+                      ...newAccount,
+                      openingBalance: event.target.value,
+                    })
+                  }
+                />
+              </label>
+              {(structureError || createAccount.error) && (
+                <InlineError
+                  compact
+                  message={
+                    structureError ||
+                    createAccount.error?.message ||
+                    "Não foi possível criar a conta."
+                  }
+                />
+              )}
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={createAccount.isPending}
+                onClick={() => setAccountOpen(false)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={createAccount.isPending}
+                className="bg-navy hover:bg-navy/90"
+              >
+                {createAccount.isPending ? "Criando…" : "Criar conta"}
+              </Button>
+            </AdaptiveFormDialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={reverseOpen !== null}
+        onOpenChange={open => {
+          if (!open && !reverseTransaction.isPending) {
+            setReverseOpen(null);
+            setReverseReason("");
+            reverseTransaction.reset();
+          }
+        }}
+      >
+        <DialogContent className={TREASURY_DIALOG_CLASS}>
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle className="font-display text-2xl text-navy">
+              Estornar lançamento
+            </DialogTitle>
+            <DialogDescription>
+              O lançamento será preservado no histórico, identificado como
+              estornado e deixará de compor os saldos.
+            </DialogDescription>
+          </DialogHeader>
+          <TreasuryDialogBody>
+            <label className="grid gap-1.5">
+              <Label>Motivo do estorno</Label>
+              <Textarea
+                value={reverseReason}
+                onChange={event => setReverseReason(event.target.value)}
+                placeholder="Explique o motivo da correção"
+              />
+            </label>
+            {reverseTransaction.error && (
+              <InlineError compact message={reverseTransaction.error.message} />
+            )}
+          </TreasuryDialogBody>
+          <AdaptiveFormDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={reverseTransaction.isPending}
+              onClick={() => setReverseOpen(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={
+                reverseTransaction.isPending || reverseReason.trim().length < 5
+              }
+              onClick={() =>
+                reverseOpen &&
+                reverseTransaction.mutate({
+                  churchId,
+                  id: reverseOpen,
+                  reason: reverseReason.trim(),
+                })
+              }
+            >
+              {reverseTransaction.isPending
+                ? "Estornando…"
+                : "Estornar lançamento"}
+            </Button>
+          </AdaptiveFormDialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={receiptOpen !== null}
+        onOpenChange={open => {
+          if (!open) setReceiptOpen(null);
+        }}
+      >
+        <DialogContent className={`${TREASURY_DIALOG_CLASS} sm:max-w-lg`}>
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle className="font-display text-2xl text-navy">
+              Recibo de contribuição
+            </DialogTitle>
+            <DialogDescription>
+              Disponível apenas para entradas confirmadas da sua igreja.
+            </DialogDescription>
+          </DialogHeader>
+          <TreasuryDialogBody>
+            {receiptQuery.isLoading ? (
+              <div className="h-44 animate-pulse rounded-xl bg-muted" />
+            ) : receiptQuery.error ? (
+              <InlineError message={receiptQuery.error.message} compact />
+            ) : (
+              receiptQuery.data && (
+                <div className="space-y-3 rounded-xl border border-gold/30 bg-cream/30 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-gold">
+                    Recibo nº {receiptQuery.data.transaction.id}
+                  </p>
+                  <p className="font-display text-2xl text-navy">
+                    {formatBrl(receiptQuery.data.transaction.amountCents)}
+                  </p>
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <p>
+                      <span className="block text-xs text-muted-foreground">
+                        Contribuinte
+                      </span>
+                      {receiptQuery.data.contributor?.fullName ||
+                        receiptQuery.data.transaction.contributorName ||
+                        "Não identificado"}
+                    </p>
+                    <p>
+                      <span className="block text-xs text-muted-foreground">
+                        Categoria
+                      </span>
+                      {receiptQuery.data.category.name}
+                    </p>
+                    <p>
+                      <span className="block text-xs text-muted-foreground">
+                        Data
+                      </span>
+                      {formatDatePtBr(
+                        receiptQuery.data.transaction.transactionDate
+                      )}
+                    </p>
+                    <p>
+                      <span className="block text-xs text-muted-foreground">
+                        Forma
+                      </span>
+                      {receiptQuery.data.transaction.paymentMethod}
+                    </p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {receiptQuery.data.transaction.description ||
+                      "Contribuição registrada na Tesouraria."}
+                  </p>
+                  <Button className="w-full bg-navy" onClick={printReceipt}>
+                    <Printer className="mr-2 h-4 w-4" /> Imprimir ou salvar PDF
+                  </Button>
+                </div>
+              )
+            )}
+          </TreasuryDialogBody>
+          <AdaptiveFormDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setReceiptOpen(null)}
+            >
+              Fechar
+            </Button>
+          </AdaptiveFormDialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={periodAction !== null}
+        onOpenChange={open => {
+          if (!open && !closePeriod.isPending && !reopenPeriod.isPending) {
+            setPeriodAction(null);
+            setReopenReason("");
+            closePeriod.reset();
+            reopenPeriod.reset();
+          }
+        }}
+      >
+        <DialogContent className={TREASURY_DIALOG_CLASS}>
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle className="font-display text-2xl text-navy">
+              {periodAction === "close"
+                ? `Fechar ${periodLabel}`
+                : `Reabrir ${periodLabel}`}
+            </DialogTitle>
+            <DialogDescription>
+              {periodAction === "close"
+                ? "Após o fechamento, novos lançamentos, confirmações e estornos deste período serão bloqueados."
+                : "A reabertura fica registrada na trilha de auditoria e exige uma justificativa pastoral."}
+            </DialogDescription>
+          </DialogHeader>
+          <TreasuryDialogBody>
+            {periodAction === "reopen" && (
+              <label className="grid gap-1.5">
+                <Label>Motivo da reabertura</Label>
+                <Textarea
+                  value={reopenReason}
+                  onChange={event => setReopenReason(event.target.value)}
+                  placeholder="Explique por que o período precisa ser reaberto"
+                />
+              </label>
+            )}
+            {(closePeriod.error || reopenPeriod.error) && (
+              <InlineError
+                compact
+                message={
+                  closePeriod.error?.message ||
+                  reopenPeriod.error?.message ||
+                  "Não foi possível alterar o período."
+                }
+              />
+            )}
+          </TreasuryDialogBody>
+          <AdaptiveFormDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={closePeriod.isPending || reopenPeriod.isPending}
+              onClick={() => setPeriodAction(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                closePeriod.isPending ||
+                reopenPeriod.isPending ||
+                (periodAction === "reopen" && reopenReason.trim().length < 5)
+              }
+              className={
+                periodAction === "close" ? "bg-navy hover:bg-navy/90" : ""
+              }
+              variant={periodAction === "reopen" ? "destructive" : "default"}
+              onClick={() =>
+                periodAction === "close"
+                  ? closePeriod.mutate({
+                      churchId,
+                      periodStart: startDate,
+                      periodEnd: endDate,
+                    })
+                  : reopenPeriod.mutate({
+                      churchId,
+                      periodStart: startDate,
+                      reason: reopenReason.trim(),
+                    })
+              }
+            >
+              {closePeriod.isPending || reopenPeriod.isPending
+                ? "Processando…"
+                : periodAction === "close"
+                  ? "Confirmar fechamento"
+                  : "Confirmar reabertura"}
+            </Button>
+          </AdaptiveFormDialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={reconciliationOpen}
+        onOpenChange={open => {
+          if (!open && !saveReconciliation.isPending && !uploadingAttachment) {
+            setReconciliationOpen(false);
+            setReconciliationForm({
+              accountId: "",
+              bankClosingBalance: "",
+              notes: "",
+            });
+            setReconciliationHydratedKey("");
+            setAttachmentError(null);
+            saveReconciliation.reset();
+          }
+        }}
+      >
+        <AdaptiveFormDialogContent className="sm:max-w-lg">
+          <div className={adaptiveFormDialogHeaderClassName}>
+            <DialogTitle className="font-display text-2xl text-navy">
+              Conciliação bancária
+            </DialogTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Compare o saldo do extrato com o saldo registrado até o fim do
+              período. A conciliação não altera lançamentos nem fechamento.
+            </p>
+          </div>
+          <AdaptiveFormDialogBody>
+            <div className="grid gap-4">
+              <label className="grid gap-1.5">
+                <Label>Conta bancária</Label>
+                <select
+                  value={reconciliationForm.accountId}
+                  onChange={event => {
+                    setReconciliationForm({
+                      accountId: event.target.value,
+                      bankClosingBalance: "",
+                      notes: "",
+                    });
+                    setReconciliationHydratedKey("");
+                    setAttachmentError(null);
+                  }}
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  {bankAccounts.map(account => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="rounded-xl bg-muted/50 p-4">
+                <p className="text-xs text-muted-foreground">
+                  Saldo do livro-caixa em {formatDatePtBr(endDate)}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-navy">
+                  {reconciliationQuery.isLoading
+                    ? "Carregando…"
+                    : formatBrl(
+                        reconciliationQuery.data?.bookBalanceCents ?? 0
+                      )}
+                </p>
+              </div>
+              <label className="grid gap-1.5">
+                <Label>Saldo final no extrato (R$)</Label>
+                <Input
+                  inputMode="decimal"
+                  value={reconciliationForm.bankClosingBalance}
+                  onChange={event =>
+                    setReconciliationForm({
+                      ...reconciliationForm,
+                      bankClosingBalance: event.target.value,
+                    })
+                  }
+                  placeholder="0,00"
+                />
+              </label>
+              {reconciliationDifference !== null && (
+                <div
+                  className={`rounded-xl p-3 text-sm ${reconciliationDifference === 0 ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}
+                >
+                  <strong>
+                    {reconciliationDifference === 0
+                      ? "Conciliação sem divergência"
+                      : "Divergência identificada"}
+                  </strong>
+                  <span className="ml-2">
+                    {formatBrl(reconciliationDifference)}
+                  </span>
+                </div>
+              )}
+              <label className="grid gap-1.5">
+                <Label>Observações</Label>
+                <Textarea
+                  value={reconciliationForm.notes}
+                  onChange={event =>
+                    setReconciliationForm({
+                      ...reconciliationForm,
+                      notes: event.target.value,
+                    })
+                  }
+                  placeholder="Ex.: PIX em trânsito ou tarifa ainda não registrada."
+                />
+              </label>
+              <div className="rounded-xl border border-dashed border-gold/50 bg-cream/20 p-4">
+                <div className="flex items-start gap-3">
+                  <Paperclip className="mt-0.5 h-5 w-5 text-gold" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-navy">
+                      Comprovantes bancários
+                    </p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                      Salve a conciliação e envie PDF, PNG, JPEG ou WebP de até
+                      8 MB. O servidor também valida a assinatura real do
+                      arquivo.
+                    </p>
+                    {reconciliationId ? (
+                      <div className="mt-3 space-y-2">
+                        {attachmentsQuery.isLoading ? (
+                          <p className="text-xs text-muted-foreground">
+                            Carregando comprovantes…
+                          </p>
+                        ) : (attachmentsQuery.data ?? []).length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Nenhum comprovante anexado.
+                          </p>
+                        ) : (
+                          (attachmentsQuery.data ?? []).map(attachment => (
+                            <div
+                              key={attachment.id}
+                              className="rounded-lg bg-white/70 px-3 py-2 text-sm text-navy"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <a
+                                  href={attachment.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="min-w-0 truncate font-medium hover:underline"
+                                >
+                                  {attachment.fileName}
+                                </a>
+                                <ExternalLink className="h-4 w-4 shrink-0" />
+                              </div>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <label className="inline-flex cursor-pointer items-center gap-1 rounded border border-navy/20 px-2 py-1 text-xs font-medium text-navy hover:bg-navy hover:text-white">
+                                  <RefreshCw className="h-3 w-3" /> Substituir
+                                  <input
+                                    type="file"
+                                    className="sr-only"
+                                    accept="application/pdf,image/png,image/jpeg,image/webp"
+                                    disabled={
+                                      uploadingAttachment ||
+                                      removeReconciliationAttachment.isPending
+                                    }
+                                    onChange={event => {
+                                      const file = event.target.files?.[0];
+                                      if (file)
+                                        void uploadAttachment(
+                                          file,
+                                          attachment.id
+                                        );
+                                      event.currentTarget.value = "";
+                                    }}
+                                  />
+                                </label>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 border-rose-200 px-2 text-xs text-rose-700 hover:bg-rose-50"
+                                  disabled={
+                                    uploadingAttachment ||
+                                    removeReconciliationAttachment.isPending
+                                  }
+                                  onClick={() =>
+                                    void removeAttachment(attachment.id)
+                                  }
+                                >
+                                  <Trash2 className="mr-1 h-3 w-3" /> Remover
+                                </Button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                        <label className="mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-navy/20 bg-white px-3 py-2 text-sm font-medium text-navy transition-colors hover:bg-navy hover:text-white">
+                          <Upload className="h-4 w-4" />
+                          {uploadingAttachment
+                            ? "Enviando…"
+                            : "Anexar comprovante"}
+                          <input
+                            type="file"
+                            className="sr-only"
+                            accept="application/pdf,image/png,image/jpeg,image/webp"
+                            disabled={
+                              uploadingAttachment ||
+                              removeReconciliationAttachment.isPending
+                            }
+                            onChange={event => {
+                              const file = event.target.files?.[0];
+                              if (file) void uploadAttachment(file);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-xs font-medium text-amber-800">
+                        Salve a conciliação para liberar o anexo.
+                      </p>
+                    )}{" "}
+                  </div>
+                </div>
+              </div>
+              {attachmentError && (
+                <InlineError compact message={attachmentError} />
+              )}
+              {saveReconciliation.error && (
+                <InlineError
+                  compact
+                  message={saveReconciliation.error.message}
+                />
+              )}
+            </div>
+          </AdaptiveFormDialogBody>
+          <AdaptiveFormDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setReconciliationOpen(false)}
+              disabled={saveReconciliation.isPending || uploadingAttachment}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={
+                saveReconciliation.isPending ||
+                bankBalanceInput === null ||
+                reconciliationQuery.isLoading
+              }
+              className="bg-navy"
+              onClick={() =>
+                bankBalanceInput !== null &&
+                saveReconciliation.mutate({
+                  churchId,
+                  accountId: reconciliationAccountId,
+                  periodStart: startDate,
+                  periodEnd: endDate,
+                  bankClosingBalanceCents: bankBalanceInput,
+                  notes: reconciliationForm.notes.trim() || undefined,
+                })
+              }
+            >
+              {saveReconciliation.isPending
+                ? "Salvando…"
+                : reconciliationId
+                  ? "Atualizar conciliação"
+                  : "Salvar conciliação"}
+            </Button>
+          </AdaptiveFormDialogFooter>
+        </AdaptiveFormDialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+  helper,
+  tone,
+  onClick,
+}: {
+  icon: typeof WalletCards;
+  label: string;
+  value: string;
+  helper: string;
+  tone: "navy" | "green" | "rose" | "gold";
+  onClick?: () => void;
+}) {
+  const tones = {
+    navy: "border-l-navy bg-white text-navy",
+    green: "border-l-emerald-500 bg-white text-emerald-800",
+    rose: "border-l-rose-500 bg-white text-rose-800",
+    gold: "border-l-gold bg-white text-navy",
+  };
+  const icons = {
+    navy: "bg-navy/8 text-navy",
+    green: "bg-emerald-50 text-emerald-700",
+    rose: "bg-rose-50 text-rose-700",
+    gold: "bg-gold/12 text-gold",
+  };
+  const interactive = Boolean(onClick);
+  return (
+    <Card
+      className={`flex min-h-[148px] flex-col gap-0 border border-slate-200 border-l-4 py-0 shadow-sm sm:min-h-[156px] ${tones[tone]} ${interactive ? "cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy focus-visible:ring-offset-2" : ""}`}
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-label={
+        interactive ? `Ver ${label.toLowerCase()} no Livro-caixa` : undefined
+      }
+      onClick={onClick}
+      onKeyDown={event => {
+        if (onClick && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+    >
+      <CardContent className="p-3 sm:p-4">
+        <div
+          className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${icons[tone]}`}
+        >
+          <Icon className="h-4 w-4" />
+        </div>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+          {label}
+        </p>
+        <p className="mt-0.5 font-display text-lg sm:text-xl">{value}</p>
+        <p className="mt-1 truncate text-[11px] text-slate-500">{helper}</p>
+        <div className="mt-2 min-h-4 text-[10px] font-medium text-navy/70">
+          {interactive ? "Ver no Livro-caixa" : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function InlineError({
+  message,
+  compact = false,
+}: {
+  message: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      role="alert"
+      className={`rounded-lg border border-rose-200 bg-rose-50 text-rose-800 ${compact ? "px-3 py-2 text-sm" : "p-4"}`}
+    >
+      {message}
+    </div>
+  );
+}
+
+function TreasurySkeleton() {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <Card key={index}>
+          <CardContent className="p-5">
+            <div className="h-4 w-20 animate-pulse rounded bg-muted" />
+            <div className="mt-5 h-8 w-28 animate-pulse rounded bg-muted" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function EmptyTransactions({ filterLabel }: { filterLabel?: string }) {
+  return (
+    <div className="px-6 py-12 text-center">
+      <FileText className="mx-auto mb-3 h-8 w-8 text-gold" />
+      <p className="font-semibold text-navy">
+        {filterLabel
+          ? `Nenhuma ${filterLabel} neste período`
+          : "Nenhum lançamento neste período"}
+      </p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {filterLabel
+          ? "Limpe o filtro ou registre um novo lançamento."
+          : "Registre uma entrada ou saída para começar o livro-caixa."}
+      </p>
+    </div>
+  );
+}
+
+function AccessDenied() {
+  return (
+    <div className="mx-auto max-w-xl p-6">
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="p-7 text-center">
+          <XCircle className="mx-auto mb-3 h-10 w-10 text-amber-600" />
+          <h1 className="font-display text-2xl text-navy">Acesso restrito</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            A Tesouraria é acessível apenas a Pastores e Tesoureiros
+            autorizados. Solicite ao Pastor Presidente a atribuição da função,
+            se necessário.
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

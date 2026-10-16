@@ -1,0 +1,618 @@
+import { useState } from "react";
+import { useLocation } from "wouter";
+import { useChurch } from "@/components/ChurchLayout";
+import { DepartmentsPanel } from "@/components/DepartmentsPanel";
+import { ConsolidationReferralBox } from "@/components/ConsolidationReferralBox";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
+import { Baby, BookOpen, Calendar, ChevronDown, Clock, Edit3, Globe2, HandHeart, Heart, HeartHandshake, MapPin, Megaphone, MessageCircle, Mic2, Music, Music2, Plus, Search, Speaker, Sparkles, Star, Trash2, Utensils, Users, UsersRound } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { formatCivilDate } from "@/lib/civilDate";
+import { DEFAULT_MINISTRY_ICON_KEY, MINISTRY_ICON_OPTIONS, type MinistryIconKey } from "../../../shared/ministryIcons";
+import { MINISTRY_VICE_LEADER_LABEL, MINISTRY_VICE_LEADER_ROLE_KEY } from "../../../shared/ministryRoles";
+
+const OPERATIONAL_FUNCTION_KEYS = new Set(["membro_ministerio", "musico", "vocalista", "visitador"]);
+
+const MINISTRY_ICON_COMPONENTS: Record<string, LucideIcon> = {
+  sparkles: Sparkles,
+  music: Music2,
+  mic: Mic2,
+  speaker: Speaker,
+  "message-circle": MessageCircle,
+  "hands-praying": HandHeart,
+  "heart-handshake": HeartHandshake,
+  heart: Heart,
+  baby: Baby,
+  "book-open": BookOpen,
+  megaphone: Megaphone,
+  utensils: Utensils,
+  "users-round": UsersRound,
+  "map-pin": MapPin,
+  globe: Globe2,
+};
+
+function MinistryIcon({ iconKey, className = "h-8 w-8" }: { iconKey?: string | null; className?: string }) {
+  const Icon = MINISTRY_ICON_COMPONENTS[iconKey ?? DEFAULT_MINISTRY_ICON_KEY] ?? Sparkles;
+  return <Icon className={className} aria-hidden="true" />;
+}
+
+function isConsolidationMinistry(ministry: { type?: string | null; name: string }) {
+  const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return ministry.type === "consolidacao" || normalizedName.includes("consolidacao");
+}
+
+function isVisitsMinistry(ministry: { type?: string | null; name: string }) {
+  const normalizedName = ministry.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return ministry.type === "visitas" || (normalizedName.includes("visita") && !isConsolidationMinistry(ministry));
+}
+
+function isTeamMinistryType(type: string) {
+  return type === "consolidacao" || type === "visitas";
+}
+
+function formatScheduleDate(value: Date | string) {
+  return formatCivilDate(value, { weekday: "short", day: "2-digit", month: "short" });
+}
+
+export default function Ministerios() {
+  const { churchId, accessSummary } = useChurch();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"todos" | "sem_lider">("todos");
+  const [open, setOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", description: "", iconKey: DEFAULT_MINISTRY_ICON_KEY as MinistryIconKey });
+  const [archiveTarget, setArchiveTarget] = useState<{ id: number; name: string } | null>(null);
+  const [form, setForm] = useState({ name: "", description: "", type: "outro", iconKey: DEFAULT_MINISTRY_ICON_KEY as MinistryIconKey, leaderId: "", participantIds: [] as string[] });
+  const [selectedMinistry, setSelectedMinistry] = useState<any>(null);
+  const [editTarget, setEditTarget] = useState<any>(null);
+  const [selectedPersonId, setSelectedPersonId] = useState("");
+  const [functionPersonId, setFunctionPersonId] = useState("");
+  const [selectedRoleKey, setSelectedRoleKey] = useState("");
+  const [customRoleName, setCustomRoleName] = useState("");
+  const [customRolePackage, setCustomRolePackage] = useState("member");
+
+  const { data: ministries, isLoading, refetch } = trpc.ministries.list.useQuery(
+    { churchId: churchId! },
+    { enabled: !!churchId }
+  );
+  const canManageRoles = Boolean(accessSummary?.canManageChurch);
+  const canCreateMinistry = Boolean(accessSummary?.canManageChurch);
+  const pageTitle = canCreateMinistry ? "Ministérios" : "Meus Ministérios";
+  const { data: people } = trpc.people.list.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId && canManageRoles) });
+  const ministryMembers = trpc.ministries.members.useQuery(
+    { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0 },
+    { enabled: Boolean(churchId && selectedMinistry?.id) }
+  );
+  const ministryCandidates = trpc.ministries.candidates.useQuery(
+    { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0 },
+    { enabled: Boolean(churchId && selectedMinistry?.id && selectedMinistry?.canManage) }
+  );
+  const functionCatalog = trpc.ministries.functionCatalog.useQuery(
+    { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0 },
+    { enabled: Boolean(churchId && selectedMinistry?.id && selectedMinistry?.canManage) }
+  );
+  const customFunctions = trpc.ministries.customFunctions.useQuery({ churchId: churchId! }, { enabled: Boolean(churchId && canCreateMinistry) });
+  const [, navigate] = useLocation();
+  const upcomingSchedules = trpc.schedules.upcomingByMinistry.useQuery(
+    { churchId: churchId!, ministryId: selectedMinistry?.id ?? 0, limit: 3 },
+    { enabled: Boolean(churchId && selectedMinistry?.id) }
+  );
+
+  const createMutation = trpc.ministries.create.useMutation({
+    onSuccess: () => {
+      toast.success("Ministério criado com sucesso!");
+      setOpen(false);
+      setForm({ name: "", description: "", type: "outro", iconKey: DEFAULT_MINISTRY_ICON_KEY, leaderId: "", participantIds: [] });
+      refetch();
+    },
+    onError: (err: { message: string }) => toast.error(err.message),
+  });
+  const updateMutation = trpc.ministries.update.useMutation({
+    onSuccess: async (updated) => {
+      toast.success("Ministério atualizado com sucesso!");
+      setEditOpen(false);
+      const refreshed = await refetch();
+      setSelectedMinistry(refreshed.data?.find((ministry) => ministry.id === updated?.id) ?? editTarget);
+      setEditTarget(null);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar o Ministério."),
+  });
+  const archiveMutation = trpc.ministries.archive.useMutation({
+    onSuccess: async (result) => {
+      toast.success(result.alreadyArchived ? "Ministério já estava arquivado." : "Ministério removido da lista ativa.");
+      setArchiveTarget(null);
+      if (selectedMinistry?.id === result.ministryId) setSelectedMinistry(null);
+      await refetch();
+    },
+    onError: (error) => toast.error("Não foi possível excluir o Ministério", {
+      description: error.message || "O histórico operacional impede a remoção deste Ministério.",
+      duration: 10000,
+      closeButton: true,
+      position: "top-center",
+    }),
+  });
+  const updateLeader = trpc.ministries.updateLeader.useMutation({
+    onSuccess: async (updated) => {
+      toast.success(updated?.leaderId ? "Líder do Ministério atualizado." : "Liderança do Ministério removida.");
+      const refreshed = await refetch();
+      setSelectedMinistry(refreshed.data?.find((ministry) => ministry.id === updated?.id) ?? null);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível atualizar o líder do Ministério."),
+  });
+  const assignPerson = trpc.ministries.assignPerson.useMutation({
+    onSuccess: async (result) => {
+      toast.success(result.alreadyMember ? "Esta pessoa já participa do ministério." : "Pessoa adicionada ao ministério.");
+      setSelectedPersonId("");
+      await Promise.all([refetch(), ministryMembers.refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível adicionar a pessoa."),
+  });
+  const assignFunction = trpc.ministries.assignFunction.useMutation({
+    onSuccess: async () => {
+      toast.success("Função operacional atribuída.");
+      setFunctionPersonId("");
+      setSelectedRoleKey("");
+      await Promise.all([ministryMembers.refetch(), refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível atribuir a função."),
+  });
+  const removeFunction = trpc.ministries.removeFunction.useMutation({
+    onSuccess: async () => {
+      toast.success("Função removida da equipe.");
+      await Promise.all([ministryMembers.refetch(), refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível remover a função."),
+  });
+  const removePerson = trpc.ministries.removePerson.useMutation({
+    onSuccess: async () => {
+      toast.success("Pessoa removida da equipe deste Ministério.");
+      await Promise.all([ministryMembers.refetch(), refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível remover a Pessoa."),
+  });
+  const createCustomFunction = trpc.ministries.createCustomFunction.useMutation({
+    onSuccess: () => { toast.success("Função ministerial criada."); setCustomRoleName(""); customFunctions.refetch(); },
+    onError: (error) => toast.error(error.message || "Não foi possível criar a função."),
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) return toast.error("Nome do ministério é obrigatório");
+    createMutation.mutate({
+      churchId: churchId!,
+      name: form.name.trim(),
+      description: form.description.trim() || undefined,
+        type: form.type as "louvor" | "infantil" | "recepcao" | "midia" | "intercessao" | "evangelismo" | "casais" | "jovens" | "consolidacao" | "visitas" | "outro",
+        iconKey: form.iconKey,
+        leaderId: form.leaderId ? Number(form.leaderId) : null,
+        participantIds: isTeamMinistryType(form.type) ? form.participantIds.map(Number) : [],
+    });
+  };
+
+  const addSelectedPerson = () => {
+    if (!selectedMinistry || !selectedPersonId) {
+      toast.error("Selecione uma Pessoa para adicionar à equipe.");
+      return;
+    }
+    assignPerson.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: Number(selectedPersonId) });
+  };
+
+  const saveFunction = () => {
+    if (!selectedMinistry || !functionPersonId || !selectedRoleKey) {
+      toast.error("Selecione a Pessoa e a função operacional.");
+      return;
+    }
+    assignFunction.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: Number(functionPersonId), roleKey: selectedRoleKey });
+  };
+
+  const saveViceLeader = (value: string) => {
+    if (!selectedMinistry) return;
+    const currentAssignment = ministryMemberRows
+      .flatMap((item) => item.roles ?? [])
+      .find((role) => role.key === MINISTRY_VICE_LEADER_ROLE_KEY);
+    if (value === "none") {
+      if (currentAssignment) removeFunction.mutate({ churchId: churchId!, id: currentAssignment.id });
+      return;
+    }
+    assignFunction.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: Number(value), roleKey: MINISTRY_VICE_LEADER_ROLE_KEY });
+  };
+
+  const addCustomFunction = () => {
+    if (!selectedMinistry || !customRoleName.trim()) return toast.error("Informe o nome da função.");
+    const key = customRoleName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    if (key.length < 2) return toast.error("Informe um nome de função válido.");
+    createCustomFunction.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, name: customRoleName.trim(), key, permissionPackage: customRolePackage as "member" | "cell_leader" | "consolidator" | "visitor" | "treasurer" | "ministry_leader" | "communication_leader" });
+  };
+
+  const openEditMinistry = () => {
+    if (!selectedMinistry) return;
+    const target = selectedMinistry;
+    setEditForm({ name: target.name, description: target.description ?? "", iconKey: (target.iconKey ?? DEFAULT_MINISTRY_ICON_KEY) as MinistryIconKey });
+    setEditTarget(target);
+    setSelectedMinistry(null);
+    setEditOpen(true);
+  };
+
+  const closeEditMinistry = () => {
+    const target = editTarget;
+    setEditOpen(false);
+    setEditTarget(null);
+    if (target) setSelectedMinistry(target);
+  };
+
+  const saveEditMinistry = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editTarget || !editForm.name.trim()) return toast.error("Informe o nome do Ministério.");
+    updateMutation.mutate({ churchId: churchId!, ministryId: editTarget.id, name: editForm.name.trim(), description: editForm.description.trim() || null, iconKey: editForm.iconKey });
+  };
+
+  const filtered = ministries?.filter((m: { name: string; leaderId?: number | null }) =>
+    m.name.toLowerCase().includes(search.toLowerCase())
+    && (statusFilter === "todos" || !m.leaderId)
+  ) ?? [];
+  const ministryMemberRows = ministryMembers.data ?? [];
+  const membersWithoutRole = ministryMemberRows.filter((item) => item.person.id !== selectedMinistry?.leaderId && (item.roles ?? []).length === 0).length;
+  const operationalAttention = selectedMinistry?.canManage
+    ? [
+        !selectedMinistry.leaderId ? "Defina um líder responsável" : null,
+        !upcomingSchedules.isLoading && (upcomingSchedules.data ?? []).length === 0 ? "Cadastre a próxima escala na agenda oficial" : null,
+        !ministryMembers.isLoading && membersWithoutRole > 0 ? `${membersWithoutRole} pessoa${membersWithoutRole === 1 ? "" : "s"} sem atuação definida` : null,
+      ].filter((item): item is string => Boolean(item))
+    : [];
+
+  return (
+      <div className="p-6 max-w-5xl mx-auto animate-fade-in-up">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-navy">{pageTitle}</h1>
+            <p className="text-sm text-muted-foreground mt-1">{canCreateMinistry ? "Crie as salas de serviço e organize as equipes da sua igreja." : "Você administra somente as equipes atribuídas a você."}</p>
+          </div>
+          {canCreateMinistry && <Dialog open={open} onOpenChange={setOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-navy text-white hover:bg-navy-light gap-2">
+                <Plus className="w-4 h-4" />
+                Novo Ministério
+              </Button>
+            </DialogTrigger>
+            <AdaptiveFormDialogContent>
+              <div className={adaptiveFormDialogHeaderClassName}>
+                <DialogTitle className="font-display text-navy">Criar Ministério</DialogTitle>
+                <p className="mt-1 text-sm text-muted-foreground">Configure o Ministério, a liderança e, quando necessário, os envolvidos da equipe.</p>
+              </div>
+              <form onSubmit={handleSubmit} className="contents">
+                <AdaptiveFormDialogBody className="mt-2 space-y-4">
+                <div>
+                  <Label htmlFor="name">Nome do Ministério *</Label>
+                  <Input
+                    id="name"
+                    placeholder="Ex: Ministério de Louvor"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="description">Descrição</Label>
+                  <Input
+                    id="description"
+                    placeholder="Breve descrição do ministério..."
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="ministry-type">Tipo</Label>
+                  <Select value={form.type} onValueChange={(type) => setForm({ ...form, type, participantIds: isTeamMinistryType(type) ? form.participantIds : [] })}>
+                    <SelectTrigger id="ministry-type" className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="louvor">Louvor</SelectItem><SelectItem value="infantil">Infantil</SelectItem><SelectItem value="recepcao">Recepção</SelectItem><SelectItem value="midia">Mídia</SelectItem><SelectItem value="intercessao">Intercessão</SelectItem><SelectItem value="evangelismo">Evangelismo</SelectItem><SelectItem value="casais">Casais</SelectItem><SelectItem value="jovens">Jovens</SelectItem><SelectItem value="consolidacao">Consolidação</SelectItem><SelectItem value="visitas">Visitas</SelectItem><SelectItem value="outro">Outro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Ícone do Ministério</Label>
+                  <p className="mt-1 text-xs text-muted-foreground">Escolha uma opção visual oficial do Ide Fazei.</p>
+                  <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-5">
+                    {MINISTRY_ICON_OPTIONS.map((option) => <button key={option.key} type="button" aria-pressed={form.iconKey === option.key} onClick={() => setForm((current) => ({ ...current, iconKey: option.key }))} className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border p-2 text-center transition ${form.iconKey === option.key ? "border-gold bg-gold/10 text-navy ring-2 ring-gold/30" : "border-border bg-background text-muted-foreground hover:border-gold/50 hover:text-navy"}`}><MinistryIcon iconKey={option.key} className="h-6 w-6" /><span className="text-[10px] leading-tight">{option.label}</span></button>)}
+                  </div>
+                </div>
+                {form.type === "consolidacao" && <p className="rounded-lg border border-gold/30 bg-gold/5 p-3 text-xs leading-relaxed text-navy">Os participantes deste Ministério terão acesso à aba de Consolidação como equipe de cuidado. A liderança continuará responsável por aceitar as indicações; depois da aprovação, o Consolidador atribuído poderá assumir o cuidado.</p>}
+                {form.type === "visitas" && <p className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs leading-relaxed text-navy">Os participantes deste Ministério terão acesso à área <strong>Consolidação → Visitas</strong> como equipe de Visitadores. O líder poderá organizar os liderados no painel da equipe, e os Visitadores poderão aceitar as visitas disponíveis para assumir o atendimento.</p>}
+                {isTeamMinistryType(form.type) && canManageRoles && <div>
+                  <Label>{form.type === "visitas" ? "Envolvidos em Visitas" : "Envolvidos na Consolidação"}</Label>
+                  <div className="mt-2 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-border bg-background p-2">
+                    {(people ?? []).length === 0 ? <p className="p-2 text-xs text-muted-foreground">Nenhuma Pessoa disponível para seleção.</p> : (people ?? []).map((person) => <label key={person.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-navy hover:bg-muted"><input type="checkbox" checked={form.participantIds.includes(String(person.id))} onChange={(event) => setForm((current) => ({ ...current, participantIds: event.target.checked ? Array.from(new Set([...current.participantIds, String(person.id)])) : current.participantIds.filter((id) => id !== String(person.id)) }))} />{person.fullName}</label>)}
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">A seleção será gravada junto com o Ministério e poderá ser ampliada depois pelo painel da equipe.</p>
+                </div>}
+                {canManageRoles && <div>
+                  <Label htmlFor="ministry-leader">Líder responsável</Label>
+                  <Select value={form.leaderId || "none"} onValueChange={(leaderId) => setForm({ ...form, leaderId: leaderId === "none" ? "" : leaderId })}>
+                    <SelectTrigger id="ministry-leader" className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="none">Definir depois</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>}
+                </AdaptiveFormDialogBody>
+                <AdaptiveFormDialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={createMutation.isPending}>Cancelar</Button>
+                  <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending}>
+                    {createMutation.isPending ? "Criando..." : "Criar"}
+                  </Button>
+                </AdaptiveFormDialogFooter>
+              </form>
+            </AdaptiveFormDialogContent>
+          </Dialog>}
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          {[
+            { label: "Ministérios ativos", value: ministries?.length ?? 0, icon: Music, color: "text-purple-600" },
+            { label: "Pessoas em equipes", value: ministries?.reduce((a: number, m: { memberCount?: number }) => a + (m.memberCount ?? 0), 0) ?? 0, icon: Users, color: "text-blue-600" },
+            { label: "Com líder definido", value: ministries?.filter((m: { leaderId?: number | null }) => m.leaderId).length ?? 0, icon: Star, color: "text-gold" },
+          ].map((stat) => (
+            <div key={stat.label} className="card-sacred p-4 flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-lg bg-muted flex items-center justify-center ${stat.color}`}>
+                <stat.icon className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-navy">{stat.value}</div>
+                <div className="text-xs text-muted-foreground">{stat.label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Search */}
+        <div className="relative mb-4">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar equipe ou Ministério..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs text-muted-foreground">Acompanhe a liderança sem abrir cada ficha.</p>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "todos" | "sem_lider")}>
+            <SelectTrigger className="w-full sm:w-56" aria-label="Filtrar Ministérios por acompanhamento"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os Ministérios</SelectItem>
+              <SelectItem value="sem_lider">Sem líder responsável</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Grid */}
+        {isLoading ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="card-sacred p-5 h-32 animate-pulse bg-muted" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="card-sacred flex flex-col items-center gap-3 p-10 text-center sm:p-12">
+            <Music className="h-12 w-12 text-muted-foreground/40" />
+            <p className="font-medium text-navy">{search ? "Nenhum ministério encontrado" : statusFilter === "sem_lider" ? "Nenhum ministério sem líder" : canCreateMinistry ? "Nenhum ministério por aqui" : "Nenhum ministério no seu escopo"}</p>
+            <p className="max-w-sm text-sm text-muted-foreground">{search ? "Tente outro nome ou limpe a busca." : statusFilter === "sem_lider" ? "Todos os ministérios visíveis já têm um líder definido." : canCreateMinistry ? "Organize as equipes de serviço e defina seus responsáveis." : "Quando a liderança direcionar você para uma equipe, ela aparecerá aqui."}</p>
+            {search ? <Button type="button" variant="outline" onClick={() => setSearch("")}>Limpar busca</Button> : statusFilter === "sem_lider" ? <Button type="button" variant="outline" onClick={() => setStatusFilter("todos")}>Ver todos</Button> : canCreateMinistry ? <Button type="button" className="bg-navy text-white hover:bg-navy-light" onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />Criar primeiro ministério</Button> : null}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {filtered.map((ministry: { id: number; name: string; type?: string | null; iconKey?: string | null; description?: string | null; memberCount?: number; leaderId?: number | null; leaderName?: string | null; viceLeaderName?: string | null }) => {
+              const iconKey = ministry.iconKey ?? DEFAULT_MINISTRY_ICON_KEY;
+              return (
+                <div
+                  key={ministry.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => { setSelectedMinistry(ministry); setSelectedPersonId(""); }}
+                  onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedMinistry(ministry); setSelectedPersonId(""); } }}
+                  className="card-sacred group relative w-full cursor-pointer p-5 text-left transition-all hover:border-gold/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+                  aria-label={`Abrir equipe do Ministério ${ministry.name}`}
+                >
+                  <div className="mb-3 flex items-start justify-between gap-2">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold/10 text-gold"><MinistryIcon iconKey={iconKey} className="h-7 w-7" /></div>
+                    {canCreateMinistry && <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Excluir ${ministry.name}`} onClick={(event) => { event.stopPropagation(); setArchiveTarget({ id: ministry.id, name: ministry.name }); }}><Trash2 className="h-4 w-4" /></Button>}
+                  </div>
+                  <h3 className="font-semibold text-navy text-sm mb-1">{ministry.name}</h3>
+                  {isConsolidationMinistry(ministry) && <Badge variant="outline" className="mb-2 border-gold/40 bg-gold/5 text-[10px] text-navy">Acesso à Consolidação</Badge>}
+                  {isVisitsMinistry(ministry) && <Badge variant="outline" className="mb-2 border-blue-200 bg-blue-50/70 text-[10px] text-blue-900">Acesso à Consolidação → Visitas</Badge>}
+                  {ministry.description && (
+                    <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{ministry.description}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground mb-2">Líder: <span className="font-medium text-navy">{ministry.leaderName ?? "Não definido"}</span></p>
+                  <p className="text-xs text-muted-foreground mb-2">Vice-líder: <span className="font-medium text-navy">{ministry.viceLeaderName ?? "Não definido"}</span></p>
+                  <div className="flex items-center gap-2 mt-auto">
+                    <Badge variant="outline" className="text-xs">
+                      <Users className="w-3 h-3 mr-1" />
+                      {ministry.memberCount ?? 0} pessoas
+                    </Badge>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <Dialog open={Boolean(selectedMinistry)} onOpenChange={(nextOpen) => !nextOpen && setSelectedMinistry(null)}>
+          <AdaptiveFormDialogContent className="sm:max-w-3xl">
+            <div className={adaptiveFormDialogHeaderClassName}>
+              <div className="flex flex-col gap-2 pr-8 sm:flex-row sm:items-center sm:justify-between">
+                <DialogTitle className="font-display text-navy">{canCreateMinistry ? "Equipe do Ministério" : "Minha equipe"}: {selectedMinistry?.name}</DialogTitle>
+                {canCreateMinistry && <Button type="button" variant="outline" size="sm" className="w-fit gap-2" onClick={openEditMinistry}><Edit3 className="h-4 w-4" />Editar Ministério</Button>}
+              </div>
+            </div>
+            <AdaptiveFormDialogBody className="space-y-4">
+              <p className="text-sm text-muted-foreground">{selectedMinistry && isConsolidationMinistry(selectedMinistry) ? "Adicione os envolvidos no cuidado. Cada participante ativo recebe acesso à aba de Consolidação; a aprovação da indicação e a assunção do cuidado continuam sendo etapas diferentes." : selectedMinistry && isVisitsMinistry(selectedMinistry) ? "Adicione os Visitadores deste Ministério. Eles poderão acessar Consolidação → Visitas e aceitar as visitas disponíveis; o líder continua responsável por organizar a equipe." : canCreateMinistry ? "Aqui você organiza a equipe, a liderança e a rotina deste Ministério." : "Aqui você gerencia somente as Pessoas e as funções operacionais deste Ministério."}</p>
+              <section className="rounded-xl border border-border bg-muted/20 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-navy">Acompanhamento do Ministério</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Uma leitura rápida da organização atual, sem criar uma nova agenda.</p>
+                  </div>
+                  <Badge variant="outline" className={operationalAttention.length > 0 ? "border-gold/50 bg-gold/10 text-navy" : "border-emerald-200 bg-emerald-50 text-emerald-800"}>{operationalAttention.length > 0 ? `${operationalAttention.length} ${operationalAttention.length === 1 ? "atenção" : "atenções"}` : "Organizado"}</Badge>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className="rounded-lg border border-border/70 bg-background p-3"><p className="text-[11px] text-muted-foreground">Pessoas</p><p className="mt-1 text-sm font-semibold text-navy">{ministryMembers.isLoading ? "…" : ministryMemberRows.length}</p></div>
+                  <div className="rounded-lg border border-border/70 bg-background p-3"><p className="text-[11px] text-muted-foreground">Liderança</p><p className="mt-1 text-sm font-semibold text-navy">{selectedMinistry?.leaderId ? "Definida" : "Pendente"}</p></div>
+                  <div className="rounded-lg border border-border/70 bg-background p-3"><p className="text-[11px] text-muted-foreground">Próxima escala</p><p className="mt-1 text-sm font-semibold text-navy">{upcomingSchedules.isLoading ? "…" : (upcomingSchedules.data ?? []).length > 0 ? "Agendada" : "Pendente"}</p></div>
+                </div>
+                {operationalAttention.length > 0 && <div className="mt-3 rounded-lg border border-gold/30 bg-gold/5 p-3"><p className="text-xs font-semibold text-navy">Próximas ações</p><ul className="mt-1 space-y-1 text-xs text-muted-foreground">{operationalAttention.map((item) => <li key={item}>• {item}</li>)}</ul><p className="mt-2 text-[11px] text-muted-foreground">Use as seções abaixo para resolver cada ponto; os registros continuam nas áreas oficiais do sistema.</p></div>}
+              </section>
+              {canManageRoles && <div className="rounded-xl border border-gold/30 bg-gold/5 p-3">
+                <Label htmlFor="selected-ministry-leader">Líder responsável</Label>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <Select value={selectedMinistry?.leaderId ? String(selectedMinistry.leaderId) : "none"} onValueChange={(leaderId) => updateLeader.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, leaderId: leaderId === "none" ? null : Number(leaderId) })}>
+                    <SelectTrigger id="selected-ministry-leader" className="flex-1"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="none">Sem líder definido</SelectItem>{(people ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {updateLeader.isPending && <span className="self-center text-xs text-muted-foreground">Atualizando…</span>}
+                </div>
+              </div>}
+              {selectedMinistry?.canManageViceLeader && <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
+                <Label htmlFor="selected-ministry-vice-leader">{MINISTRY_VICE_LEADER_LABEL}</Label>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Apoia a rotina deste Ministério sem receber permissões administrativas gerais. A atribuição fica registrada com o responsável que a realizou.</p>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Select value={ministryMemberRows.find((item) => (item.roles ?? []).some((role) => role.key === MINISTRY_VICE_LEADER_ROLE_KEY))?.person.id.toString() ?? "none"} onValueChange={saveViceLeader}>
+                    <SelectTrigger id="selected-ministry-vice-leader" className="flex-1"><SelectValue placeholder="Sem vice-líder definido" /></SelectTrigger>
+                    <SelectContent><SelectItem value="none">Sem vice-líder definido</SelectItem>{ministryMemberRows.filter((item) => item.person.id !== selectedMinistry?.leaderId).map((item) => <SelectItem key={item.person.id} value={String(item.person.id)}>{item.person.fullName}</SelectItem>)}</SelectContent>
+                  </Select>
+                  {(assignFunction.isPending || removeFunction.isPending) && <span className="self-center text-xs text-muted-foreground">Atualizando…</span>}
+                </div>
+              </div>}
+              {selectedMinistry?.canManage ? <div className="flex flex-col gap-2 sm:flex-row">
+                <Select value={selectedPersonId} onValueChange={setSelectedPersonId}>
+                  <SelectTrigger className="flex-1"><SelectValue placeholder="Selecione uma Pessoa" /></SelectTrigger>
+                  <SelectContent>{(ministryCandidates.data ?? []).map((person) => <SelectItem key={person.id} value={String(person.id)}>{person.fullName}</SelectItem>)}</SelectContent>
+                </Select>
+                <Button type="button" onClick={addSelectedPerson} disabled={assignPerson.isPending || ministryCandidates.isLoading} className="bg-navy text-white hover:bg-navy-light">
+                  {assignPerson.isPending ? "Adicionando…" : "Adicionar pessoa à equipe"}
+                </Button>
+              </div> : <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">Somente o Pastor ou o responsável deste Ministério pode alterar a equipe.</p>}
+              <div className="rounded-xl border border-border">
+                <div className="border-b border-border px-4 py-3 text-sm font-semibold text-navy">Pessoas na equipe ({ministryMembers.data?.length ?? 0})</div>
+                {ministryMembers.isLoading ? <div className="p-4 text-sm text-muted-foreground">Carregando equipe…</div> : (ministryMembers.data ?? []).length === 0 ? <div className="p-4 text-sm text-muted-foreground">Nenhuma Pessoa adicionada ainda.</div> : (
+                  <div className="divide-y divide-border">{(ministryMembers.data ?? []).map((item) => <div key={item.membership.id} className="flex items-start gap-3 px-4 py-3"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">{item.person.fullName.charAt(0)}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium text-navy">{item.person.fullName}</p><div className="mt-1 flex flex-wrap gap-1">{selectedMinistry?.leaderId === item.person.id && <Badge variant="secondary" className="text-[10px]">Líder responsável</Badge>}{(item.roles ?? []).map((role) => <span key={role.id} className="inline-flex items-center gap-0.5 rounded-full border border-border bg-background pl-1.5 text-[10px] text-muted-foreground"><span>{role.label}</span>{selectedMinistry?.canManage && <button type="button" className="rounded-full p-0.5 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Remover função ${role.label} de ${item.person.fullName}`} onClick={() => removeFunction.mutate({ churchId: churchId!, id: role.id })}><Trash2 className="h-2.5 w-2.5" /></button>}</span>)}{selectedMinistry?.leaderId !== item.person.id && (item.roles ?? []).length === 0 && <span className="text-[11px] text-muted-foreground">Participante</span>}</div></div>{selectedMinistry?.canManage && selectedMinistry.leaderId !== item.person.id && <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground hover:bg-red-50 hover:text-red-700" aria-label={`Remover ${item.person.fullName}`} onClick={() => removePerson.mutate({ churchId: churchId!, ministryId: selectedMinistry.id, personId: item.person.id })}><Trash2 className="h-4 w-4" /></Button>}</div>)}</div>
+                )}
+              </div>
+              {selectedMinistry && (
+                <section className="rounded-xl border border-border bg-background p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="flex items-center gap-2 text-sm font-semibold text-navy"><Calendar className="h-4 w-4 text-gold" />Próximas escalas</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Resumo da agenda oficial deste Ministério.</p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" className="w-fit" onClick={() => navigate(`/app/escalas?ministerio=${selectedMinistry.id}`)}>Ver em Escalas</Button>
+                  </div>
+                  {upcomingSchedules.isLoading ? <div className="mt-3 space-y-2"><div className="h-10 animate-pulse rounded-lg bg-muted" /><div className="h-10 animate-pulse rounded-lg bg-muted" /></div> : (upcomingSchedules.data ?? []).length === 0 ? <p className="mt-3 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">Nenhuma escala futura cadastrada para este Ministério.</p> : <div className="mt-3 space-y-2">{upcomingSchedules.data?.map((scale) => <div key={scale.id} className="flex items-start gap-3 rounded-lg border border-border/70 bg-muted/20 p-3"><Calendar className="mt-0.5 h-4 w-4 shrink-0 text-gold" /><div className="min-w-0 flex-1"><p className="text-sm font-medium text-navy">{formatScheduleDate(scale.scheduledDate)}</p><p className="mt-0.5 text-xs text-muted-foreground">{scale.startTime && scale.endTime ? <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{scale.startTime}–{scale.endTime}</span> : "Horário não definido"}{scale.departmentName ? ` · ${scale.departmentName}` : ""}</p><p className="mt-0.5 text-xs text-muted-foreground">{scale.personName ?? "Pessoa da equipe"}{scale.role ? ` · ${scale.role}` : ""}</p></div></div>)}</div>}
+                </section>
+              )}
+              {selectedMinistry?.canManage && (
+                <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4">
+                  <p className="text-sm font-semibold text-navy">Atuação na equipe</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Você pode atribuir apenas funções de operação desta equipe. Líder, co-líder e supervisor continuam sendo nomeados pelo Pastor.</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                    <Select value={functionPersonId} onValueChange={setFunctionPersonId}>
+                      <SelectTrigger><SelectValue placeholder="Pessoa da equipe" /></SelectTrigger>
+                      <SelectContent>{(ministryMembers.data ?? []).map((item) => <SelectItem key={item.person.id} value={String(item.person.id)}>{item.person.fullName}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Select value={selectedRoleKey} onValueChange={setSelectedRoleKey}>
+                      <SelectTrigger><SelectValue placeholder="Função permitida" /></SelectTrigger>
+                      <SelectContent>{(functionCatalog.data ?? []).filter((role) => role.key !== MINISTRY_VICE_LEADER_ROLE_KEY && (canManageRoles || OPERATIONAL_FUNCTION_KEYS.has(role.key) || role.grants.length === 0)).map((role) => <SelectItem key={role.key} value={role.key}>{role.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button type="button" onClick={saveFunction} disabled={assignFunction.isPending}>{assignFunction.isPending ? "Salvando…" : "Atribuir"}</Button>
+                  </div>
+                </section>
+              )}
+              {selectedMinistry?.canManage && isConsolidationMinistry(selectedMinistry) && <ConsolidationReferralBox churchId={churchId!} candidates={(ministryMembers.data ?? []).map((item) => ({ id: item.person.id, fullName: item.person.fullName }))} sourceLabel={`Ministério ${selectedMinistry.name}`} />}
+              {selectedMinistry && churchId && <details className="group rounded-xl border border-border bg-muted/20">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 [&::-webkit-details-marker]:hidden">
+                  <span><span className="block text-sm font-semibold text-navy">Departamentos <span className="font-normal text-muted-foreground">(opcional)</span></span><span className="mt-0.5 block text-xs text-muted-foreground">Use quando o Ministério precisar de subequipes.</span></span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="border-t border-border p-2"><DepartmentsPanel churchId={churchId} ministry={{ id: selectedMinistry.id, name: selectedMinistry.name }} canCreateDepartment={canCreateMinistry} canAssignLeader={canManageRoles} people={people ?? []} /></div>
+              </details>}
+              {canCreateMinistry && <details className="group rounded-xl border border-gold/30 bg-cream/40">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 [&::-webkit-details-marker]:hidden">
+                  <span><span className="block text-sm font-semibold text-navy">Funções avançadas</span><span className="mt-0.5 block text-xs text-muted-foreground">Disponível somente para o Pastor.</span></span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="space-y-3 border-t border-gold/20 p-4">
+                <p className="text-sm font-semibold text-navy">Funções personalizadas</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">Depois de criar uma função, ela aparecerá no seletor de atuação da equipe. Funções que alteram acessos continuam sob responsabilidade do Pastor.</p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input value={customRoleName} onChange={(event) => setCustomRoleName(event.target.value)} placeholder="Ex.: Líder de Louvor" />
+                  <Select value={customRolePackage} onValueChange={setCustomRolePackage}>
+                    <SelectTrigger className="sm:w-52"><SelectValue /></SelectTrigger>
+                    <SelectContent><SelectItem value="member">Membro</SelectItem><SelectItem value="ministry_leader">Liderança de Ministério</SelectItem><SelectItem value="visitor">Visitador</SelectItem><SelectItem value="consolidator">Consolidador</SelectItem><SelectItem value="cell_leader">Líder de Célula</SelectItem><SelectItem value="treasurer">Tesouraria</SelectItem><SelectItem value="communication_leader">Comunicação</SelectItem></SelectContent>
+                  </Select>
+                  <Button type="button" onClick={addCustomFunction} disabled={createCustomFunction.isPending}>Criar</Button>
+                </div>
+                <div className="flex flex-wrap gap-2">{(customFunctions.data ?? []).filter((role) => !role.ministryId || role.ministryId === selectedMinistry?.id).map((role) => <Badge key={role.id} variant="outline">{role.name}</Badge>)}</div>
+                </div>
+              </details>}
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button type="button" variant="outline" onClick={() => setSelectedMinistry(null)}>Fechar</Button>
+            </AdaptiveFormDialogFooter>
+          </AdaptiveFormDialogContent>
+        </Dialog>
+
+        <AlertDialog open={Boolean(archiveTarget)} onOpenChange={(nextOpen) => !nextOpen && !archiveMutation.isPending && setArchiveTarget(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir Ministério?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O Ministério <strong>{archiveTarget?.name}</strong> será removido da lista ativa. O histórico será preservado e os vínculos operacionais serão encerrados. Se houver escalas agendadas ou encaminhamentos de Consolidação vinculados, a exclusão será bloqueada.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={archiveMutation.isPending}>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={archiveMutation.isPending}
+                className="bg-red-700 text-white hover:bg-red-800"
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (archiveTarget) archiveMutation.mutate({ churchId: churchId!, ministryId: archiveTarget.id });
+                }}
+              >
+                {archiveMutation.isPending ? "Excluindo…" : "Excluir Ministério"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <Dialog open={editOpen} onOpenChange={(nextOpen) => nextOpen ? setEditOpen(true) : closeEditMinistry()}>
+          <AdaptiveFormDialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="font-display text-navy">Editar Ministério</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={saveEditMinistry} className="space-y-4">
+              <div><Label htmlFor="edit-ministry-name">Nome do Ministério *</Label><Input id="edit-ministry-name" className="mt-1" value={editForm.name} onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))} /></div>
+              <div><Label htmlFor="edit-ministry-description">Descrição</Label><Input id="edit-ministry-description" className="mt-1" value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} placeholder="Descreva a finalidade do Ministério" /></div>
+              <div>
+                <Label>Ícone do Ministério</Label>
+                <div className="mt-2 grid grid-cols-4 gap-2 sm:grid-cols-5">
+                  {MINISTRY_ICON_OPTIONS.map((option) => <button key={option.key} type="button" aria-pressed={editForm.iconKey === option.key} onClick={() => setEditForm((current) => ({ ...current, iconKey: option.key }))} className={`flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border p-2 text-center transition ${editForm.iconKey === option.key ? "border-gold bg-gold/10 text-navy ring-2 ring-gold/30" : "border-border bg-background text-muted-foreground hover:border-gold/50 hover:text-navy"}`}><MinistryIcon iconKey={option.key} className="h-6 w-6" /><span className="text-[10px] leading-tight">{option.label}</span></button>)}
+                </div>
+              </div>
+              <AdaptiveFormDialogFooter><Button type="button" variant="outline" onClick={closeEditMinistry}>Cancelar</Button><Button type="submit" className="bg-navy text-white" disabled={updateMutation.isPending}>{updateMutation.isPending ? "Salvando…" : "Salvar alterações"}</Button></AdaptiveFormDialogFooter>
+            </form>
+          </AdaptiveFormDialogContent>
+        </Dialog>
+      </div>
+  );
+}

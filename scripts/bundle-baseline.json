@@ -1,0 +1,1986 @@
+{
+  "schemaVersion": 1,
+  "source": "approved-local-build-2026-10-16-foundation-phase-two-stage-reflections",
+  "files": {
+    "__manus__/debug-collector.js": {
+      "logicalName": "debug-collector.js",
+      "type": "js",
+      "bytes": 25168,
+      "gzipBytes": 5679
+    },
+    "assets/Aconselhamento-sVcKDzhU.js": {
+      "logicalName": "Aconselhamento.js",
+      "type": "js",
+      "bytes": 14982,
+      "gzipBytes": 3404
+    },
+    "assets/AdaptiveFormDialog-vIhWvvQJ.js": {
+      "logicalName": "AdaptiveFormDialog.js",
+      "type": "js",
+      "bytes": 1554,
+      "gzipBytes": 701
+    },
+    "assets/AdminPanel-BpcuCSt1.js": {
+      "logicalName": "AdminPanel.js",
+      "type": "js",
+      "bytes": 32747,
+      "gzipBytes": 6570
+    },
+    "assets/AppLider-EKEqvmK_.js": {
+      "logicalName": "AppLider.js",
+      "type": "js",
+      "bytes": 20393,
+      "gzipBytes": 4763
+    },
+    "assets/AreaMembro-x1cf-BvB.js": {
+      "logicalName": "AreaMembro.js",
+      "type": "js",
+      "bytes": 34811,
+      "gzipBytes": 8022
+    },
+    "assets/Batismo-c_qHmHG4.js": {
+      "logicalName": "Batismo.js",
+      "type": "js",
+      "bytes": 13083,
+      "gzipBytes": 3296
+    },
+    "assets/Biblioteca-DvmWd2Ft.js": {
+      "logicalName": "Biblioteca.js",
+      "type": "js",
+      "bytes": 12553,
+      "gzipBytes": 3549
+    },
+    "assets/CadastroDiscipulo-BUPuSvQ1.js": {
+      "logicalName": "CadastroDiscipulo.js",
+      "type": "js",
+      "bytes": 20032,
+      "gzipBytes": 4025
+    },
+    "assets/CadastroIgreja-DfK4uw12.js": {
+      "logicalName": "CadastroIgreja.js",
+      "type": "js",
+      "bytes": 17916,
+      "gzipBytes": 3515
+    },
+    "assets/CadastroPublico-DiDK5c9U.js": {
+      "logicalName": "CadastroPublico.js",
+      "type": "js",
+      "bytes": 17044,
+      "gzipBytes": 3894
+    },
+    "assets/CadastroSucesso-dXITTCHw.js": {
+      "logicalName": "CadastroSucesso.js",
+      "type": "js",
+      "bytes": 6001,
+      "gzipBytes": 1550
+    },
+    "assets/Celulas-a7hHVWqg.js": {
+      "logicalName": "Celulas.js",
+      "type": "js",
+      "bytes": 75627,
+      "gzipBytes": 16100
+    },
+    "assets/CentralCuidado-DEHya5R5.js": {
+      "logicalName": "CentralCuidado.js",
+      "type": "js",
+      "bytes": 14754,
+      "gzipBytes": 3671
+    },
+    "assets/CheckinEvento-DPRyGn_o.js": {
+      "logicalName": "CheckinEvento.js",
+      "type": "js",
+      "bytes": 4883,
+      "gzipBytes": 1463
+    },
+    "assets/Comunicacao-jz8Jm1Bu.js": {
+      "logicalName": "Comunicacao.js",
+      "type": "js",
+      "bytes": 15345,
+      "gzipBytes": 3770
+    },
+    "assets/Configuracoes-DczmZpLj.js": {
+      "logicalName": "Configuracoes.js",
+      "type": "js",
+      "bytes": 142150,
+      "gzipBytes": 27896
+    },
+    "assets/ConfiguracoesCertificados--WqGzbLY.js": {
+      "logicalName": "ConfiguracoesCertificados.js",
+      "type": "js",
+      "bytes": 44688,
+      "gzipBytes": 9985
+    },
+    "assets/ConfirmDestructiveActionDialog-BWrQCa-w.js": {
+      "logicalName": "ConfirmDestructiveActionDialog.js",
+      "type": "js",
+      "bytes": 1628,
+      "gzipBytes": 649
+    },
+    "assets/ConfirmarEmail-CQKwuz-R.js": {
+      "logicalName": "ConfirmarEmail.js",
+      "type": "js",
+      "bytes": 4542,
+      "gzipBytes": 1593
+    },
+    "assets/Consolidacao-JXkGYDbI.js": {
+      "logicalName": "Consolidacao.js",
+      "type": "js",
+      "bytes": 76818,
+      "gzipBytes": 14871
+    },
+    "assets/Contato-DvNJoMzL.js": {
+      "logicalName": "Contato.js",
+      "type": "js",
+      "bytes": 10633,
+      "gzipBytes": 2603
+    },
+    "assets/Dashboard-BCG2AC1f.js": {
+      "logicalName": "Dashboard.js",
+      "type": "js",
+      "bytes": 395993,
+      "gzipBytes": 107612
+    },
+    "assets/Demo-a4GJ5lY4.js": {
+      "logicalName": "Demo.js",
+      "type": "js",
+      "bytes": 20651,
+      "gzipBytes": 4902
+    },
+    "assets/DevocionalDiario-8K2l5vxr.js": {
+      "logicalName": "DevocionalDiario.js",
+      "type": "js",
+      "bytes": 9391,
+      "gzipBytes": 2378
+    },
+    "assets/DoacaoPublica-DYoqFVOb.js": {
+      "logicalName": "DoacaoPublica.js",
+      "type": "js",
+      "bytes": 17800,
+      "gzipBytes": 4418
+    },
+    "assets/EncontroComDeus-CBN4_8si.js": {
+      "logicalName": "EncontroComDeus.js",
+      "type": "js",
+      "bytes": 16247,
+      "gzipBytes": 3898
+    },
+    "assets/EncontroComDeusDetalhe-DlZnbh9a.js": {
+      "logicalName": "EncontroComDeusDetalhe.js",
+      "type": "js",
+      "bytes": 59118,
+      "gzipBytes": 10035
+    },
+    "assets/EncontroFichaPublica-Dw_FZw2J.js": {
+      "logicalName": "EncontroFichaPublica.js",
+      "type": "js",
+      "bytes": 17142,
+      "gzipBytes": 3854
+    },
+    "assets/Escalas-CP65yetm.js": {
+      "logicalName": "Escalas.js",
+      "type": "js",
+      "bytes": 23853,
+      "gzipBytes": 5968
+    },
+    "assets/EscolaFundamentos-CCZYgQXL.js": {
+      "logicalName": "EscolaFundamentos.js",
+      "type": "js",
+      "bytes": 160527,
+      "gzipBytes": 29068
+    },
+    "assets/EscolaLideres-qhBjqU1k.js": {
+      "logicalName": "EscolaLideres.js",
+      "type": "js",
+      "bytes": 20164,
+      "gzipBytes": 4468
+    },
+    "assets/EscolaLideresAluno-CwyLkeYz.js": {
+      "logicalName": "EscolaLideresAluno.js",
+      "type": "js",
+      "bytes": 10169,
+      "gzipBytes": 2611
+    },
+    "assets/EscolaLideresProfessor-D8bOIxQG.js": {
+      "logicalName": "EscolaLideresProfessor.js",
+      "type": "js",
+      "bytes": 19572,
+      "gzipBytes": 4264
+    },
+    "assets/EstruturaOrganizacional-BehzBQlN.js": {
+      "logicalName": "EstruturaOrganizacional.js",
+      "type": "js",
+      "bytes": 4210,
+      "gzipBytes": 1189
+    },
+    "assets/EstudosCelulas-BqMLtIvx.js": {
+      "logicalName": "EstudosCelulas.js",
+      "type": "js",
+      "bytes": 40330,
+      "gzipBytes": 7660
+    },
+    "assets/EventoInscricaoPublica-uGEewZY0.js": {
+      "logicalName": "EventoInscricaoPublica.js",
+      "type": "js",
+      "bytes": 18453,
+      "gzipBytes": 3847
+    },
+    "assets/Eventos-C9tkRllx.js": {
+      "logicalName": "Eventos.js",
+      "type": "js",
+      "bytes": 83016,
+      "gzipBytes": 17505
+    },
+    "assets/Familias-d5otE9rL.js": {
+      "logicalName": "Familias.js",
+      "type": "js",
+      "bytes": 15244,
+      "gzipBytes": 3747
+    },
+    "assets/Faturamento-CLgFOPNm.js": {
+      "logicalName": "Faturamento.js",
+      "type": "js",
+      "bytes": 12655,
+      "gzipBytes": 3394
+    },
+    "assets/FoundationStudyPreviewPage-UttTlUjE.js": {
+      "logicalName": "FoundationStudyPreviewPage.js",
+      "type": "js",
+      "bytes": 20189,
+      "gzipBytes": 4558
+    },
+    "assets/FunilDiscipulado-jro01F_c.js": {
+      "logicalName": "FunilDiscipulado.js",
+      "type": "js",
+      "bytes": 14762,
+      "gzipBytes": 3405
+    },
+    "assets/GanharAlmas-CSZIg1Dx.js": {
+      "logicalName": "GanharAlmas.js",
+      "type": "js",
+      "bytes": 54603,
+      "gzipBytes": 15416
+    },
+    "assets/GestaoLideranca-Du7zv2Rj.js": {
+      "logicalName": "GestaoLideranca.js",
+      "type": "js",
+      "bytes": 11250,
+      "gzipBytes": 2920
+    },
+    "assets/Inicio-DxzIGtyy.js": {
+      "logicalName": "Inicio.js",
+      "type": "js",
+      "bytes": 18637,
+      "gzipBytes": 4642
+    },
+    "assets/LandingPage-BvpVsDPT.js": {
+      "logicalName": "LandingPage.js",
+      "type": "js",
+      "bytes": 25149,
+      "gzipBytes": 5442
+    },
+    "assets/LoginIgreja-C_lOozq4.js": {
+      "logicalName": "LoginIgreja.js",
+      "type": "js",
+      "bytes": 16240,
+      "gzipBytes": 4154
+    },
+    "assets/Ministerios-CCwCpzXx.js": {
+      "logicalName": "Ministerios.js",
+      "type": "js",
+      "bytes": 74358,
+      "gzipBytes": 14602
+    },
+    "assets/Mural-BDLXy-7g.js": {
+      "logicalName": "Mural.js",
+      "type": "js",
+      "bytes": 26173,
+      "gzipBytes": 6319
+    },
+    "assets/Onboarding-rDqvNRSS.js": {
+      "logicalName": "Onboarding.js",
+      "type": "js",
+      "bytes": 18878,
+      "gzipBytes": 5100
+    },
+    "assets/OnlineContributionsSection-D-FWQ8Yk.js": {
+      "logicalName": "OnlineContributionsSection.js",
+      "type": "js",
+      "bytes": 27658,
+      "gzipBytes": 5341
+    },
+    "assets/OpenStreetMap-CIGW-MKW.css": {
+      "logicalName": "OpenStreetMap.css",
+      "type": "css",
+      "bytes": 15607,
+      "gzipBytes": 6447
+    },
+    "assets/OpenStreetMap-Dn5jYiDb.js": {
+      "logicalName": "OpenStreetMap.js",
+      "type": "js",
+      "bytes": 154664,
+      "gzipBytes": 45208
+    },
+    "assets/Oracao-cSYS8cAN.js": {
+      "logicalName": "Oracao.js",
+      "type": "js",
+      "bytes": 10717,
+      "gzipBytes": 2827
+    },
+    "assets/PDFButton-CyVf3YG8.js": {
+      "logicalName": "PDFButton.js",
+      "type": "js",
+      "bytes": 429374,
+      "gzipBytes": 177759
+    },
+    "assets/Pessoas-CYgqXPqd.js": {
+      "logicalName": "Pessoas.js",
+      "type": "js",
+      "bytes": 129658,
+      "gzipBytes": 27388
+    },
+    "assets/Placeholder-skihkM_m.js": {
+      "logicalName": "Placeholder.js",
+      "type": "js",
+      "bytes": 1666,
+      "gzipBytes": 606
+    },
+    "assets/Planos-BBot-sSk.js": {
+      "logicalName": "Planos.js",
+      "type": "js",
+      "bytes": 12109,
+      "gzipBytes": 3637
+    },
+    "assets/PortalVisitante-DYoUNgFE.js": {
+      "logicalName": "PortalVisitante.js",
+      "type": "js",
+      "bytes": 13306,
+      "gzipBytes": 3781
+    },
+    "assets/PublicDonationsSection-B1F5lAkq.js": {
+      "logicalName": "PublicDonationsSection.js",
+      "type": "js",
+      "bytes": 15446,
+      "gzipBytes": 3653
+    },
+    "assets/RadarEspiritual-YHvp1JCq.js": {
+      "logicalName": "RadarEspiritual.js",
+      "type": "js",
+      "bytes": 16351,
+      "gzipBytes": 4098
+    },
+    "assets/Recursos-CSJLbegj.js": {
+      "logicalName": "Recursos.js",
+      "type": "js",
+      "bytes": 10388,
+      "gzipBytes": 3454
+    },
+    "assets/RedefinirSenha-Cp8vZdGK.js": {
+      "logicalName": "RedefinirSenha.js",
+      "type": "js",
+      "bytes": 6543,
+      "gzipBytes": 1996
+    },
+    "assets/ReportButton-CneeMfdL.js": {
+      "logicalName": "ReportButton.js",
+      "type": "js",
+      "bytes": 1251,
+      "gzipBytes": 758
+    },
+    "assets/StudentLearningExperience-BsX4aJxq.js": {
+      "logicalName": "StudentLearningExperience.js",
+      "type": "js",
+      "bytes": 50927,
+      "gzipBytes": 9580
+    },
+    "assets/TenantPublicFooter-BdPvO_4-.js": {
+      "logicalName": "TenantPublicFooter.js",
+      "type": "js",
+      "bytes": 7209,
+      "gzipBytes": 1949
+    },
+    "assets/TenantPublicPage-D9jtMIA1.js": {
+      "logicalName": "TenantPublicPage.js",
+      "type": "js",
+      "bytes": 24980,
+      "gzipBytes": 4925
+    },
+    "assets/TenantPublicShell-C0esRj72.js": {
+      "logicalName": "TenantPublicShell.js",
+      "type": "js",
+      "bytes": 386,
+      "gzipBytes": 261
+    },
+    "assets/Tesouraria-C2MWJVfp.js": {
+      "logicalName": "Tesouraria.js",
+      "type": "js",
+      "bytes": 143767,
+      "gzipBytes": 31558
+    },
+    "assets/TreasuryEntrySheetHistorySection-BWxoONQ-.js": {
+      "logicalName": "TreasuryEntrySheetHistorySection.js",
+      "type": "js",
+      "bytes": 20507,
+      "gzipBytes": 4645
+    },
+    "assets/TreasuryPayablesSection-D3IS8eya.js": {
+      "logicalName": "TreasuryPayablesSection.js",
+      "type": "js",
+      "bytes": 29024,
+      "gzipBytes": 5563
+    },
+    "assets/TreasuryPdfPreview-C5qk-aWe.js": {
+      "logicalName": "TreasuryPdfPreview.js",
+      "type": "js",
+      "bytes": 6572,
+      "gzipBytes": 2262
+    },
+    "assets/TreasuryPixSettingsSection-Ch8jVftN.js": {
+      "logicalName": "TreasuryPixSettingsSection.js",
+      "type": "js",
+      "bytes": 16688,
+      "gzipBytes": 3853
+    },
+    "assets/TreasuryServiceSection-C0VUqL1i.js": {
+      "logicalName": "TreasuryServiceSection.js",
+      "type": "js",
+      "bytes": 75274,
+      "gzipBytes": 13575
+    },
+    "assets/VisiteNos-CUGJXICF.js": {
+      "logicalName": "VisiteNos.js",
+      "type": "js",
+      "bytes": 20573,
+      "gzipBytes": 5864
+    },
+    "assets/archive-BgMZomZm.js": {
+      "logicalName": "archive.js",
+      "type": "js",
+      "bytes": 422,
+      "gzipBytes": 311
+    },
+    "assets/arrow-left-BJ1dnulH.js": {
+      "logicalName": "arrow-left.js",
+      "type": "js",
+      "bytes": 333,
+      "gzipBytes": 264
+    },
+    "assets/arrow-right-Bovst3eC.js": {
+      "logicalName": "arrow-right.js",
+      "type": "js",
+      "bytes": 333,
+      "gzipBytes": 265
+    },
+    "assets/baby-DiWsNrMT.js": {
+      "logicalName": "baby.js",
+      "type": "js",
+      "bytes": 559,
+      "gzipBytes": 363
+    },
+    "assets/badge-xnGldT0w.js": {
+      "logicalName": "badge.js",
+      "type": "js",
+      "bytes": 1199,
+      "gzipBytes": 587
+    },
+    "assets/cake-vdy39fyB.js": {
+      "logicalName": "cake.js",
+      "type": "js",
+      "bytes": 656,
+      "gzipBytes": 369
+    },
+    "assets/calendar-1qdOeWvt.js": {
+      "logicalName": "calendar.js",
+      "type": "js",
+      "bytes": 426,
+      "gzipBytes": 304
+    },
+    "assets/calendar-clock-Csr3z8iQ.js": {
+      "logicalName": "calendar-clock.js",
+      "type": "js",
+      "bytes": 551,
+      "gzipBytes": 357
+    },
+    "assets/careLabels-BSq46UCn.js": {
+      "logicalName": "careLabels.js",
+      "type": "js",
+      "bytes": 277,
+      "gzipBytes": 222
+    },
+    "assets/chart-column-Ps-Skcch.js": {
+      "logicalName": "chart-column.js",
+      "type": "js",
+      "bytes": 419,
+      "gzipBytes": 295
+    },
+    "assets/chevron-down-BIEopn0e.js": {
+      "logicalName": "chevron-down.js",
+      "type": "js",
+      "bytes": 296,
+      "gzipBytes": 244
+    },
+    "assets/chevron-left-DtczkMHT.js": {
+      "logicalName": "chevron-left.js",
+      "type": "js",
+      "bytes": 298,
+      "gzipBytes": 248
+    },
+    "assets/church-DyFMV_3E.js": {
+      "logicalName": "church.js",
+      "type": "js",
+      "bytes": 628,
+      "gzipBytes": 391
+    },
+    "assets/circle-check-big-CE08oYqQ.js": {
+      "logicalName": "circle-check-big.js",
+      "type": "js",
+      "bytes": 361,
+      "gzipBytes": 282
+    },
+    "assets/circle-dollar-sign-Crdr1a-7.js": {
+      "logicalName": "circle-dollar-sign.js",
+      "type": "js",
+      "bytes": 415,
+      "gzipBytes": 307
+    },
+    "assets/circle-x-9QvxJVAX.js": {
+      "logicalName": "circle-x.js",
+      "type": "js",
+      "bytes": 375,
+      "gzipBytes": 282
+    },
+    "assets/civilDate-Bg1nBpSn.js": {
+      "logicalName": "civilDate.js",
+      "type": "js",
+      "bytes": 853,
+      "gzipBytes": 503
+    },
+    "assets/clipboard-check-KulYDrOC.js": {
+      "logicalName": "clipboard-check.js",
+      "type": "js",
+      "bytes": 472,
+      "gzipBytes": 335
+    },
+    "assets/clock-3-DUrcFzsv.js": {
+      "logicalName": "clock-3.js",
+      "type": "js",
+      "bytes": 355,
+      "gzipBytes": 277
+    },
+    "assets/clock-CJz2_3wE.js": {
+      "logicalName": "clock.js",
+      "type": "js",
+      "bytes": 352,
+      "gzipBytes": 276
+    },
+    "assets/copy-CBLHSpGP.js": {
+      "logicalName": "copy.js",
+      "type": "js",
+      "bytes": 405,
+      "gzipBytes": 311
+    },
+    "assets/dialog-CfIIaFpW.js": {
+      "logicalName": "dialog.js",
+      "type": "js",
+      "bytes": 3903,
+      "gzipBytes": 1340
+    },
+    "assets/discipleshipState-CAcG4_uU.js": {
+      "logicalName": "discipleshipState.js",
+      "type": "js",
+      "bytes": 599,
+      "gzipBytes": 375
+    },
+    "assets/download-DpyArhET.js": {
+      "logicalName": "download.js",
+      "type": "js",
+      "bytes": 431,
+      "gzipBytes": 322
+    },
+    "assets/earth-3GMZZiPV.js": {
+      "logicalName": "earth.js",
+      "type": "js",
+      "bytes": 562,
+      "gzipBytes": 370
+    },
+    "assets/ellipsis-s3jsq7-X.js": {
+      "logicalName": "ellipsis.js",
+      "type": "js",
+      "bytes": 395,
+      "gzipBytes": 269
+    },
+    "assets/eye-BFom-CuN.js": {
+      "logicalName": "eye.js",
+      "type": "js",
+      "bytes": 425,
+      "gzipBytes": 305
+    },
+    "assets/eye-off-C5yCfuiZ.js": {
+      "logicalName": "eye-off.js",
+      "type": "js",
+      "bytes": 598,
+      "gzipBytes": 378
+    },
+    "assets/file-down-BdY5l_YZ.js": {
+      "logicalName": "file-down.js",
+      "type": "js",
+      "bytes": 471,
+      "gzipBytes": 314
+    },
+    "assets/file-text-uWdGABYJ.js": {
+      "logicalName": "file-text.js",
+      "type": "js",
+      "bytes": 501,
+      "gzipBytes": 318
+    },
+    "assets/file-up-Du38FseJ.js": {
+      "logicalName": "file-up.js",
+      "type": "js",
+      "bytes": 469,
+      "gzipBytes": 314
+    },
+    "assets/git-branch-VT5MAY-Z.js": {
+      "logicalName": "git-branch.js",
+      "type": "js",
+      "bytes": 448,
+      "gzipBytes": 323
+    },
+    "assets/hand-heart-Bq_pkjDS.js": {
+      "logicalName": "hand-heart.js",
+      "type": "js",
+      "bytes": 616,
+      "gzipBytes": 417
+    },
+    "assets/heart-handshake-BJ8L2kd9.js": {
+      "logicalName": "heart-handshake.js",
+      "type": "js",
+      "bytes": 631,
+      "gzipBytes": 416
+    },
+    "assets/history-B_o-BY_z.js": {
+      "logicalName": "history.js",
+      "type": "js",
+      "bytes": 406,
+      "gzipBytes": 297
+    },
+    "assets/idempotency-C3Qoji05.js": {
+      "logicalName": "idempotency.js",
+      "type": "js",
+      "bytes": 152,
+      "gzipBytes": 149
+    },
+    "assets/image-plus-Ce6SHtN2.js": {
+      "logicalName": "image-plus.js",
+      "type": "js",
+      "bytes": 531,
+      "gzipBytes": 355
+    },
+    "assets/index-BRcG49T5.css": {
+      "logicalName": "index.css",
+      "type": "css",
+      "bytes": 252635,
+      "gzipBytes": 39013
+    },
+    "assets/index-BttuRcOU.js": {
+      "logicalName": "index.js",
+      "type": "js",
+      "bytes": 1275,
+      "gzipBytes": 641
+    },
+    "assets/index-CsL_-ay0.js": {
+      "logicalName": "index.js",
+      "type": "js",
+      "bytes": 3493,
+      "gzipBytes": 1588
+    },
+    "assets/index-DVCPeXCk.js": {
+      "logicalName": "index.js",
+      "type": "js",
+      "bytes": 17086,
+      "gzipBytes": 6506
+    },
+    "assets/index-aW7FtnGF.js": {
+      "logicalName": "index.js",
+      "type": "js",
+      "bytes": 526151,
+      "gzipBytes": 158934
+    },
+    "assets/index-sE3nYU6i.js": {
+      "logicalName": "index.js",
+      "type": "js",
+      "bytes": 486,
+      "gzipBytes": 337
+    },
+    "assets/input-BQLO_TZ3.js": {
+      "logicalName": "input.js",
+      "type": "js",
+      "bytes": 1362,
+      "gzipBytes": 678
+    },
+    "assets/key-round-BN0XcuPZ.js": {
+      "logicalName": "key-round.js",
+      "type": "js",
+      "bytes": 523,
+      "gzipBytes": 359
+    },
+    "assets/label-j3Iee5uC.js": {
+      "logicalName": "label.js",
+      "type": "js",
+      "bytes": 665,
+      "gzipBytes": 434
+    },
+    "assets/layers-C0jnXHR2.js": {
+      "logicalName": "layers.js",
+      "type": "js",
+      "bytes": 533,
+      "gzipBytes": 343
+    },
+    "assets/library-big-CNf5CWeU.js": {
+      "logicalName": "library-big.js",
+      "type": "js",
+      "bytes": 494,
+      "gzipBytes": 366
+    },
+    "assets/link-2-BWRX3XG-.js": {
+      "logicalName": "link-2.js",
+      "type": "js",
+      "bytes": 410,
+      "gzipBytes": 308
+    },
+    "assets/lock-C7TqDLbH.js": {
+      "logicalName": "lock.js",
+      "type": "js",
+      "bytes": 375,
+      "gzipBytes": 294
+    },
+    "assets/lock-keyhole-CHSWj-7K.js": {
+      "logicalName": "lock-keyhole.js",
+      "type": "js",
+      "bytes": 423,
+      "gzipBytes": 322
+    },
+    "assets/mail-DLpUwN6b.js": {
+      "logicalName": "mail.js",
+      "type": "js",
+      "bytes": 384,
+      "gzipBytes": 302
+    },
+    "assets/map-pin-Bg4fUUK9.js": {
+      "logicalName": "map-pin.js",
+      "type": "js",
+      "bytes": 427,
+      "gzipBytes": 326
+    },
+    "assets/map-pinned-p4I6VGGT.js": {
+      "logicalName": "map-pinned.js",
+      "type": "js",
+      "bytes": 567,
+      "gzipBytes": 398
+    },
+    "assets/mediaUpload-dYcdj_r_.js": {
+      "logicalName": "mediaUpload.js",
+      "type": "js",
+      "bytes": 629,
+      "gzipBytes": 407
+    },
+    "assets/megaphone-DbVZ4EZd.js": {
+      "logicalName": "megaphone.js",
+      "type": "js",
+      "bytes": 361,
+      "gzipBytes": 283
+    },
+    "assets/music-2-B3eDmFxd.js": {
+      "logicalName": "music-2.js",
+      "type": "js",
+      "bytes": 338,
+      "gzipBytes": 272
+    },
+    "assets/onlineContribution-DkcznJMc.js": {
+      "logicalName": "onlineContribution.js",
+      "type": "js",
+      "bytes": 174,
+      "gzipBytes": 164
+    },
+    "assets/pen-line-CK4W3_kO.js": {
+      "logicalName": "pen-line.js",
+      "type": "js",
+      "bytes": 446,
+      "gzipBytes": 327
+    },
+    "assets/pencil-B8bEuIY3.js": {
+      "logicalName": "pencil.js",
+      "type": "js",
+      "bytes": 445,
+      "gzipBytes": 327
+    },
+    "assets/phone-C2bTvB2v.js": {
+      "logicalName": "phone.js",
+      "type": "js",
+      "bytes": 563,
+      "gzipBytes": 357
+    },
+    "assets/phone-call-olMUKC47.js": {
+      "logicalName": "phone-call.js",
+      "type": "js",
+      "bytes": 674,
+      "gzipBytes": 407
+    },
+    "assets/pin-CIpflbsS.js": {
+      "logicalName": "pin.js",
+      "type": "js",
+      "bytes": 515,
+      "gzipBytes": 338
+    },
+    "assets/play-DLlCsT8a.js": {
+      "logicalName": "play.js",
+      "type": "js",
+      "bytes": 303,
+      "gzipBytes": 249
+    },
+    "assets/plus-D0tj1Tff.js": {
+      "logicalName": "plus.js",
+      "type": "js",
+      "bytes": 322,
+      "gzipBytes": 254
+    },
+    "assets/progress-BcIGY6ZI.js": {
+      "logicalName": "progress.js",
+      "type": "js",
+      "bytes": 2025,
+      "gzipBytes": 980
+    },
+    "assets/publicHero-D9MUBqnM.js": {
+      "logicalName": "publicHero.js",
+      "type": "js",
+      "bytes": 1871,
+      "gzipBytes": 703
+    },
+    "assets/qr-code-D0kZlT-X.js": {
+      "logicalName": "qr-code.js",
+      "type": "js",
+      "bytes": 818,
+      "gzipBytes": 414
+    },
+    "assets/refresh-cw-CndH3lW5.js": {
+      "logicalName": "refresh-cw.js",
+      "type": "js",
+      "bytes": 489,
+      "gzipBytes": 326
+    },
+    "assets/save-BK4xUDwZ.js": {
+      "logicalName": "save.js",
+      "type": "js",
+      "bytes": 496,
+      "gzipBytes": 326
+    },
+    "assets/schemas-CkmBJ8xI.js": {
+      "logicalName": "schemas.js",
+      "type": "js",
+      "bytes": 46356,
+      "gzipBytes": 12476
+    },
+    "assets/search-D27CL6vu.js": {
+      "logicalName": "search.js",
+      "type": "js",
+      "bytes": 341,
+      "gzipBytes": 272
+    },
+    "assets/select-BlntTp7N.js": {
+      "logicalName": "select.js",
+      "type": "js",
+      "bytes": 22399,
+      "gzipBytes": 7564
+    },
+    "assets/send-DorxlIa5.js": {
+      "logicalName": "send.js",
+      "type": "js",
+      "bytes": 459,
+      "gzipBytes": 333
+    },
+    "assets/separator-1occwK32.js": {
+      "logicalName": "separator.js",
+      "type": "js",
+      "bytes": 796,
+      "gzipBytes": 432
+    },
+    "assets/settings-DW9sGFGh.js": {
+      "logicalName": "settings.js",
+      "type": "js",
+      "bytes": 894,
+      "gzipBytes": 446
+    },
+    "assets/share-2-CVYWezYd.js": {
+      "logicalName": "share-2.js",
+      "type": "js",
+      "bytes": 525,
+      "gzipBytes": 337
+    },
+    "assets/shield-check-CPc4U02k.js": {
+      "logicalName": "shield-check.js",
+      "type": "js",
+      "bytes": 488,
+      "gzipBytes": 353
+    },
+    "assets/skeleton-SDgm0RF2.js": {
+      "logicalName": "skeleton.js",
+      "type": "js",
+      "bytes": 250,
+      "gzipBytes": 205
+    },
+    "assets/socialMedia-DO-iU2l3.js": {
+      "logicalName": "socialMedia.js",
+      "type": "js",
+      "bytes": 1022,
+      "gzipBytes": 529
+    },
+    "assets/sparkles-BcBfkWQT.js": {
+      "logicalName": "sparkles.js",
+      "type": "js",
+      "bytes": 677,
+      "gzipBytes": 399
+    },
+    "assets/switch-CCnkBsjW.js": {
+      "logicalName": "switch.js",
+      "type": "js",
+      "bytes": 2677,
+      "gzipBytes": 1311
+    },
+    "assets/tabs-CvAmFV4C.js": {
+      "logicalName": "tabs.js",
+      "type": "js",
+      "bytes": 3702,
+      "gzipBytes": 1546
+    },
+    "assets/textarea-BPfzNRwe.js": {
+      "logicalName": "textarea.js",
+      "type": "js",
+      "bytes": 1194,
+      "gzipBytes": 628
+    },
+    "assets/trash-2-BxC_VAKP.js": {
+      "logicalName": "trash-2.js",
+      "type": "js",
+      "bytes": 526,
+      "gzipBytes": 352
+    },
+    "assets/treasury-B6YUXLux.js": {
+      "logicalName": "treasury.js",
+      "type": "js",
+      "bytes": 10029,
+      "gzipBytes": 3904
+    },
+    "assets/treasuryPdf-D1gz2ywK.js": {
+      "logicalName": "treasuryPdf.js",
+      "type": "js",
+      "bytes": 10367,
+      "gzipBytes": 3389
+    },
+    "assets/trending-up-DNyOY2oM.js": {
+      "logicalName": "trending-up.js",
+      "type": "js",
+      "bytes": 373,
+      "gzipBytes": 284
+    },
+    "assets/upload-0qH0alTX.js": {
+      "logicalName": "upload.js",
+      "type": "js",
+      "bytes": 426,
+      "gzipBytes": 319
+    },
+    "assets/useComposition-CFNbMdqg.js": {
+      "logicalName": "useComposition.js",
+      "type": "js",
+      "bytes": 755,
+      "gzipBytes": 370
+    },
+    "assets/useTenant-dM42WJn_.js": {
+      "logicalName": "useTenant.js",
+      "type": "js",
+      "bytes": 515,
+      "gzipBytes": 348
+    },
+    "assets/user-CunJs8Fg.js": {
+      "logicalName": "user.js",
+      "type": "js",
+      "bytes": 365,
+      "gzipBytes": 285
+    },
+    "assets/user-check-C_M43TFw.js": {
+      "logicalName": "user-check.js",
+      "type": "js",
+      "bytes": 422,
+      "gzipBytes": 321
+    },
+    "assets/user-minus-DL9fBZuF.js": {
+      "logicalName": "user-minus.js",
+      "type": "js",
+      "bytes": 424,
+      "gzipBytes": 321
+    },
+    "assets/user-plus-D5_PB2dE.js": {
+      "logicalName": "user-plus.js",
+      "type": "js",
+      "bytes": 478,
+      "gzipBytes": 337
+    },
+    "assets/user-round-DkXQkRHm.js": {
+      "logicalName": "user-round.js",
+      "type": "js",
+      "bytes": 350,
+      "gzipBytes": 281
+    },
+    "assets/user-round-cog-BEqcRZku.js": {
+      "logicalName": "user-round-cog.js",
+      "type": "js",
+      "bytes": 762,
+      "gzipBytes": 419
+    },
+    "assets/users-round-BNyif15x.js": {
+      "logicalName": "users-round.js",
+      "type": "js",
+      "bytes": 421,
+      "gzipBytes": 320
+    },
+    "assets/whatsapp-eG7Elbnn.js": {
+      "logicalName": "whatsapp.js",
+      "type": "js",
+      "bytes": 400,
+      "gzipBytes": 313
+    },
+    "assets/zod-Cy8hIUwT.js": {
+      "logicalName": "zod.js",
+      "type": "js",
+      "bytes": 25698,
+      "gzipBytes": 9504
+    },
+    "sw.js": {
+      "logicalName": "sw.js",
+      "type": "js",
+      "bytes": 3859,
+      "gzipBytes": 1685
+    }
+  },
+  "cycles": [
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Inicio-DxzIGtyy.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Inicio-DxzIGtyy.js",
+      "assets/arrow-right-Bovst3eC.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Inicio-DxzIGtyy.js",
+      "assets/users-round-BNyif15x.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Inicio-DxzIGtyy.js",
+      "assets/clock-3-DUrcFzsv.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Inicio-DxzIGtyy.js",
+      "assets/map-pin-Bg4fUUK9.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Dashboard-BCG2AC1f.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Dashboard-BCG2AC1f.js",
+      "assets/ReportButton-CneeMfdL.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Dashboard-BCG2AC1f.js",
+      "assets/ReportButton-CneeMfdL.js",
+      "assets/file-down-BdY5l_YZ.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Dashboard-BCG2AC1f.js",
+      "assets/progress-BcIGY6ZI.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Dashboard-BCG2AC1f.js",
+      "assets/trending-up-DNyOY2oM.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Dashboard-BCG2AC1f.js",
+      "assets/layers-C0jnXHR2.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Dashboard-BCG2AC1f.js",
+      "assets/cake-vdy39fyB.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/badge-xnGldT0w.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/dialog-CfIIaFpW.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/AdaptiveFormDialog-vIhWvvQJ.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/input-BQLO_TZ3.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/input-BQLO_TZ3.js",
+      "assets/useComposition-CFNbMdqg.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/label-j3Iee5uC.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/select-BlntTp7N.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/select-BlntTp7N.js",
+      "assets/index-BttuRcOU.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/select-BlntTp7N.js",
+      "assets/index-sE3nYU6i.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/select-BlntTp7N.js",
+      "assets/chevron-down-BIEopn0e.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/tabs-CvAmFV4C.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/tabs-CvAmFV4C.js",
+      "assets/index-CsL_-ay0.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/textarea-BPfzNRwe.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/refresh-cw-CndH3lW5.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/history-B_o-BY_z.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/heart-handshake-BJ8L2kd9.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/ConfirmDestructiveActionDialog-BWrQCa-w.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/plus-D0tj1Tff.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/search-D27CL6vu.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/user-CunJs8Fg.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/arrow-left-BJ1dnulH.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/shield-check-CPc4U02k.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/send-DorxlIa5.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Pessoas-CYgqXPqd.js",
+      "assets/user-minus-DL9fBZuF.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/mediaUpload-dYcdj_r_.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/PDFButton-CyVf3YG8.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/TreasuryPdfPreview-C5qk-aWe.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/TreasuryPdfPreview-C5qk-aWe.js",
+      "assets/share-2-CVYWezYd.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/TreasuryPdfPreview-C5qk-aWe.js",
+      "assets/download-DpyArhET.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/index-DVCPeXCk.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/chart-column-Ps-Skcch.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/trash-2-BxC_VAKP.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/clock-CJz2_3wE.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/link-2-BWRX3XG-.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/pencil-B8bEuIY3.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/clipboard-check-KulYDrOC.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/qr-code-D0kZlT-X.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/copy-CBLHSpGP.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/user-plus-D5_PB2dE.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/upload-0qH0alTX.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/user-round-DkXQkRHm.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-C9tkRllx.js",
+      "assets/user-check-C_M43TFw.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Ministerios-CCwCpzXx.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Ministerios-CCwCpzXx.js",
+      "assets/pen-line-CK4W3_kO.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Ministerios-CCwCpzXx.js",
+      "assets/calendar-1qdOeWvt.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Ministerios-CCwCpzXx.js",
+      "assets/earth-3GMZZiPV.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Ministerios-CCwCpzXx.js",
+      "assets/megaphone-DbVZ4EZd.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Ministerios-CCwCpzXx.js",
+      "assets/baby-DiWsNrMT.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Ministerios-CCwCpzXx.js",
+      "assets/hand-heart-Bq_pkjDS.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Ministerios-CCwCpzXx.js",
+      "assets/music-2-B3eDmFxd.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Ministerios-CCwCpzXx.js",
+      "assets/sparkles-BcBfkWQT.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Escalas-CP65yetm.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Escalas-CP65yetm.js",
+      "assets/chevron-left-DtczkMHT.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Escalas-CP65yetm.js",
+      "assets/circle-x-9QvxJVAX.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Configuracoes-DczmZpLj.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Configuracoes-DczmZpLj.js",
+      "assets/switch-CCnkBsjW.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Configuracoes-DczmZpLj.js",
+      "assets/eye-BFom-CuN.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Configuracoes-DczmZpLj.js",
+      "assets/image-plus-Ce6SHtN2.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Configuracoes-DczmZpLj.js",
+      "assets/save-BK4xUDwZ.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/file-text-uWdGABYJ.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/mail-DLpUwN6b.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/ellipsis-s3jsq7-X.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/circle-dollar-sign-Crdr1a-7.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/calendar-clock-Csr3z8iQ.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/OnlineContributionsSection-D-FWQ8Yk.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/TreasuryPixSettingsSection-Ch8jVftN.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/TreasuryPixSettingsSection-Ch8jVftN.js",
+      "assets/key-round-BN0XcuPZ.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/TreasuryServiceSection-C0VUqL1i.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/TreasuryServiceSection-C0VUqL1i.js",
+      "assets/Tesouraria-C2MWJVfp.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/TreasuryEntrySheetHistorySection-BWxoONQ-.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/PublicDonationsSection-B1F5lAkq.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/TreasuryPayablesSection-D3IS8eya.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Tesouraria-C2MWJVfp.js",
+      "assets/treasuryPdf-D1gz2ywK.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Oracao-cSYS8cAN.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Oracao-cSYS8cAN.js",
+      "assets/lock-C7TqDLbH.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Oracao-cSYS8cAN.js",
+      "assets/phone-C2bTvB2v.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/GanharAlmas-CSZIg1Dx.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/AreaMembro-x1cf-BvB.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/AreaMembro-x1cf-BvB.js",
+      "assets/skeleton-SDgm0RF2.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/AreaMembro-x1cf-BvB.js",
+      "assets/church-DyFMV_3E.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/LandingPage-BvpVsDPT.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/LandingPage-BvpVsDPT.js",
+      "assets/git-branch-VT5MAY-Z.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/TenantPublicPage-D9jtMIA1.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/TenantPublicPage-D9jtMIA1.js",
+      "assets/TenantPublicShell-C0esRj72.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/TenantPublicPage-D9jtMIA1.js",
+      "assets/TenantPublicFooter-BdPvO_4-.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/TenantPublicPage-D9jtMIA1.js",
+      "assets/pin-CIpflbsS.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/DoacaoPublica-DYoqFVOb.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/DoacaoPublica-DYoqFVOb.js",
+      "assets/lock-keyhole-CHSWj-7K.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/DoacaoPublica-DYoqFVOb.js",
+      "assets/file-up-Du38FseJ.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/DevocionalDiario-8K2l5vxr.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/LoginIgreja-C_lOozq4.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/LoginIgreja-C_lOozq4.js",
+      "assets/zod-Cy8hIUwT.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/LoginIgreja-C_lOozq4.js",
+      "assets/eye-off-C5yCfuiZ.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/RedefinirSenha-Cp8vZdGK.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/ConfirmarEmail-CQKwuz-R.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/CadastroIgreja-DfK4uw12.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/CadastroDiscipulo-BUPuSvQ1.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/CadastroDiscipulo-BUPuSvQ1.js",
+      "assets/useTenant-dM42WJn_.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/CadastroPublico-DiDK5c9U.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/PortalVisitante-DYoUNgFE.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/VisiteNos-CUGJXICF.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/VisiteNos-CUGJXICF.js",
+      "assets/OpenStreetMap-Dn5jYiDb.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/AdminPanel-BpcuCSt1.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/AdminPanel-BpcuCSt1.js",
+      "assets/settings-DW9sGFGh.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Planos-BBot-sSk.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Recursos-CSJLbegj.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Contato-DvNJoMzL.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Consolidacao-JXkGYDbI.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Consolidacao-JXkGYDbI.js",
+      "assets/user-round-cog-BEqcRZku.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Consolidacao-JXkGYDbI.js",
+      "assets/map-pinned-p4I6VGGT.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/FunilDiscipulado-jro01F_c.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Celulas-a7hHVWqg.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EstudosCelulas-BqMLtIvx.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Mural-BDLXy-7g.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Mural-BDLXy-7g.js",
+      "assets/archive-BgMZomZm.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Placeholder-skihkM_m.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Familias-d5otE9rL.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EstruturaOrganizacional-BehzBQlN.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Biblioteca-DvmWd2Ft.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Biblioteca-DvmWd2Ft.js",
+      "assets/library-big-CNf5CWeU.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/AppLider-EKEqvmK_.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/CheckinEvento-DPRyGn_o.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EventoInscricaoPublica-uGEewZY0.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Demo-a4GJ5lY4.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Demo-a4GJ5lY4.js",
+      "assets/play-DLlCsT8a.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Onboarding-rDqvNRSS.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/CadastroSucesso-dXITTCHw.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EscolaFundamentos-CCZYgQXL.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EscolaFundamentos-CCZYgQXL.js",
+      "assets/circle-check-big-CE08oYqQ.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EscolaFundamentos-CCZYgQXL.js",
+      "assets/StudentLearningExperience-BsX4aJxq.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/FoundationStudyPreviewPage-UttTlUjE.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Batismo-c_qHmHG4.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EncontroComDeus-CBN4_8si.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EncontroComDeusDetalhe-DlZnbh9a.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EncontroFichaPublica-Dw_FZw2J.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EscolaLideres-qhBjqU1k.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EscolaLideresProfessor-D8bOIxQG.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/EscolaLideresAluno-CwyLkeYz.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/GestaoLideranca-Du7zv2Rj.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/Aconselhamento-sVcKDzhU.js",
+      "assets/index-aW7FtnGF.js",
+      "assets/Aconselhamento-sVcKDzhU.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Comunicacao-jz8Jm1Bu.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/ConfiguracoesCertificados--WqGzbLY.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/ConfiguracoesCertificados--WqGzbLY.js",
+      "assets/separator-1occwK32.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Faturamento-CLgFOPNm.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/CentralCuidado-DEHya5R5.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/CentralCuidado-DEHya5R5.js",
+      "assets/phone-call-olMUKC47.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/RadarEspiritual-YHvp1JCq.js",
+      "assets/index-aW7FtnGF.js"
+    ]
+  ]
+}
