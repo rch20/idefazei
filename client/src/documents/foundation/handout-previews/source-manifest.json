@@ -1,0 +1,68 @@
+{
+  "simplificado": {
+    "pdfSha256": "b70c090a256f917dd1c14df5a0bad9463b11a767cf643e46f6d52bab6e7b5e8a",
+    "pages": [
+      {
+        "file": "simplificado-1.webp",
+        "width": 1241,
+        "height": 1754,
+        "bytes": 52512,
+        "sha256": "520dcfa462d2a4d909522b75b66bb91ad5df77571826787304e337f6832f6017"
+      },
+      {
+        "file": "simplificado-2.webp",
+        "width": 1241,
+        "height": 1754,
+        "bytes": 66240,
+        "sha256": "a615b2cd4b817f1cb41a185a53c78235b05e2d610dd6eb94c62450077046c62b"
+      }
+    ]
+  },
+  "completo": {
+    "pdfSha256": "a6a4c2abc2063ce6f021411222d659e684df87e9e3c5f35740f8df3acf66d15c",
+    "pages": [
+      {
+        "file": "completo-1.webp",
+        "width": 1241,
+        "height": 1754,
+        "bytes": 60532,
+        "sha256": "f4d1b4c949cd57187f66f2f6a6b863885acc6ccffe6e8fe9027e4371a0f0ced2"
+      },
+      {
+        "file": "completo-2.webp",
+        "width": 1241,
+        "height": 1754,
+        "bytes": 41550,
+        "sha256": "442c5f6385310ae6277926a75462ce29d8caf20a4bd87ad8fc44b2b4fd939c06"
+      },
+      {
+        "file": "completo-3.webp",
+        "width": 1241,
+        "height": 1754,
+        "bytes": 41754,
+        "sha256": "5f7e7fed3e3f161f76a81e97071744476cf47ddc89121bdd2129b473e1256dda"
+      },
+      {
+        "file": "completo-4.webp",
+        "width": 1241,
+        "height": 1754,
+        "bytes": 65988,
+        "sha256": "01159273d3eecc2ba8e3b6f3cc837a7c0b6b8eceae73a52fd0f5fee72960cbe0"
+      },
+      {
+        "file": "completo-5.webp",
+        "width": 1241,
+        "height": 1754,
+        "bytes": 42936,
+        "sha256": "4c8890ef8668931beab1ff63ffe1cc6e2a01754bdaaeabaeb0cbb52fec7409fc"
+      },
+      {
+        "file": "completo-6.webp",
+        "width": 1241,
+        "height": 1754,
+        "bytes": 99736,
+        "sha256": "4b4a994e01aaa35adbc6a49f494577cd9a06a77ac67c6993410589324ff0da50"
+      }
+    ]
+  }
+}
