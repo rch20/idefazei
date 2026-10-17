@@ -20,9 +20,17 @@ type Row = {
   course: { id: number; churchId: number; active: boolean; name: string };
   personChurchId: number;
 };
+type Study = {
+  churchId: number;
+  courseId: number;
+  active: boolean;
+  moduleId: number | null;
+};
 const fixture = vi.hoisted(() => ({
   rows: [] as Row[],
+  studies: [] as Study[],
   clauses: [] as string[],
+  orders: [] as string[],
   queries: 0,
 }));
 
@@ -37,6 +45,7 @@ vi.mock("drizzle-orm/mysql2", () => ({
         op: string;
         value: unknown;
       }> = [];
+      let publishedChurchId: number | undefined;
       const builder: any = {
         from: () => builder,
         innerJoin: () => builder,
@@ -57,16 +66,33 @@ vi.mock("drizzle-orm/mysql2", () => ({
           return builder;
         },
         orderBy: (...order: any[]) => {
-          const sql = order
-            .map(item => new MySqlDialect().sqlToQuery(item).sql)
-            .join(",");
-          expect(sql).toBe(
+          const compiled = order.map(item =>
+            new MySqlDialect().sqlToQuery(item)
+          );
+          fixture.orders.push(compiled.map(item => item.sql).join(","));
+          if (compiled.length === 3) {
+            const publication = compiled.shift()!;
+            expect(publication.sql).toBe(
+              "exists (select 1 from `foundation_studies` where `foundation_studies`.`churchId` = ? and `foundation_studies`.`courseId` = `courses`.`id` and `foundation_studies`.`active` = ?) desc"
+            );
+            expect(publication.params).toEqual([100, true]);
+            publishedChurchId = publication.params[0] as number;
+          }
+          expect(compiled.map(item => item.sql).join(",")).toBe(
             "`course_enrollments`.`enrolledAt` desc,`course_enrollments`.`id` desc"
           );
           return builder;
         },
         limit: async (limit: number) => {
           fixture.queries++;
+          const hasPublishedContent = (row: Row) =>
+            publishedChurchId !== undefined &&
+            fixture.studies.some(
+              study =>
+                study.churchId === publishedChurchId &&
+                study.courseId === row.course.id &&
+                study.active
+            );
           return fixture.rows
             .filter(row =>
               predicates.every(p => {
@@ -85,6 +111,8 @@ vi.mock("drizzle-orm/mysql2", () => ({
             )
             .sort(
               (a, b) =>
+                Number(hasPublishedContent(b)) -
+                  Number(hasPublishedContent(a)) ||
                 b.enrollment.enrolledAt.getTime() -
                   a.enrollment.enrolledAt.getTime() ||
                 b.enrollment.id - a.enrollment.id
@@ -138,7 +166,9 @@ beforeAll(() =>
 afterAll(() => vi.unstubAllEnvs());
 beforeEach(() => {
   fixture.rows = [];
+  fixture.studies = [];
   fixture.clauses = [];
+  fixture.orders = [];
   fixture.queries = 0;
 });
 
@@ -261,5 +291,160 @@ describe("resolvedor real — adaptador de banco em memória, sem rede", () => {
       })
     ).toBeNull();
     expect(fixture.rows).toHaveLength(1);
+  });
+
+  const automaticScope = { personId: 77, churchId: 100 };
+  function competingCourses() {
+    fixture.rows = [
+      row(11, { status: "matriculado" }),
+      row(
+        22,
+        {
+          courseId: 56,
+          status: "matriculado",
+          enrolledAt: new Date("2026-10-02T12:00:00Z"),
+        },
+        { id: 56 }
+      ),
+    ];
+  }
+
+  it("matrícula recente em turma vazia não esconde matrícula com estudo publicado", async () => {
+    competingCourses();
+    fixture.studies = [
+      { churchId: 100, courseId: 55, active: true, moduleId: 1 },
+    ];
+    const snapshot = JSON.stringify({
+      rows: fixture.rows,
+      studies: fixture.studies,
+    });
+    const result = await resolveFoundationEnrollmentForPerson(automaticScope);
+    expect(result?.enrollment.id).toBe(11);
+    expect(result?.course.id).toBe(55);
+    expect(fixture.queries).toBe(1);
+    expect(
+      JSON.stringify({ rows: fixture.rows, studies: fixture.studies })
+    ).toBe(snapshot);
+  });
+
+  it("estudo publicado legado sem módulo também libera a seleção automática", async () => {
+    competingCourses();
+    fixture.studies = [
+      { churchId: 100, courseId: 55, active: true, moduleId: null },
+    ];
+    expect(
+      (await resolveFoundationEnrollmentForPerson(automaticScope))?.enrollment
+        .id
+    ).toBe(11);
+  });
+
+  it("rascunho na turma recente não tem prioridade sobre conteúdo publicado", async () => {
+    competingCourses();
+    fixture.studies = [
+      { churchId: 100, courseId: 55, active: true, moduleId: 1 },
+      { churchId: 100, courseId: 56, active: false, moduleId: 2 },
+    ];
+    expect(
+      (await resolveFoundationEnrollmentForPerson(automaticScope))?.enrollment
+        .id
+    ).toBe(11);
+  });
+
+  it("publicação de outra igreja ou de outra turma não interfere na prioridade", async () => {
+    competingCourses();
+    fixture.studies = [
+      { churchId: 100, courseId: 55, active: true, moduleId: 1 },
+      { churchId: 200, courseId: 56, active: true, moduleId: 2 },
+      { churchId: 100, courseId: 99, active: true, moduleId: 3 },
+    ];
+    expect(
+      (await resolveFoundationEnrollmentForPerson(automaticScope))?.enrollment
+        .id
+    ).toBe(11);
+  });
+
+  it("sem publicação em nenhuma turma mantém matrícula recente e não cria dados", async () => {
+    competingCourses();
+    expect(
+      (await resolveFoundationEnrollmentForPerson(automaticScope))?.enrollment
+        .id
+    ).toBe(22);
+    expect(fixture.rows).toHaveLength(2);
+    expect(fixture.studies).toHaveLength(0);
+  });
+
+  it("entre turmas publicadas preserva o desempate por data e ID", async () => {
+    competingCourses();
+    fixture.studies = [
+      { churchId: 100, courseId: 55, active: true, moduleId: 1 },
+      { churchId: 100, courseId: 56, active: true, moduleId: 2 },
+    ];
+    expect(
+      (await resolveFoundationEnrollmentForPerson(automaticScope))?.enrollment
+        .id
+    ).toBe(22);
+    fixture.rows[1].enrollment.enrolledAt =
+      fixture.rows[0].enrollment.enrolledAt;
+    expect(
+      (await resolveFoundationEnrollmentForPerson(automaticScope))?.enrollment
+        .id
+    ).toBe(22);
+  });
+
+  it.each(["concluida", "inativa", "outra_pessoa", "outra_igreja"])(
+    "conteúdo publicado não concede matrícula %s fora do escopo elegível",
+    async invalid => {
+      competingCourses();
+      if (invalid === "concluida")
+        fixture.rows[0].enrollment.status = "concluido";
+      if (invalid === "inativa") fixture.rows[0].course.active = false;
+      if (invalid === "outra_pessoa") fixture.rows[0].enrollment.personId = 88;
+      if (invalid === "outra_igreja") fixture.rows[0].course.churchId = 200;
+      fixture.studies = [
+        { churchId: 100, courseId: 55, active: true, moduleId: 1 },
+      ];
+      expect(
+        (await resolveFoundationEnrollmentForPerson(automaticScope))?.enrollment
+          .id
+      ).toBe(22);
+    }
+  );
+
+  it("turma explícita e histórico não são redirecionados por outra publicação", async () => {
+    competingCourses();
+    fixture.studies = [
+      { churchId: 100, courseId: 55, active: true, moduleId: 1 },
+    ];
+    expect(
+      (
+        await resolveFoundationEnrollmentForPerson({
+          ...automaticScope,
+          courseId: 56,
+        })
+      )?.enrollment.id
+    ).toBe(22);
+    expect(
+      (
+        await resolveFoundationEnrollmentForPerson({
+          ...automaticScope,
+          context: "historical",
+        })
+      )?.enrollment.id
+    ).toBe(22);
+    expect(fixture.orders.every(order => !order.includes("exists"))).toBe(true);
+  });
+
+  it("helper do cartão usa a mesma prioridade publicada sem consulta por turma", async () => {
+    competingCourses();
+    fixture.studies = [
+      { churchId: 100, courseId: 55, active: true, moduleId: 1 },
+    ];
+    expect(
+      (await getFoundationActiveEnrollmentForPerson(77, 100))?.enrollment.id
+    ).toBe(11);
+    expect((await getFoundationEnrollmentForPerson(55, 77, 100, 11))?.id).toBe(
+      11
+    );
+    expect(fixture.queries).toBe(2);
   });
 });

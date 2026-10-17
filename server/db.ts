@@ -7167,9 +7167,10 @@ export type FoundationEnrollmentResolutionContext = "current" | "historical";
  * Resolve the one enrollment used by a student journey.
  *
  * The enrollment id is only a selector: ownership by Person, church and (when
- * supplied) course is always checked in the same query.  Current journeys keep
- * the existing eligibility rule; historical reads may address a completed or
- * inactive enrollment explicitly without changing any historical rows.
+ * supplied) course is always checked in the same query. Automatic current
+ * journeys prefer published content over an empty/new draft-only course;
+ * explicit courses and historical reads keep their existing selection rules.
+ * No enrollment, progress or note is changed when resolving this journey.
  */
 export async function resolveFoundationEnrollmentForPerson(data: {
   personId: number;
@@ -7196,13 +7197,19 @@ export async function resolveFoundationEnrollmentForPerson(data: {
     conditions.push(ne(courseEnrollments.status, "concluido"));
     conditions.push(eq(courses.active, true));
   }
+  const order = [desc(courseEnrollments.enrolledAt), desc(courseEnrollments.id)];
+  if (context === "current" && data.courseId === undefined) {
+    // Publication belongs to the study, not the module. Include legacy studies
+    // without moduleId; an empty active module alone must not hide real content.
+    order.unshift(desc(sql`exists (select 1 from ${foundationStudies} where ${foundationStudies.churchId} = ${data.churchId} and ${foundationStudies.courseId} = ${courses.id} and ${foundationStudies.active} = ${true})`));
+  }
   const rows = await db
     .select({ enrollment: courseEnrollments, course: courses })
     .from(courseEnrollments)
     .innerJoin(courses, eq(courseEnrollments.courseId, courses.id))
     .innerJoin(people, eq(courseEnrollments.personId, people.id))
     .where(and(...conditions))
-    .orderBy(desc(courseEnrollments.enrolledAt), desc(courseEnrollments.id))
+    .orderBy(...order)
     .limit(1);
   const resolved = rows[0] ?? null;
   if (resolved && data.enrollmentId !== undefined && resolved.enrollment.id !== data.enrollmentId) {
