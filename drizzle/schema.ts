@@ -1918,6 +1918,408 @@ export const leadershipSchoolProgress = mysqlTable("leadership_school_progress",
 
 export type LeadershipSchoolProgress = typeof leadershipSchoolProgress.$inferSelect;
 
+/** Módulos de estudos digitais da turma de Líderes; não reutiliza foundation_modules. */
+export const leadershipSchoolModules = mysqlTable(
+  "leadership_school_modules",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    classId: int("classId").notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    description: varchar("description", { length: 500 }),
+    position: int("position").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("leadership_school_modules_church_class_position_idx").on(
+      table.churchId,
+      table.classId,
+      table.position
+    ),
+  ]
+);
+
+export type LeadershipSchoolModule =
+  typeof leadershipSchoolModules.$inferSelect;
+
+/** Estudos digitais próprios de Líderes; aulas presenciais antigas permanecem em leadership_school_lessons. */
+export const leadershipSchoolStudies = mysqlTable(
+  "leadership_school_studies",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    classId: int("classId").notNull(),
+    moduleId: int("moduleId"),
+    title: varchar("title", { length: 160 }).notNull(),
+    weekStart: date("weekStart", { mode: "string" }),
+    summary: varchar("summary", { length: 500 }),
+    content: text("content"),
+    position: int("position").notNull().default(0),
+    status: mysqlEnum("status", ["rascunho", "publicada", "arquivada"])
+      .notNull()
+      .default("rascunho"),
+    publishedAt: timestamp("publishedAt"),
+    publishedByChurchUserId: int("publishedByChurchUserId"),
+    active: boolean("active").notNull().default(true),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    clientRequestId: varchar("clientRequestId", { length: 36 }),
+    requestHash: char("requestHash", { length: 64 }),
+    requestSchemaVersion: int("requestSchemaVersion"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("leadership_school_studies_church_class_position_idx").on(
+      table.churchId,
+      table.classId,
+      table.position
+    ),
+    index("leadership_school_studies_church_module_position_idx").on(
+      table.churchId,
+      table.moduleId,
+      table.position
+    ),
+    index("leadership_school_studies_church_class_status_week_idx").on(
+      table.churchId,
+      table.classId,
+      table.status,
+      table.weekStart
+    ),
+    uniqueIndex("leadership_school_studies_church_author_request_unique").on(
+      table.churchId,
+      table.createdByChurchUserId,
+      table.clientRequestId
+    ),
+  ]
+);
+
+export type LeadershipSchoolStudy = typeof leadershipSchoolStudies.$inferSelect;
+
+/** Etapas pedagógicas explícitas do estudo: Leia, Entenda, Responda e Aplique. */
+export const leadershipSchoolStudyBlocks = mysqlTable(
+  "leadership_school_study_blocks",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    studyId: int("studyId").notNull(),
+    stageKey: mysqlEnum("stageKey", [
+      "leia",
+      "entenda",
+      "responda",
+      "aplique",
+    ]).notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    content: text("content").notNull(),
+    reflectionPrompt: text("reflectionPrompt"),
+    position: int("position").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("leadership_school_study_blocks_church_study_position_idx").on(
+      table.churchId,
+      table.studyId,
+      table.position
+    ),
+    index("leadership_school_study_blocks_church_study_stage_idx").on(
+      table.churchId,
+      table.studyId,
+      table.stageKey
+    ),
+  ]
+);
+
+export type LeadershipSchoolStudyBlock =
+  typeof leadershipSchoolStudyBlocks.$inferSelect;
+
+/** Perguntas de múltipla escolha de Líderes; o gabarito só é usado server-side. */
+export const leadershipSchoolQuestions = mysqlTable(
+  "leadership_school_questions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    blockId: int("blockId").notNull(),
+    prompt: text("prompt").notNull(),
+    options: json("options").notNull(),
+    correctOptionId: varchar("correctOptionId", { length: 80 }).notNull(),
+    explanation: text("explanation").notNull(),
+    position: int("position").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    clientRequestId: varchar("clientRequestId", { length: 36 }),
+    requestHash: char("requestHash", { length: 64 }),
+    requestSchemaVersion: int("requestSchemaVersion"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("leadership_school_questions_church_block_position_idx").on(
+      table.churchId,
+      table.blockId,
+      table.position
+    ),
+    uniqueIndex("leadership_school_questions_church_author_request_unique").on(
+      table.churchId,
+      table.createdByChurchUserId,
+      table.clientRequestId
+    ),
+  ]
+);
+
+export type LeadershipSchoolQuestion =
+  typeof leadershipSchoolQuestions.$inferSelect;
+
+/** Tentativas append-only de resposta, com idempotência contra reenvio do cliente. */
+export const leadershipSchoolQuestionAttempts = mysqlTable(
+  "leadership_school_question_attempts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    enrollmentId: int("enrollmentId").notNull(),
+    questionId: int("questionId").notNull(),
+    selectedOptionId: varchar("selectedOptionId", { length: 80 }).notNull(),
+    isCorrect: boolean("isCorrect").notNull(),
+    attemptNumber: int("attemptNumber").notNull(),
+    clientAttemptId: varchar("clientAttemptId", { length: 80 }),
+    answeredAt: timestamp("answeredAt").defaultNow().notNull(),
+  },
+  table => [
+    index(
+      "leadership_school_question_attempts_church_enrollment_question_idx"
+    ).on(table.churchId, table.enrollmentId, table.questionId),
+    uniqueIndex("leadership_school_question_attempts_client_unique").on(
+      table.churchId,
+      table.enrollmentId,
+      table.questionId,
+      table.clientAttemptId
+    ),
+  ]
+);
+
+export type LeadershipSchoolQuestionAttempt =
+  typeof leadershipSchoolQuestionAttempts.$inferSelect;
+
+/** Referências a itens da Biblioteca Digital, sem copiar arquivos para a Escola de Líderes. */
+export const leadershipSchoolStudyMaterials = mysqlTable(
+  "leadership_school_study_materials",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    studyId: int("studyId").notNull(),
+    libraryItemId: int("libraryItemId").notNull(),
+    position: int("position").notNull().default(0),
+    notes: text("notes"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("leadership_school_study_materials_church_study_position_idx").on(
+      table.churchId,
+      table.studyId,
+      table.position
+    ),
+    uniqueIndex("leadership_school_study_materials_study_library_unique").on(
+      table.churchId,
+      table.studyId,
+      table.libraryItemId
+    ),
+  ]
+);
+
+export type LeadershipSchoolStudyMaterial =
+  typeof leadershipSchoolStudyMaterials.$inferSelect;
+
+/** Progresso digital da matrícula em um estudo, separado da aula presencial. */
+export const leadershipSchoolStudyProgress = mysqlTable(
+  "leadership_school_study_progress",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    enrollmentId: int("enrollmentId").notNull(),
+    studyId: int("studyId").notNull(),
+    status: mysqlEnum("status", ["nao_iniciada", "em_andamento", "concluida"])
+      .notNull()
+      .default("nao_iniciada"),
+    lastBlockPosition: int("lastBlockPosition").notNull().default(0),
+    startedAt: timestamp("startedAt"),
+    lastAccessedAt: timestamp("lastAccessedAt"),
+    completedAt: timestamp("completedAt"),
+    reflection: text("reflection"),
+    reflectionVersion: int("reflectionVersion").notNull().default(0),
+    reviewStatus: mysqlEnum("reviewStatus", [
+      "pendente",
+      "compreendeu",
+      "precisa_reforco",
+      "nao_participou",
+    ])
+      .notNull()
+      .default("pendente"),
+    reviewNotes: text("reviewNotes"),
+    reviewedAt: timestamp("reviewedAt"),
+    reviewedByChurchUserId: int("reviewedByChurchUserId"),
+    releasedAt: timestamp("releasedAt"),
+    releasedByChurchUserId: int("releasedByChurchUserId"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("leadership_school_study_progress_church_enrollment_idx").on(
+      table.churchId,
+      table.enrollmentId
+    ),
+    index("leadership_school_study_progress_church_study_idx").on(
+      table.churchId,
+      table.studyId
+    ),
+    uniqueIndex("leadership_school_study_progress_unique").on(
+      table.churchId,
+      table.enrollmentId,
+      table.studyId
+    ),
+  ]
+);
+
+export type LeadershipSchoolStudyProgress =
+  typeof leadershipSchoolStudyProgress.$inferSelect;
+
+/** Progresso e anotação individual por etapa do estudo. */
+export const leadershipSchoolBlockProgress = mysqlTable(
+  "leadership_school_block_progress",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    enrollmentId: int("enrollmentId").notNull(),
+    studyId: int("studyId").notNull(),
+    blockId: int("blockId").notNull(),
+    status: mysqlEnum("status", ["em_andamento", "concluida"])
+      .notNull()
+      .default("em_andamento"),
+    firstViewedAt: timestamp("firstViewedAt"),
+    lastViewedAt: timestamp("lastViewedAt"),
+    completedAt: timestamp("completedAt"),
+    reflection: text("reflection"),
+    reflectionVersion: int("reflectionVersion").notNull().default(0),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    index("leadership_school_block_progress_church_enrollment_study_idx").on(
+      table.churchId,
+      table.enrollmentId,
+      table.studyId
+    ),
+    index("leadership_school_block_progress_church_study_block_idx").on(
+      table.churchId,
+      table.studyId,
+      table.blockId
+    ),
+    uniqueIndex("leadership_school_block_progress_unique").on(
+      table.churchId,
+      table.enrollmentId,
+      table.studyId,
+      table.blockId
+    ),
+  ]
+);
+
+export type LeadershipSchoolBlockProgress =
+  typeof leadershipSchoolBlockProgress.$inferSelect;
+
+/** Associação opcional entre uma aula presencial existente e um estudo digital. */
+export const leadershipSchoolLessonStudies = mysqlTable(
+  "leadership_school_lesson_studies",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    lessonId: int("lessonId").notNull(),
+    studyId: int("studyId").notNull(),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("leadership_school_lesson_studies_church_lesson_idx").on(
+      table.churchId,
+      table.lessonId
+    ),
+    uniqueIndex("leadership_school_lesson_studies_unique").on(
+      table.churchId,
+      table.lessonId,
+      table.studyId
+    ),
+  ]
+);
+
+export type LeadershipSchoolLessonStudy =
+  typeof leadershipSchoolLessonStudies.$inferSelect;
+
+/** Delegação própria para administrar o conteúdo pedagógico de Líderes. */
+export const leadershipSchoolStudyAdministrators = mysqlTable(
+  "leadership_school_study_administrators",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    churchUserId: int("churchUserId").notNull(),
+    assignedByChurchUserId: int("assignedByChurchUserId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [
+    index("leadership_school_study_administrators_church_idx").on(
+      table.churchId
+    ),
+    uniqueIndex("leadership_school_study_administrators_unique").on(
+      table.churchId,
+      table.churchUserId
+    ),
+  ]
+);
+
+export type LeadershipSchoolStudyAdministrator =
+  typeof leadershipSchoolStudyAdministrators.$inferSelect;
+
+/** Prévia temporária do futuro gabarito Excel de Líderes. */
+export const leadershipSchoolImportDrafts = mysqlTable(
+  "leadership_school_import_drafts",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    classId: int("classId").notNull(),
+    createdByChurchUserId: int("createdByChurchUserId").notNull(),
+    sourceFilename: varchar("sourceFilename", { length: 255 }).notNull(),
+    fileSha256: varchar("fileSha256", { length: 64 }).notNull(),
+    status: mysqlEnum("status", [
+      "pendente",
+      "confirmado",
+      "cancelado",
+      "expirado",
+    ])
+      .notNull()
+      .default("pendente"),
+    payload: json("payload").notNull(),
+    summary: json("summary").notNull(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    confirmedAt: timestamp("confirmedAt"),
+  },
+  table => [
+    index("leadership_school_import_drafts_church_user_status_idx").on(
+      table.churchId,
+      table.createdByChurchUserId,
+      table.status
+    ),
+    index("leadership_school_import_drafts_church_expires_idx").on(
+      table.churchId,
+      table.expiresAt
+    ),
+  ]
+);
+
+export type LeadershipSchoolImportDraft =
+  typeof leadershipSchoolImportDrafts.$inferSelect;
+
 // ─── HISTÓRICO DE LIDERANÇA ───────────────────────────────────────────────────
 
 export const leadershipHistory = mysqlTable("leadership_history", {

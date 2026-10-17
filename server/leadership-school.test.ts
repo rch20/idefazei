@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -10,6 +11,16 @@ const migration = readFileSync(
   resolve(process.cwd(), "drizzle/0064_familiar_the_watchers.sql"),
   "utf8"
 );
+const phase1MigrationPath = resolve(
+  process.cwd(),
+  "drizzle/0098_leadership_school_study_structure.sql"
+);
+const phase1Migration = readFileSync(phase1MigrationPath, "utf8");
+const customMigrationLedger = JSON.parse(
+  readFileSync(resolve(process.cwd(), "drizzle/custom-migrations.json"), "utf8")
+) as {
+  entries: Array<{ id: string; file: string; sha256: string }>;
+};
 const compactSource = (source: string) =>
   source
     .replace(/\s+/g, " ")
@@ -22,6 +33,7 @@ const compactSource = (source: string) =>
     .replace(/,\s*}/g, "}")
     .replace(/\s+}/g, "}")
     .trim();
+const compactSchema = compactSource(schema);
 const db = compactSource(
   readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8")
 );
@@ -40,16 +52,63 @@ const app = readFileSync(resolve(process.cwd(), "client/src/App.tsx"), "utf8");
 
 describe("Escola de Líderes — Painel do Professor", () => {
   it("possui estrutura tenant-aware para professores, aulas, presença e progresso", () => {
-    expect(schema).toContain('mysqlTable("leadership_school_teachers"');
-    expect(schema).toContain('mysqlTable("leadership_school_lessons"');
-    expect(schema).toContain('mysqlTable("leadership_school_attendance"');
-    expect(schema).toContain('mysqlTable("leadership_school_progress"');
-    expect(schema).toContain("leadership_school_attendance_unique");
-    expect(schema).toContain("leadership_school_progress_unique");
+    expect(compactSchema).toContain('mysqlTable("leadership_school_teachers"');
+    expect(compactSchema).toContain('mysqlTable("leadership_school_lessons"');
+    expect(compactSchema).toContain(
+      'mysqlTable("leadership_school_attendance"'
+    );
+    expect(compactSchema).toContain('mysqlTable("leadership_school_progress"');
+    expect(compactSchema).toContain("leadership_school_attendance_unique");
+    expect(compactSchema).toContain("leadership_school_progress_unique");
     expect(migration).toContain("CREATE TABLE `leadership_school_teachers`");
     expect(migration).toContain("CREATE TABLE `leadership_school_lessons`");
     expect(migration).toContain("CREATE TABLE `leadership_school_attendance`");
     expect(migration).toContain("CREATE TABLE `leadership_school_progress`");
+  });
+
+  it("declara a estrutura pedagógica independente na migration 0098", () => {
+    const tables = [
+      "leadership_school_modules",
+      "leadership_school_studies",
+      "leadership_school_study_blocks",
+      "leadership_school_questions",
+      "leadership_school_question_attempts",
+      "leadership_school_study_materials",
+      "leadership_school_study_progress",
+      "leadership_school_block_progress",
+      "leadership_school_lesson_studies",
+      "leadership_school_study_administrators",
+      "leadership_school_import_drafts",
+    ];
+
+    for (const table of tables) {
+      expect(compactSchema).toContain(`mysqlTable("${table}"`);
+      expect(phase1Migration).toContain(
+        `CREATE TABLE IF NOT EXISTS \`${table}\``
+      );
+    }
+
+    expect(phase1Migration.match(/CREATE TABLE IF NOT EXISTS/g)).toHaveLength(
+      tables.length
+    );
+    expect(phase1Migration).not.toContain("ALTER TABLE");
+    expect(phase1Migration).not.toMatch(/CREATE TABLE[^;]*foundation_/);
+    expect(compactSchema).toContain("correctOptionId");
+    expect(compactSchema).toContain("reflectionVersion");
+
+    const entry = customMigrationLedger.entries.find(
+      candidate => candidate.id === "0098"
+    );
+    expect(entry).toMatchObject({
+      id: "0098",
+      file: "drizzle/0098_leadership_school_study_structure.sql",
+      kind: "custom-additive",
+    });
+    expect(entry?.sha256).toBe(
+      createHash("sha256")
+        .update(readFileSync(phase1MigrationPath))
+        .digest("hex")
+    );
   });
 
   it("protege o escopo do professor e as operações pedagógicas no servidor", () => {
