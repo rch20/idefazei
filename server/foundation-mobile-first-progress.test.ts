@@ -67,7 +67,7 @@ describe("experiência mobile-first da Escola de Fundamentos", () => {
     expect(experience).toContain(compactSource("studySession.useQuery"));
     expect(experience).toContain(
       compactSource(
-        'AdaptiveFormDialogContent className="sm:max-w-6xl lg:max-h-[calc(100dvh-3rem)]"'
+        'AdaptiveFormDialogContent className="grid-cols-1 sm:max-w-6xl lg:max-h-[calc(100dvh-3rem)]"'
       )
     );
     expect(experience).toContain(

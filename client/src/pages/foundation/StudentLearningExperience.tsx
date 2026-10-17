@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createStageNoteQueue, type StageNotePayload } from "./stageNoteQueue";
+import { useEffect, useMemo, useState } from "react";
+import { useVersionedStageNote } from "./useVersionedStageNote";
+import { StudentNoteConflict } from "./StudentNoteConflict";
 import type { CSSProperties } from "react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
@@ -55,6 +56,7 @@ type StudentLessonItem = {
     status: "nao_iniciada" | "em_andamento" | "concluida";
     lastBlockPosition: number;
     reflection?: string | null;
+    reflectionVersion?: number | null;
     releasedAt?: Date | string | null;
   } | null;
   available: boolean;
@@ -86,6 +88,7 @@ type SessionBlock = {
   lastViewedAt: Date | string | null;
   completedAt: Date | string | null;
   reflection?: string | null;
+  reflectionVersion?: number | null;
   questions: SessionQuestion[];
 };
 
@@ -101,6 +104,7 @@ type StudentSession = {
   progress: {
     status: "nao_iniciada" | "em_andamento" | "concluida";
     reflection?: string | null;
+    reflectionVersion?: number | null;
     lastBlockPosition: number;
   } | null;
   resume: { blockId: number | null; position: number; label: string };
@@ -712,11 +716,6 @@ export function StudentLearningExperience({
   const [selectedLesson, setSelectedLesson] =
     useState<StudentLessonItem | null>(null);
   const [selectedBlockIndex, setSelectedBlockIndex] = useState(0);
-  const [reflection, setReflection] = useState("");
-  const [reflectionDirty, setReflectionDirty] = useState(false);
-  const [noteNavigating, setNoteNavigating] = useState(false);
-  const noteQueue = useRef(createStageNoteQueue());
-  const noteDrafts = useRef(new Map<string, string>());
   const [questionAnswers, setQuestionAnswers] = useState<
     Record<number, string>
   >({});
@@ -747,6 +746,9 @@ export function StudentLearningExperience({
       enabled: Boolean(
         selectedLesson && resolvedCourseId && resolvedEnrollmentId
       ),
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      staleTime: 0,
     }
   );
   const session = sessionQuery.data as StudentSession | undefined;
@@ -857,10 +859,6 @@ export function StudentLearningExperience({
           setSelectedBlockIndex(
             nextIndex >= 0 ? nextIndex : selectedBlockIndex + 1
           );
-          setReflection(
-            nextIndex >= 0 ? savedNoteValue(blocks[nextIndex]) : ""
-          );
-          setReflectionDirty(false);
           setQuestionAnswers({});
           setQuestionResults({});
         } else setStudyReadyToComplete(true);
@@ -870,85 +868,110 @@ export function StudentLearningExperience({
         toast.error(error.message || "Não foi possível avançar nesta etapa."),
     });
   const saveBlockReflection =
-    trpc.escolaFundamentos.saveBlockReflection.useMutation({
-      onSuccess: (_result, variables) => {
-        utils.escolaFundamentos.studySession.setData(
-          {
-            churchId: variables.churchId,
-            courseId: variables.courseId,
-            studyId: variables.studyId,
-            enrollmentId: variables.enrollmentId,
-          },
-          current =>
-            current
-              ? {
-                  ...current,
-                  blocks: current.blocks.map(block =>
-                    block.id === variables.blockId
-                      ? { ...block, reflection: variables.reflection }
-                      : block
-                  ),
-                }
-              : current
-        );
-        void invalidateStudentPath();
-        void utils.escolaFundamentos.studentHistory.invalidate({ churchId });
-      },
-      onError: error =>
-        toast.error(error.message || "Não foi possível salvar sua anotação."),
-    });
+    trpc.escolaFundamentos.saveBlockReflection.useMutation();
   const saveLegacyReflection =
-    trpc.escolaFundamentos.saveReflection.useMutation({
-      onSuccess: () => {
-        void utils.escolaFundamentos.studentHistory.invalidate({ churchId });
-      },
-      onError: error =>
-        toast.error(error.message || "Não foi possível salvar sua anotação."),
-    });
-  const noteKey = (studyId: number, blockId: number | null) =>
-    `${churchId}:${resolvedEnrollmentId ?? "enrollment"}:${studyId}:${blockId ?? "legacy"}`;
-  const savedNoteValue = (block: SessionBlock | undefined) =>
-    block
-      ? (noteDrafts.current.get(noteKey(selectedLesson!.study.id, block.id)) ??
-        block.reflection ??
-        "")
-      : "";
-  const persistNote = (payload: StageNotePayload) =>
-    noteQueue.current.save(payload, note => {
-      if (note.blockId !== null)
-        return saveBlockReflection.mutateAsync({
-          ...note,
-          blockId: note.blockId,
-        });
-      const { blockId: _blockId, ...legacy } = note;
-      return saveLegacyReflection.mutateAsync(legacy);
-    });
-  const flushNote = async () => {
-    if (!reflectionDirty) return true;
-    if (!selectedLesson || !resolvedCourseId || !resolvedEnrollmentId) {
-      toast.error(
-        "Não foi possível confirmar a matrícula. Sua anotação continua nesta tela."
+    trpc.escolaFundamentos.saveReflection.useMutation();
+  const noteScope = useMemo(
+    () =>
+      selectedLesson &&
+      session &&
+      session.study.id === selectedLesson.study.id &&
+      session.enrollmentId === resolvedEnrollmentId &&
+      resolvedCourseId &&
+      resolvedEnrollmentId &&
+      (!blocks.length || activeBlock)
+        ? {
+            churchId,
+            courseId: resolvedCourseId,
+            enrollmentId: resolvedEnrollmentId,
+            studyId: selectedLesson.study.id,
+            blockId: activeBlock?.id ?? null,
+          }
+        : null,
+    [
+      churchId,
+      resolvedCourseId,
+      resolvedEnrollmentId,
+      selectedLesson?.study.id,
+      session?.study.id,
+      session?.enrollmentId,
+      blocks.length,
+      activeBlock?.id,
+    ]
+  );
+  const stageNote = useVersionedStageNote({
+    scope: noteScope,
+    snapshot: noteScope
+      ? {
+          reflection: activeBlock
+            ? activeBlock.reflection
+            : session?.progress?.reflection,
+          reflectionVersion: activeBlock
+            ? activeBlock.reflectionVersion
+            : session?.progress === null
+              ? 0
+              : session?.progress?.reflectionVersion,
+        }
+      : null,
+    persist: note => {
+      const { blockId, versioned: _versioned, ...input } = note;
+      return blockId !== null
+        ? saveBlockReflection.mutateAsync({ ...input, blockId })
+        : saveLegacyReflection.mutateAsync(input);
+    },
+    read: scope =>
+      utils.escolaFundamentos.getNoteSnapshot.fetch(
+        {
+          ...scope,
+          blockId: scope.blockId ?? undefined,
+        },
+        { staleTime: 0 }
+      ),
+    onSaved: (scope, snapshot) => {
+      utils.escolaFundamentos.studySession.setData(
+        {
+          churchId: scope.churchId,
+          courseId: scope.courseId,
+          studyId: scope.studyId,
+          enrollmentId: scope.enrollmentId,
+        },
+        current =>
+          current
+            ? {
+                ...current,
+                blocks:
+                  scope.blockId === null
+                    ? current.blocks
+                    : current.blocks.map(block =>
+                        block.id === scope.blockId &&
+                        (block.reflectionVersion ?? 0) <=
+                          snapshot.reflectionVersion
+                          ? { ...block, ...snapshot }
+                          : block
+                      ),
+              progress:
+                scope.blockId === null &&
+                current.progress &&
+                (current.progress?.reflectionVersion ?? 0) <=
+                  snapshot.reflectionVersion
+                  ? {
+                      ...current.progress,
+                      ...snapshot,
+                    }
+                  : current.progress,
+              }
+            : current
       );
-      return false;
-    }
-    setNoteNavigating(true);
-    try {
-      await persistNote({
-        churchId,
-        courseId: resolvedCourseId,
-        enrollmentId: resolvedEnrollmentId,
-        studyId: selectedLesson.study.id,
-        blockId: activeBlock?.id ?? null,
-        reflection: reflection.trim() || null,
+      void invalidateStudentPath();
+      void utils.escolaFundamentos.studentHistory.invalidate({
+        churchId: scope.churchId,
       });
-      setReflectionDirty(false);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      setNoteNavigating(false);
-    }
-  };
+    },
+    onError: message => toast.error(message),
+  });
+  const reflection = stageNote.value;
+  const noteNavigating = stageNote.flushing;
+  const flushNote = stageNote.flush;
   const completeLesson = trpc.escolaFundamentos.completeLesson.useMutation({
     onSuccess: async () => {
       toast.success("Preparação concluída. Aguarde a aula presencial.");
@@ -965,13 +988,6 @@ export function StudentLearningExperience({
       block => block.position === session.resume.position
     );
     setSelectedBlockIndex(resumeIndex >= 0 ? resumeIndex : 0);
-    const initialBlock = session.blocks[resumeIndex >= 0 ? resumeIndex : 0];
-    setReflection(
-      initialBlock
-        ? (initialBlock.reflection ?? "")
-        : (selectedLesson.progress?.reflection ?? "")
-    );
-    setReflectionDirty(false);
     setCompletedBlockIds(
       new Set(
         session.blocks
@@ -1009,37 +1025,6 @@ export function StudentLearningExperience({
     resolvedEnrollmentId,
   ]);
 
-  useEffect(() => {
-    if (
-      !selectedLesson ||
-      !resolvedCourseId ||
-      !resolvedEnrollmentId ||
-      !reflectionDirty ||
-      noteNavigating
-    )
-      return;
-    const payload: StageNotePayload = {
-      churchId,
-      courseId: resolvedCourseId,
-      enrollmentId: resolvedEnrollmentId,
-      studyId: selectedLesson.study.id,
-      blockId: activeBlock?.id ?? null,
-      reflection: reflection.trim() || null,
-    };
-    const timeout = window.setTimeout(() => {
-      void persistNote(payload).catch(() => undefined);
-    }, 700);
-    return () => window.clearTimeout(timeout);
-  }, [
-    reflection,
-    reflectionDirty,
-    activeBlock?.id,
-    selectedLesson?.study.id,
-    resolvedCourseId,
-    resolvedEnrollmentId,
-    noteNavigating,
-  ]);
-
   const currentItem = useMemo(() => {
     const pending =
       path?.items.filter(
@@ -1050,10 +1035,7 @@ export function StudentLearningExperience({
 
   const openLesson = (item: StudentLessonItem) => {
     if (!item.available || !resolvedCourseId) return;
-    noteDrafts.current.clear();
     setSelectedLesson(item);
-    setReflection(item.progress?.reflection ?? "");
-    setReflectionDirty(false);
     setQuestionAnswers({});
     setQuestionResults({});
     setCompletedBlockIds(new Set());
@@ -1074,8 +1056,6 @@ export function StudentLearningExperience({
     if (!block || block.status === "bloqueada" || noteNavigating) return;
     if (!(await flushNote())) return;
     setSelectedBlockIndex(index);
-    setReflection(savedNoteValue(block));
-    setReflectionDirty(false);
     setQuestionAnswers({});
     setQuestionResults({});
   };
@@ -1117,8 +1097,6 @@ export function StudentLearningExperience({
       );
       if (nextIndex >= 0) {
         setSelectedBlockIndex(nextIndex);
-        setReflection(savedNoteValue(blocks[nextIndex]));
-        setReflectionDirty(false);
       } else setStudyReadyToComplete(true);
       return;
     }
@@ -1135,7 +1113,6 @@ export function StudentLearningExperience({
   const closeLesson = async () => {
     if (noteNavigating || !(await flushNote())) return;
     setSelectedLesson(null);
-    setReflectionDirty(false);
   };
   const finishLesson = async () => {
     if (
@@ -1155,10 +1132,6 @@ export function StudentLearningExperience({
         activeBlock?.position ??
         selectedLesson.progress?.lastBlockPosition ??
         0,
-      // Nunca copie a nota da etapa para o registro histórico geral.
-      reflection: blocks.length
-        ? (selectedLesson.progress?.reflection ?? null)
-        : reflection.trim() || null,
     });
   };
 
@@ -1583,7 +1556,7 @@ export function StudentLearningExperience({
         open={Boolean(selectedLesson)}
         onOpenChange={open => !open && closeLesson()}
       >
-        <AdaptiveFormDialogContent className="sm:max-w-6xl lg:max-h-[calc(100dvh-3rem)]">
+        <AdaptiveFormDialogContent className="grid-cols-1 sm:max-w-6xl lg:max-h-[calc(100dvh-3rem)]">
           <div className={adaptiveFormDialogHeaderClassName}>
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
@@ -1656,7 +1629,7 @@ export function StudentLearningExperience({
                   completedBlockIds={completedBlockIds}
                   theme={theme}
                 />
-                <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
                   <main className="min-w-0 space-y-4">
                     <Card className="border-black/5 shadow-sm">
                       <CardContent className="space-y-4 p-4 sm:p-6">
@@ -1850,43 +1823,72 @@ export function StudentLearningExperience({
                       prompt={activeBlock?.reflectionPrompt}
                       stageTitle={activeBlock?.title}
                       reflection={reflection}
-                      setReflection={value => {
-                        setReflection(value);
-                        if (selectedLesson)
-                          noteDrafts.current.set(
-                            noteKey(
-                              selectedLesson.study.id,
-                              activeBlock?.id ?? null
-                            ),
-                            value
-                          );
-                        setReflectionDirty(true);
-                      }}
+                      setReflection={stageNote.edit}
                       theme={theme}
-                      isSaving={
-                        saveBlockReflection.isPending ||
-                        saveLegacyReflection.isPending
+                      isSaving={stageNote.isSaving}
+                      hasError={
+                        stageNote.hasError || Boolean(stageNote.conflict)
                       }
-                      hasError={Boolean(
-                        activeBlock
-                          ? saveBlockReflection.error &&
-                              saveBlockReflection.variables?.blockId ===
-                                activeBlock.id &&
-                              saveBlockReflection.variables?.studyId ===
-                                selectedLesson?.study.id
-                          : saveLegacyReflection.error &&
-                              saveLegacyReflection.variables?.studyId ===
-                                selectedLesson?.study.id
-                      )}
-                      isUnsaved={
-                        reflectionDirty &&
-                        (reflection.trim() || null) !==
-                          (activeBlock
-                            ? (activeBlock.reflection ?? null)
-                            : (selectedLesson?.progress?.reflection ?? null))
-                      }
+                      isUnsaved={stageNote.hasUnsaved}
                       disabled={noteNavigating}
                     />
+                    {stageNote.conflict?.remote ? (
+                      <StudentNoteConflict
+                        key={`${noteScope?.studyId}:${noteScope?.blockId}:${stageNote.conflict.remote.reflectionVersion}`}
+                        localText={reflection}
+                        remoteText={stageNote.conflict.remote.reflection ?? ""}
+                        remoteVersion={
+                          stageNote.conflict.remote.reflectionVersion
+                        }
+                        primaryColor={theme.primary}
+                        primaryForeground={theme.primaryForeground}
+                        onUseRemote={stageNote.useRemote}
+                        onKeepMine={stageNote.keepMine}
+                        onCombine={stageNote.combine}
+                        disabled={noteNavigating || stageNote.isSaving}
+                      />
+                    ) : stageNote.conflict ? (
+                      <section
+                        role="alert"
+                        className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"
+                      >
+                        <p>
+                          Esta anotação foi alterada em outro aparelho. Seu
+                          texto foi preservado.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="mt-3"
+                          onClick={stageNote.retryRemote}
+                          disabled={stageNote.loadingRemote}
+                        >
+                          {stageNote.loadingRemote
+                            ? "Consultando…"
+                            : "Carregar texto salvo"}
+                        </Button>
+                      </section>
+                    ) : stageNote.hasError ? (
+                      <div
+                        role="alert"
+                        className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+                      >
+                        <p>
+                          {stageNote.versionKnown
+                            ? "Seu texto foi preservado. Tente salvar novamente antes de sair."
+                            : "Não foi possível confirmar a versão da anotação. Não feche esta tela; o salvamento está bloqueado para proteger seu texto."}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="mt-2"
+                          onClick={stageNote.retry}
+                          disabled={!stageNote.versionKnown || noteNavigating}
+                        >
+                          Tentar salvar novamente
+                        </Button>
+                      </div>
+                    ) : null}
                   </main>
                   <aside className="space-y-4">
                     <StudyMaterials materials={studyMaterials} theme={theme} />

@@ -106,6 +106,24 @@ describe("validação local espelha os limites da procedure", () => {
 });
 
 describe("mensagens seguras de salvamento", () => {
+  it("mostra apenas o UUID de correlação gerado pelo servidor", () => {
+    const requestId = "da8e1b2f-8b45-48c2-a07b-af388ba6ce6d";
+    expect(
+      studySaveErrorMessage({ data: { code: "BAD_REQUEST", requestId } })
+    ).toContain(`Referência: ${requestId}`);
+  });
+  it.each([
+    "SYNTHETIC_SECRET",
+    "<script>PRIVATE</script>",
+    "abc\nPRIVATE",
+    123,
+  ])("ignora referência não validada", requestId => {
+    const message = studySaveErrorMessage({
+      data: { code: "BAD_REQUEST", requestId },
+    });
+    expect(message).not.toContain("Referência:");
+    expect(message).not.toMatch(/PRIVATE|SECRET|script/);
+  });
   it.each([
     "BAD_REQUEST",
     "UNAUTHORIZED",

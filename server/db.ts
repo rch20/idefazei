@@ -146,6 +146,14 @@ import {
   FOUNDATION_CREATION_SCHEMA_VERSION,
   type FoundationCreationOperation,
 } from "../shared/foundationCreationContracts";
+import {
+  assertFoundationNoteVersion,
+  FoundationNoteVersionConflictError,
+  FoundationNoteVersionInvalidError,
+  FoundationNoteVersionRequiredError,
+  normalizeFoundationNoteText,
+  type FoundationNoteSaveResult,
+} from "../shared/foundationNoteContracts";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -7807,44 +7815,133 @@ export async function completeFoundationBlockProgress(data: { churchId: number; 
   });
 }
 
-export async function saveFoundationBlockReflection(data: { churchId: number; enrollmentId: number; studyId: number; blockId: number; reflection: string | null }) {
+export type FoundationNoteSnapshot = {
+  reflection: string | null;
+  reflectionVersion: number;
+};
+
+function readFoundationNoteVersion(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new FoundationNoteVersionInvalidError();
+  }
+  return value;
+}
+
+/** Fresh, scoped read. A missing/legacy row is the server-confirmed version zero. */
+export async function getFoundationNoteSnapshot(data: { churchId: number; enrollmentId: number; studyId: number; blockId?: number | null }): Promise<FoundationNoteSnapshot> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const now = new Date();
-  const reflection = data.reflection?.trim() || null;
-  await db
-    .insert(foundationBlockProgress)
-    .values({
-    churchId: data.churchId,
-    enrollmentId: data.enrollmentId,
-    studyId: data.studyId,
-    blockId: data.blockId,
-    status: "em_andamento",
-    firstViewedAt: now,
-    lastViewedAt: now,
-    reflection,
-    })
-    .onDuplicateKeyUpdate({
-    set: { lastViewedAt: now, reflection },
+  if (data.blockId == null) {
+    const rows = await db
+      .select({ reflection: foundationLessonProgress.reflection, reflectionVersion: foundationLessonProgress.reflectionVersion })
+      .from(foundationLessonProgress)
+      .where(and(eq(foundationLessonProgress.churchId, data.churchId), eq(foundationLessonProgress.enrollmentId, data.enrollmentId), eq(foundationLessonProgress.studyId, data.studyId)))
+      .limit(1);
+    const row = rows[0];
+    return {
+      reflection: normalizeFoundationNoteText(row?.reflection),
+      reflectionVersion: row ? readFoundationNoteVersion(row.reflectionVersion) : 0,
+    };
+  }
+  const rows = await db
+    .select({ reflection: foundationBlockProgress.reflection, reflectionVersion: foundationBlockProgress.reflectionVersion })
+    .from(foundationBlockProgress)
+    .where(and(eq(foundationBlockProgress.churchId, data.churchId), eq(foundationBlockProgress.enrollmentId, data.enrollmentId), eq(foundationBlockProgress.studyId, data.studyId), eq(foundationBlockProgress.blockId, data.blockId)))
+    .limit(1);
+  const row = rows[0];
+  return {
+    reflection: normalizeFoundationNoteText(row?.reflection),
+    reflectionVersion: row ? readFoundationNoteVersion(row.reflectionVersion) : 0,
+  };
+}
+
+export async function saveFoundationBlockReflection(data: { churchId: number; enrollmentId: number; studyId: number; blockId: number; reflection: string | null | undefined; expectedVersion: number }): Promise<FoundationNoteSaveResult> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const expectedVersion = assertFoundationNoteVersion(data.expectedVersion);
+  const reflection = normalizeFoundationNoteText(data.reflection);
+  return db.transaction(async tx => {
+    const scope = and(eq(foundationBlockProgress.churchId, data.churchId), eq(foundationBlockProgress.enrollmentId, data.enrollmentId), eq(foundationBlockProgress.studyId, data.studyId), eq(foundationBlockProgress.blockId, data.blockId));
+    const beforeInsert = await tx
+      .select({ reflection: foundationBlockProgress.reflection, reflectionVersion: foundationBlockProgress.reflectionVersion })
+      .from(foundationBlockProgress)
+      .where(scope)
+      .limit(1);
+    if (!beforeInsert.length && reflection === null && expectedVersion === 0) {
+      return { success: true, reflection: null, reflectionVersion: 0, unchanged: true };
+    }
+    if (!beforeInsert.length && expectedVersion > 0) throw new FoundationNoteVersionConflictError();
+    if (!beforeInsert.length) {
+      const now = new Date();
+      await tx
+        .insert(foundationBlockProgress)
+        .values({ churchId: data.churchId, enrollmentId: data.enrollmentId, studyId: data.studyId, blockId: data.blockId, status: "em_andamento", firstViewedAt: now, lastViewedAt: now, reflection: null, reflectionVersion: 0 })
+        .onDuplicateKeyUpdate({ set: { id: sql`${foundationBlockProgress.id}` } });
+    }
+    const rows = await tx
+      .select({ reflection: foundationBlockProgress.reflection, reflectionVersion: foundationBlockProgress.reflectionVersion })
+      .from(foundationBlockProgress)
+      .where(scope)
+      .limit(1)
+      .for("update");
+    const row = rows[0];
+    if (!row) throw new Error("Foundation block progress disappeared during note save");
+    const currentVersion = readFoundationNoteVersion(row.reflectionVersion);
+    const currentReflection = normalizeFoundationNoteText(row.reflection);
+    if (expectedVersion > currentVersion || (expectedVersion < currentVersion && reflection !== currentReflection)) throw new FoundationNoteVersionConflictError();
+    if (reflection === currentReflection) return { success: true, reflection: currentReflection, reflectionVersion: currentVersion, unchanged: true };
+    const result = await tx
+      .update(foundationBlockProgress)
+      .set({ reflection, reflectionVersion: sql`${foundationBlockProgress.reflectionVersion} + 1` })
+      .where(and(scope, eq(foundationBlockProgress.reflectionVersion, expectedVersion)));
+    const affectedRows = Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0);
+    if (affectedRows !== 1) throw new FoundationNoteVersionConflictError();
+    return { success: true, reflection, reflectionVersion: currentVersion + 1, unchanged: false };
   });
 }
 
-export async function saveFoundationLessonReflection(data: { churchId: number; enrollmentId: number; studyId: number; reflection: string | null }) {
+export async function saveFoundationLessonReflection(data: { churchId: number; enrollmentId: number; studyId: number; reflection: string | null | undefined; expectedVersion: number }): Promise<FoundationNoteSaveResult> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const now = new Date();
-  await db
-    .insert(foundationLessonProgress)
-    .values({
-    churchId: data.churchId,
-    enrollmentId: data.enrollmentId,
-    studyId: data.studyId,
-    status: "em_andamento",
-    lastAccessedAt: now,
-    reflection: data.reflection?.trim() || null,
-    })
-    .onDuplicateKeyUpdate({
-    set: { lastAccessedAt: now, reflection: data.reflection?.trim() || null },
+  const expectedVersion = assertFoundationNoteVersion(data.expectedVersion);
+  const reflection = normalizeFoundationNoteText(data.reflection);
+  return db.transaction(async tx => {
+    const scope = and(eq(foundationLessonProgress.churchId, data.churchId), eq(foundationLessonProgress.enrollmentId, data.enrollmentId), eq(foundationLessonProgress.studyId, data.studyId));
+    const beforeInsert = await tx
+      .select({ reflection: foundationLessonProgress.reflection, reflectionVersion: foundationLessonProgress.reflectionVersion })
+      .from(foundationLessonProgress)
+      .where(scope)
+      .limit(1);
+    if (!beforeInsert.length && reflection === null && expectedVersion === 0) {
+      return { success: true, reflection: null, reflectionVersion: 0, unchanged: true };
+    }
+    if (!beforeInsert.length && expectedVersion > 0) throw new FoundationNoteVersionConflictError();
+    if (!beforeInsert.length) {
+      const now = new Date();
+      await tx
+        .insert(foundationLessonProgress)
+        .values({ churchId: data.churchId, enrollmentId: data.enrollmentId, studyId: data.studyId, status: "em_andamento", lastAccessedAt: now, reflection: null, reflectionVersion: 0 })
+        .onDuplicateKeyUpdate({ set: { id: sql`${foundationLessonProgress.id}` } });
+    }
+    const rows = await tx
+      .select({ reflection: foundationLessonProgress.reflection, reflectionVersion: foundationLessonProgress.reflectionVersion })
+      .from(foundationLessonProgress)
+      .where(scope)
+      .limit(1)
+      .for("update");
+    const row = rows[0];
+    if (!row) throw new Error("Foundation lesson progress disappeared during note save");
+    const currentVersion = readFoundationNoteVersion(row.reflectionVersion);
+    const currentReflection = normalizeFoundationNoteText(row.reflection);
+    if (expectedVersion > currentVersion || (expectedVersion < currentVersion && reflection !== currentReflection)) throw new FoundationNoteVersionConflictError();
+    if (reflection === currentReflection) return { success: true, reflection: currentReflection, reflectionVersion: currentVersion, unchanged: true };
+    const result = await tx
+      .update(foundationLessonProgress)
+      .set({ reflection, reflectionVersion: sql`${foundationLessonProgress.reflectionVersion} + 1` })
+      .where(and(scope, eq(foundationLessonProgress.reflectionVersion, expectedVersion)));
+    const affectedRows = Number((result[0] as { affectedRows?: number } | undefined)?.affectedRows ?? 0);
+    if (affectedRows !== 1) throw new FoundationNoteVersionConflictError();
+    return { success: true, reflection, reflectionVersion: currentVersion + 1, unchanged: false };
   });
 }
 
@@ -7863,7 +7960,6 @@ export async function completeFoundationLesson(data: { churchId: number; enrollm
     startedAt: now,
     lastAccessedAt: now,
     completedAt: now,
-    reflection: data.reflection?.trim() || null,
     })
     .onDuplicateKeyUpdate({
     set: {
@@ -7871,7 +7967,6 @@ export async function completeFoundationLesson(data: { churchId: number; enrollm
       lastBlockPosition: data.lastBlockPosition,
       lastAccessedAt: now,
       completedAt: now,
-      reflection: data.reflection?.trim() || null,
     },
   });
 }

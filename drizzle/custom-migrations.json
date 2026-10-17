@@ -156,6 +156,12 @@
       "file": "drizzle/0096_foundation_creation_idempotency.sql",
       "kind": "custom-additive",
       "sha256": "f23d04af8fde76ae385b108e019600e84002edeaeae4f2ad01cc344e693bec85"
+    },
+    {
+      "id": "0097",
+      "file": "drizzle/0097_foundation_note_versions.sql",
+      "kind": "custom-additive",
+      "sha256": "9491508b12461c5c65f7923e3898f94b11ce494cf8e1e238095b5ee3affb9e5f"
     }
   ]
 }

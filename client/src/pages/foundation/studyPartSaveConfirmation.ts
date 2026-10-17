@@ -52,6 +52,20 @@ export function confirmsStudyPartSave(
 export function studySaveErrorMessage(error: unknown): string {
   const data =
     error && typeof error === "object"
+      ? (error as { data?: { requestId?: unknown } }).data
+      : undefined;
+  const message = studySaveErrorBaseMessage(error);
+  return typeof data?.requestId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      data.requestId
+    )
+    ? `${message} Referência: ${data.requestId}.`
+    : message;
+}
+
+function studySaveErrorBaseMessage(error: unknown): string {
+  const data =
+    error && typeof error === "object"
       ? (error as { data?: { code?: unknown } }).data
       : undefined;
   switch (data?.code) {

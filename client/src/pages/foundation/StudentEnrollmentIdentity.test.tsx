@@ -68,8 +68,11 @@ vi.mock("@/lib/trpc", () => ({
                 fixture.calls[name](input);
                 if (fixture.rejectNote && name === "saveBlockReflection")
                   throw new Error("Falha sintética");
-                callbacks?.onSuccess?.({}, input);
-                return {};
+                const result = name === "saveReflection" || name === "saveBlockReflection"
+                  ? { success: true, reflection: input.reflection, reflectionVersion: input.expectedVersion + 1, unchanged: false }
+                  : {};
+                callbacks?.onSuccess?.(result, input);
+                return result;
               },
             };
           },
@@ -112,7 +115,7 @@ beforeEach(() => {
   fixture.session = {
     enrollmentId: 22,
     study: { id: 77, title: "Estudo QA", content: "Introdução" },
-    progress: { status: "em_andamento", lastBlockPosition: 0 },
+    progress: { status: "em_andamento", lastBlockPosition: 0, reflectionVersion: 0 },
     resume: { blockId: 84, position: 0, label: "Leia" },
     blocks: [
       {
@@ -122,6 +125,7 @@ beforeEach(() => {
         position: 0,
         status: "atual",
         reflection: "Nota do servidor",
+        reflectionVersion: 0,
         questions: [],
       },
     ],
@@ -176,6 +180,7 @@ describe("identidade de matrícula do aluno — API simulada", () => {
         enrollmentId: 22,
         studyId: 77,
         reflection: "Anotação geral atualizada",
+        expectedVersion: 0,
       })
     );
     expect(fixture.calls.saveBlockReflection).not.toHaveBeenCalled();
@@ -208,6 +213,7 @@ describe("identidade de matrícula do aluno — API simulada", () => {
         studyId: 77,
         blockId: 84,
         reflection: "Nota nova sintética",
+        expectedVersion: 0,
       })
     );
     expect(fixture.setData).toHaveBeenCalledWith(

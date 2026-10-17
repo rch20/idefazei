@@ -765,7 +765,6 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
         courseId: COURSE_ID,
         studyId: STUDY_ID,
         lastBlockPosition: 0,
-        reflection: null,
       })
     ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
   });
@@ -811,7 +810,6 @@ describe("isolamento tenant-aware das rotas da Escola de Fundamentos", () => {
         courseId: COURSE_ID,
         studyId: STUDY_ID,
         lastBlockPosition: 0,
-        reflection: null,
       })
     ).rejects.toMatchObject({
       code: "PRECONDITION_FAILED",

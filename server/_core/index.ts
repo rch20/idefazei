@@ -3,6 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import { createHash } from "crypto";
 import net from "net";
+import { createFoundationRpcTraceMiddleware, recordFoundationRpcError } from "../foundationRpcTrace";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
@@ -809,9 +810,13 @@ async function startServer() {
   // tRPC API
   app.use(
     "/api/trpc",
+    createFoundationRpcTraceMiddleware(),
     createExpressMiddleware({
       router: appRouter,
       createContext,
+      onError({ error, path, ctx }) {
+        recordFoundationRpcError(ctx?.req, path, error.code);
+      },
     })
   );
   // development mode uses Vite, production mode uses static files

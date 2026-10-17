@@ -5,9 +5,13 @@ import type { TrpcContext } from "./context";
 import { createHash } from "node:crypto";
 import { recordSecurityAccessAuditEvent } from "../db";
 import { createSecurityAccessMonitor } from "../security-access-monitoring";
+import { foundationRpcErrorShape, recordFoundationRpcHandlerResult } from "../foundationRpcTrace";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
+  errorFormatter({ shape, ctx, path }) {
+    return foundationRpcErrorShape(shape, ctx?.req, path);
+  },
 });
 
 export const router = t.router;
@@ -121,7 +125,11 @@ const requireTenant = t.middleware(async opts => {
   });
 });
 
-export const tenantProcedure = protectedProcedure.use(requireTenant);
+export const tenantProcedure = protectedProcedure.use(requireTenant).use(async opts => {
+  const result = await opts.next();
+  recordFoundationRpcHandlerResult(opts.ctx.req, opts.path, result.ok);
+  return result;
+});
 
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {

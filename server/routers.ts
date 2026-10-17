@@ -333,6 +333,7 @@ import {
   updateFoundationStudyBlock,
   moveFoundationStudyBlocks,
   getFoundationStudySession,
+  getFoundationNoteSnapshot,
   createFoundationStudyBlock,
   createFoundationQuestion,
   createIdempotentFoundationQuestion,
@@ -460,6 +461,13 @@ import {
   reviewSecurityAuditHold,
   releaseSecurityAuditHold,
 } from "./db";
+import {
+  FoundationNoteVersionConflictError,
+  FoundationNoteVersionInvalidError,
+  NOTE_VERSION_CONFLICT,
+  NOTE_VERSION_REQUIRED,
+  foundationNoteVersionSchema,
+} from "../shared/foundationNoteContracts";
 import { getDb } from "./db";
 import { events } from "../drizzle/schema";
 import { and, eq } from "drizzle-orm";
@@ -7999,6 +8007,7 @@ const escolaFundamentosRouter = router({
           lastViewedAt: progress?.lastViewedAt ?? null,
           completedAt: progress?.completedAt ?? null,
           reflection: progress?.reflection ?? null,
+          reflectionVersion: progress?.reflectionVersion ?? 0,
           questions: questions.map(({ question }) => ({
             ...publicFoundationQuestion(question),
             isCorrect: session.correctQuestionIds.has(question.id),
@@ -8015,7 +8024,9 @@ const escolaFundamentosRouter = router({
           summary: session.study.summary,
           content: session.study.content,
         },
-        progress: session.progress,
+        progress: session.progress
+          ? { ...session.progress, reflectionVersion: session.progress.reflectionVersion ?? 0 }
+          : session.progress,
         resume: {
           blockId: currentBlock?.id ?? null,
           position: currentBlock?.position ?? 0,
@@ -8023,6 +8034,30 @@ const escolaFundamentosRouter = router({
         },
         blocks,
       };
+    }),
+  getNoteSnapshot: tenantProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        courseId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive().optional(),
+        studyId: z.number().int().positive(),
+        blockId: z.number().int().positive().optional(),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
+      if (input.blockId !== undefined) {
+        const block = await getFoundationStudyBlockById(input.churchId, input.studyId, input.blockId);
+        if (!block)
+          throw new TRPCError({ code: "NOT_FOUND", message: "Etapa não encontrada neste estudo." });
+      }
+      return getFoundationNoteSnapshot({
+        churchId: input.churchId,
+        enrollmentId: enrollment.id,
+        studyId: input.studyId,
+        blockId: input.blockId,
+      });
     }),
   studyClass: tenantProcedure
     .input(
@@ -8457,17 +8492,28 @@ const escolaFundamentosRouter = router({
         studyId: z.number().int().positive(),
         enrollmentId: z.number().int().positive().optional(),
         reflection: z.string().trim().max(4000).nullable(),
+        expectedVersion: foundationNoteVersionSchema.optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
       const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
-      await saveFoundationLessonReflection({
-        churchId: input.churchId,
-        enrollmentId: enrollment.id,
-        studyId: input.studyId,
-        reflection: input.reflection,
-      });
-      return { success: true };
+      if (input.expectedVersion === undefined)
+        throw new TRPCError({ code: "PRECONDITION_REQUIRED", message: NOTE_VERSION_REQUIRED });
+      try {
+        return await saveFoundationLessonReflection({
+          churchId: input.churchId,
+          enrollmentId: enrollment.id,
+          studyId: input.studyId,
+          reflection: input.reflection,
+          expectedVersion: input.expectedVersion,
+        });
+      } catch (error) {
+        if (error instanceof FoundationNoteVersionConflictError)
+          throw new TRPCError({ code: "CONFLICT", message: NOTE_VERSION_CONFLICT });
+        if (error instanceof FoundationNoteVersionInvalidError)
+          throw new TRPCError({ code: "BAD_REQUEST", message: NOTE_VERSION_REQUIRED });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível confirmar o salvamento da anotação." });
+      }
     }),
   saveBlockReflection: tenantProcedure
     .input(
@@ -8478,6 +8524,7 @@ const escolaFundamentosRouter = router({
         enrollmentId: z.number().int().positive().optional(),
         blockId: z.number().int().positive(),
         reflection: z.string().trim().max(4000).nullable(),
+        expectedVersion: foundationNoteVersionSchema.optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -8489,14 +8536,24 @@ const escolaFundamentosRouter = router({
           code: "NOT_FOUND",
           message: "Etapa não encontrada neste estudo.",
         });
-      await saveFoundationBlockReflection({
-        churchId: input.churchId,
-        enrollmentId: enrollment.id,
-        studyId: input.studyId,
-        blockId: input.blockId,
-        reflection: input.reflection,
-      });
-      return { success: true };
+      if (input.expectedVersion === undefined)
+        throw new TRPCError({ code: "PRECONDITION_REQUIRED", message: NOTE_VERSION_REQUIRED });
+      try {
+        return await saveFoundationBlockReflection({
+          churchId: input.churchId,
+          enrollmentId: enrollment.id,
+          studyId: input.studyId,
+          blockId: input.blockId,
+          reflection: input.reflection,
+          expectedVersion: input.expectedVersion,
+        });
+      } catch (error) {
+        if (error instanceof FoundationNoteVersionConflictError)
+          throw new TRPCError({ code: "CONFLICT", message: NOTE_VERSION_CONFLICT });
+        if (error instanceof FoundationNoteVersionInvalidError)
+          throw new TRPCError({ code: "BAD_REQUEST", message: NOTE_VERSION_REQUIRED });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Não foi possível confirmar o salvamento da anotação." });
+      }
     }),
   completeLesson: tenantProcedure
     .input(
@@ -8506,11 +8563,13 @@ const escolaFundamentosRouter = router({
         studyId: z.number().int().positive(),
         enrollmentId: z.number().int().positive().optional(),
         lastBlockPosition: z.number().int().min(0).max(999).default(0),
-        reflection: z.string().trim().max(4000).nullable().optional(),
+        reflection: z.unknown().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
       const { enrollment } = await requireFoundationStudentLesson(ctx.user.id, input.churchId, input.courseId, input.studyId, input.enrollmentId);
+      if (Object.prototype.hasOwnProperty.call(input, "reflection"))
+        throw new TRPCError({ code: "PRECONDITION_REQUIRED", message: NOTE_VERSION_REQUIRED });
       if (!(await hasCompletedFoundationQuestions(input.churchId, enrollment.id, input.studyId)))
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
@@ -8531,7 +8590,6 @@ const escolaFundamentosRouter = router({
         enrollmentId: enrollment.id,
         studyId: input.studyId,
         lastBlockPosition: input.lastBlockPosition,
-        reflection: input.reflection,
       });
       if (enrollment.status === "matriculado") await updateCourseEnrollment(enrollment.id, { status: "em_andamento" });
       return { success: true };

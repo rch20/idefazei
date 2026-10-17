@@ -19,6 +19,8 @@ const dbMocks = vi.hoisted(() => ({
   resolveFoundationEnrollmentForPerson: vi.fn(),
   getFoundationLearningProgress: vi.fn(),
   getFoundationStudySession: vi.fn(),
+  getFoundationNoteSnapshot: vi.fn(),
+  getFoundationStudyBlockById: vi.fn(),
   getFoundationStudentHistory: vi.fn(),
   getFoundationQuestionForAttempt: vi.fn(),
   getFoundationQuestionAttemptByClientId: vi.fn(),
@@ -40,6 +42,7 @@ vi.mock("./db", async () => ({
 }));
 
 import { appRouter } from "./routers";
+import { FoundationNoteVersionConflictError } from "../shared/foundationNoteContracts";
 
 const CHURCH_ID = 100;
 const OTHER_CHURCH_ID = 200;
@@ -320,11 +323,13 @@ describe("resolução única da matrícula da Escola de Fundamentos", () => {
     await caller.escolaFundamentos.saveReflection({
       ...input,
       reflection: "Geral",
+      expectedVersion: 0,
     });
     await caller.escolaFundamentos.saveBlockReflection({
       ...input,
       blockId: BLOCK_ID,
       reflection: "Por etapa",
+      expectedVersion: 0,
     });
     dbMocks.getFoundationStudySession.mockResolvedValue({
       ...sessionWithBlock(),
@@ -335,7 +340,6 @@ describe("resolução única da matrícula da Escola de Fundamentos", () => {
     await caller.escolaFundamentos.completeLesson({
       ...input,
       lastBlockPosition: 0,
-      reflection: "Geral",
     });
 
     expect(dbMocks.resolveFoundationEnrollmentForPerson).toHaveBeenCalledTimes(
@@ -420,10 +424,15 @@ describe("resolução única da matrícula da Escola de Fundamentos", () => {
     expect(db).toContain("eq(courseEnrollments.personId, data.personId)");
     expect(db).toContain("eq(courses.churchId, data.churchId)");
     expect(db).toContain("eq(courseEnrollments.id, data.enrollmentId)");
-    expect(experience).toContain(
-      '`${churchId}:${resolvedEnrollmentId ?? "enrollment"}:${studyId}:${blockId ?? "legacy"}`'
+    const queue = readFileSync(
+      "client/src/pages/foundation/stageNoteQueue.ts",
+      "utf8"
     );
-    expect(experience).toContain("enrollmentId: variables.enrollmentId");
+    expect(queue).toContain(
+      '`${payload.churchId}:${payload.enrollmentId}:${payload.studyId}:${payload.blockId ?? "legacy"}`'
+    );
+    expect(experience).toContain("useVersionedStageNote");
+    expect(experience).toContain("enrollmentId: scope.enrollmentId");
   });
 
   it("preserva leitura explícita de histórico sem reutilizá-la para mutations atuais", () => {
@@ -437,3 +446,144 @@ describe("resolução única da matrícula da Escola de Fundamentos", () => {
 });
 
 export {};
+
+describe("contrato versionado de anotações — router real com banco simulado", () => {
+  const input = {
+    churchId: CHURCH_ID,
+    courseId: COURSE_ID,
+    studyId: STUDY_ID,
+    enrollmentId: CURRENT_ENROLLMENT_ID,
+    blockId: BLOCK_ID,
+    reflection: "Nota QA",
+    expectedVersion: 0,
+  };
+  it("exige versão antes de qualquer escrita de anotação por bloco", async () => {
+    const { expectedVersion, ...oldClient } = input;
+    await expect(
+      appRouter
+        .createCaller(context())
+        .escolaFundamentos.saveBlockReflection(oldClient)
+    ).rejects.toMatchObject({
+      code: "PRECONDITION_REQUIRED",
+      message: "NOTE_VERSION_REQUIRED",
+    });
+    expect(dbMocks.saveFoundationBlockReflection).not.toHaveBeenCalled();
+  });
+  it("exige versão também para anotação geral histórica", async () => {
+    const { expectedVersion, blockId, ...oldClient } = input;
+    await expect(
+      appRouter
+        .createCaller(context())
+        .escolaFundamentos.saveReflection(oldClient)
+    ).rejects.toMatchObject({ code: "PRECONDITION_REQUIRED" });
+    expect(dbMocks.saveFoundationLessonReflection).not.toHaveBeenCalled();
+  });
+  it.each([-1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+    "versão inválida %s não chama escritor",
+    async expectedVersion => {
+      await expect(
+        appRouter
+          .createCaller(context())
+          .escolaFundamentos.saveBlockReflection({ ...input, expectedVersion })
+      ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(dbMocks.saveFoundationBlockReflection).not.toHaveBeenCalled();
+    }
+  );
+  it("repassa o snapshot confirmado, não um sucesso presumido", async () => {
+    const result = {
+      success: true,
+      reflection: "Nota QA",
+      reflectionVersion: 1,
+      unchanged: false,
+    };
+    dbMocks.saveFoundationBlockReflection.mockResolvedValue(result);
+    expect(
+      await appRouter
+        .createCaller(context())
+        .escolaFundamentos.saveBlockReflection(input)
+    ).toEqual(result);
+    expect(dbMocks.saveFoundationBlockReflection).toHaveBeenCalledWith({
+      churchId: CHURCH_ID,
+      enrollmentId: CURRENT_ENROLLMENT_ID,
+      studyId: STUDY_ID,
+      blockId: BLOCK_ID,
+      reflection: "Nota QA",
+      expectedVersion: 0,
+    });
+  });
+  it("mapeia conflito real para CONFLICT sem expor conteúdo remoto", async () => {
+    dbMocks.saveFoundationBlockReflection.mockRejectedValue(
+      new FoundationNoteVersionConflictError()
+    );
+    await expect(
+      appRouter
+        .createCaller(context())
+        .escolaFundamentos.saveBlockReflection(input)
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      message: "NOTE_VERSION_CONFLICT",
+    });
+  });
+  it("falha inesperada não expõe SQL nem texto da anotação", async () => {
+    dbMocks.saveFoundationBlockReflection.mockRejectedValue(
+      Error("SQL INSERT secret note contents")
+    );
+    await expect(
+      appRouter
+        .createCaller(context())
+        .escolaFundamentos.saveBlockReflection(input)
+    ).rejects.toMatchObject({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Não foi possível confirmar o salvamento da anotação.",
+    });
+  });
+  it("snapshot valida a mesma matrícula e bloco antes da leitura", async () => {
+    dbMocks.getFoundationStudyBlockById.mockResolvedValue({ id: BLOCK_ID });
+    dbMocks.getFoundationNoteSnapshot.mockResolvedValue({
+      reflection: "Nota QA",
+      reflectionVersion: 5,
+    });
+    const { reflection, expectedVersion, ...query } = input;
+    expect(
+      await appRouter
+        .createCaller(context())
+        .escolaFundamentos.getNoteSnapshot(query)
+    ).toEqual({ reflection: "Nota QA", reflectionVersion: 5 });
+    expect(dbMocks.getFoundationNoteSnapshot).toHaveBeenCalledWith({
+      churchId: CHURCH_ID,
+      enrollmentId: CURRENT_ENROLLMENT_ID,
+      studyId: STUDY_ID,
+      blockId: BLOCK_ID,
+    });
+  });
+  it("snapshot recusa outra igreja antes da leitura", async () => {
+    const { reflection, expectedVersion, ...query } = input;
+    await expect(
+      appRouter
+        .createCaller(context())
+        .escolaFundamentos.getNoteSnapshot({
+          ...query,
+          churchId: OTHER_CHURCH_ID,
+        })
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(dbMocks.getFoundationNoteSnapshot).not.toHaveBeenCalled();
+  });
+  it("snapshot recusa bloco que não pertence ao estudo", async () => {
+    dbMocks.getFoundationStudyBlockById.mockResolvedValue(null);
+    const { reflection, expectedVersion, ...query } = input;
+    await expect(
+      appRouter.createCaller(context()).escolaFundamentos.getNoteSnapshot(query)
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(dbMocks.getFoundationNoteSnapshot).not.toHaveBeenCalled();
+  });
+  it("cliente antigo não conclui descartando silenciosamente a reflexão enviada", async () => {
+    const { blockId, expectedVersion, ...oldClient } = input;
+    await expect(
+      appRouter
+        .createCaller(context())
+        .escolaFundamentos.completeLesson(oldClient)
+    ).rejects.toMatchObject({ code: "PRECONDITION_REQUIRED" });
+    expect(dbMocks.completeFoundationLesson).not.toHaveBeenCalled();
+    expect(dbMocks.saveFoundationLessonReflection).not.toHaveBeenCalled();
+  });
+});
