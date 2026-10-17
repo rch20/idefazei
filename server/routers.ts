@@ -474,6 +474,7 @@ import { and, eq } from "drizzle-orm";
 import { generateReportHTML, htmlToBase64 } from "./reports";
 import { emitInternalNotification } from "./notifications";
 import { deriveSecurityAuditHoldState, SECURITY_HOLD_EVENT_TYPE } from "./security-audit-holds";
+import { leadershipStudyRouter } from "./leadershipSchoolStudyRouter";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const birthDateInput = z
@@ -10333,6 +10334,7 @@ const escolaLideresRouter = router({
       });
       return { success: true };
     }),
+  study: leadershipStudyRouter,
 });
 
 // ─── LIDERANÇA ROUTER ─────────────────────────────────────────────────────────

@@ -40,6 +40,18 @@ const db = compactSource(
 const router = compactSource(
   readFileSync(resolve(process.cwd(), "server/routers.ts"), "utf8")
 );
+const studyRouter = compactSource(
+  readFileSync(
+    resolve(process.cwd(), "server/leadershipSchoolStudyRouter.ts"),
+    "utf8"
+  )
+);
+const studyDb = compactSource(
+  readFileSync(
+    resolve(process.cwd(), "server/leadershipSchoolStudyDb.ts"),
+    "utf8"
+  )
+);
 const page = readFileSync(
   resolve(process.cwd(), "client/src/pages/EscolaLideresProfessor.tsx"),
   "utf8"
@@ -133,6 +145,31 @@ describe("Escola de Líderes — Painel do Professor", () => {
     expect(db).toContain(compactSource("getLeadershipLessonRoster"));
     expect(db).toContain(compactSource("saveLeadershipAttendance"));
     expect(db).toContain(compactSource("releaseLeadershipLesson"));
+  });
+
+  it("expõe a Fase 2 como subrouter independente e tenant-aware", () => {
+    for (const procedure of [
+      "modules",
+      "studies",
+      "blocks",
+      "questions",
+      "materials",
+      "administrators",
+      "lessonStudies",
+      "student",
+    ]) {
+      expect(studyRouter).toContain(`${procedure}: router({`);
+    }
+    expect(router).toContain("study: leadershipStudyRouter");
+    expect(studyRouter).toContain("requireLeadershipContentAccess");
+    expect(studyRouter).toContain("requireStudentStudy");
+    expect(studyRouter).toContain("clientRequestId: idempotencySchema");
+    expect(studyRouter).toContain("correctOptionId");
+    expect(studyRouter).toContain("answerQuestion: protectedProcedure");
+    expect(studyRouter).toContain("publish: protectedProcedure");
+    expect(studyDb).not.toContain("foundation_");
+    expect(studyDb).toContain("leadershipSchoolStudies.churchId");
+    expect(studyDb).toContain("LeadershipStudyNoteVersionConflictError");
   });
 
   it("mantém o painel orientado ao professor e não como uma tela administrativa duplicada", () => {
