@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import type { ReactNode } from "react";
 import HandoutPreview from "./FoundationHandoutPreview";
 import type previewData from "./foundationHandoutPages";
 import { FileText } from "lucide-react";
@@ -23,6 +24,33 @@ export const FOUNDATION_STUDY_HANDOUTS = [
 ] as const;
 
 export type StudyHandout = (typeof FOUNDATION_STUDY_HANDOUTS)[number];
+
+const HANDOUT_CARD_CLASS =
+  "flex min-w-0 flex-col gap-2 rounded-lg border border-border p-3";
+const HANDOUT_BUTTON_CLASS =
+  "mt-auto h-auto min-h-11 w-full whitespace-normal py-2";
+const HANDOUT_BUTTON_PROPS = {
+  variant: "outline",
+  className: HANDOUT_BUTTON_CLASS,
+} as const;
+const HANDOUT_ICON = (
+  <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+);
+
+function HandoutCard({
+  description,
+  children,
+}: {
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={HANDOUT_CARD_CLASS}>
+      <p className="text-sm text-muted-foreground">{description}</p>
+      {children}
+    </div>
+  );
+}
 
 /** Blank generic templates only. No tenant, student, or study data is included. */
 export function FoundationStudyHandouts({ theme }: { theme: FoundationTheme }) {
@@ -61,7 +89,7 @@ export function FoundationStudyHandouts({ theme }: { theme: FoundationTheme }) {
           className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--handout-focus)] focus-visible:ring-offset-2"
           style={{ "--handout-focus": theme.focusRing } as React.CSSProperties}
         >
-          <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+          {HANDOUT_ICON}
           Gabaritos para preparar estudos
           <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground group-open:hidden">
             Ver modelos
@@ -73,39 +101,27 @@ export function FoundationStudyHandouts({ theme }: { theme: FoundationTheme }) {
             completo continua disponível para preparar no papel.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-border p-3">
-              <p className="text-sm text-muted-foreground">
-                Modelo editável com as quatro etapas, perguntas e reflexões.
-              </p>
-              <Button
-                asChild
-                variant="outline"
-                className="mt-auto h-auto min-h-11 w-full whitespace-normal py-2"
-                style={buttonStyle}
-              >
+            <HandoutCard description="Modelo editável com as quatro etapas, perguntas e reflexões.">
+              <Button {...HANDOUT_BUTTON_PROPS} asChild style={buttonStyle}>
                 <a
                   href={FOUNDATION_STUDY_EXCEL_TEMPLATE.href}
                   download={FOUNDATION_STUDY_EXCEL_TEMPLATE.filename}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {HANDOUT_ICON}
                   Baixar gabarito Excel v2
                 </a>
               </Button>
-            </div>
+            </HandoutCard>
             {FOUNDATION_STUDY_HANDOUTS.map(handout => (
-              <div
+              <HandoutCard
                 key={handout.filename}
-                className="flex min-w-0 flex-col gap-2 rounded-lg border border-border p-3"
+                description={handout.description}
               >
-                <p className="text-sm text-muted-foreground">
-                  {handout.description}
-                </p>
                 <Button
+                  {...HANDOUT_BUTTON_PROPS}
                   type="button"
-                  variant="outline"
-                  className="mt-auto h-auto min-h-11 w-full whitespace-normal py-2"
                   style={buttonStyle}
                   aria-haspopup="dialog"
                   onClick={event => {
@@ -113,11 +129,11 @@ export function FoundationStudyHandouts({ theme }: { theme: FoundationTheme }) {
                     void openPreview(handout);
                   }}
                 >
-                  <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  {HANDOUT_ICON}
                   <span>{handout.label}</span>
                   <span className="text-xs">PDF</span>
                 </Button>
-              </div>
+              </HandoutCard>
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
