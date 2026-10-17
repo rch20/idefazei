@@ -92,6 +92,15 @@ describe("Formação de Fundamentos", () => {
     expect(source).toContain("Visualizar ${study.title} como aluno");
   });
 
+  it("aguarda a atualização da turma antes de selecionar o novo módulo", () => {
+    expect(source).toContain(
+      "const trailInput = { churchId, courseId: selectedCourseId }"
+    );
+    expect(source).toContain("listModules.invalidate(trailInput)");
+    expect(source).toContain("listStudies.invalidate(trailInput)");
+    expect(source).toContain("invalidateTrail().then(() =>");
+  });
+
   it("preserva a camada superior e o rodapé seguro do modelo adaptativo", () => {
     expect(adaptiveSource).toContain("z-[200]");
     expect(adaptiveSource).toContain("100dvh");

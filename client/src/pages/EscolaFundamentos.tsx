@@ -1360,19 +1360,21 @@ function StudyManagement({
       { churchId },
       { enabled: canManageAdministrators }
     );
-  const invalidateTrail = () => {
-    utils.escolaFundamentos.listModules.invalidate();
-    utils.escolaFundamentos.listStudies.invalidate();
-  };
+  const trailInput = { churchId, courseId: selectedCourseId };
+  const invalidateTrail = () =>
+    Promise.all([
+      utils.escolaFundamentos.listModules.invalidate(trailInput),
+      utils.escolaFundamentos.listStudies.invalidate(trailInput),
+    ]);
   const createModule = trpc.escolaFundamentos.createModule.useMutation({
-    onSuccess: data => {
-      toast.success("Módulo criado. Ele já está selecionado neste estudo.");
-      setStudyModuleId(String(data.moduleId));
-      setModuleTitle("");
-      setModuleDescription("");
-      setModuleDialogOpen(false);
-      invalidateTrail();
-    },
+    onSuccess: data =>
+      invalidateTrail().then(() => {
+        toast.success("Módulo criado. Ele já está selecionado neste estudo.");
+        setStudyModuleId(String(data.moduleId));
+        setModuleTitle("");
+        setModuleDescription("");
+        setModuleDialogOpen(false);
+      }),
     onError: error => toast.error(error.message),
   });
   const updateModule = trpc.escolaFundamentos.updateModule.useMutation({
@@ -1383,11 +1385,11 @@ function StudyManagement({
     onError: error => toast.error(error.message),
   });
   const moveModule = trpc.escolaFundamentos.moveModule.useMutation({
-    onSuccess: invalidateTrail,
+    onSuccess: () => invalidateTrail(),
     onError: error => toast.error(error.message),
   });
   const moveStudy = trpc.escolaFundamentos.moveStudy.useMutation({
-    onSuccess: invalidateTrail,
+    onSuccess: () => invalidateTrail(),
     onError: error => toast.error(error.message),
   });
   const updateStudy = trpc.escolaFundamentos.updateStudy.useMutation({
