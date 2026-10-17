@@ -3,19 +3,16 @@ import HandoutPreview from "./FoundationHandoutPreview";
 import type previewData from "./foundationHandoutPages";
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import compactHandoutUrl from "@/documents/foundation/gabarito-fundamentos-simplificado.pdf?url";
+import excelTemplateUrl from "@/documents/foundation/gabarito-escola-fundamentos-v2-vazio.xlsx?url";
 import completeHandoutUrl from "@/documents/foundation/gabarito-fundamentos-completo.pdf?url";
 import type { FoundationTheme } from "./FoundationTheme";
 
+export const FOUNDATION_STUDY_EXCEL_TEMPLATE = {
+  href: excelTemplateUrl,
+  filename: "gabarito-escola-fundamentos-v2.xlsx",
+} as const;
+
 export const FOUNDATION_STUDY_HANDOUTS = [
-  {
-    label: "Simplificado — 2 páginas",
-    description:
-      "Para um estudo curto com uma pergunta. Imprima frente e verso.",
-    href: compactHandoutUrl,
-    filename: "gabarito-fundamentos-simplificado-2-paginas.pdf",
-    pages: 2,
-  },
   {
     label: "Completo — 6 páginas",
     description: "Mais espaço para escrever, com uma folha por etapa.",
@@ -27,7 +24,7 @@ export const FOUNDATION_STUDY_HANDOUTS = [
 
 export type StudyHandout = (typeof FOUNDATION_STUDY_HANDOUTS)[number];
 
-/** Blank generic handouts only. No tenant, student, or study data is included. */
+/** Blank generic templates only. No tenant, student, or study data is included. */
 export function FoundationStudyHandouts({ theme }: { theme: FoundationTheme }) {
   const [selected, setSelected] = useState<StudyHandout | null>(null);
   const opener = useRef<HTMLButtonElement | null>(null);
@@ -51,6 +48,11 @@ export function FoundationStudyHandouts({ theme }: { theme: FoundationTheme }) {
     }
   };
   const restoreFocus = () => opener.current?.focus({ preventScroll: true });
+  const buttonStyle = {
+    backgroundColor: theme.primarySoft,
+    color: "#172033",
+    borderColor: theme.primary,
+  };
 
   return (
     <>
@@ -60,17 +62,38 @@ export function FoundationStudyHandouts({ theme }: { theme: FoundationTheme }) {
           style={{ "--handout-focus": theme.focusRing } as React.CSSProperties}
         >
           <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
-          Gabaritos para imprimir
+          Gabaritos para preparar estudos
           <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground group-open:hidden">
             Ver modelos
           </span>
         </summary>
         <div className="space-y-3 border-t border-border p-4">
           <p className="text-sm text-muted-foreground">
-            O professor prepara no papel; o administrador preenche no sistema.
-            Estes PDFs não são importados automaticamente.
+            Preencha o Excel e importe pela opção “Preencher por Excel”. O PDF
+            completo continua disponível para preparar no papel.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-border p-3">
+              <p className="text-sm text-muted-foreground">
+                Modelo editável com as quatro etapas, perguntas e reflexões.
+              </p>
+              <Button
+                asChild
+                variant="outline"
+                className="mt-auto h-auto min-h-11 w-full whitespace-normal py-2"
+                style={buttonStyle}
+              >
+                <a
+                  href={FOUNDATION_STUDY_EXCEL_TEMPLATE.href}
+                  download={FOUNDATION_STUDY_EXCEL_TEMPLATE.filename}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  Baixar gabarito Excel v2
+                </a>
+              </Button>
+            </div>
             {FOUNDATION_STUDY_HANDOUTS.map(handout => (
               <div
                 key={handout.filename}
@@ -83,11 +106,7 @@ export function FoundationStudyHandouts({ theme }: { theme: FoundationTheme }) {
                   type="button"
                   variant="outline"
                   className="mt-auto h-auto min-h-11 w-full whitespace-normal py-2"
-                  style={{
-                    backgroundColor: theme.primarySoft,
-                    color: "#172033",
-                    borderColor: theme.primary,
-                  }}
+                  style={buttonStyle}
                   aria-haspopup="dialog"
                   onClick={event => {
                     opener.current = event.currentTarget;

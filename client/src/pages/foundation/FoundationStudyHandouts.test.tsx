@@ -13,6 +13,7 @@ import { resolve } from "node:path";
 import { createFoundationTheme } from "./FoundationTheme";
 import previewData from "./foundationHandoutPages";
 import {
+  FOUNDATION_STUDY_EXCEL_TEMPLATE,
   FOUNDATION_STUDY_HANDOUTS,
   FoundationStudyHandouts,
 } from "./FoundationStudyHandouts";
@@ -21,7 +22,7 @@ const theme = createFoundationTheme("#8b2453", "#f6e3a2");
 
 function openHandouts() {
   const result = render(<FoundationStudyHandouts theme={theme} />);
-  fireEvent.click(screen.getByText("Gabaritos para imprimir"));
+  fireEvent.click(screen.getByText("Gabaritos para preparar estudos"));
   return result;
 }
 
@@ -44,25 +45,45 @@ describe("Gabaritos de estudo para impressão", () => {
     const { container } = render(<FoundationStudyHandouts theme={theme} />);
     expect(container.querySelector("details")?.open).toBe(false);
     expect(container.querySelector("summary")?.textContent).toContain(
-      "Gabaritos para imprimir"
+      "Gabaritos para preparar estudos"
     );
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(container.querySelectorAll("img")).toHaveLength(0);
   });
 
-  it("oferece prévia interna dos dois modelos em vez de navegar diretamente ao PDF", () => {
+  it("substitui o PDF simplificado pelo download direto do Excel v2", () => {
+    const { container } = openHandouts();
+    const link = screen.getByRole("link", { name: "Baixar gabarito Excel v2" });
+    expect(link.getAttribute("href")).toBe(
+      FOUNDATION_STUDY_EXCEL_TEMPLATE.href
+    );
+    expect(link.getAttribute("download")).toBe(
+      FOUNDATION_STUDY_EXCEL_TEMPLATE.filename
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(screen.queryByRole("button", { name: /Simplificado/ })).toBeNull();
+    expect(container.textContent).not.toContain("Simplificado — 2 páginas");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      container.querySelectorAll("iframe, embed, object, img")
+    ).toHaveLength(0);
+  });
+
+  it("oferece prévia interna somente do PDF completo", () => {
     const { container } = openHandouts();
     expect(container.querySelector("details")?.open).toBe(true);
+    expect(FOUNDATION_STUDY_HANDOUTS).toHaveLength(1);
     FOUNDATION_STUDY_HANDOUTS.forEach(model => {
       const button = screen.getByRole("button", { name: `${model.label} PDF` });
       expect(button.getAttribute("aria-haspopup")).toBe("dialog");
       expect(button.getAttribute("type")).toBe("button");
       expect(button.getAttribute("href")).toBeNull();
     });
-    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getAllByRole("link")).toHaveLength(1);
   });
 
-  it.each([0, 1])(
+  it.each([0])(
     "exibe todas as páginas e preserva o PDF original para download: modelo %s",
     async index => {
       openHandouts();
@@ -108,7 +129,7 @@ describe("Gabaritos de estudo para impressão", () => {
     }
   );
 
-  it("Escape também fecha a prévia e permite abrir a outra versão", async () => {
+  it("Escape também fecha a prévia e permite reabrir o PDF completo", async () => {
     openHandouts();
     await openPreview();
     await waitFor(() =>
@@ -118,19 +139,21 @@ describe("Gabaritos de estudo para impressão", () => {
     );
     fireEvent.keyDown(document.activeElement!, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await openPreview(1);
+    await openPreview();
     expect(screen.getAllByRole("img")).toHaveLength(6);
   });
 
-  it("explica o preenchimento manual e preserva as anotações do aluno", () => {
+  it("explica o preenchimento do Excel, o PDF no papel e as anotações do aluno", () => {
     openHandouts();
     expect(
-      screen.getByText(/Estes PDFs não são importados automaticamente/)
+      screen.getByText(/Preencha o Excel e importe pela opção/)
     ).toBeTruthy();
     expect(
       screen.getByText(/continua sendo preenchido pelo aluno/)
     ).toBeTruthy();
-    expect(screen.getByText(/Imprima frente e verso/)).toBeTruthy();
+    expect(
+      screen.getByText(/completo continua disponível para preparar no papel/)
+    ).toBeTruthy();
   });
 
   it("aplica a cor da igreja aos modelos e ao download", async () => {
@@ -171,6 +194,18 @@ describe("Gabaritos de estudo para impressão", () => {
         .getAllByRole("button")
         .every(button => button.getAttribute("type") === "button")
     ).toBe(true);
+  });
+
+  it("reutiliza o XLSX oficial sem recriar ou alterar o contrato importável", () => {
+    const bytes = readFileSync(
+      resolve(
+        "client/src/documents/foundation/gabarito-escola-fundamentos-v2-vazio.xlsx"
+      )
+    );
+    expect(bytes.subarray(0, 4).toString("hex")).toBe("504b0304");
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(
+      "9d7948b6dc65fc43df90f82a16980b6469b6d1221005a79dcdd667e7b9d7260c"
+    );
   });
 
   it("mantém os PDFs aprovados intactos e verifica as prévias geradas deles", () => {
