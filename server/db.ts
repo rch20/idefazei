@@ -132,6 +132,7 @@ import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
 import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus, shouldFlagLegacyConsolidationPending, shouldFlagModernFirstContactPending } from "../shared/consolidation";
 import { resolveDirectoryCareState, type DirectoryCareStatus } from "../shared/peopleDirectory";
 import { FoundationImportError, type FoundationImportPayload, type FoundationImportSummary } from "./foundationImport";
+import { assertFoundationImportPayload } from "./foundationImportPayloadGuard";
 import { FOUNDATION_STUDY_TEMPLATE_BLOCKS } from "../shared/foundationStudyTemplate";
 import {
   FoundationCreationPayloadMismatchError,
@@ -8195,6 +8196,7 @@ export async function confirmFoundationImportDraft(data: { churchId: number; dra
     const summary = draft.summary as FoundationImportSummary;
     if (summary.errors > 0) throw new FoundationImportError("Corrija os erros apontados na prévia antes de confirmar.", "PRECONDITION_FAILED");
     const payload = draft.payload as FoundationImportPayload;
+    assertFoundationImportPayload(payload, draft.courseId);
 
     const courseRows = await tx
       .select({ id: courses.id, name: courses.name })
@@ -8240,7 +8242,7 @@ export async function confirmFoundationImportDraft(data: { churchId: number; dra
       summary: payload.study.summary?.trim() || null,
       content: payload.study.content?.trim() || null,
       position: studyPosition,
-      active: payload.study.publish,
+      active: payload.templateVersion === 2 ? false : payload.study.publish,
       createdByChurchUserId: data.createdByChurchUserId,
     });
     const studyId = Number(studyResult[0]?.insertId ?? 0);
@@ -8253,6 +8255,7 @@ export async function confirmFoundationImportDraft(data: { churchId: number; dra
         studyId,
         title: block.title.trim(),
         content: block.content.trim(),
+        reflectionPrompt: block.reflectionPrompt?.trim() || null,
         position: block.position,
         active: block.publish,
         createdByChurchUserId: data.createdByChurchUserId,

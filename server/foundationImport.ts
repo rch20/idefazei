@@ -1,5 +1,6 @@
 import type { CellValue, Worksheet } from "exceljs";
 import { parseCivilDateAsUtcNoon } from "./civilDate";
+import { hasFoundationV2Header, isFoundationV2Workbook, parseFoundationWorkbookV2 } from "./foundationImportV2";
 
 export type FoundationImportProblem = {
   sheet: string;
@@ -11,6 +12,7 @@ export type FoundationImportProblem = {
 };
 
 export type FoundationImportPayload = {
+  templateVersion?: 1 | 2;
   courseId: number;
   courseName: string;
   study: {
@@ -25,9 +27,11 @@ export type FoundationImportPayload = {
     position: number;
     title: string;
     content: string;
+    reflectionPrompt?: string | null;
     publish: boolean;
   }>;
   questions: Array<{
+    position?: number;
     blockTitle: string;
     blockPosition: number;
     prompt: string;
@@ -49,6 +53,7 @@ export type FoundationImportPayload = {
 };
 
 export type FoundationImportSummary = {
+  templateVersion?: 1 | 2;
   studyTitle: string | null;
   weekStart: string | null;
   counts: {
@@ -188,8 +193,13 @@ function cellAddress(row: number, column: number) {
   return `${columnName(column)}${row}`;
 }
 
-function isFormulaValue(value: unknown): value is { formula: string; result?: unknown } {
-  return Boolean(value && typeof value === "object" && "formula" in value && typeof (value as { formula?: unknown }).formula === "string");
+function isFormulaValue(value: unknown): value is { formula?: string; sharedFormula?: string; result?: unknown } {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      (("formula" in value && typeof (value as { formula?: unknown }).formula === "string") ||
+        ("sharedFormula" in value && typeof (value as { sharedFormula?: unknown }).sharedFormula === "string")),
+  );
 }
 
 function unwrapCellValue(value: unknown): unknown {
@@ -436,6 +446,16 @@ export async function parseFoundationWorkbook(buffer: Buffer, context: Foundatio
     }
   }
 
+  // A versão é definida pelos cabeçalhos do arquivo, nunca por conteúdo ou nome do arquivo.
+  // Qualquer sinal de cabeçalho v2 leva ao parser v2; ele preserva as linhas e informa
+  // cabeçalhos inválidos/misturados como problemas bloqueantes, sem cair silenciosamente no legado.
+  if (hasFoundationV2Header(workbook)) {
+    if (!isFoundationV2Workbook(workbook)) {
+      addProblem(problems, "ARQUIVO", 4, null, "MODELO_V2_INVALIDO_OU_MISTURADO", "As abas do arquivo não formam exatamente o conjunto de cabeçalhos do gabarito v2; formatos misturados ou inválidos não são aceitos.");
+    }
+    return parseFoundationWorkbookV2(workbook, context, problems);
+  }
+
   const date1904 = Boolean(workbook.properties.date1904);
   const studyRows = sheetRows(workbook.getWorksheet("ESTUDO"), "ESTUDO", problems);
   const blockRows = sheetRows(workbook.getWorksheet("BLOCOS"), "BLOCOS", problems);
@@ -556,6 +576,7 @@ export async function parseFoundationWorkbook(buffer: Buffer, context: Foundatio
   materials.sort((left, right) => left.position - right.position);
 
   const payload: FoundationImportPayload = {
+    templateVersion: 1,
     courseId: context.courseId,
     courseName: context.courseName,
     study: { title, weekStart, moduleTitle: moduleTitle || null, summary: summary || null, content: content || null, publish: publishStudy },
@@ -569,6 +590,7 @@ export async function parseFoundationWorkbook(buffer: Buffer, context: Foundatio
   return {
     payload,
     summary: {
+      templateVersion: 1,
       studyTitle: title || null,
       weekStart: weekStart || null,
       counts: { blocks: blocks.length, questions: questions.length, materials: materials.length },
