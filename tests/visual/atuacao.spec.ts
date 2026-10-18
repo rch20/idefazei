@@ -169,4 +169,89 @@ test.describe("Escola de Fundamentos — aluno mobile", () => {
       "somente mutations de abertura/leitura foram bloqueadas localmente"
     ).toBe(true);
   });
+
+  test("mostra a introdução somente na primeira etapa e permite consultar o contexto depois", async ({
+    page,
+  }, testInfo) => {
+    const harness = await installReadOnlyGuards(page);
+    await openStudentFoundation(page);
+
+    const openStudyButton = page
+      .getByRole("button", {
+        name: /Continuar estudo|Começar estudo|Revisar estudo/,
+      })
+      .first();
+    if ((await openStudyButton.count()) === 0) {
+      test.skip(
+        true,
+        "Nenhum estudo liberado está disponível para a matrícula de homologação."
+      );
+      return;
+    }
+
+    await openStudyButton.click();
+    const firstStep = page.locator('button:visible[aria-label^="1. "]').first();
+    if ((await firstStep.count()) === 0 || (await firstStep.isDisabled())) {
+      test.skip(
+        true,
+        "A matrícula de homologação não expõe a primeira etapa neste estado."
+      );
+      return;
+    }
+    await firstStep.click();
+
+    const context = page.getByRole("region", {
+      name: "Introdução do estudo",
+    });
+    await expect(context).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Ver contexto do estudo" })
+    ).toHaveCount(0);
+    await captureReadOnlyScreenshot(
+      page,
+      testInfo,
+      "student-introduction-first-stage.png"
+    );
+
+    const secondStep = page
+      .locator('button:visible[aria-label^="2. "]')
+      .first();
+    if ((await secondStep.count()) === 0 || (await secondStep.isDisabled())) {
+      test.skip(
+        true,
+        "A matrícula de homologação não permite acessar a segunda etapa neste estado."
+      );
+      return;
+    }
+
+    await secondStep.click();
+    await expect(context).toHaveCount(0);
+    await captureReadOnlyScreenshot(
+      page,
+      testInfo,
+      "student-introduction-hidden-second-stage.png"
+    );
+    const contextLink = page.getByRole("button", {
+      name: "Ver contexto do estudo",
+    });
+    await expect(contextLink).toBeVisible();
+    await contextLink.click();
+    await expect(context).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Ocultar contexto do estudo" })
+    ).toBeVisible();
+    await captureReadOnlyScreenshot(
+      page,
+      testInfo,
+      "student-context-reopened.png"
+    );
+
+    expect(harness.pageErrors, "erros JavaScript na página").toEqual([]);
+    expect(
+      harness.writes.every(url =>
+        /escolaFundamentos\.(startLesson|viewStudyBlock)/.test(url)
+      ),
+      "somente mutations de abertura/leitura foram bloqueadas localmente"
+    ).toBe(true);
+  });
 });

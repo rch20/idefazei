@@ -668,6 +668,7 @@ function StudyOverviewCard({
 }) {
   return (
     <section
+      id="foundation-study-context"
       className="rounded-2xl border border-black/5 bg-white p-4 shadow-sm sm:p-5"
       aria-label="Introdução do estudo"
     >
@@ -729,6 +730,7 @@ export function StudentLearningExperience({
     new Set()
   );
   const [studyReadyToComplete, setStudyReadyToComplete] = useState(false);
+  const [showStudyContext, setShowStudyContext] = useState(false);
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
 
   const resolvedCourseId =
@@ -856,6 +858,7 @@ export function StudentLearningExperience({
           const nextIndex = blocks.findIndex(
             block => block.id === result.nextBlock?.id
           );
+          setShowStudyContext(false);
           setSelectedBlockIndex(
             nextIndex >= 0 ? nextIndex : selectedBlockIndex + 1
           );
@@ -1040,6 +1043,7 @@ export function StudentLearningExperience({
     setQuestionResults({});
     setCompletedBlockIds(new Set());
     setStudyReadyToComplete(item.progress?.status === "concluida");
+    setShowStudyContext(false);
     setSelectedBlockIndex(Math.max(0, item.progress?.lastBlockPosition ?? 0));
     if (item.progress?.status !== "concluida")
       startLesson.mutate({
@@ -1058,6 +1062,7 @@ export function StudentLearningExperience({
     setSelectedBlockIndex(index);
     setQuestionAnswers({});
     setQuestionResults({});
+    setShowStudyContext(false);
   };
 
   const submitAnswer = (
@@ -1096,6 +1101,7 @@ export function StudentLearningExperience({
           index > selectedBlockIndex && block.status !== "bloqueada"
       );
       if (nextIndex >= 0) {
+        setShowStudyContext(false);
         setSelectedBlockIndex(nextIndex);
       } else setStudyReadyToComplete(true);
       return;
@@ -1578,6 +1584,20 @@ export function StudentLearningExperience({
                     quando precisar; nada do que você preencheu será perdido.
                   </span>
                 </DialogDescription>
+                {selectedBlockIndex > 0 && session?.study.content?.trim() ? (
+                  <button
+                    type="button"
+                    className="mt-2 text-left text-xs font-medium underline-offset-4 hover:underline"
+                    style={{ color: theme.primary }}
+                    aria-expanded={showStudyContext}
+                    aria-controls="foundation-study-context"
+                    onClick={() => setShowStudyContext(current => !current)}
+                  >
+                    {showStudyContext
+                      ? "Ocultar contexto do estudo"
+                      : "Ver contexto do estudo"}
+                  </button>
+                ) : null}
               </div>
               {session?.study.weekStart ? (
                 <Badge variant="outline" className="shrink-0">
@@ -1621,7 +1641,9 @@ export function StudentLearningExperience({
               <div className="h-72 animate-pulse rounded-xl bg-muted/30" />
             ) : (
               <div className="space-y-4">
-                {session?.study.content?.trim() && session.blocks.length > 0 ? (
+                {session?.study.content?.trim() &&
+                session.blocks.length > 0 &&
+                (selectedBlockIndex === 0 || showStudyContext) ? (
                   <StudyOverviewCard
                     content={session.study.content}
                     theme={theme}
