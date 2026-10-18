@@ -1,14 +1,47 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-const source = readFileSync(resolve(process.cwd(), "client/src/pages/EscolaLideres.tsx"), "utf8");
-const workspaceSource = readFileSync(resolve(process.cwd(), "client/src/pages/leadership/LeadershipStudyWorkspace.tsx"), "utf8");
-const readerSource = readFileSync(resolve(process.cwd(), "client/src/pages/leadership/LeadershipStudyReader.tsx"), "utf8");
-const studentSource = readFileSync(resolve(process.cwd(), "client/src/pages/EscolaLideresAluno.tsx"), "utf8");
-const readerPageSource = readFileSync(resolve(process.cwd(), "client/src/pages/leadership/LeadershipStudyReaderPage.tsx"), "utf8");
-const appSource = readFileSync(resolve(process.cwd(), "client/src/App.tsx"), "utf8");
-const professorSource = readFileSync(resolve(process.cwd(), "client/src/pages/EscolaLideresProfessor.tsx"), "utf8");
-const adaptiveSource = readFileSync(resolve(process.cwd(), "client/src/components/AdaptiveFormDialog.tsx"), "utf8");
+const source = readFileSync(
+  resolve(process.cwd(), "client/src/pages/EscolaLideres.tsx"),
+  "utf8"
+);
+const workspaceSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "client/src/pages/leadership/LeadershipStudyWorkspace.tsx"
+  ),
+  "utf8"
+);
+const readerSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "client/src/pages/leadership/LeadershipStudyReader.tsx"
+  ),
+  "utf8"
+);
+const studentSource = readFileSync(
+  resolve(process.cwd(), "client/src/pages/EscolaLideresAluno.tsx"),
+  "utf8"
+);
+const readerPageSource = readFileSync(
+  resolve(
+    process.cwd(),
+    "client/src/pages/leadership/LeadershipStudyReaderPage.tsx"
+  ),
+  "utf8"
+);
+const appSource = readFileSync(
+  resolve(process.cwd(), "client/src/App.tsx"),
+  "utf8"
+);
+const professorSource = readFileSync(
+  resolve(process.cwd(), "client/src/pages/EscolaLideresProfessor.tsx"),
+  "utf8"
+);
+const adaptiveSource = readFileSync(
+  resolve(process.cwd(), "client/src/components/AdaptiveFormDialog.tsx"),
+  "utf8"
+);
 describe("Modais da Escola de Líderes", () => {
   it("usa o formulário adaptativo para criar uma nova turma", () => {
     expect(source).toContain("AdaptiveFormDialogContent");
@@ -25,14 +58,14 @@ describe("Modais da Escola de Líderes", () => {
     expect(source).toContain("Confirmar Matrícula");
     expect(source).toContain("certMutation");
     expect(source).toContain("enrollError");
-    expect(source).toContain("<DialogContent className=\"sm:max-w-md\">");
+    expect(source).toContain('<DialogContent className="sm:max-w-md">');
   });
   it("mantém status e certificado como ações inline e compactas", () => {
     expect(source).toContain("updateEnrollment");
     expect(source).toContain("updateError");
     expect(source).toContain("Status atualizado!");
     expect(source).toContain("certificates.generate");
-    expect(source).toContain("className=\"h-9 min-w-36 text-xs\"");
+    expect(source).toContain('className="h-9 min-w-36 text-xs"');
   });
   it("preserva a camada superior, viewport e safe area do padrão global", () => {
     expect(adaptiveSource).toContain("z-[200]");
@@ -53,10 +86,23 @@ describe("Modais da Escola de Líderes", () => {
     expect(source).toContain("Matricular Aluno");
     expect(source).toContain("certMutation");
   });
+  it("organiza o editor pela jornada do professor e preserva a prévia no mobile", () => {
+    expect(workspaceSource).toContain("EDITOR_STEPS");
+    expect(workspaceSource).toContain('label: "Revisar e publicar"');
+    expect(workspaceSource).toContain('"Ver etapas"');
+    expect(workspaceSource).toContain("leadership-editor-step-review");
+    expect(workspaceSource).toContain("Voltar à edição");
+    expect(workspaceSource).toContain("h-[100dvh]");
+    expect(workspaceSource).toContain("hasUnsavedStudyChanges");
+  });
   it("permite que professor atribuído abra o editor, mantendo autorização no servidor", () => {
     expect(appSource).toContain('<Route path="/app/escola-lideres/conteudo">');
-    expect(appSource).toContain('<AppPage title="Conteúdo pedagógico — Escola de Líderes">');
-    expect(appSource).not.toContain('<AppPage title="Conteúdo pedagógico — Escola de Líderes" requiredAccess="isExecutive">');
+    expect(appSource).toContain(
+      '<AppPage title="Conteúdo pedagógico — Escola de Líderes">'
+    );
+    expect(appSource).not.toContain(
+      '<AppPage title="Conteúdo pedagógico — Escola de Líderes" requiredAccess="isExecutive">'
+    );
     expect(professorSource).toContain("/app/escola-lideres/conteudo?classId=");
     expect(professorSource).toContain("Conteúdo pedagógico");
   });
@@ -64,7 +110,9 @@ describe("Modais da Escola de Líderes", () => {
     expect(studentSource).toContain("study.student.history");
     expect(studentSource).toContain("escola-lideres/aluno/estudo");
     expect(readerPageSource).toContain("LeadershipStudyReader");
-    expect(readerSource).toContain("churchId, enrollmentId: item.enrollment.id, studyId: item.study.id");
+    expect(readerSource).toContain(
+      "churchId, enrollmentId: item.enrollment.id, studyId: item.study.id"
+    );
     expect(readerSource).toContain('"leia"');
     expect(readerSource).toContain('"entenda"');
     expect(readerSource).toContain('"responda"');

@@ -21,6 +21,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import {
+  ArrowLeft,
   BookOpen,
   CheckCircle2,
   ChevronDown,
@@ -43,6 +44,25 @@ const STAGES = [
   { key: "aplique", label: "Aplique", hint: "Prática e compromisso" },
 ] as const;
 type StageKey = (typeof STAGES)[number]["key"];
+type EditorStepKey = "info" | StageKey | "review";
+
+const EDITOR_STEPS: Array<{
+  key: EditorStepKey;
+  label: string;
+  description: string;
+}> = [
+  { key: "info", label: "Informações", description: "Título e organização" },
+  ...STAGES.map(stage => ({
+    key: stage.key,
+    label: stage.label,
+    description: stage.hint,
+  })),
+  {
+    key: "review",
+    label: "Revisar e publicar",
+    description: "Conferência final do estudo",
+  },
+];
 
 type ModuleRow = {
   module: {
@@ -175,6 +195,9 @@ export function LeadershipStudyWorkspace({
   const [questionDirty, setQuestionDirty] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewStage, setPreviewStage] = useState<StageKey>("leia");
+  const [activeEditorStep, setActiveEditorStep] =
+    useState<EditorStepKey>("info");
+  const [mobileStepsOpen, setMobileStepsOpen] = useState(false);
 
   const utils = trpc.useUtils();
   const modulesQuery = trpc.escolaLideres.study.modules.list.useQuery(
@@ -214,6 +237,10 @@ export function LeadershipStudyWorkspace({
   );
   const stageLabel =
     STAGES.find(stage => stage.key === selectedStage)?.label ?? "Etapa";
+  const activeEditorStepLabel =
+    EDITOR_STEPS.find(step => step.key === activeEditorStep)?.label ??
+    "Informações";
+  const hasUnsavedStudyChanges = studyDirty || blockDirty || questionDirty;
 
   useEffect(() => {
     if (
@@ -286,6 +313,30 @@ export function LeadershipStudyWorkspace({
             id: selectedStudyId,
           }),
     ]);
+  };
+
+  const selectEditorStep = (step: EditorStepKey) => {
+    setActiveEditorStep(step);
+    setMobileStepsOpen(false);
+    if (STAGES.some(stage => stage.key === step)) {
+      const stage = step as StageKey;
+      setSelectedStage(stage);
+      setSelectedBlockId(null);
+      setSelectedQuestionId(null);
+      setBlockDirty(false);
+      setQuestionDirty(false);
+    }
+    window.setTimeout(() => {
+      const targetId =
+        step === "info"
+          ? `leadership-editor-step-info-${selectedStudyId ?? "new"}`
+          : step === "review"
+            ? `leadership-editor-step-review-${selectedStudyId ?? "new"}`
+            : `leadership-editor-step-stages-${selectedStudyId ?? "new"}`;
+      document
+        .getElementById(targetId)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   };
 
   const createModule = trpc.escolaLideres.study.modules.create.useMutation({
@@ -731,7 +782,10 @@ export function LeadershipStudyWorkspace({
 
           {selectedStudyId !== null && studyDetail ? (
             <div className="space-y-5">
-              <Card className="border-[#1e3a5f]/20 bg-white">
+              <Card
+                id={`leadership-editor-step-info-${selectedStudyId}`}
+                className="border-[#1e3a5f]/20 bg-white"
+              >
                 <CardHeader className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -770,16 +824,11 @@ export function LeadershipStudyWorkspace({
                       <Button
                         type="button"
                         size="sm"
-                        disabled={
-                          !studyDetail.status.canPublish ||
-                          publishStudy.isPending
-                        }
-                        onClick={() =>
-                          publishStudy.mutate({ churchId, id: selectedStudyId })
-                        }
+                        variant="outline"
+                        onClick={() => selectEditorStep("review")}
                       >
                         <Send className="mr-1 h-4 w-4" />
-                        Publicar
+                        Revisar e publicar
                       </Button>
                     ) : (
                       <Button
@@ -822,8 +871,55 @@ export function LeadershipStudyWorkspace({
                 </CardContent>
               </Card>
 
+              <div className="lg:hidden">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-between"
+                  onClick={() => setMobileStepsOpen(current => !current)}
+                  aria-expanded={mobileStepsOpen}
+                >
+                  <span>Etapa atual: {activeEditorStepLabel}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {mobileStepsOpen ? "Ocultar" : "Ver etapas"}
+                  </span>
+                </Button>
+                {mobileStepsOpen ? (
+                  <div className="mt-2 rounded-xl border bg-white p-2">
+                    <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Roteiro do estudo
+                    </p>
+                    <div className="space-y-1">
+                      {EDITOR_STEPS.map((step, index) => (
+                        <button
+                          key={step.key}
+                          type="button"
+                          onClick={() => selectEditorStep(step.key)}
+                          className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm ${activeEditorStep === step.key ? "bg-[#1e3a5f]/10 text-[#1e3a5f]" : "hover:bg-muted/50"}`}
+                          aria-current={
+                            activeEditorStep === step.key ? "step" : undefined
+                          }
+                        >
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold">
+                            {index + 1}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block font-semibold">
+                              {step.label}
+                            </span>
+                            <span className="block text-xs text-muted-foreground">
+                              {step.description}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-                <DialogContent className="sm:max-w-2xl">
+                <DialogContent className="h-[100dvh] w-full max-w-none rounded-none p-4 sm:h-auto sm:max-w-2xl sm:rounded-lg sm:p-6">
                   <DialogHeader>
                     <DialogTitle className="text-[#1e3a5f]">
                       Prévia do aluno
@@ -915,10 +1011,23 @@ export function LeadershipStudyWorkspace({
                       </p>
                     ) : null}
                   </div>
+                  <div className="flex justify-end border-t pt-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setPreviewOpen(false)}
+                    >
+                      <ArrowLeft className="mr-1 h-4 w-4" />
+                      Voltar à edição
+                    </Button>
+                  </div>
                 </DialogContent>
               </Dialog>
 
-              <Card className="border-[#c9a84c]/25 bg-[#fffdf7]">
+              <Card
+                id={`leadership-editor-step-stages-${selectedStudyId}`}
+                className="border-[#c9a84c]/25 bg-[#fffdf7]"
+              >
                 <CardHeader className="pb-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -955,13 +1064,10 @@ export function LeadershipStudyWorkspace({
                       <button
                         key={stage.key}
                         type="button"
-                        onClick={() => {
-                          setSelectedStage(stage.key);
-                          setSelectedBlockId(null);
-                          setSelectedQuestionId(null);
-                          setBlockDirty(false);
-                          setQuestionDirty(false);
-                        }}
+                        onClick={() => selectEditorStep(stage.key)}
+                        aria-current={
+                          selectedStage === stage.key ? "step" : undefined
+                        }
                         className={`rounded-xl border px-3 py-3 text-left ${selectedStage === stage.key ? "border-[#1e3a5f] bg-[#1e3a5f] text-white" : "border-border bg-white hover:border-[#c9a84c]"}`}
                       >
                         <span className="block text-sm font-semibold">
@@ -1210,6 +1316,101 @@ export function LeadershipStudyWorkspace({
                         Nenhum material vinculado.
                       </p>
                     ) : null}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card
+                id={`leadership-editor-step-review-${selectedStudyId}`}
+                className="border-[#1e3a5f]/20 bg-white"
+              >
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base text-[#1e3a5f]">
+                    Revisar e publicar
+                  </CardTitle>
+                  <p className="text-xs font-normal text-muted-foreground">
+                    Confira o resumo, a prévia do aluno e os itens obrigatórios
+                    antes de liberar este estudo.
+                  </p>
+                </CardHeader>
+                <CardContent className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)]">
+                  <div className="space-y-2 rounded-xl border bg-[#fffdf7] p-4 text-sm">
+                    <p className="font-semibold text-[#1e3a5f]">
+                      Checklist do estudo
+                    </p>
+                    <p>
+                      <span className="font-medium">Título:</span>{" "}
+                      {studyDetail.study.title}
+                    </p>
+                    <p>
+                      <span className="font-medium">Etapas ativas:</span>{" "}
+                      {studyDetail.status.activeBlockCount} de 4
+                    </p>
+                    <p>
+                      <span className="font-medium">Perguntas:</span>{" "}
+                      {studyDetail.status.questionCount}
+                    </p>
+                    <p>
+                      <span className="font-medium">Materiais:</span>{" "}
+                      {studyDetail.materials.length}
+                    </p>
+                    {!studyDetail.status.canPublish ? (
+                      <p className="text-sm text-amber-800">
+                        Falta concluir:{" "}
+                        {studyDetail.status.missingStages
+                          .map(
+                            key =>
+                              STAGES.find(stage => stage.key === key)?.label
+                          )
+                          .filter(Boolean)
+                          .join(", ") || "uma pergunta em Responda"}
+                        .
+                      </p>
+                    ) : hasUnsavedStudyChanges ? (
+                      <p className="text-sm text-amber-800">
+                        Existem alterações locais. Salve a etapa atual antes de
+                        publicar.
+                      </p>
+                    ) : (
+                      <p className="text-sm text-emerald-700">
+                        Todos os requisitos do servidor foram atendidos.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex flex-col justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setPreviewStage("leia");
+                        setPreviewOpen(true);
+                      }}
+                    >
+                      <Eye className="mr-1 h-4 w-4" />
+                      Visualizar como aluno
+                    </Button>
+                    {studyDetail.study.status !== "publicada" ? (
+                      <Button
+                        type="button"
+                        disabled={
+                          !studyDetail.status.canPublish ||
+                          hasUnsavedStudyChanges ||
+                          publishStudy.isPending
+                        }
+                        onClick={() =>
+                          publishStudy.mutate({ churchId, id: selectedStudyId })
+                        }
+                      >
+                        <Send className="mr-1 h-4 w-4" />
+                        {publishStudy.isPending
+                          ? "Publicando…"
+                          : "Publicar estudo"}
+                      </Button>
+                    ) : (
+                      <Badge className="justify-center py-2">
+                        Estudo já publicado
+                      </Badge>
+                    )}
                   </div>
                 </CardContent>
               </Card>
