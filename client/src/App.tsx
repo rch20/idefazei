@@ -59,6 +59,8 @@ const EncontroComDeus = lazy(() => import("./pages/EncontroComDeus"));
 const EncontroComDeusDetalhe = lazy(() => import("./pages/EncontroComDeusDetalhe"));
 const EncontroFichaPublica = lazy(() => import("./pages/EncontroFichaPublica"));
 const EscolaLideres = lazy(() => import("./pages/EscolaLideres"));
+const LeadershipStudyWorkspacePage = lazy(() => import("./pages/leadership/LeadershipStudyWorkspacePage"));
+const LeadershipStudyReaderPage = lazy(() => import("./pages/leadership/LeadershipStudyReaderPage"));
 const EscolaLideresProfessor = lazy(() => import("./pages/EscolaLideresProfessor"));
 const EscolaLideresAluno = lazy(() => import("./pages/EscolaLideresAluno"));
 const GestaoLideranca = lazy(() => import("./pages/GestaoLideranca"));
@@ -318,9 +320,21 @@ function Router() {
         </AppPage>
       </Route>
 
+      <Route path="/app/escola-lideres/aluno/estudo">
+        <AppPage title="Estudo — Escola de Líderes">
+          <LeadershipStudyReaderPage />
+        </AppPage>
+      </Route>
+
       <Route path="/app/escola-lideres/professor">
         <AppPage title="Painel do Professor — Escola de Líderes">
           <EscolaLideresProfessor />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/escola-lideres/conteudo">
+        <AppPage title="Conteúdo pedagógico — Escola de Líderes" requiredAccess="isExecutive">
+          <LeadershipStudyWorkspacePage />
         </AppPage>
       </Route>
 

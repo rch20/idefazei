@@ -231,8 +231,11 @@ function LeadershipClassCard({ cls, churchId, people }: {
                 {enrollMutation.isPending ? "Matriculando..." : "Confirmar Matrícula"}
               </Button>
             </div>
-          </DialogContent>
+        </DialogContent>
         </Dialog>
+        <Link href={`/app/escola-lideres/conteudo?classId=${cls.id}`} className="mt-4 flex h-9 w-full items-center justify-center rounded-md border border-[#6366f1]/30 text-sm font-medium text-[#1e3a5f] transition hover:bg-[#6366f1]/5">
+          Abrir conteúdo pedagógico completo
+        </Link>
       </CardContent>
     </Card>
   );
