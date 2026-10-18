@@ -7,6 +7,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import ChurchLayout, { useChurch, type ChurchAccessSummary } from "./components/ChurchLayout";
 import UnderConstruction from "./components/UnderConstruction";
+import { lazyWithRetry } from "./lib/lazyWithRetry";
 
 // Carregamento sob demanda reduz o JavaScript inicial no Safari iOS e mantém
 // um retorno visual claro enquanto a página solicitada é baixada.
@@ -59,10 +60,10 @@ const EncontroComDeus = lazy(() => import("./pages/EncontroComDeus"));
 const EncontroComDeusDetalhe = lazy(() => import("./pages/EncontroComDeusDetalhe"));
 const EncontroFichaPublica = lazy(() => import("./pages/EncontroFichaPublica"));
 const EscolaLideres = lazy(() => import("./pages/EscolaLideres"));
-const LeadershipStudyWorkspacePage = lazy(() => import("./pages/leadership/LeadershipStudyWorkspacePage"));
-const LeadershipStudyReaderPage = lazy(() => import("./pages/leadership/LeadershipStudyReaderPage"));
-const EscolaLideresProfessor = lazy(() => import("./pages/EscolaLideresProfessor"));
-const EscolaLideresAluno = lazy(() => import("./pages/EscolaLideresAluno"));
+const LeadershipStudyWorkspacePage = lazyWithRetry("leadership-workspace", () => import("./pages/leadership/LeadershipStudyWorkspacePage"));
+const LeadershipStudyReaderPage = lazyWithRetry("leadership-reader", () => import("./pages/leadership/LeadershipStudyReaderPage"));
+const EscolaLideresProfessor = lazyWithRetry("leadership-professor", () => import("./pages/EscolaLideresProfessor"));
+const EscolaLideresAluno = lazyWithRetry("leadership-student", () => import("./pages/EscolaLideresAluno"));
 const GestaoLideranca = lazy(() => import("./pages/GestaoLideranca"));
 const Aconselhamento = lazy(() => import("./pages/Aconselhamento"));
 const Comunicacao = lazy(() => import("./pages/Comunicacao"));
