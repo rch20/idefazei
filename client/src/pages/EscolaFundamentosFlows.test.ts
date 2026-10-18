@@ -117,6 +117,13 @@ describe("Formação de Fundamentos", () => {
     expect(source).toContain("completeLesson");
   });
 
+  it("mantém o cabeçalho do leitor compacto no mobile e o progresso acessível", () => {
+    expect(source).toContain('data-testid="foundation-study-reader-header"');
+    expect(source).toContain("Você pode voltar sem perder o que escreveu.");
+    expect(source).toContain('data-testid="foundation-study-reader-progress"');
+    expect(source).toContain("hidden sm:inline");
+  });
+
   it("mostra claramente o progresso dentro das partes do estudo", () => {
     expect(source).toContain("StudentStudyProgressSummary");
     expect(source).toContain("completedBlockIds");

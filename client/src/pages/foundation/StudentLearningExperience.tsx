@@ -1557,7 +1557,10 @@ export function StudentLearningExperience({
         onOpenChange={open => !open && closeLesson()}
       >
         <AdaptiveFormDialogContent className="grid-cols-1 sm:max-w-6xl lg:max-h-[calc(100dvh-3rem)]">
-          <div className={adaptiveFormDialogHeaderClassName}>
+          <div
+            data-testid="foundation-study-reader-header"
+            className={adaptiveFormDialogHeaderClassName}
+          >
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <DialogTitle
@@ -1566,9 +1569,14 @@ export function StudentLearningExperience({
                 >
                   {selectedLesson?.study.title}
                 </DialogTitle>
-                <DialogDescription className="mt-1 text-sm text-muted-foreground">
-                  Leia com calma. Esta preparação não é uma prova. Volte quando
-                  precisar; nada do que você preencheu será perdido.
+                <DialogDescription className="mt-1 max-w-[38ch] text-sm leading-5 text-muted-foreground">
+                  <span className="sm:hidden">
+                    Você pode voltar sem perder o que escreveu.
+                  </span>
+                  <span className="hidden sm:inline">
+                    Leia com calma. Esta preparação não é uma prova. Volte
+                    quando precisar; nada do que você preencheu será perdido.
+                  </span>
                 </DialogDescription>
               </div>
               {session?.study.weekStart ? (
@@ -1578,7 +1586,10 @@ export function StudentLearningExperience({
               ) : null}
             </div>
             {blocks.length ? (
-              <div className="mt-4">
+              <div
+                data-testid="foundation-study-reader-progress"
+                className="mt-4"
+              >
                 <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
                   <span>
                     Etapa {selectedBlockIndex + 1} de {blocks.length}

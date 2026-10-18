@@ -7,7 +7,7 @@ type ReadOnlyHarness = {
   pageErrors: string[];
 };
 
-function installReadOnlyGuards(page: Page): ReadOnlyHarness {
+async function installReadOnlyGuards(page: Page): Promise<ReadOnlyHarness> {
   const harness: ReadOnlyHarness = { writes: [], pageErrors: [] };
 
   page.on("request", request => {
@@ -17,6 +17,16 @@ function installReadOnlyGuards(page: Page): ReadOnlyHarness {
   });
   page.on("pageerror", error => {
     harness.pageErrors.push(error.message);
+  });
+  await page.route("**/api/trpc/**", async route => {
+    if (WRITE_METHODS.has(route.request().method())) {
+      harness.writes.push(
+        `${route.request().method()} ${route.request().url()}`
+      );
+      await route.abort();
+      return;
+    }
+    await route.continue();
   });
 
   return harness;
@@ -65,7 +75,7 @@ test.describe("Escola de Fundamentos — aluno mobile", () => {
   test("carrega a visão do aluno sem áreas administrativas", async ({
     page,
   }, testInfo) => {
-    const harness = installReadOnlyGuards(page);
+    const harness = await installReadOnlyGuards(page);
     await openStudentFoundation(page);
 
     await expect(page.locator('nav[aria-label="Áreas da Escola"]')).toHaveCount(
@@ -84,7 +94,7 @@ test.describe("Escola de Fundamentos — aluno mobile", () => {
   test("mantém as etapas e o progresso legíveis quando o estudo está liberado", async ({
     page,
   }, testInfo) => {
-    const harness = installReadOnlyGuards(page);
+    const harness = await installReadOnlyGuards(page);
     await openStudentFoundation(page);
 
     const progress = page.getByLabel("Progresso do estudo");
@@ -106,5 +116,57 @@ test.describe("Escola de Fundamentos — aluno mobile", () => {
 
     expect(harness.pageErrors, "erros JavaScript na página").toEqual([]);
     expect(harness.writes, "requests de escrita proibidos").toEqual([]);
+  });
+
+  test("mantém o cabeçalho do estudo compacto e o progresso acessível", async ({
+    page,
+  }, testInfo) => {
+    const harness = await installReadOnlyGuards(page);
+    await openStudentFoundation(page);
+
+    const openStudyButton = page
+      .getByRole("button", { name: /Continuar estudo|Começar estudo/ })
+      .first();
+    if ((await openStudyButton.count()) === 0) {
+      test.skip(
+        true,
+        "Nenhum estudo liberado está disponível para a matrícula de homologação."
+      );
+      return;
+    }
+
+    await openStudyButton.click();
+    const header = page.getByTestId("foundation-study-reader-header");
+    await expect(header).toBeVisible();
+    await expect(header).toContainText(
+      "Você pode voltar sem perder o que escreveu."
+    );
+    await expect(
+      page.getByTestId("foundation-study-reader-progress")
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Sair do estudo" })
+    ).toBeVisible();
+
+    const headerSize = await header.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return { height: rect.height, width: rect.width };
+    });
+    expect(headerSize.height).toBeLessThan(230);
+    expect(headerSize.width).toBeGreaterThan(0);
+    await assertNoHorizontalOverflow(page);
+    await captureReadOnlyScreenshot(
+      page,
+      testInfo,
+      "student-study-compact-header.png"
+    );
+
+    expect(harness.pageErrors, "erros JavaScript na página").toEqual([]);
+    expect(
+      harness.writes.every(url =>
+        /escolaFundamentos\.(startLesson|viewStudyBlock)/.test(url)
+      ),
+      "somente mutations de abertura/leitura foram bloqueadas localmente"
+    ).toBe(true);
   });
 });
