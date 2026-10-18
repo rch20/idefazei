@@ -333,7 +333,7 @@ function Router() {
       </Route>
 
       <Route path="/app/escola-lideres/conteudo">
-        <AppPage title="Conteúdo pedagógico — Escola de Líderes" requiredAccess="isExecutive">
+        <AppPage title="Conteúdo pedagógico — Escola de Líderes">
           <LeadershipStudyWorkspacePage />
         </AppPage>
       </Route>

@@ -6,6 +6,8 @@ const workspaceSource = readFileSync(resolve(process.cwd(), "client/src/pages/le
 const readerSource = readFileSync(resolve(process.cwd(), "client/src/pages/leadership/LeadershipStudyReader.tsx"), "utf8");
 const studentSource = readFileSync(resolve(process.cwd(), "client/src/pages/EscolaLideresAluno.tsx"), "utf8");
 const readerPageSource = readFileSync(resolve(process.cwd(), "client/src/pages/leadership/LeadershipStudyReaderPage.tsx"), "utf8");
+const appSource = readFileSync(resolve(process.cwd(), "client/src/App.tsx"), "utf8");
+const professorSource = readFileSync(resolve(process.cwd(), "client/src/pages/EscolaLideresProfessor.tsx"), "utf8");
 const adaptiveSource = readFileSync(resolve(process.cwd(), "client/src/components/AdaptiveFormDialog.tsx"), "utf8");
 describe("Modais da Escola de Líderes", () => {
   it("usa o formulário adaptativo para criar uma nova turma", () => {
@@ -50,6 +52,13 @@ describe("Modais da Escola de Líderes", () => {
     expect(workspaceSource).toContain("Nada será salvo na");
     expect(source).toContain("Matricular Aluno");
     expect(source).toContain("certMutation");
+  });
+  it("permite que professor atribuído abra o editor, mantendo autorização no servidor", () => {
+    expect(appSource).toContain('<Route path="/app/escola-lideres/conteudo">');
+    expect(appSource).toContain('<AppPage title="Conteúdo pedagógico — Escola de Líderes">');
+    expect(appSource).not.toContain('<AppPage title="Conteúdo pedagógico — Escola de Líderes" requiredAccess="isExecutive">');
+    expect(professorSource).toContain("/app/escola-lideres/conteudo?classId=");
+    expect(professorSource).toContain("Conteúdo pedagógico");
   });
   it("mantém as quatro etapas na experiência do aluno e protege o tenant", () => {
     expect(studentSource).toContain("study.student.history");
