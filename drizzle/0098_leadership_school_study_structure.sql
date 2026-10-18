@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS `leadership_school_question_attempts` (
   `clientAttemptId` VARCHAR(80) NULL,
   `answeredAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `leadership_school_question_attempts_church_enrollment_question_idx` (`churchId`, `enrollmentId`, `questionId`),
+  KEY `leadership_school_attempts_church_enrollment_question_idx` (`churchId`, `enrollmentId`, `questionId`),
   UNIQUE KEY `leadership_school_question_attempts_client_unique` (`churchId`, `enrollmentId`, `questionId`, `clientAttemptId`)
 ) ENGINE=InnoDB;
 
