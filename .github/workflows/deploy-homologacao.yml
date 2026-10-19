@@ -1,0 +1,94 @@
+name: Deploy homologação
+
+# Publica na HOMOLOGAÇÃO (nunca na produção).
+# Para ver uma mudança lá, envie a branch para "homologacao":
+#   git push origin minha-branch:homologacao --force-with-lease
+# Também dá para rodar manualmente em Actions → Deploy homologação → Run workflow.
+on:
+  push:
+    branches: [homologacao]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Um deploy por vez; um novo push espera o anterior terminar.
+concurrency:
+  group: deploy-homologacao
+  cancel-in-progress: false
+
+jobs:
+  testar:
+    name: Testar e compilar
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build
+
+  publicar:
+    name: Publicar na VPS
+    needs: testar
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: homologacao
+    steps:
+      - name: Preparar acesso SSH
+        env:
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Atualizar e subir a homologação
+        env:
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+          USER_: ${{ secrets.STAGING_SSH_USER }}
+          PORT_: ${{ secrets.STAGING_SSH_PORT }}
+          APP_DIR: ${{ secrets.STAGING_PATH }}
+          SHA: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${PORT_:-22}" -o StrictHostKeyChecking=yes \
+            "$USER_@$HOST" "APP_DIR='$APP_DIR' SHA='$SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_DIR"
+          COMPOSE="docker compose -f docker-compose.staging.yml --env-file .env.staging"
+
+          PREVIOUS=$(git rev-parse HEAD)
+          git fetch --quiet origin
+          git checkout --quiet --detach "$SHA"
+
+          deploy() {
+            $COMPOSE up -d --build --remove-orphans
+            # Espera o app ficar saudável (até ~2 min)
+            for i in $(seq 1 24); do
+              status=$(docker inspect --format '{{.State.Health.Status}}' idefazei-staging-app 2>/dev/null || echo starting)
+              [ "$status" = "healthy" ] && return 0
+              sleep 5
+            done
+            return 1
+          }
+
+          if deploy; then
+            echo "Homologação no ar na versão ${SHA}."
+          else
+            echo "Falhou. Voltando para a versão anterior (${PREVIOUS})."
+            git checkout --quiet --detach "$PREVIOUS"
+            $COMPOSE up -d --build --remove-orphans
+            exit 1
+          fi
+          REMOTE

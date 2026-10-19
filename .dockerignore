@@ -1,0 +1,12 @@
+**/node_modules
+.git
+.github
+dist
+build
+.env
+.env.*
+!.env.staging.example
+*.log
+.DS_Store
+.vscode
+.idea

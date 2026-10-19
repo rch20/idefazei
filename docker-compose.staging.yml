@@ -1,0 +1,73 @@
+# Homologação do Ide Fazei — copia isolada da produção.
+#
+# Uso (na VPS, dentro da pasta do projeto):
+#   cp .env.staging.example .env.staging   # e preencha os valores
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging up -d --build
+#
+# Garantias deste arquivo:
+#  - banco MySQL PRÓPRIO (volume separado); nunca aponta para o banco de produção
+#  - app e banco só escutam em 127.0.0.1; o acesso externo passa pelo proxy reverso (HTTPS)
+#  - nomes e rede com sufixo "staging", sem conflito com containers de produção
+
+name: idefazei-staging
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: idefazei-staging-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${STAGING_DB_ROOT_PASSWORD:?defina STAGING_DB_ROOT_PASSWORD no .env.staging}
+      MYSQL_DATABASE: ${STAGING_DB_NAME:-idefazei_staging}
+      MYSQL_USER: ${STAGING_DB_USER:-idefazei}
+      MYSQL_PASSWORD: ${STAGING_DB_PASSWORD:?defina STAGING_DB_PASSWORD no .env.staging}
+      TZ: America/Sao_Paulo
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - staging_db_data:/var/lib/mysql
+    ports:
+      - "127.0.0.1:${STAGING_DB_PORT:-3307}:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [staging]
+
+  app:
+    build:
+      context: .
+      args:
+        VITE_APP_ID: ${VITE_APP_ID:-}
+        VITE_APP_TITLE: ${VITE_APP_TITLE:-Ide Fazei (homologação)}
+    container_name: idefazei-staging-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env.staging
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      # Sempre o banco do próprio compose, ignorando qualquer DATABASE_URL solta no env_file
+      DATABASE_URL: mysql://${STAGING_DB_USER:-idefazei}:${STAGING_DB_PASSWORD}@db:3306/${STAGING_DB_NAME:-idefazei_staging}
+    ports:
+      - "127.0.0.1:${STAGING_APP_PORT:-3100}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    networks: [staging]
+
+volumes:
+  staging_db_data:
+
+networks:
+  staging:
