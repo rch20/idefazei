@@ -205,6 +205,7 @@ const COMPLEMENTARY_ROLES = [
 ] as const;
 
 const NotificationPreferencesSettings = lazy(() => import("@/components/NotificationPreferencesSettings"));
+const FormationBackfillCard = lazy(() => import("@/components/FormationBackfillCard"));
 
 type ConfigQuickActionTab = "geral" | "identidade" | "pagina-publica" | "membros" | "integracao" | "avisos";
 
@@ -735,6 +736,7 @@ export default function Configuracoes() {
 
           {/* Perfis e Hierarquia */}
           <TabsContent value="membros">
+            {canManageRoles && churchId && <Suspense fallback={null}><FormationBackfillCard churchId={churchId} /></Suspense>}
             <div className="mb-5 grid gap-3 sm:grid-cols-3">
               <ConfigMetricCard icon={Users} label="Contas de acesso" value={String(churchUsers?.length ?? 0)} detail="Usuários vinculados à igreja" />
               <ConfigMetricCard icon={UserCheck} label="Pessoas cadastradas" value={String(people.length)} detail="Fichas disponíveis para vínculo" />

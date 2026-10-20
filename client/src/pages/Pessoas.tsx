@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { AlertCircle, ArrowLeft, ArrowRight, BriefcaseBusiness, Cake, Clock3, HeartHandshake, MessageCircle, Plus, Search, Send, ShieldCheck, User, UserMinus } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import type { PriorStageKey } from "@/components/PriorStageDialog";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 import { civilDateParts, currentCivilDateKey, currentCivilDateParts } from "@/lib/civilDate";
@@ -20,6 +21,7 @@ import { getPersonListLocation, getVisiblePersonSection, PERSON_SECTION_VALUES, 
 import { toggleJourneyNoteStage } from "@/lib/journeyNote";
 import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
 import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";
+const PriorStageDialog = lazy(() => import("@/components/PriorStageDialog"));
 import { PersonSectionState, resolvePersonSectionState } from "@/components/PersonSectionState";
 import { ConfirmDestructiveActionDialog } from "@/components/ConfirmDestructiveActionDialog";
 import { PeopleDirectoryList } from "@/components/PeopleDirectoryList";
@@ -423,6 +425,7 @@ export default function Pessoas() {
     },
     onError: (error) => toast.error(error.message || "Não foi possível enviar o encaminhamento."),
   });
+  const [priorStage, setPriorStage] = useState<JourneyStage | null>(null);
   const updateJourneyStage = trpc.people.updateJourneyStage.useMutation({
     onSuccess: async (_, variables) => {
       toast.success(variables.status === "concluida" ? "Etapa marcada como concluída." : variables.status === "pendente" ? "Etapa marcada como pendente." : "Etapa redefinida como não registrada.");
@@ -1378,6 +1381,15 @@ export default function Pessoas() {
                                 >
                                   {status === "concluida" ? "Marcar pendente" : "Concluir etapa"}
                                 </Button>
+                                {status !== "concluida" && stage !== "nova_alma" && stage !== "celula" && <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-9 text-[11px] text-navy"
+                                  onClick={() => setPriorStage(stage)}
+                                >
+                                  Veio de outra igreja
+                                </Button>}
                                 {status === "nao_registrada" && <Button
                                   type="button"
                                   size="sm"
@@ -1456,6 +1468,19 @@ export default function Pessoas() {
                   );
                 })()}
               </div>
+              {canManageJourney && selectedPerson && (
+                <Suspense fallback={null}>
+                  <PriorStageDialog
+                    open={priorStage !== null}
+                    onOpenChange={(open) => { if (!open) setPriorStage(null); }}
+                    churchId={churchId}
+                    personId={selectedPerson.id}
+                    stage={priorStage as PriorStageKey | null}
+                    stageLabel={priorStage ? STAGES_LABELS[priorStage] : ""}
+                    onSaved={async () => { await Promise.all([journeyQuery.refetch(), refetch(), directoryQuery.refetch()]); }}
+                  />
+                </Suspense>
+              )}
             </section>
           )}
 

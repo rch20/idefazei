@@ -47,4 +47,26 @@ describe("prontuário da pessoa", () => {
     const start = routers.indexOf("formationRecords: protectedProcedure");
     expect(routers.slice(start, start + 400)).toContain("requireJourneyReadPermission(ctx.user.id, input.churchId, input.id)");
   });
+
+  it("lançamento de outra igreja é manual, tem origem, data não futura e permissão da jornada", () => {
+    const fn = db.slice(db.indexOf("export async function recordPriorChurchStage"), db.indexOf("export async function backfillFormationFromRecords"));
+    expect(fn).toContain('source: "outra_igreja" as const');
+    expect(fn).toContain("eq(people.churchId, input.churchId)");
+    expect(fn).toContain("Veio de outra igreja:");
+    const start = routers.indexOf("recordPriorStage: protectedProcedure");
+    const block = routers.slice(start, start + 1800);
+    expect(block).toContain("requireJourneyStagePermission(ctx.user.id, input.churchId, input.id)");
+    expect(block).toContain("A data não pode estar no futuro.");
+    expect(block).not.toContain('"nova_alma"');
+  });
+
+  it("o preenchimento do histórico é restrito a pastores e supervisores e não altera etapas concluídas", () => {
+    const start = routers.indexOf("backfillFormation: protectedProcedure");
+    expect(routers.slice(start, start + 500)).toContain('requireNotificationPreferenceManager(ctx.user.id, input.churchId, "preencher o prontuário")');
+    const fn = db.slice(db.indexOf("export async function backfillFormationFromRecords"), db.indexOf("export async function hasFinishedAllFoundationCourses"));
+    expect(fn).toContain("recordAutomaticStageCompletion");
+    expect(fn).toContain("eq(baptismEnrollments.churchId, churchId)");
+    expect(fn).toContain("eq(encounterEnrollments.churchId, churchId)");
+    expect(fn).toContain("eq(courses.churchId, churchId)");
+  });
 });

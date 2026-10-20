@@ -2149,6 +2149,101 @@ export async function recordAutomaticStageCompletion(input: { churchId: number; 
 }
 
 /** Pessoa terminou todos os cursos da Escola de Fundamentos em que estava matriculada (e concluiu ao menos um). */
+/** Etapa concluída em outra igreja, lançada à mão pela liderança, com igreja, data e motivo. */
+export async function recordPriorChurchStage(input: { churchId: number; personId: number; stage: JourneyStageKey; originChurch: string; completedOn?: string | null; notes?: string | null; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const completedAt = input.completedOn ? new Date(`${input.completedOn}T12:00:00.000Z`) : new Date();
+  const origin = input.originChurch.trim();
+  const note = `Veio de outra igreja: ${origin}${input.notes?.trim() ? ` — ${input.notes.trim()}` : ""}`.slice(0, 1000);
+  return db.transaction(async tx => {
+    const personRows = await tx
+      .select({ id: people.id, baptismDate: people.baptismDate, previousChurch: people.previousChurch })
+      .from(people)
+      .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)))
+      .limit(1)
+      .for("update");
+    if (!personRows[0]) return null;
+    const existing = await tx
+      .select({ id: discipleshipStageProgress.id })
+      .from(discipleshipStageProgress)
+      .where(and(eq(discipleshipStageProgress.churchId, input.churchId), eq(discipleshipStageProgress.personId, input.personId), eq(discipleshipStageProgress.stage, input.stage)))
+      .limit(1)
+      .for("update");
+    const data = {
+      status: "concluida" as const,
+      isCurrent: false,
+      notes: note,
+      completedAt,
+      updatedByChurchUserId: input.actorChurchUserId,
+      source: "outra_igreja" as const,
+      sourceRef: origin.slice(0, 80),
+    };
+    if (existing[0]) {
+      await tx.update(discipleshipStageProgress).set(data).where(eq(discipleshipStageProgress.id, existing[0].id));
+    } else {
+      await tx.insert(discipleshipStageProgress).values({ churchId: input.churchId, personId: input.personId, stage: input.stage, ...data });
+    }
+    await tx.insert(discipleshipStageEvents).values({
+      churchId: input.churchId,
+      personId: input.personId,
+      stage: input.stage,
+      status: "concluida",
+      notes: note,
+      changedByChurchUserId: input.actorChurchUserId,
+    });
+    const personUpdate: Partial<typeof people.$inferInsert> = {};
+    if (input.stage === "batismo" && input.completedOn && !personRows[0].baptismDate) personUpdate.baptismDate = completedAt;
+    if (!personRows[0].previousChurch) personUpdate.previousChurch = origin.slice(0, 255);
+    if (Object.keys(personUpdate).length > 0) {
+      await tx.update(people).set(personUpdate).where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)));
+    }
+    return { ok: true as const };
+  });
+}
+
+/**
+ * Preenche o prontuário com o que já foi concluído antes da automação existir.
+ * Repetir é seguro: etapas já concluídas nunca são alteradas.
+ */
+export async function backfillFormationFromRecords(churchId: number, actorChurchUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const note = "Preenchido automaticamente a partir do histórico já concluído.";
+  const result = { batismo: 0, encontro: 0, fundamentos: 0, jaRegistradas: 0 };
+  const count = (outcome: { changed: boolean }, key: "batismo" | "encontro" | "fundamentos") => {
+    if (outcome.changed) result[key] += 1;
+    else result.jaRegistradas += 1;
+  };
+  const baptisms = await db
+    .select({ id: baptismEnrollments.id, personId: baptismEnrollments.personId, completedAt: baptismEnrollments.completedAt })
+    .from(baptismEnrollments)
+    .where(and(eq(baptismEnrollments.churchId, churchId), eq(baptismEnrollments.status, "concluiu")));
+  for (const row of baptisms) {
+    count(await recordAutomaticStageCompletion({ churchId, personId: row.personId, stage: "batismo", sourceRef: `batismo:${row.id}`, actorChurchUserId, note, completedAt: row.completedAt ?? undefined }), "batismo");
+  }
+  const encounters = await db
+    .select({ id: encounterEnrollments.id, personId: encounterEnrollments.personId, completedAt: encounterEnrollments.completedAt })
+    .from(encounterEnrollments)
+    .where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.status, "concluiu")));
+  for (const row of encounters) {
+    count(await recordAutomaticStageCompletion({ churchId, personId: row.personId, stage: "encontro_com_deus", sourceRef: `encontro:${row.id}`, actorChurchUserId, note, completedAt: row.completedAt ?? undefined }), "encontro");
+  }
+  const finishedCourses = await db
+    .select({ id: courseEnrollments.id, personId: courseEnrollments.personId, completedAt: courseEnrollments.completedAt })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courses.id, courseEnrollments.courseId))
+    .where(and(eq(courses.churchId, churchId), eq(courses.active, true), eq(courseEnrollments.status, "concluido")))
+    .orderBy(asc(courseEnrollments.id));
+  const lastByPerson = new Map<number, (typeof finishedCourses)[number]>();
+  for (const row of finishedCourses) lastByPerson.set(row.personId, row);
+  for (const [personId, row] of lastByPerson) {
+    if (!(await hasFinishedAllFoundationCourses(churchId, personId))) continue;
+    count(await recordAutomaticStageCompletion({ churchId, personId, stage: "fundamentos", sourceRef: `curso:${row.id}`, actorChurchUserId, note, completedAt: row.completedAt ?? undefined }), "fundamentos");
+  }
+  return result;
+}
+
 export async function hasFinishedAllFoundationCourses(churchId: number, personId: number) {
   const db = await getDb();
   if (!db) return false;

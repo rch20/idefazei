@@ -256,6 +256,8 @@ import {
   confirmOwnScheduleItem,
   getMemberJourneyOverview,
   getBaptismEnrollmentById,
+  backfillFormationFromRecords,
+  recordPriorChurchStage,
   getPersonFormationRecords,
   hasFinishedAllFoundationCourses,
   recordAutomaticStageCompletion,
@@ -2074,6 +2076,42 @@ const peopleRouter = router({
         progress,
         events,
       };
+    }),
+
+  recordPriorStage: protectedProcedure
+    .input(
+      z.object({
+        id: z.number().int().positive(),
+        churchId: z.number().int().positive(),
+        stage: z.enum(["consolidacao", "fundamentos", "batismo", "encontro_com_deus", "escola_de_lideres", "lideranca", "multiplicador"]),
+        originChurch: z.string().trim().min(2).max(80),
+        completedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        notes: z.string().trim().max(500).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireJourneyStagePermission(ctx.user.id, input.churchId, input.id);
+      if (input.completedOn && input.completedOn > formatCivilDateValue(currentCivilDateAsUtcNoon())) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A data não pode estar no futuro." });
+      }
+      const result = await recordPriorChurchStage({
+        churchId: input.churchId,
+        personId: input.id,
+        stage: input.stage,
+        originChurch: input.originChurch,
+        completedOn: input.completedOn,
+        notes: input.notes,
+        actorChurchUserId: actor.id,
+      });
+      if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada nesta igreja." });
+      return result;
+    }),
+
+  backfillFormation: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireNotificationPreferenceManager(ctx.user.id, input.churchId, "preencher o prontuário");
+      return backfillFormationFromRecords(input.churchId, actor.id);
     }),
 
   formationRecords: protectedProcedure
@@ -12966,11 +13004,11 @@ const treasuryRouter = router({
 
 // ─── NOTIFICAÇÕES ──────────────────────────────────────────────────────────────
 
-async function requireNotificationPreferenceManager(userId: number, churchId: number) {
+async function requireNotificationPreferenceManager(userId: number, churchId: number, action = "alterar os avisos do sistema") {
   const member = await requireChurchMember(userId, churchId);
   const roles = await getEffectiveChurchRoles(userId, churchId, member);
   if (!roles.some(role => PASTOR_OR_SUPERVISOR_ROLES.has(role))) {
-    throw new TRPCError({ code: "FORBIDDEN", message: "Somente pastores e supervisores podem alterar os avisos do sistema." });
+    throw new TRPCError({ code: "FORBIDDEN", message: `Somente pastores e supervisores podem ${action}.` });
   }
   return member;
 }
