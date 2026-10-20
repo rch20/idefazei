@@ -213,7 +213,7 @@ const CONFIG_QUICK_ACTIONS = [
   { tab: "geral", icon: Building2, title: "Dados institucionais", description: "Contato, endereço, visão e missão", requiresRoleManagement: false },
   { tab: "identidade", icon: Palette, title: "Marca da igreja", description: "Logo, cores e ícone do aplicativo", requiresRoleManagement: false },
   { tab: "pagina-publica", icon: Globe, title: "Presença pública", description: "Site, blocos, SEO e publicação", requiresRoleManagement: true },
-  { tab: "membros", icon: Users, title: "Pessoas e acessos", description: "Vínculos, perfis e pendências", requiresRoleManagement: false },
+  { tab: "membros", icon: Users, title: "Pessoas e acessos", description: "Vínculos, perfis, pendências e prontuários", requiresRoleManagement: false },
   { tab: "integracao", icon: MessageCircle, title: "Atendimento pastoral", description: "Link e visibilidade do atendimento", requiresRoleManagement: false },
   { tab: "avisos", icon: Bell, title: "Avisos do sistema", description: "Quais avisos a igreja recebe", requiresRoleManagement: true },
 ] as const;
