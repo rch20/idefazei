@@ -47,6 +47,11 @@ jobs:
       - name: Check bundle size, imports and cycles
         run: pnpm bundle:check
 
+      - name: Hash dos runtimes do servidor (informativo)
+        run: |
+          echo "::notice title=server-runtime::$(sha256sum dist/index.js | cut -d' ' -f1)"
+          echo "::notice title=foundation-runtime::$(sha256sum dist/foundation-import-runtime.mjs | cut -d' ' -f1)"
+
       - name: Smoke somente leitura da homologação
         env:
           BUNDLE_BASE_URL: ${{ secrets.STAGING_BASE_URL }}
