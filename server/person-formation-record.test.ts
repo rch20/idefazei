@@ -83,7 +83,7 @@ describe("prontuário da pessoa", () => {
 
   it("o membro lê só o próprio prontuário e sem as observações da liderança", () => {
     const start = routers.indexOf("myFormation: protectedProcedure");
-    const block = routers.slice(start, start + 1400);
+    const block = routers.slice(start, routers.indexOf("formationRecords: protectedProcedure"));
     expect(block).toContain("actor.personId");
     expect(block).not.toContain("input.id");
     expect(block).not.toContain("notes:");
