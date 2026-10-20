@@ -50,6 +50,9 @@ import {
 } from "../foundationImport";
 import { createFoundationImportRequestId, describeFoundationImportFailure, type FoundationImportPreviewStage } from "../foundationImportDiagnostics";
 
+// Marca de teste do fluxo de servidor (somente preflight; nunca publicada)
+export const preflightProbe = "servidor-preflight-teste";
+
 const STARTUP_DIAGNOSTIC_INTERVAL_MS = 60_000;
 const startupDiagnosticRateLimit = new Map<string, number>();
 const STARTUP_DIAGNOSTIC_KINDS = new Set(["error", "unhandled_rejection", "resource_load", "startup_timeout", "recovery"]);
