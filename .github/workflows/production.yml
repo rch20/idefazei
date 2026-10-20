@@ -72,15 +72,15 @@ jobs:
       - name: Integridade dos bundles
         run: pnpm bundle:check
 
-  package:
-    name: Empacotar release
+  deploy:
+    name: Produção — ${{ inputs.action }}
     needs: validate
+    if: inputs.action != 'rollback'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    outputs:
-      release_id: ${{ steps.release.outputs.release_id }}
-      server_sha: ${{ steps.release.outputs.server_sha }}
-      foundation_sha: ${{ steps.release.outputs.foundation_sha }}
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://idefazei.com.br
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,61 +91,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-
-      - name: Montar e auditar o pacote
-        id: release
-        shell: bash
-        env:
-          FRONTEND_ROUTE_ADDED: ${{ inputs.frontend_route_added }}
-          FRONTEND_ROUTE_REMOVED: ${{ inputs.frontend_route_removed }}
-        run: |
-          set -Eeuo pipefail
-          release_id="prod-${GITHUB_SHA::12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          root="$RUNNER_TEMP/$release_id"
-          package="$RUNNER_TEMP/$release_id.tar.gz"
-          mkdir -p "$root/patches"
-          cp -a dist "$root/dist"
-          cp package.json pnpm-lock.yaml "$root/"
-          cp patches/exceljs@4.4.0.patch "$root/patches/"
-          pnpm release:package "$root" "$package" "$GITHUB_WORKSPACE"
-          python3 .github/scripts/audit_release_package.py "$package" \
-            --required ./dist/public/index.html --required ./dist/index.js \
-            --required ./dist/foundation-import-runtime.mjs --required ./package.json \
-            --required ./pnpm-lock.yaml --required ./patches/exceljs@4.4.0.patch \
-            --required ./release-source.json
-          ! tar -tzf "$package" | grep -Eiq '(^|/)(\.env|uploads?/|data/|logs?/|backups?/|dumps?/|node_modules/|\.git/|drizzle/|migrations?/|.*\.sql$)'
-          {
-            echo "release_id=$release_id"
-            echo "server_sha=$(sha256sum "$root/dist/index.js" | cut -d' ' -f1)"
-            echo "foundation_sha=$(sha256sum "$root/dist/foundation-import-runtime.mjs" | cut -d' ' -f1)"
-          } >> "$GITHUB_OUTPUT"
-          cp "$package" "$RUNNER_TEMP/package.tar.gz"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: production-release-${{ steps.release.outputs.release_id }}
-          path: ${{ runner.temp }}/package.tar.gz
-          if-no-files-found: error
-          retention-days: 7
-
-  deploy:
-    name: Produção — ${{ inputs.action }}
-    needs: package
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment:
-      name: production
-      url: https://idefazei.com.br
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/download-artifact@v4
-        with:
-          name: production-release-${{ needs.package.outputs.release_id }}
-          path: release
-
       - name: Conexão SSH (usuário ghdeploy)
         env:
           DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.GHDEPLOY_SSH_PRIVATE_KEY }}
@@ -168,41 +113,69 @@ jobs:
             echo "server_sha=$(get ACTIVE_SERVER_SHA)"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Travas antes de publicar (ordem do histórico e banco)
+      - name: Travas antes de publicar (histórico, banco e servidor)
         env:
           ACTIVE_COMMIT: ${{ steps.active.outputs.commit }}
-          ACTIVE_SERVER_SHA: ${{ steps.active.outputs.server_sha }}
-          NEW_SERVER_SHA: ${{ needs.package.outputs.server_sha }}
         run: |
           set -Eeuo pipefail
           git cat-file -e "$ACTIVE_COMMIT^{commit}" 2>/dev/null \
             || { echo "::error::O commit ativo na produção não existe neste repositório."; exit 1; }
           git merge-base --is-ancestor "$ACTIVE_COMMIT" "$GITHUB_SHA" \
             || { echo "::error::O código novo não descende do que está em produção. Publicação bloqueada."; exit 1; }
-          changed="$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- drizzle)"
-          if [[ -n "$changed" ]]; then
-            echo "::error::Há mudança de banco/migration (drizzle/) nesta versão. Este fluxo não aplica banco: faça o backup do banco e o fluxo de migration antes (docs/publicacao-producao.md)."
-            printf '%s\n' "$changed"
-            exit 1
+          db="$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- drizzle)"
+          if [[ -n "$db" ]]; then
+            echo "::error::Há mudança de banco/migration (drizzle/). Este fluxo não aplica banco: faça o backup do banco e o fluxo de migration antes (docs/publicacao-producao.md)."
+            printf '%s\n' "$db"; exit 1
           fi
-          if [[ "$ACTIVE_SERVER_SHA" != "$NEW_SERVER_SHA" ]]; then
-            echo "::warning::O servidor (dist/index.js) mudou em relação à produção. O deploy de produção só aceita hash de servidor aprovado e deve bloquear no preflight."
+          srv="$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- server shared package.json pnpm-lock.yaml patches)"
+          if [[ -n "$srv" ]]; then
+            echo "::error::Há mudança de servidor/dependências. Este fluxo publica só mudanças de interface; mudança de servidor exige aprovar o hash novo no deploy de produção (docs/publicacao-producao.md)."
+            printf '%s\n' "$srv"; exit 1
           fi
+
+      - name: Montar pacote (interface nova + runtimes ativos da produção)
+        id: pkg
+        env:
+          ACTIVE_SERVER_SHA: ${{ steps.active.outputs.server_sha }}
+          FRONTEND_ROUTE_ADDED: ${{ inputs.frontend_route_added }}
+          FRONTEND_ROUTE_REMOVED: ${{ inputs.frontend_route_removed }}
+        run: |
+          set -Eeuo pipefail
+          pnpm build
+          release_id="prod-${GITHUB_SHA::12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          root="$RUNNER_TEMP/$release_id"; package="$RUNNER_TEMP/$release_id.tar.gz"
+          base="$RUNNER_TEMP/baseline"; mkdir -p "$base" "$root/patches"
+          ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" baseline | tar -xf - -C "$base"
+          [[ "$(sha256sum "$base/dist/index.js" | cut -d' ' -f1)" == "$ACTIVE_SERVER_SHA" ]] || { echo "::error::Baseline inconsistente com a versão ativa."; exit 1; }
+          built="$(sha256sum dist/index.js | cut -d' ' -f1)"
+          [[ "$built" == "$ACTIVE_SERVER_SHA" ]] || { echo "::error::O servidor gerado difere do ativo em produção (mudança de servidor). Publicação bloqueada."; exit 1; }
+          cp -a dist "$root/dist"
+          cp "$base/dist/index.js" "$base/dist/foundation-import-runtime.mjs" "$root/dist/"
+          cp package.json pnpm-lock.yaml "$root/"; cp patches/exceljs@4.4.0.patch "$root/patches/"
+          pnpm release:package "$root" "$package" "$GITHUB_WORKSPACE"
+          python3 .github/scripts/audit_release_package.py "$package" \
+            --required ./dist/public/index.html --required ./dist/index.js \
+            --required ./dist/foundation-import-runtime.mjs --required ./package.json \
+            --required ./pnpm-lock.yaml --required ./patches/exceljs@4.4.0.patch \
+            --required ./release-source.json
+          ! tar -tzf "$package" | grep -Eiq '(^|/)(\.env|uploads?/|data/|logs?/|backups?/|dumps?/|node_modules/|\.git/|drizzle/|migrations?/|.*\.sql$)'
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
+          echo "package=$package" >> "$GITHUB_OUTPUT"
 
       - name: Enviar pacote e rodar preflight
         id: preflight
         env:
-          RELEASE_ID: ${{ needs.package.outputs.release_id }}
+          RELEASE_ID: ${{ steps.pkg.outputs.release_id }}
         run: |
           set -Eeuo pipefail
-          scp -F "$DEPLOY_SSH_CONFIG" release/package.tar.gz "ide-fazei-deploy:${REMOTE_INCOMING}/${RELEASE_ID}.tar.gz"
+          scp -F "$DEPLOY_SSH_CONFIG" "${{ steps.pkg.outputs.package }}" "ide-fazei-deploy:${REMOTE_INCOMING}/${RELEASE_ID}.tar.gz"
           ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" preflight "$RELEASE_ID"
 
       - name: Publicar (apply)
         if: inputs.action == 'apply'
         id: apply
         env:
-          RELEASE_ID: ${{ needs.package.outputs.release_id }}
+          RELEASE_ID: ${{ steps.pkg.outputs.release_id }}
         run: |
           set -Eeuo pipefail
           ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" apply "$RELEASE_ID" | tee "$RUNNER_TEMP/apply.log"
@@ -233,7 +206,7 @@ jobs:
         env:
           ACTIVE_COMMIT: ${{ steps.active.outputs.commit }}
           OLD_RELEASE_ID: ${{ steps.active.outputs.release_id }}
-          RELEASE_ID: ${{ needs.package.outputs.release_id }}
+          RELEASE_ID: ${{ steps.pkg.outputs.release_id }}
           ACTION: ${{ inputs.action }}
         run: |
           {

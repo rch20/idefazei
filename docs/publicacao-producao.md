@@ -15,6 +15,14 @@ O acesso do usuário `manus` não é alterado.
 | Contrato do systemd, saúde, logs | Inalterados. |
 | Rollback automático | Inalterado; o workflow ainda confere o site e volta sozinho se falhar. |
 
+## Escopo do fluxo automático
+
+Publica **somente mudanças de interface** (`client/`). O workflow bloqueia se mudaram `server/`, `shared/`,
+`package.json`, `pnpm-lock.yaml`, `patches/` ou `drizzle/` desde a versão ativa. O `dist/index.js` gerado precisa ter o
+mesmo hash do ativo (o build do servidor é reprodutível: verificado, `c2f333b8…`). O `foundation-import-runtime.mjs`
+**não** é reprodutível no GitHub (hash diferente do da VPS), então o pacote leva o arquivo ativo da produção
+(modo `baseline` do intermediário), permitido porque nada do servidor mudou.
+
 ## Mudança de servidor (API) — fluxo deliberado
 
 1. O preflight para com `SERVER_RUNTIME_DRIFT`.

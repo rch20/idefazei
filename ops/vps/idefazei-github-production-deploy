@@ -5,6 +5,7 @@
 #   status                      mostra a versão ativa (somente leitura)
 #   preflight RELEASE_ID        valida o pacote enviado e roda o preflight de produção
 #   apply RELEASE_ID            aplica (exige preflight feito há menos de 15 min)
+#   baseline                    envia (tar na saída) os dois runtimes ativos: dist/index.js e dist/foundation-import-runtime.mjs
 #   rollback RELEASE_ID         volta para uma versão que já existe em /opt/ide-fazei/releases
 #   db-backup LABEL             dump só do banco da aplicação (usar antes de mudança de banco)
 #
@@ -77,6 +78,13 @@ PY
   echo "SERVICE_ACTIVE=$(systemctl is-active idefazei || true)"
   echo "PREVIOUS_RELEASES=$(find "${RELEASES_DIR}" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' \
     | sort -rn | awk '{print $2}' | grep -vxF "${id}" | head -5 | paste -sd, -)"
+}
+
+do_baseline() {
+  local active
+  active="$(readlink -e "${APP_LINK}")" || die ACTIVE_ROOT_UNRESOLVED 1
+  tar --format=gnu --numeric-owner --owner=0 --group=0 -C "${active}" -cf - \
+    dist/index.js dist/foundation-import-runtime.mjs
 }
 
 # ------------------------------------------------- pacote limpo (sem privilégios)
@@ -188,6 +196,7 @@ do_db_backup() {
 
 case "${MODE}" in
   status)    [[ $# -eq 1 ]] || die USAGE; do_status ;;
+  baseline)  [[ $# -eq 1 ]] || die USAGE; do_baseline ;;
   preflight) [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_preflight "$2" ;;
   apply)     [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_apply "$2" ;;
   rollback)  [[ $# -eq 2 ]] || die USAGE; require_existing_release_id "$2"; do_rollback "$2" ;;
