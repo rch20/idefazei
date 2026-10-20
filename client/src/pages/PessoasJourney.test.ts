@@ -101,7 +101,7 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
   it("separa a ficha em resumo, jornada, participações, cuidado e histórico", () => {
     expect(pageSource).toContain('aria-label="Seções da ficha da Pessoa"');
     expect(pageSource).toContain('{ value: "resumo", label: "Resumo"');
-    expect(pageSource).toContain('{ value: "jornada", label: "Formação"');
+    expect(pageSource).toContain('{ value: "jornada", label: "Prontuário"');
     expect(pageSource).toContain('{ value: "participacoes", label: "Participações"');
     expect(pageSource).toContain('{ value: "cuidado", label: "Cuidado"');
     expect(pageSource).toContain('{ value: "cobertura", label: "Cobertura espiritual"');

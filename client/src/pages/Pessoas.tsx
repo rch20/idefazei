@@ -23,6 +23,7 @@ import { toggleJourneyNoteStage } from "@/lib/journeyNote";
 import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
 import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";
 const PriorStageDialog = lazy(() => import("@/components/PriorStageDialog"));
+const FormationBackfillCard = lazy(() => import("@/components/FormationBackfillCard"));
 import { PersonSectionState, resolvePersonSectionState } from "@/components/PersonSectionState";
 import { ConfirmDestructiveActionDialog } from "@/components/ConfirmDestructiveActionDialog";
 import { PeopleDirectoryList } from "@/components/PeopleDirectoryList";
@@ -52,7 +53,7 @@ type PendingDestructiveAction =
 const PERSON_SECTIONS = PERSON_SECTION_VALUES;
 const PERSON_SECTION_OPTIONS: Array<{ value: PersonSection; label: string; description: string; pastoralOnly?: boolean }> = [
   { value: "resumo", label: "Resumo", description: "Visão geral, próximo passo e situação atual." },
-  { value: "jornada", label: "Formação", description: "Percurso de formação e progresso." },
+  { value: "jornada", label: "Prontuário", description: "Etapas, cursos, batismo e encontros da pessoa." },
   { value: "cuidado", label: "Cuidado", description: "Responsável, acompanhamento e encaminhamentos." },
   { value: "participacoes", label: "Participações", description: "Célula atual, histórico e atuações ministeriais." },
   { value: "cobertura", label: "Cobertura espiritual", description: "Vínculo pastoral administrativo.", pastoralOnly: true },
@@ -427,6 +428,7 @@ export default function Pessoas() {
     onError: (error) => toast.error(error.message || "Não foi possível enviar o encaminhamento."),
   });
   const [priorStage, setPriorStage] = useState<JourneyStage | null>(null);
+  const [backfillOpen, setBackfillOpen] = useState(false);
   const [undoStage, setUndoStage] = useState<JourneyStage | null>(null);
   const undoStageRecord = trpc.people.undoStageRecord.useMutation({
     onSuccess: async () => {
@@ -974,6 +976,11 @@ export default function Pessoas() {
             <Cake className="h-4 w-4 text-gold" />
             Aniversariantes
           </Button>
+          {accessSummary?.canManageChurch && (
+            <Button type="button" variant="outline" onClick={() => setBackfillOpen(true)} className="w-full gap-2 border-navy/20 text-navy sm:w-auto">
+              Prontuários
+            </Button>
+          )}
           <Button onClick={() => { setFormError(null); setOpen(true); }} className="w-full gap-2 bg-navy text-white hover:bg-navy-light sm:w-auto">
             <Plus className="w-4 h-4" />
             Nova Pessoa
@@ -999,6 +1006,20 @@ export default function Pessoas() {
         />
         </div>
       </div>
+
+      {accessSummary?.canManageChurch && churchId && (
+        <Dialog open={backfillOpen} onOpenChange={setBackfillOpen}>
+          <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="font-display text-navy">Prontuários dos discípulos</DialogTitle>
+              <DialogDescription>Preencha de uma vez as etapas de quem já concluiu antes do preenchimento automático. O prontuário de cada pessoa fica na ficha, aba Prontuário.</DialogDescription>
+            </DialogHeader>
+            <Suspense fallback={null}>
+              <FormationBackfillCard churchId={churchId} />
+            </Suspense>
+          </DialogContent>
+        </Dialog>
+      )}
 
       <Dialog open={birthdaysOpen} onOpenChange={setBirthdaysOpen}>
         <DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto">

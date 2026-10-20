@@ -205,7 +205,6 @@ const COMPLEMENTARY_ROLES = [
 ] as const;
 
 const NotificationPreferencesSettings = lazy(() => import("@/components/NotificationPreferencesSettings"));
-const FormationBackfillCard = lazy(() => import("@/components/FormationBackfillCard"));
 
 type ConfigQuickActionTab = "geral" | "identidade" | "pagina-publica" | "membros" | "integracao" | "avisos";
 
@@ -213,7 +212,7 @@ const CONFIG_QUICK_ACTIONS = [
   { tab: "geral", icon: Building2, title: "Dados institucionais", description: "Contato, endereço, visão e missão", requiresRoleManagement: false },
   { tab: "identidade", icon: Palette, title: "Marca da igreja", description: "Logo, cores e ícone do aplicativo", requiresRoleManagement: false },
   { tab: "pagina-publica", icon: Globe, title: "Presença pública", description: "Site, blocos, SEO e publicação", requiresRoleManagement: true },
-  { tab: "membros", icon: Users, title: "Pessoas e acessos", description: "Vínculos, perfis, pendências e prontuários", requiresRoleManagement: false },
+  { tab: "membros", icon: Users, title: "Pessoas e acessos", description: "Vínculos, perfis e pendências", requiresRoleManagement: false },
   { tab: "integracao", icon: MessageCircle, title: "Atendimento pastoral", description: "Link e visibilidade do atendimento", requiresRoleManagement: false },
   { tab: "avisos", icon: Bell, title: "Avisos do sistema", description: "Quais avisos a igreja recebe", requiresRoleManagement: true },
 ] as const;
@@ -736,7 +735,6 @@ export default function Configuracoes() {
 
           {/* Perfis e Hierarquia */}
           <TabsContent value="membros">
-            {canManageRoles && churchId && <Suspense fallback={null}><FormationBackfillCard churchId={churchId} /></Suspense>}
             <div className="mb-5 grid gap-3 sm:grid-cols-3">
               <ConfigMetricCard icon={Users} label="Contas de acesso" value={String(churchUsers?.length ?? 0)} detail="Usuários vinculados à igreja" />
               <ConfigMetricCard icon={UserCheck} label="Pessoas cadastradas" value={String(people.length)} detail="Fichas disponíveis para vínculo" />
