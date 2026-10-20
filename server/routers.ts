@@ -9328,7 +9328,7 @@ const escolaFundamentosRouter = router({
       if (input.status === "concluido" && courseEnrollment) {
         try {
           const actor = await requireChurchMember(ctx.user.id, input.churchId);
-          const personId = courseEnrollment.enrollment.personId;
+          const personId = courseEnrollment.personId;
           if (await hasFinishedAllFoundationCourses(input.churchId, personId)) {
             await recordAutomaticStageCompletion({
               churchId: input.churchId,
