@@ -12,7 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { CalendarDays, Check, ChevronsUpDown, Flame, Plus, Search, Users, X, QrCode } from "lucide-react";
+import { CalendarDays, Check, ChevronsUpDown, Flame, KeyRound, Plus, Search, Users, X, QrCode } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -79,7 +79,12 @@ type SoulRow = {
   createdAt: string | Date;
   acceptedJesus: boolean | null;
   discipleshipStage?: string | null;
+  notes?: string | null;
+  pendingAccountId?: number | string | null;
 };
+
+/** Marca gravada pela recepção quando a pessoa se cadastra sozinha pelo link ou QR Code da igreja. */
+const SELF_REGISTERED_NOTE = "Cadastro feito pelo link ou QR Code oficial da igreja";
 
 type UnifiedNewSoul = {
   key: string;
@@ -95,6 +100,8 @@ type UnifiedNewSoul = {
   date: string | Date;
   lead?: PublicLeadRow;
   soul?: SoulRow;
+  selfRegistered?: boolean;
+  pendingAccountId?: number | null;
 };
 
 function formatContactDate(value: string | Date | null | undefined) {
@@ -126,6 +133,7 @@ export default function GanharAlmas() {
   const isLimitedMember = accessSummary ? !accessSummary.isPastoralWorker : true;
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [onlyWaiting, setOnlyWaiting] = useState(false);
   const [form, setForm] = useState(createInitialForm);
   const [formError, setFormError] = useState("");
   const [winnerSearchOpen, setWinnerSearchOpen] = useState(false);
@@ -143,6 +151,13 @@ export default function GanharAlmas() {
     { churchId: churchId! },
     { enabled: Boolean(churchId && accessSummary && !isLimitedMember), retry: false }
   );
+  const releaseAccess = trpc.churchAuth.resolveRegistration.useMutation({
+    onSuccess: async () => {
+      toast.success("Acesso liberado. A pessoa será avisada.");
+      await soulsQuery.refetch();
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível liberar o acesso."),
+  });
   const updatePublicLeadStatus = trpc.publicRegistration.updateStatus.useMutation({
     onSuccess: () => {
       void publicLeadsQuery.refetch();
@@ -253,6 +268,7 @@ export default function GanharAlmas() {
       .map((soul) => {
         const displayState = deriveDiscipleshipDisplayState({ personId: soul.personId, discipleshipStage: soul.discipleshipStage });
         const origin = ORIGINS.find((item) => item.value === soul.origin)?.label ?? soul.origin;
+        const selfRegistered = Boolean(soul.notes?.startsWith(SELF_REGISTERED_NOTE));
         return {
           key: `soul-${soul.id}`,
           kind: "soul",
@@ -265,24 +281,29 @@ export default function GanharAlmas() {
           statusClassName: soul.personId
             ? "border-blue-200 bg-blue-50 text-blue-800"
             : "border-amber-200 bg-amber-50 text-amber-800",
-          originLabel: origin,
+          originLabel: selfRegistered ? "Cadastrou-se pelo link ou QR Code da igreja" : origin,
           date: soul.decisionDate ?? soul.createdAt,
           soul,
+          selfRegistered,
+          pendingAccountId: soul.pendingAccountId ? Number(soul.pendingAccountId) : null,
         };
       });
-    return [...publicRows, ...soulRows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Quem está com o login aguardando liberação sobe para o topo; depois, os mais recentes.
+    return [...publicRows, ...soulRows].sort((a, b) => Number(Boolean(b.pendingAccountId)) - Number(Boolean(a.pendingAccountId)) || new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [publicLeadsQuery.data, publicLeadsQuery.isSuccess, souls]);
 
+  const waitingCount = useMemo(() => unifiedNewSouls.filter((record) => record.pendingAccountId).length, [unifiedNewSouls]);
   const filteredNewSouls = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
-    if (!query) return unifiedNewSouls;
-    return unifiedNewSouls.filter((record) =>
+    const base = onlyWaiting ? unifiedNewSouls.filter((record) => record.pendingAccountId) : unifiedNewSouls;
+    if (!query) return base;
+    return base.filter((record) =>
       record.name.toLocaleLowerCase("pt-BR").includes(query)
       || record.phone?.includes(search.trim())
       || record.email?.toLocaleLowerCase("pt-BR").includes(query)
       || record.originLabel.toLocaleLowerCase("pt-BR").includes(query)
     );
-  }, [search, unifiedNewSouls]);
+  }, [onlyWaiting, search, unifiedNewSouls]);
 
   const createSoul = trpc.souls.create.useMutation({
     onSuccess: async (result) => {
@@ -403,6 +424,17 @@ export default function GanharAlmas() {
         </div>
         {publicLeadsQuery.isError && !isLimitedMember && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Não foi possível carregar os cadastros online. A lista manual continua disponível; tente atualizar a página.</p>}
       </section>
+      {waitingCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setOnlyWaiting((current) => !current)}
+          aria-pressed={onlyWaiting}
+          className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left text-sm transition-colors ${onlyWaiting ? "border-amber-400 bg-amber-100" : "border-amber-300 bg-amber-50 hover:bg-amber-100"}`}
+        >
+          <KeyRound className="h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+          <span className="min-w-0 flex-1 text-amber-900"><strong>{waitingCount} {waitingCount === 1 ? "pessoa aguardando" : "pessoas aguardando"} primeiro contato e liberação de acesso.</strong> {onlyWaiting ? "Mostrando só elas. Toque para ver todas." : "Toque para ver só elas."}</span>
+        </button>
+      )}
       <div className="relative">
         <Label htmlFor="soul-search" className="sr-only">Buscar nova alma</Label>
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -448,6 +480,8 @@ export default function GanharAlmas() {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate font-semibold text-navy">{record.name}</p>
                     <Badge variant="outline" className={`text-[10px] ${record.statusClassName}`}>{record.statusLabel}</Badge>
+                    {record.selfRegistered && <Badge variant="outline" className="border-gold/30 bg-gold/5 text-[10px] text-gold"><QrCode className="mr-1 h-3 w-3" aria-hidden="true" />Veio pelo link</Badge>}
+                    {record.pendingAccountId && <Badge variant="outline" className="border-amber-300 bg-amber-100 text-[10px] text-amber-900">Login aguardando liberação</Badge>}
                   </div>
                   <div className="mt-2 grid gap-1 text-sm text-slate-700 sm:grid-cols-2">
                     <span className="min-w-0 truncate" title={record.email ?? undefined}><strong className="font-medium text-slate-900">E-mail:</strong> {record.email ?? "Não informado"}</span>
@@ -461,6 +495,9 @@ export default function GanharAlmas() {
                 <div className="flex flex-col gap-2 sm:items-end">
                   <SoulContactActions name={record.name} email={record.email} phone={record.phone} />
                   <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    {record.pendingAccountId && accessSummary?.canManageChurch && (
+                      <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={releaseAccess.isPending} onClick={() => releaseAccess.mutate({ churchId: churchId!, userId: record.pendingAccountId!, approved: true })}><KeyRound className="mr-1 h-3.5 w-3.5" aria-hidden="true" />Liberar acesso</Button>
+                    )}
                     {record.soul?.acceptedJesus && <Badge className="border border-green-200 bg-green-50 text-green-700 hover:bg-green-50">Aceitou Jesus</Badge>}
                     {record.kind === "public" ? <>
                       <label className="flex shrink-0 items-center gap-2 text-xs font-medium text-muted-foreground">Status<select aria-label={`Status do cadastro de ${record.name}`} value={record.lead?.status} disabled={updatePublicLeadStatus.isPending || isPublicLeadConversionPending} onChange={(event) => record.lead && updatePublicLeadStatus.mutate({ churchId: churchId!, id: record.lead.id, status: event.target.value as keyof typeof PUBLIC_LEAD_STATUS })} className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground"><option value="novo">Novo</option><option value="em_atendimento">Em atendimento</option><option value="convertido">Convertido</option><option value="encerrado">Encerrado</option></select></label>

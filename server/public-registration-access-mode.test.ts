@@ -23,3 +23,20 @@ describe("cadastro público — modo de liberação do login", () => {
     expect(source).toContain("pendingAccountId");
   });
 });
+
+describe("Novas Almas — percepção dos cadastros pelo link", () => {
+  const page = readFileSync("client/src/pages/GanharAlmas.tsx", "utf8");
+  const db = readFileSync("server/db.ts", "utf8");
+  it("usa a mesma marca gravada pela recepção", () => {
+    const note = /SELF_REGISTERED_NOTE = "([^"]+)"/.exec(page)?.[1] ?? "";
+    expect(note.length).toBeGreaterThan(10);
+    expect(db).toContain(`notes: "${note}.",`);
+  });
+  it("mostra contador, selos e a ação de liberar acesso", () => {
+    expect(page).toContain("aguardando primeiro contato e liberação de acesso");
+    expect(page).toContain("Veio pelo link");
+    expect(page).toContain("Login aguardando liberação");
+    expect(page).toContain("Liberar acesso");
+    expect(db).toContain("pendingAccountId");
+  });
+});

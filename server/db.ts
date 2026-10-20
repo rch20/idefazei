@@ -2414,6 +2414,8 @@ export async function getSoulsByChurch(churchId: number) {
       ...getTableColumns(souls),
       discipleshipStage: people.discipleshipStage,
       email: people.email,
+      /** Login criado pelo cadastro público que ainda aguarda a liderança liberar. */
+      pendingAccountId: sql<number | null>`(SELECT cu.id FROM church_users cu WHERE cu.churchId = ${churchId} AND cu.personId = ${souls.personId} AND cu.registrationStatus = 'pending' LIMIT 1)`,
     })
     .from(souls)
     .leftJoin(people, and(eq(people.id, souls.personId), eq(people.churchId, churchId)))
