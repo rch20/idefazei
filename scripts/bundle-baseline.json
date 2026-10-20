@@ -2003,6 +2003,24 @@
       "assets/index.js",
       "assets/LeadershipStudyReaderPage.js",
       "assets/index.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/AdminPanel.js",
+      "assets/PlatformContactSettings.js",
+      "assets/index.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/LandingPage.js",
+      "assets/usePlatformContact.js",
+      "assets/index.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/Contato.js",
+      "assets/usePlatformContact.js",
+      "assets/index.js"
     ]
   ]
 }
