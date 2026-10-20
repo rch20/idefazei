@@ -114,8 +114,8 @@ export default function PersonDetailsSection({ person, churchId, canEdit, canSee
 
   if (!editing) {
     const rows: Array<[string, string]> = [
-      ["Telefone", person.phone ? formatContactPhone(person.phone) : "—"],
-      ["WhatsApp", person.whatsapp ? formatContactPhone(person.whatsapp) : "—"],
+      ["Telefone", person.phone ? formatContactPhone(person.phone) ?? "—" : "—"],
+      ["WhatsApp", person.whatsapp ? formatContactPhone(person.whatsapp) ?? "—" : "—"],
       ["E-mail", person.email || "—"],
       ["Nascimento", formatDate(person.birthDate)],
       ["Sexo", person.gender ? GENDER_LABELS[person.gender] : "—"],
