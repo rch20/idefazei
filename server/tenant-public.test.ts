@@ -734,9 +734,11 @@ describe("Galeria pública por tenant", () => {
     );
     expect(routerSource).toContain(compactSource("active: true"));
     expect(routerSource).toContain(
-      compactSource('registrationStatus: "approved"')
+      compactSource('registrationStatus: releaseNow ? "approved" : "pending"')
     );
-    expect(routerSource).toContain(compactSource("approvedAt: new Date()"));
+    expect(routerSource).toContain(
+      compactSource("approvedAt: releaseNow ? new Date() : null")
+    );
     expect(routerSource).toContain(
       compactSource("Cadastro aprovado. Você já pode entrar")
     );
