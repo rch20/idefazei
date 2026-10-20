@@ -116,6 +116,10 @@ vi.mock("./db", () => ({
   createBaptismClass: vi.fn().mockResolvedValue({ id: 1, name: "Turma Batismo Junho", churchId: 100 }),
   enrollInBaptism: vi.fn().mockResolvedValue({ id: 1, baptismClassId: 1, personId: 1 }),
   updateBaptismEnrollment: vi.fn().mockResolvedValue({ id: 1, status: "concluiu" }),
+  getBaptismEnrollmentById: vi.fn().mockResolvedValue({ id: 1, churchId: 100, personId: 1, baptismClassId: 1, status: "inscrito" }),
+  recordAutomaticStageCompletion: vi.fn().mockResolvedValue({ changed: true }),
+  hasFinishedAllFoundationCourses: vi.fn().mockResolvedValue(false),
+  getPersonFormationRecords: vi.fn().mockResolvedValue({ courses: [], baptisms: [], encounters: [] }),
   getDb: vi.fn().mockResolvedValue({
     select: vi.fn().mockReturnThis(),
     from: vi.fn().mockReturnThis(),
