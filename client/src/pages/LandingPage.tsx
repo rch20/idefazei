@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   ArrowRight, CalendarDays, CheckCircle2, ChevronDown, GraduationCap, HeartHandshake, Mail,
-  Menu, MessageCircle, Phone, Play, Send, ShieldCheck, Smartphone, UserPlus, Users, UsersRound,
+  Menu, MessageCircle, Phone, Send, ShieldCheck, Smartphone, UserPlus, Users, UsersRound,
   WalletCards, X, ClipboardList, MapPin,
 } from "lucide-react";
 import { usePlatformContact } from "@/hooks/usePlatformContact";
@@ -288,7 +288,7 @@ export default function LandingPage() {
                 </Link>
                 <Link href="/demo">
                   <Button size="lg" variant="outline" className="w-full border-[#1e3a5f]/30 px-8 text-base text-[#1e3a5f] hover:bg-[#1e3a5f]/5 sm:w-auto">
-                    <Play className="mr-2 h-4 w-4" /> Ver demonstração
+                    Ver demonstração
                   </Button>
                 </Link>
               </div>
@@ -389,7 +389,7 @@ export default function LandingPage() {
             <div className="mt-10 text-center">
               <Link href="/demo">
                 <Button size="lg" className="bg-[#c9a84c] px-8 font-bold text-[#1e3a5f] hover:bg-[#b8943e]">
-                  <Play className="mr-2 h-4 w-4" /> Ver demonstração interativa
+                  Ver demonstração interativa
                 </Button>
               </Link>
               <p className="mt-3 text-xs text-white/60">A demonstração usa dados de exemplo.</p>
