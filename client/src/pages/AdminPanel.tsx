@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,7 +12,8 @@ import { Loader2, Eye, EyeOff, Building2, Users, TrendingUp, Shield, CheckCircle
 import { trpc } from "@/lib/trpc";
 import { readBrowserStorage, removeBrowserStorage } from "@/lib/browserStorage";
 import { toast } from "sonner";
-import PlatformContactSettings from "@/components/PlatformContactSettings";
+// Carregado só quando o Super Admin abre Configurações, para não engordar o painel inteiro.
+const PlatformContactSettings = lazy(() => import("@/components/PlatformContactSettings"));
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 
@@ -554,7 +555,9 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             <div className="max-w-4xl">
               <h1 className="font-serif text-2xl font-bold text-white mb-1">Configurações da Plataforma</h1>
               <p className="text-white/40 text-sm mb-8">Contatos e dados públicos do Ide Fazei, usados na página de venda e no Fale conosco.</p>
-              <PlatformContactSettings />
+              <Suspense fallback={<div className="flex items-center text-white/60 py-8"><Loader2 className="h-5 w-5 animate-spin mr-3" /> Carregando...</div>}>
+                <PlatformContactSettings />
+              </Suspense>
               <Card className="bg-white/5 border-white/10 mt-6">
                 <CardContent className="pt-6">
                   <div className="space-y-4">
