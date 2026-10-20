@@ -11,6 +11,7 @@ import { lazyWithRetry } from "./lib/lazyWithRetry";
 
 // Carregamento sob demanda reduz o JavaScript inicial no Safari iOS e mantém
 // um retorno visual claro enquanto a página solicitada é baixada.
+const Placeholder = lazy(() => import("./pages/Placeholder"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 const TenantPublicPage = lazy(() => import("./pages/TenantPublicPage"));
 const DoacaoPublica = lazy(() => import("./pages/DoacaoPublica"));
@@ -187,7 +188,9 @@ function Router() {
       </Route>
 
       <Route path="/app/arvore">
-        <Redirect to="/app/dashboard" />
+        <AppPage title="Árvore de Discipulado" requiredAccess="isExecutive">
+          <Placeholder title="Árvore de Discipulado" description="A árvore de discipulado completa está na Visão geral da igreja." />
+        </AppPage>
       </Route>
 
       {/* ── App — Ciclo de Discipulado ── */}
