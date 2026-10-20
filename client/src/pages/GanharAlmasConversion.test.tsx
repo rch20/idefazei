@@ -64,6 +64,9 @@ vi.mock("@/lib/trpc", () => ({
       updateStatus: { useMutation: mocks.mutations.updateStatusUseMutation },
       convertToDisciple: { useMutation: mocks.mutations.convertUseMutation },
     },
+    churchAuth: {
+      resolveRegistration: { useMutation: () => ({ mutate: vi.fn(), isPending: false }) },
+    },
     people: {
       list: { useQuery: mocks.queries.peopleList },
       findPossibleMatches: { useQuery: mocks.queries.possibleMatches },

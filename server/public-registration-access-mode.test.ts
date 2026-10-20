@@ -33,7 +33,7 @@ describe("Novas Almas — percepção dos cadastros pelo link", () => {
     expect(db).toContain(`notes: "${note}.",`);
   });
   it("mostra contador, selos e a ação de liberar acesso", () => {
-    expect(page).toContain("aguardando primeiro contato e liberação de acesso");
+    expect(page).toContain("primeiro contato e liberação de acesso.");
     expect(page).toContain("Veio pelo link");
     expect(page).toContain("Login aguardando liberação");
     expect(page).toContain("Liberar acesso");
