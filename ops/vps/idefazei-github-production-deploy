@@ -3,7 +3,10 @@
 # Instalar em /usr/local/sbin/idefazei-github-production-deploy (root:root, 750).
 # O usuário ghdeploy o chama via sudo. Modos:
 #   status                      mostra a versão ativa (somente leitura)
-#   preflight RELEASE_ID        valida o pacote enviado e roda o preflight de produção
+#   preflight RELEASE_ID [--approve-server]
+#                               valida o pacote enviado e roda o preflight de produção; com --approve-server,
+#                               exige backup recente do banco e registra a aprovação do hash novo do servidor
+#                               (arquivo em /etc/ide-fazei/approved-runtimes.d, vale 1 h e é apagado após o apply)
 #   apply RELEASE_ID            aplica (exige preflight feito há menos de 15 min)
 #   baseline                    envia (tar na saída) os dois runtimes ativos: dist/index.js e dist/foundation-import-runtime.mjs
 #   rollback RELEASE_ID         volta para uma versão que já existe em /opt/ide-fazei/releases
@@ -30,6 +33,10 @@ APP_LINK="/opt/ide-fazei/app"
 RELEASES_DIR="/opt/ide-fazei/releases"
 DB_NAME="idefazei"
 DB_BACKUP_DIR="/var/backups/idefazei/db"
+APPROVAL_DIR="/etc/ide-fazei/approved-runtimes.d"
+APPROVE_MAX_BACKUP_AGE_MIN=30
+APPROVE_TTL_SECONDS=3600
+APPROVE_SERVER=0
 LOCK_FILE="/run/idefazei-github-production-deploy.lock"
 MAX_BYTES=$((200 * 1024 * 1024))
 KEEP_DAYS=14
@@ -87,6 +94,48 @@ do_baseline() {
     dist/index.js dist/foundation-import-runtime.mjs
 }
 
+# ------------------------------------------------- aprovação do hash do servidor
+# Só para pacotes já validados. A aprovação é DADO (arquivo root 600), lido pelo deploy de produção
+# em validate_runtime_compatibility; não contorna nenhuma outra trava (rotas, migrations, saúde, rollback).
+write_server_approval() {
+  local release_id="$1" tree="$2" backup commit base server found conf now
+  backup="$(find "${DB_BACKUP_DIR}" -maxdepth 1 -type f -name "db-${DB_NAME}-*.sql.gz" \
+            -mmin "-${APPROVE_MAX_BACKUP_AGE_MIN}" -print -quit 2>/dev/null || true)"
+  [[ -n "${backup}" ]] || die DB_BACKUP_REQUIRED_BEFORE_SERVER_APPROVAL
+  [[ -d "${APPROVAL_DIR}" && "$(stat -c '%U:%a' "${APPROVAL_DIR}")" == "root:700" ]] || die APPROVAL_DIR_NOT_READY 1
+  commit="$(python3 -I - "${tree}/release-source.json" <<'PY'
+import json, re, sys
+try:
+    d = json.load(open(sys.argv[1], encoding="utf-8"))
+    ok = d.get("schemaVersion") == 1 and d.get("worktreeDirty") is False and re.fullmatch(r"[0-9a-f]{40}", d.get("commitSha", ""))
+    print(d["commitSha"] if ok else "")
+except Exception:
+    print("")
+PY
+)"
+  [[ -n "${commit}" ]] || die RELEASE_SOURCE_NOT_APPROVABLE
+  server="$(sha256sum "${tree}/dist/index.js" | cut -d' ' -f1)"
+  found="$(sha256sum "${tree}/dist/foundation-import-runtime.mjs" | cut -d' ' -f1)"
+  base="$(sha256sum "$(readlink -e "${APP_LINK}")/dist/index.js" | cut -d' ' -f1)"
+  now="$(date +%s)"
+  find "${APPROVAL_DIR}" -maxdepth 1 -type f -name '*.conf' -mmin +120 -delete 2>/dev/null || true
+  conf="${APPROVAL_DIR}/${release_id}.conf"
+  {
+    echo "RELEASE_ID=${release_id}"
+    echo "SERVER_SHA=${server}"
+    echo "BASE_SERVER_SHA=${base}"
+    echo "FOUNDATION_SHA=${found}"
+    echo "COMMIT=${commit}"
+    echo "DB_BACKUP=$(basename "${backup}")"
+    echo "EXPIRES_EPOCH=$((now + APPROVE_TTL_SECONDS))"
+  } > "${conf}.tmp"
+  chown root:root "${conf}.tmp"; chmod 600 "${conf}.tmp"; mv -f -- "${conf}.tmp" "${conf}"
+  logger -t idefazei-github-production "server-approval release=${release_id} server_sha=${server} base=${base} commit=${commit} requested_by=${SUDO_USER:-unknown}"
+  echo "SERVER_APPROVAL_RECORDED release=${release_id} server_sha=${server} commit=${commit} db_backup=$(basename "${backup}")"
+}
+
+drop_server_approval() { rm -f -- "${APPROVAL_DIR}/${1}.conf" "${APPROVAL_DIR}/${1}.conf.tmp" 2>/dev/null || true; }
+
 # ------------------------------------------------- pacote limpo (sem privilégios)
 prepare_package() {
   local release_id="$1" src dest orig size orig_sha clean_sha work
@@ -124,6 +173,10 @@ prepare_package() {
   # o deploy de produção recusa arquivo gravável por grupo/outros; garantimos aqui
   chmod -R go-w "${work}/tree" 2>/dev/null || true
 
+  if [[ "${APPROVE_SERVER}" == "1" ]]; then
+    write_server_approval "${release_id}" "${work}/tree"
+  fi
+
   tar --format=gnu --numeric-owner --owner=0 --group=0 --sort=name -czf "${dest}" -C "${work}/tree" .
   chown "${TARGET_OWNER}:${TARGET_GROUP}" "${dest}"
   chmod 600 "${dest}"
@@ -141,6 +194,7 @@ do_preflight() {
   if "${DEPLOY_BIN}" --preflight "${dest}" "${release_id}"; then rc=0; else rc=$?; fi
   if (( rc != 0 )); then
     rm -f -- "${dest}" "${STATE_DIR}/${release_id}.sha256"
+    drop_server_approval "${release_id}"
     echo "GITHUB_PRODUCTION_PREFLIGHT_FAILED rc=${rc}" >&2
     exit "${rc}"
   fi
@@ -158,6 +212,7 @@ do_apply() {
   logger -t idefazei-github-production "apply release=${release_id} sha256=${actual} requested_by=${SUDO_USER:-unknown}"
   if "${DEPLOY_BIN}" --apply "${dest}" "${release_id}"; then rc=0; else rc=$?; fi
   rm -f -- "${dest}" "${STATE_DIR}/${release_id}.sha256"
+  drop_server_approval "${release_id}"
   runuser -u "${INCOMING_USER}" -- find "${INCOMING_DIR}" -maxdepth 1 -type f \
     -name 'prod-*.tar.gz' -mtime "+${KEEP_DAYS}" -delete || true
   exit "${rc}"
@@ -197,7 +252,9 @@ do_db_backup() {
 case "${MODE}" in
   status)    [[ $# -eq 1 ]] || die USAGE; do_status ;;
   baseline)  [[ $# -eq 1 ]] || die USAGE; do_baseline ;;
-  preflight) [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_preflight "$2" ;;
+  preflight) [[ $# -eq 2 || ( $# -eq 3 && "$3" == "--approve-server" ) ]] || die USAGE
+             require_release_id "$2"; [[ "${3:-}" == "--approve-server" ]] && APPROVE_SERVER=1
+             do_preflight "$2" ;;
   apply)     [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_apply "$2" ;;
   rollback)  [[ $# -eq 2 ]] || die USAGE; require_existing_release_id "$2"; do_rollback "$2" ;;
   db-backup) [[ $# -eq 2 ]] || die USAGE; do_db_backup "$2" ;;

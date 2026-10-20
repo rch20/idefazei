@@ -67,28 +67,21 @@ Ver as etapas passo a passo na conversa; resumo:
 - GitHub → Settings → Environments → `production`: secrets `GHDEPLOY_SSH_PRIVATE_KEY`, `GHDEPLOY_KNOWN_HOSTS`;
   variável `DEPLOY_SSH_HOST`. Ativar "Required reviewers" se quiser aprovação manual.
 
-## Procedimento proposto: mudanças de servidor e de banco (ainda não ativo)
+## Servidor e dependências (automático)
 
-Princípio: nenhuma trava é removida. Cada trava ganha um caminho de **aprovação registrada**, em vez de ser contornada.
+Quando `server/`, `shared/`, `package.json`, `pnpm-lock.yaml` ou `patches/` mudam, o workflow entra no **modo servidor**:
+1. testes e build completos (já feitos pelo job `validate`);
+2. `db-backup antes-servidor-<commit>` (só o banco `idefazei`);
+3. `preflight --approve-server`: o intermediário exige esse backup (≤ 30 min), calcula os hashes do pacote **já validado** e grava a
+   aprovação em `/etc/ide-fazei/approved-runtimes.d/<release>.conf` (root 600, vale 1 h, apagada após o apply);
+4. o deploy de produção aceita o hash novo **somente** se hash do servidor, hash base (o ativo), commit do `release-source.json`
+   e validade baterem com essa aprovação (`APPROVED_BY_REGISTERED_CONFIG`). Os casos aprovados à mão continuam como estavam;
+5. apply, conferência pública e rollback automático, como na interface.
+O controle passa a ser o acesso ao GitHub: Environment `production` restrito à branch de produção, proteção da branch e 2FA.
 
-### Servidor sem banco
-1. PR com testes (`pnpm check`, `vitest`, build) verdes.
-2. O preflight pára com `SERVER_RUNTIME_DRIFT` e mostra o hash novo.
-3. Aprovação: um arquivo em `/etc/ide-fazei/approved-runtimes.d/<release>.conf` (root) com hash novo, hash base (o ativo),
-   commit e marcadores de código esperados. Requer **uma** alteração única em `validate_runtime_compatibility` para ler esses
-   arquivos (mesma lógica dos casos `FOUNDATION_*` atuais: base == ativo, pacote aprovado, commit conferido).
-4. Publicação com a mesma cadeia (preflight → apply → conferência → rollback automático).
+## Banco (migrations) — fase seguinte
 
-### Banco
-Regra de projeto: migrations **aditivas e retrocompatíveis** (criar coluna/tabela/índice; nunca remover/renomear na mesma versão),
-para que voltar o código não exija restaurar o banco.
-1. Migration em `drizzle/NNNN_*.sql` + entrada no ledger `drizzle/custom-migrations.json` (com sha256), testada nos scripts `scripts/test-*-mysql8.py`.
-2. `db-backup antes-<descricao>` (dump só do banco `idefazei`, `/var/backups/idefazei/db`, verificado por `gzip -t` e sha256).
-3. Aplicar com `ops/apply-custom-migrations.mjs` (`CUSTOM_MIGRATION_IDS`), conferindo o ledger (`idefazei_custom_migrations`) e o esquema.
-4. Publicar o servidor aprovado (item anterior).
-5. Falha: voltar o código (`rollback`); restaurar o banco só se a migration não for retrocompatível (comando no tópico de recuperação acima).
-
-### Decisões pendentes (suas)
-- Aprovar hash de servidor automaticamente pelo workflow (com backup e testes) ou manter a aprovação como ato seu na VPS?
-  Automático = o controle passa a ser o acesso ao GitHub (proteja a branch e a conta com 2FA).
-- Permitir migrations apenas aditivas automaticamente, e exigir sua aprovação para qualquer coisa destrutiva?
+Ainda bloqueado de propósito (o workflow falha quando `drizzle/` muda). Regra de projeto: migrations **aditivas e retrocompatíveis**.
+Ordem: testes de migration → `db-backup antes-<descricao>` → aplicar com um aplicador instalado na VPS (não código vindo do pipeline)
+e conta MySQL própria só com DDL no banco `idefazei` → conferir ledger e esquema → publicar o servidor. Falha: voltar o código;
+restaurar o banco só se a migration não for retrocompatível.

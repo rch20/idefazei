@@ -115,7 +115,7 @@ jobs:
             echo "server_sha=$(get ACTIVE_SERVER_SHA)"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Travas antes de publicar (histórico, banco e servidor)
+      - name: Travas antes de publicar (histórico e banco)
         env:
           ACTIVE_COMMIT: ${{ steps.active.outputs.commit }}
         run: |
@@ -129,29 +129,34 @@ jobs:
             echo "::error::Há mudança de banco/migration (drizzle/). Este fluxo não aplica banco: faça o backup do banco e o fluxo de migration antes (docs/publicacao-producao.md)."
             printf '%s\n' "$db"; exit 1
           fi
-          srv="$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- server shared package.json pnpm-lock.yaml patches)"
-          if [[ -n "$srv" ]]; then
-            echo "::error::Há mudança de servidor/dependências. Este fluxo publica só mudanças de interface; mudança de servidor exige aprovar o hash novo no deploy de produção (docs/publicacao-producao.md)."
-            printf '%s\n' "$srv"; exit 1
-          fi
 
-      - name: Há interface nova para publicar?
+      - name: Classificar a mudança (interface ou servidor)
         id: ui
         env:
           ACTIVE_COMMIT: ${{ steps.active.outputs.commit }}
         run: |
           set -Eeuo pipefail
-          if [[ "$GITHUB_EVENT_NAME" == "push" && -z "$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- client)" ]]; then
+          code="$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- client server shared package.json pnpm-lock.yaml patches)"
+          srv="$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- server shared package.json pnpm-lock.yaml patches)"
+          if [[ "$GITHUB_EVENT_NAME" == "push" && -z "$code" ]]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Nenhuma mudança de interface (client/) desde a versão ativa: nada a publicar."
+            echo "mode=none" >> "$GITHUB_OUTPUT"
+            echo "Nada de código novo desde a versão ativa: nada a publicar."
+          elif [[ -n "$srv" ]]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "mode=server" >> "$GITHUB_OUTPUT"
+            echo "Mudança de servidor/dependências: modo servidor (backup do banco + aprovação registrada)."
+            printf '%s\n' "$srv"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "mode=ui" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Montar pacote (interface nova + runtimes ativos da produção)
         id: pkg
         if: steps.ui.outputs.skip != 'true'
         env:
+          MODE: ${{ steps.ui.outputs.mode }}
           ACTIVE_SERVER_SHA: ${{ steps.active.outputs.server_sha }}
           FRONTEND_ROUTE_ADDED: ${{ inputs.frontend_route_added }}
           FRONTEND_ROUTE_REMOVED: ${{ inputs.frontend_route_removed }}
@@ -161,12 +166,16 @@ jobs:
           release_id="prod-${GITHUB_SHA::12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           root="$RUNNER_TEMP/$release_id"; package="$RUNNER_TEMP/$release_id.tar.gz"
           base="$RUNNER_TEMP/baseline"; mkdir -p "$base" "$root/patches"
-          ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" baseline | tar -xf - -C "$base"
-          [[ "$(sha256sum "$base/dist/index.js" | cut -d' ' -f1)" == "$ACTIVE_SERVER_SHA" ]] || { echo "::error::Baseline inconsistente com a versão ativa."; exit 1; }
-          built="$(sha256sum dist/index.js | cut -d' ' -f1)"
-          [[ "$built" == "$ACTIVE_SERVER_SHA" ]] || { echo "::error::O servidor gerado difere do ativo em produção (mudança de servidor). Publicação bloqueada."; exit 1; }
+          if [[ "$MODE" == "ui" ]]; then
+            ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" baseline | tar -xf - -C "$base"
+            [[ "$(sha256sum "$base/dist/index.js" | cut -d' ' -f1)" == "$ACTIVE_SERVER_SHA" ]] || { echo "::error::Baseline inconsistente com a versão ativa."; exit 1; }
+            built="$(sha256sum dist/index.js | cut -d' ' -f1)"
+            [[ "$built" == "$ACTIVE_SERVER_SHA" ]] || { echo "::error::O servidor gerado difere do ativo, mas nada de servidor mudou no git. Publicação bloqueada."; exit 1; }
+          fi
           cp -a dist "$root/dist"
-          cp "$base/dist/index.js" "$base/dist/foundation-import-runtime.mjs" "$root/dist/"
+          if [[ "$MODE" == "ui" ]]; then
+            cp "$base/dist/index.js" "$base/dist/foundation-import-runtime.mjs" "$root/dist/"
+          fi
           cp package.json pnpm-lock.yaml "$root/"; cp patches/exceljs@4.4.0.patch "$root/patches/"
           pnpm release:package "$root" "$package" "$GITHUB_WORKSPACE"
           python3 .github/scripts/audit_release_package.py "$package" \
@@ -182,11 +191,18 @@ jobs:
         id: preflight
         if: steps.ui.outputs.skip != 'true'
         env:
+          MODE: ${{ steps.ui.outputs.mode }}
           RELEASE_ID: ${{ steps.pkg.outputs.release_id }}
         run: |
           set -Eeuo pipefail
           scp -F "$DEPLOY_SSH_CONFIG" "${{ steps.pkg.outputs.package }}" "ide-fazei-deploy:${REMOTE_INCOMING}/${RELEASE_ID}.tar.gz"
-          ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" preflight "$RELEASE_ID"
+          if [[ "$MODE" == "server" ]]; then
+            # backup específico do banco ANTES de aprovar o servidor novo
+            ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" db-backup "antes-servidor-${GITHUB_SHA::12}"
+            ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" preflight "$RELEASE_ID" --approve-server
+          else
+            ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" preflight "$RELEASE_ID"
+          fi
 
       - name: Publicar (apply)
         if: steps.ui.outputs.skip != 'true' && (github.event_name == 'push' || inputs.action == 'apply')
