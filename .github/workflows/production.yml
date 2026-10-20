@@ -115,7 +115,7 @@ jobs:
             echo "server_sha=$(get ACTIVE_SERVER_SHA)"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Travas antes de publicar (histórico e banco)
+      - name: Travas antes de publicar (histórico e formato das migrations)
         env:
           ACTIVE_COMMIT: ${{ steps.active.outputs.commit }}
         run: |
@@ -124,11 +124,32 @@ jobs:
             || { echo "::error::O commit ativo na produção não existe neste repositório."; exit 1; }
           git merge-base --is-ancestor "$ACTIVE_COMMIT" "$GITHUB_SHA" \
             || { echo "::error::O código novo não descende do que está em produção. Publicação bloqueada."; exit 1; }
-          db="$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- drizzle)"
-          if [[ -n "$db" ]]; then
-            echo "::error::Há mudança de banco/migration (drizzle/). Este fluxo não aplica banco: faça o backup do banco e o fluxo de migration antes (docs/publicacao-producao.md)."
-            printf '%s\n' "$db"; exit 1
+          bad=""
+          while read -r status file; do
+            [[ -n "${file:-}" ]] || continue
+            case "$file" in
+              drizzle/schema.ts|drizzle/relations.ts) ;;
+              drizzle/custom-migrations.json) [[ "$status" == "M" || "$status" == "A" ]] || bad="$bad $status:$file" ;;
+              drizzle/[0-9][0-9][0-9][0-9]_*.sql) [[ "$status" == "A" ]] || bad="$bad $status:$file" ;;
+              *) bad="$bad $status:$file" ;;
+            esac
+          done < <(git diff --name-status "$ACTIVE_COMMIT" "$GITHUB_SHA" -- drizzle)
+          if [[ -n "$bad" ]]; then
+            echo "::error::Mudança em drizzle/ fora do formato aceito (só arquivos novos NNNN_*.sql listados no custom-migrations.json, mais o próprio ledger e schema.ts/relations.ts):$bad"
+            exit 1
           fi
+          python3 - <<'PY'
+          import json, subprocess, os
+          active = os.environ["ACTIVE_COMMIT"]
+          ledger = json.load(open("drizzle/custom-migrations.json", encoding="utf-8"))
+          listed = {e["file"] for e in ledger["entries"]}
+          added = subprocess.run(["git", "diff", "--name-only", "--diff-filter=A", active, os.environ["GITHUB_SHA"], "--", "drizzle"],
+                                 capture_output=True, text=True, check=True).stdout.split()
+          orphan = [f for f in added if f.endswith(".sql") and f not in listed]
+          if orphan:
+              print("::error::Migration nova fora do ledger custom-migrations.json (não seria aplicada): " + ", ".join(orphan))
+              raise SystemExit(1)
+          PY
 
       - name: Classificar a mudança (interface ou servidor)
         id: ui
@@ -136,7 +157,12 @@ jobs:
           ACTIVE_COMMIT: ${{ steps.active.outputs.commit }}
         run: |
           set -Eeuo pipefail
-          code="$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- client server shared package.json pnpm-lock.yaml patches)"
+          code="$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- client server shared package.json pnpm-lock.yaml patches drizzle)"
+          if [[ -n "$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- 'drizzle/[0-9][0-9][0-9][0-9]_*.sql' drizzle/custom-migrations.json)" ]]; then
+            echo "db=true" >> "$GITHUB_OUTPUT"; echo "Mudança de banco: migrations aditivas com backup antes."
+          else
+            echo "db=false" >> "$GITHUB_OUTPUT"
+          fi
           srv="$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- server shared package.json pnpm-lock.yaml patches)"
           if [[ "$GITHUB_EVENT_NAME" == "push" && -z "$code" ]]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
@@ -157,6 +183,7 @@ jobs:
         if: steps.ui.outputs.skip != 'true'
         env:
           MODE: ${{ steps.ui.outputs.mode }}
+          DB: ${{ steps.ui.outputs.db }}
           ACTIVE_SERVER_SHA: ${{ steps.active.outputs.server_sha }}
           FRONTEND_ROUTE_ADDED: ${{ inputs.frontend_route_added }}
           FRONTEND_ROUTE_REMOVED: ${{ inputs.frontend_route_removed }}
@@ -186,22 +213,45 @@ jobs:
           ! tar -tzf "$package" | grep -Eiq '(^|/)(\.env|uploads?/|data/|logs?/|backups?/|dumps?/|node_modules/|\.git/|drizzle/|migrations?/|.*\.sql$)'
           echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
           echo "package=$package" >> "$GITHUB_OUTPUT"
+          if [[ "$DB" == "true" ]]; then
+            migrations="$RUNNER_TEMP/$release_id-migrations.tar.gz"
+            python3 - "$migrations" <<'PY'
+          import json, sys, tarfile
+          ledger = json.load(open("drizzle/custom-migrations.json", encoding="utf-8"))
+          with tarfile.open(sys.argv[1], "w:gz") as tar:
+              tar.add("drizzle/custom-migrations.json")
+              for entry in ledger["entries"]:
+                  tar.add(entry["file"])
+          PY
+            echo "migrations=$migrations" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Enviar pacote e rodar preflight
         id: preflight
         if: steps.ui.outputs.skip != 'true'
         env:
           MODE: ${{ steps.ui.outputs.mode }}
+          DB: ${{ steps.ui.outputs.db }}
+          ACTION: ${{ inputs.action || 'apply' }}
           RELEASE_ID: ${{ steps.pkg.outputs.release_id }}
         run: |
           set -Eeuo pipefail
           scp -F "$DEPLOY_SSH_CONFIG" "${{ steps.pkg.outputs.package }}" "ide-fazei-deploy:${REMOTE_INCOMING}/${RELEASE_ID}.tar.gz"
+          remote() { ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" "$@"; }
+          if [[ "$DB" == "true" ]]; then
+            scp -F "$DEPLOY_SSH_CONFIG" "${{ steps.pkg.outputs.migrations }}" "ide-fazei-deploy:${REMOTE_INCOMING}/${RELEASE_ID}-migrations.tar.gz"
+            remote migrate-plan "$RELEASE_ID"   # confere tudo antes de qualquer escrita
+          fi
+          if [[ "$DB" == "true" || "$MODE" == "server" ]]; then
+            remote db-backup "antes-${GITHUB_SHA::12}"   # backup específico do banco ANTES de qualquer mudança
+          fi
           if [[ "$MODE" == "server" ]]; then
-            # backup específico do banco ANTES de aprovar o servidor novo
-            ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" db-backup "antes-servidor-${GITHUB_SHA::12}"
-            ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" preflight "$RELEASE_ID" --approve-server
+            remote preflight "$RELEASE_ID" --approve-server
           else
-            ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" preflight "$RELEASE_ID"
+            remote preflight "$RELEASE_ID"
+          fi
+          if [[ "$DB" == "true" && ( "$GITHUB_EVENT_NAME" == "push" || "$ACTION" == "apply" ) ]]; then
+            remote migrate-apply "$RELEASE_ID"   # só migrations aditivas; ledger conferido; após o preflight do código
           fi
 
       - name: Publicar (apply)

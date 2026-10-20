@@ -11,6 +11,8 @@
 #   baseline                    envia (tar na saída) os dois runtimes ativos: dist/index.js e dist/foundation-import-runtime.mjs
 #   rollback RELEASE_ID         volta para uma versão que já existe em /opt/ide-fazei/releases
 #   db-backup LABEL             dump só do banco da aplicação (usar antes de mudança de banco)
+#   migrate-plan RELEASE_ID     confere o pacote de migrations e mostra o que seria aplicado (não grava no banco)
+#   migrate-apply RELEASE_ID    exige backup recente; aplica só migrations ADITIVAS, na ordem, e registra no ledger do banco
 #
 # NÃO substitui nem enfraquece /usr/local/sbin/idefazei-production-deploy: todas as
 # travas dele (hash do runtime, migrations, rotas, systemd, saúde, rollback) continuam
@@ -37,12 +39,15 @@ APPROVAL_DIR="/etc/ide-fazei/approved-runtimes.d"
 APPROVE_MAX_BACKUP_AGE_MIN=30
 APPROVE_TTL_SECONDS=3600
 APPROVE_SERVER=0
+MIGRATOR="/usr/local/libexec/idefazei-apply-migrations"
+MIGRATION_MAX_BYTES=$((20 * 1024 * 1024))
 LOCK_FILE="/run/idefazei-github-production-deploy.lock"
 MAX_BYTES=$((200 * 1024 * 1024))
 KEEP_DAYS=14
 DB_KEEP_DAYS=30
 
 WORK_DIR_CLEAN=""
+MIG_TREE=""
 trap 'if [[ -n "${WORK_DIR_CLEAN}" ]]; then rm -rf -- "${WORK_DIR_CLEAN}"; fi' EXIT
 die() { echo "GITHUB_PRODUCTION_DEPLOY_FAILED:$1" >&2; exit "${2:-2}"; }
 
@@ -135,6 +140,58 @@ PY
 }
 
 drop_server_approval() { rm -f -- "${APPROVAL_DIR}/${1}.conf" "${APPROVAL_DIR}/${1}.conf.tmp" 2>/dev/null || true; }
+
+# ------------------------------------------------- migrations (dados, nunca código do pipeline)
+# O pacote de migrations só pode conter drizzle/custom-migrations.json e drizzle/NNNN_nome.sql.
+# É extraído sem privilégios; o aplicador (instalado na VPS) lê os arquivos como DADOS.
+prepare_migrations() {
+  local release_id="$1" src work orig size
+  src="${INCOMING_DIR}/${release_id}-migrations.tar.gz"
+  runuser -u "${INCOMING_USER}" -- test -f "${src}" || die MIGRATION_BUNDLE_NOT_FOUND
+  [[ -x "${MIGRATOR}" ]] || die MIGRATOR_MISSING 1
+  id "${SANDBOX_USER}" >/dev/null 2>&1 || die SANDBOX_USER_MISSING 1
+  install -d -m 755 -o root -g root "${WORK_ROOT}"
+  work="$(mktemp -d "${WORK_ROOT}/mig.XXXXXX")"
+  chmod 711 "${work}"
+  WORK_DIR_CLEAN="${work}"
+  orig="${work}/migrations.tar.gz"
+  runuser -u "${INCOMING_USER}" -- head -c "$((MIGRATION_MAX_BYTES + 1))" -- "${src}" > "${orig}"
+  size="$(stat -c %s -- "${orig}")"
+  (( size > 0 && size <= MIGRATION_MAX_BYTES )) || die MIGRATION_BUNDLE_SIZE_INVALID
+  gzip -t -- "${orig}" 2>/dev/null || die MIGRATION_BUNDLE_NOT_GZIP
+  # lista antes de extrair: só arquivos comuns com nomes permitidos
+  tar -tvzf "${orig}" 2>/dev/null | awk '{print substr($1,1,1)}' | grep -qvE '^[-d]$' && die MIGRATION_BUNDLE_HAS_SPECIAL_ENTRY
+  while IFS= read -r name; do
+    [[ "${name}" =~ ^(\./)?(drizzle/?|drizzle/custom-migrations\.json|drizzle/[0-9]{4}_[A-Za-z0-9_]+\.sql|\./?)$ ]] || die "MIGRATION_BUNDLE_BAD_ENTRY"
+  done < <(tar -tzf "${orig}")
+  install -d -m 700 -o "${SANDBOX_USER}" -g "$(id -gn "${SANDBOX_USER}")" "${work}/tree"
+  runuser -u "${SANDBOX_USER}" -- sh -c 'umask 022 && exec timeout --kill-after=10 60 tar -xzf - --no-same-owner --no-same-permissions -C "$1"' _ "${work}/tree" < "${orig}" \
+    || die MIGRATION_BUNDLE_EXTRACT_FAILED
+  [[ -z "$(find "${work}/tree" -mindepth 1 \( ! -type f -a ! -type d \) -print -quit)" ]] || die MIGRATION_TREE_HAS_SPECIAL_FILE
+  [[ -f "${work}/tree/drizzle/custom-migrations.json" ]] || die MIGRATION_LEDGER_MISSING
+  MIG_TREE="${work}/tree"
+}
+
+require_recent_db_backup() {
+  local backup
+  backup="$(find "${DB_BACKUP_DIR}" -maxdepth 1 -type f -name "db-${DB_NAME}-*.sql.gz" \
+            -mmin "-${APPROVE_MAX_BACKUP_AGE_MIN}" -print -quit 2>/dev/null || true)"
+  [[ -n "${backup}" ]] || die DB_BACKUP_REQUIRED_BEFORE_MIGRATION
+  echo "DB_BACKUP_USED=$(basename "${backup}")"
+}
+
+do_migrate_plan() {
+  prepare_migrations "$1"
+  "${MIGRATOR}" plan "${MIG_TREE}"
+}
+
+do_migrate_apply() {
+  local release_id="$1"
+  require_recent_db_backup
+  prepare_migrations "${release_id}"
+  logger -t idefazei-github-production "migrate-apply release=${release_id} requested_by=${SUDO_USER:-unknown}"
+  "${MIGRATOR}" apply "${MIG_TREE}"
+}
 
 # ------------------------------------------------- pacote limpo (sem privilégios)
 prepare_package() {
@@ -258,5 +315,7 @@ case "${MODE}" in
   apply)     [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_apply "$2" ;;
   rollback)  [[ $# -eq 2 ]] || die USAGE; require_existing_release_id "$2"; do_rollback "$2" ;;
   db-backup) [[ $# -eq 2 ]] || die USAGE; do_db_backup "$2" ;;
+  migrate-plan)  [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_migrate_plan "$2" ;;
+  migrate-apply) [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_migrate_apply "$2" ;;
   *) die USAGE ;;
 esac
