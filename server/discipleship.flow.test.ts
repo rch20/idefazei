@@ -2035,7 +2035,7 @@ describe("Fluxo completo de discipulado", () => {
         .rejects.toThrow("ainda aguarda aprovação");
     });
 
-    it("libera o acesso pendente por padrão ao definir um responsável autorizado", async () => {
+    it("não libera o acesso pendente por padrão ao definir um responsável autorizado", async () => {
       const caller = appRouter.createCaller(createMemberContext(-2));
 
       await caller.care.assign({
@@ -2050,7 +2050,7 @@ describe("Fluxo completo de discipulado", () => {
         personId: 10,
         responsiblePersonId: 11,
         role: "pastor",
-        releaseAccess: true,
+        releaseAccess: false,
         approverChurchUserId: 2,
       }));
     });
