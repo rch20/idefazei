@@ -94,4 +94,15 @@ describe("Área do Membro — contato e login", () => {
     expect(escalasSource).toContain("Presença confirmada");
     expect(escalasSource).toContain("Aguardando confirmação");
   });
+
+  it("avisa pastores e líder do ministério quando a pessoa confirma a escala", () => {
+    const routerSource = readFileSync(new URL("../../../server/routers.ts", import.meta.url), "utf8");
+    const block = routerSource.slice(routerSource.indexOf("confirmMine: protectedProcedure"), routerSource.indexOf("confirmMine: protectedProcedure") + 3000);
+    expect(block).toContain("Presença confirmada na Escala");
+    expect(block).toContain("PASTOR_ROLES.has(account.role)");
+    expect(block).toContain("ministry.leaderId");
+    expect(block).toContain("account.id !== actor.id");
+    expect(block).toContain("dedupeKey: `escala-confirmada:");
+    expect(block).toContain("catch (error)");
+  });
 });

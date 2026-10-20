@@ -5720,9 +5720,36 @@ const schedulesRouter = router({
       if (!actor.personId) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Sua conta ainda não está vinculada a uma Pessoa." });
       }
-      const confirmed = await confirmOwnScheduleItem({ id: input.id, churchId: input.churchId, personId: actor.personId });
-      if (!confirmed) {
+      const item = await confirmOwnScheduleItem({ id: input.id, churchId: input.churchId, personId: actor.personId });
+      if (!item) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Escala não encontrada, já passou ou não é sua." });
+      }
+      // Avisa a gestão: pastores e o líder do ministério. Falha de aviso nunca desfaz a confirmação.
+      try {
+        const [ministry, accounts, person] = await Promise.all([
+          getMinistriesByChurch(input.churchId).then(items => items.find(candidate => candidate.id === item.ministryId)),
+          getChurchUsersByChurch(input.churchId),
+          getPersonById(item.personId, input.churchId),
+        ]);
+        const recipients = accounts
+          .filter(account => account.active && account.id !== actor.id && (PASTOR_ROLES.has(account.role) || (ministry?.leaderId != null && account.personId === ministry.leaderId)))
+          .map(account => account.id);
+        const dateLabel = formatCivilDateValue(item.scheduledDate).split("-").reverse().join("/");
+        await emitNotificationWithoutBlocking({
+          churchId: input.churchId,
+          type: "escala_alterada",
+          recipientChurchUserIds: recipients,
+          title: "Presença confirmada na Escala",
+          body: `${person?.fullName ?? "Uma pessoa"} confirmou presença no ${ministry?.name ?? "Ministério"} em ${dateLabel}.`,
+          entityType: "schedule_item",
+          entityId: item.id,
+          metadata: { ministryId: item.ministryId, personId: item.personId, scheduledDate: dateLabel, confirmed: true },
+          dedupeKey: `escala-confirmada:${item.id}:${item.personId}:${formatCivilDateValue(item.scheduledDate)}:${item.startTime ?? ""}`,
+          push: true,
+          url: `/app/escalas?ministerio=${item.ministryId}`,
+        });
+      } catch (error) {
+        console.error("[schedules] Falha ao avisar a gestão sobre a confirmação:", error);
       }
       return { ok: true as const };
     }),
@@ -5821,7 +5848,7 @@ const schedulesRouter = router({
         type: "escala_atribuida",
         recipientChurchUserIds: recipients,
         title: "Nova escala atribuída",
-        body: `Você foi escalado(a) no ${ministryName} para ${input.scheduledDate.split("-").reverse().join("/")} das ${input.startTime} às ${input.endTime}.`,
+        body: `Você foi escalado(a) no ${ministryName} para ${input.scheduledDate.split("-").reverse().join("/")} das ${input.startTime} às ${input.endTime}. Confirme sua presença em Minha caminhada.`,
         entityType: "schedule_item",
         entityId: scheduleId ?? undefined,
         metadata: {
@@ -5887,7 +5914,7 @@ const schedulesRouter = router({
         type: "escala_atribuida",
         recipientChurchUserIds: recipients,
         title: "Nova escala de equipe atribuída",
-        body: `Sua equipe foi escalada no ${ministryName} para ${input.scheduledDate.split("-").reverse().join("/")} das ${input.startTime} às ${input.endTime}.`,
+        body: `Sua equipe foi escalada no ${ministryName} para ${input.scheduledDate.split("-").reverse().join("/")} das ${input.startTime} às ${input.endTime}. Confirme sua presença em Minha caminhada.`,
         entityType: "schedule_item",
         entityId: result.firstId ?? undefined,
         metadata: {
@@ -5974,7 +6001,7 @@ const schedulesRouter = router({
         type: "escala_alterada",
         recipientChurchUserIds: recipients,
         title: "Sua Escala foi alterada",
-        body: `A Escala de ${ministryName} para ${input.scheduledDate.split("-").reverse().join("/")} foi atualizada. Confira os novos detalhes no calendário.`,
+        body: `A Escala de ${ministryName} para ${input.scheduledDate.split("-").reverse().join("/")} foi atualizada. Confira os novos detalhes e confirme sua presença em Minha caminhada.`,
         entityType: "schedule_item",
         entityId: updated.id,
         metadata: {

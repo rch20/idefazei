@@ -5775,7 +5775,7 @@ export async function updateScheduleItem(data: { id: number; churchId: number; m
   });
 }
 
-/** A própria pessoa confirma presença numa escala futura e ativa. Retorna false se não for dela. */
+/** A própria pessoa confirma presença numa escala futura e ativa. Retorna a escala, ou null se não for dela. */
 export async function confirmOwnScheduleItem(data: { id: number; churchId: number; personId: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
@@ -5791,7 +5791,13 @@ export async function confirmOwnScheduleItem(data: { id: number; churchId: numbe
       sql`${scheduleItems.scheduledDate} >= ${today}`,
     ));
   const header = (Array.isArray(result) ? result[0] : result) as { affectedRows?: number; changedRows?: number } | undefined;
-  return Number(header?.affectedRows ?? 0) > 0;
+  if (Number(header?.affectedRows ?? 0) === 0) return null;
+  const rows = await db
+    .select()
+    .from(scheduleItems)
+    .where(and(eq(scheduleItems.id, data.id), eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.personId, data.personId)))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function cancelScheduleItem(data: { id: number; churchId: number; cancelledByChurchUserId: number; cancelReason?: string | null }) {
