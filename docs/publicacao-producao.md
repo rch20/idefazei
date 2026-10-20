@@ -66,3 +66,29 @@ Ver as etapas passo a passo na conversa; resumo:
   (`ops/vps/idefazei-github-production-deploy`, root:root 750) e liberar `sudo` do `ghdeploy` só para ele.
 - GitHub → Settings → Environments → `production`: secrets `GHDEPLOY_SSH_PRIVATE_KEY`, `GHDEPLOY_KNOWN_HOSTS`;
   variável `DEPLOY_SSH_HOST`. Ativar "Required reviewers" se quiser aprovação manual.
+
+## Procedimento proposto: mudanças de servidor e de banco (ainda não ativo)
+
+Princípio: nenhuma trava é removida. Cada trava ganha um caminho de **aprovação registrada**, em vez de ser contornada.
+
+### Servidor sem banco
+1. PR com testes (`pnpm check`, `vitest`, build) verdes.
+2. O preflight pára com `SERVER_RUNTIME_DRIFT` e mostra o hash novo.
+3. Aprovação: um arquivo em `/etc/ide-fazei/approved-runtimes.d/<release>.conf` (root) com hash novo, hash base (o ativo),
+   commit e marcadores de código esperados. Requer **uma** alteração única em `validate_runtime_compatibility` para ler esses
+   arquivos (mesma lógica dos casos `FOUNDATION_*` atuais: base == ativo, pacote aprovado, commit conferido).
+4. Publicação com a mesma cadeia (preflight → apply → conferência → rollback automático).
+
+### Banco
+Regra de projeto: migrations **aditivas e retrocompatíveis** (criar coluna/tabela/índice; nunca remover/renomear na mesma versão),
+para que voltar o código não exija restaurar o banco.
+1. Migration em `drizzle/NNNN_*.sql` + entrada no ledger `drizzle/custom-migrations.json` (com sha256), testada nos scripts `scripts/test-*-mysql8.py`.
+2. `db-backup antes-<descricao>` (dump só do banco `idefazei`, `/var/backups/idefazei/db`, verificado por `gzip -t` e sha256).
+3. Aplicar com `ops/apply-custom-migrations.mjs` (`CUSTOM_MIGRATION_IDS`), conferindo o ledger (`idefazei_custom_migrations`) e o esquema.
+4. Publicar o servidor aprovado (item anterior).
+5. Falha: voltar o código (`rollback`); restaurar o banco só se a migration não for retrocompatível (comando no tópico de recuperação acima).
+
+### Decisões pendentes (suas)
+- Aprovar hash de servidor automaticamente pelo workflow (com backup e testes) ou manter a aprovação como ato seu na VPS?
+  Automático = o controle passa a ser o acesso ao GitHub (proteja a branch e a conta com 2FA).
+- Permitir migrations apenas aditivas automaticamente, e exigir sua aprovação para qualquer coisa destrutiva?
