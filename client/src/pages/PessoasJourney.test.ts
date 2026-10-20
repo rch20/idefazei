@@ -210,7 +210,8 @@ describe("Ficha da Pessoa — jornada e escopo", () => {
     expect(funnelSource.slice(funnelStagesStart, funnelStagesEnd)).not.toContain('key: "celula"');
     expect(funnelSource).toContain("Registros antigos de Célula");
     expect(funnelSource).toContain("A participação atual deve ser consultada e administrada em Células.");
-    expect(landingSource).toContain("8 etapas de formação");
+    // A página de venda apresenta recursos por área de necessidade e não descreve o funil como estrutura obrigatória.
+    expect(landingSource).not.toContain("Multiplicador");
     expect(memberAreaSource).not.toContain('"Nova Alma", "Consolidação", "Fundamentos", "Célula"');
     expect(memberAreaSource).toContain("Célula (registro anterior)");
   });

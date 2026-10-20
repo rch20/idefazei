@@ -1,74 +1,168 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import {
-  Users, MapPin, BarChart3, Bell, BookOpen, Heart,
-  ChevronRight, CheckCircle2, ArrowRight, Menu, X,
-  Layers, GitBranch, Globe, Shield, Zap, Phone, Mail, MessageCircle, Send
+  ArrowRight, CalendarDays, CheckCircle2, ChevronDown, GraduationCap, HeartHandshake, Mail,
+  Menu, MessageCircle, Phone, Play, Send, ShieldCheck, Smartphone, UserPlus, Users, UsersRound,
+  WalletCards, X, ClipboardList, MapPin,
 } from "lucide-react";
 import { usePlatformContact } from "@/hooks/usePlatformContact";
 import { formatBrazilianPhone, formatCnpj } from "@shared/platformContact";
 
-const FUNNEL_STEPS = [
-  { label: "Nova Alma", color: "#e8d5b7", icon: "✦" },
-  { label: "Consolidação", color: "#d4c4a0", icon: "✦" },
-  { label: "Fundamentos", color: "#c9a84c", icon: "✦" },
-  { label: "Batismo", color: "#1e3a5f", icon: "✦" },
-  { label: "Encontro com Deus", color: "#162d4a", icon: "✦" },
-  { label: "Escola de Líderes", color: "#0f2035", icon: "✦" },
-  { label: "Liderança", color: "#0a1828", icon: "✦" },
-  { label: "Multiplicador", color: "#050d14", icon: "✦" },
-];
+/**
+ * Página de venda do Ide Fazei.
+ * Regra de conteúdo: só aparece aqui o que o sistema já faz hoje. Recursos que seguem o modelo de uma
+ * visão específica (células, consolidação, Escola de Fundamentos, Encontro com Deus) aparecem como
+ * recursos dentro das áreas, nunca como requisito para usar a plataforma.
+ */
+
+// Cores: ouro escuro (#7a5c0f) para texto sobre fundo claro (contraste 5,5:1); ouro claro só sobre azul.
+const NAVY = "text-[#1e3a5f]";
+const BODY = "text-[#1e3a5f]/75";
+const EYEBROW = "text-[#7a5c0f]";
+
+const AREAS = [
+  {
+    id: "pessoas",
+    icon: Users,
+    title: "Pessoas, membros e visitantes",
+    summary: "Saiba quem faz parte da igreja, quem chegou agora e como cada família está.",
+    items: [
+      "Cadastro de pessoas com contato, endereço e histórico",
+      "Famílias e vínculos entre as pessoas",
+      "Registro de novas almas e visitantes",
+      "Ficha de cadastro pública, com QR Code",
+      "Portal do Visitante: pedido de oração, visita e interesse em participar",
+      "Área do Membro com os dados e a jornada de cada pessoa",
+    ],
+  },
+  {
+    id: "cuidado",
+    icon: HeartHandshake,
+    title: "Acompanhamento e cuidado pastoral",
+    summary: "Ninguém passa despercebido: veja quem precisa de um contato, uma visita ou uma oração.",
+    items: [
+      "Central de cuidado com pessoas que precisam de atenção",
+      "Consolidação: primeiro contato e visitas, com responsável definido",
+      "Radar espiritual: pessoas afastadas ou sem acompanhamento",
+      "Pedidos de oração e testemunhos",
+      "Aconselhamento com acesso restrito a quem pode ver",
+      "Árvore de discipulado para enxergar quem acompanha quem",
+    ],
+  },
+  {
+    id: "ensino",
+    icon: GraduationCap,
+    title: "Ensino, cursos e formação",
+    summary: "Organize turmas, estudos e a formação de novos membros e líderes.",
+    items: [
+      "Escola de Fundamentos, com aulas, material e acompanhamento do aluno",
+      "Escola de Líderes, com estudo do aluno e do professor",
+      "Turmas de batismo e acompanhamento das inscrições",
+      "Encontro com Deus, com fichas e participantes",
+      "Estudos para células e grupos",
+      "Biblioteca de materiais para a liderança",
+    ],
+  },
+  {
+    id: "equipes",
+    icon: UsersRound,
+    title: "Equipes, ministérios e voluntários",
+    summary: "Cada pessoa no lugar certo, com a escala certa e o líder certo.",
+    items: [
+      "Ministérios com responsável, participantes e funções",
+      "Escalas por data, com lembretes",
+      "Estrutura organizacional da igreja",
+      "Células e grupos, com líder, anfitrião, endereço e presença",
+      "Mapa para ver onde os grupos estão",
+      "Gestão de liderança e App do Líder, simples para usar no celular",
+    ],
+  },
+  {
+    id: "cultos",
+    icon: CalendarDays,
+    title: "Cultos, eventos e comunicação",
+    summary: "Divulgue, receba inscrições e mantenha todos informados.",
+    items: [
+      "Eventos com inscrição online e check-in por QR Code",
+      "Página pública da igreja, com horários de culto e convite para visita",
+      "Mural de avisos para a congregação",
+      "Comunicação com as pessoas, com apoio de links de WhatsApp",
+      "Notificações no celular",
+      "Identidade visual da igreja: nome, logo e cores",
+    ],
+  },
+  {
+    id: "financas",
+    icon: WalletCards,
+    title: "Finanças e administração",
+    summary: "Transparência e controle para quem cuida dos recursos da igreja.",
+    items: [
+      "Tesouraria: entradas, conferência de contagem e relatórios",
+      "Contribuições e doações online, com comprovante",
+      "Contas a pagar",
+      "Conciliação e registro de quem fez cada alteração",
+      "Perfis de acesso por função: pastor, supervisor, líder, secretaria, tesouraria e membro",
+      "Registro de acessos para apoiar a segurança",
+    ],
+  },
+] as const;
+
+const STEPS = [
+  { icon: ClipboardList, title: "Cadastre sua igreja", text: "Informe os dados da igreja e escolha o endereço dela na plataforma. Nossa equipe analisa o cadastro em até 24 horas úteis." },
+  { icon: UserPlus, title: "Cadastre pessoas e convide a equipe", text: "Registre membros e visitantes e dê a cada líder o acesso que combina com a sua função." },
+  { icon: Smartphone, title: "Acompanhe no dia a dia", text: "Use no celular ou no computador. Comece pelo que a sua igreja já faz hoje e avance no seu ritmo." },
+] as const;
+
+const FIT = [
+  { icon: ShieldCheck, title: "Os dados da sua igreja ficam separados", text: "Cada igreja tem o seu próprio endereço e o seu ambiente. As informações de uma igreja não aparecem para outra." },
+  { icon: Users, title: "Cada pessoa vê o que precisa", text: "Perfis de acesso por função ajudam a proteger dados sensíveis, como finanças e aconselhamento." },
+  { icon: CheckCircle2, title: "Use o que faz sentido para você", text: "Não é preciso adotar todos os recursos. Igrejas de tamanhos e formas de organização diferentes podem começar por pessoas, eventos, equipes ou finanças." },
+] as const;
 
 const PLANS = [
   {
     name: "Básico",
     price: "R$ 97",
     period: "/mês",
-    description: "Para igrejas em crescimento",
-    features: ["Até 200 membros", "Funil de Discipulado", "Gestão de Células", "Módulo Ganhar Almas", "Consolidação", "Suporte por email"],
-    cta: "Começar Grátis",
+    description: "Para começar a organizar a igreja.",
+    features: ["Até 200 membros", "Até 10 células", "Relatórios básicos", "Suporte por e-mail"],
     highlight: false,
     contactOnly: false,
+    cta: "Cadastrar minha igreja",
   },
   {
     name: "Pro",
     price: "R$ 197",
     period: "/mês",
-    description: "Para igrejas estabelecidas",
-    features: ["Até 1.000 membros", "Tudo do Básico", "Mapa Geográfico", "Radar Espiritual", "Árvore de Discipulado", "Biblioteca Digital", "Notificações automáticas", "Suporte prioritário"],
-    cta: "Assinar Pro",
+    description: "Para igrejas com mais pessoas e mais equipes.",
+    features: ["Membros e células sem limite", "Todos os recursos do sistema", "Suporte prioritário"],
     highlight: true,
     contactOnly: false,
+    cta: "Cadastrar minha igreja",
   },
   {
     name: "Enterprise",
     price: "Sob consulta",
     period: "",
-    description: "Para redes e denominações",
-    features: ["Membros ilimitados", "Tudo do Pro", "Multi-campus", "API personalizada", "Relatórios avançados", "Gerente de conta dedicado", "Treinamento presencial", "SLA garantido"],
-    cta: "Falar com Especialista",
+    description: "Para redes e ministérios com necessidades próprias.",
+    features: ["Conversa direta com a nossa equipe", "Avaliação da estrutura da sua rede ou ministério", "Proposta sob medida"],
     highlight: false,
     contactOnly: true,
+    cta: "Falar com a equipe",
   },
-];
+] as const;
 
-const FEATURES = [
-  { icon: GitBranch, title: "Funil de Discipulado", desc: "Kanban visual com 8 etapas de formação, da Nova Alma ao Multiplicador. A participação em Célula é acompanhada à parte." },
-  { icon: Users, title: "Gestão de Membros", desc: "Cadastro completo com dados pessoais, espirituais, familiares e histórico." },
-  { icon: MapPin, title: "Inteligência Geográfica", desc: "Mapa interativo de células, áreas descobertas e sugestões de expansão." },
-  { icon: BarChart3, title: "Dashboard Executivo", desc: "KPIs em tempo real, Radar Espiritual e Árvore de Discipulado visual." },
-  { icon: Heart, title: "Ganhar Almas", desc: "Registro de conversões com origem, consolidador e acompanhamento completo." },
-  { icon: Bell, title: "Notificações Automáticas", desc: "Alertas de aniversários, ausências, etapas do funil e eventos." },
-  { icon: BookOpen, title: "Biblioteca Digital", desc: "Materiais de ensino, cursos e recursos para toda a liderança." },
-  { icon: Shield, title: "Multi-Tenant Seguro", desc: "Isolamento total de dados. Cada igreja tem seu próprio subdomínio e ambiente." },
-  { icon: Globe, title: "Portal do Visitante", desc: "Página pública para pedidos de oração, visitas e interesse em participar." },
-  { icon: Layers, title: "Ministérios e Escalas", desc: "Gestão completa de equipes ministeriais com calendário visual." },
-  { icon: Zap, title: "PWA Instalável", desc: "Funciona como app nativo no celular, sem precisar de loja de aplicativos." },
-  { icon: Phone, title: "App do Líder", desc: "Interface simplificada para líderes de célula gerenciarem sua equipe." },
-];
+const FAQ = [
+  { q: "Para que tipo de igreja o Ide Fazei serve?", a: "Para igrejas de diferentes tamanhos e formas de organização. O sistema reúne recursos de pessoas, cuidado, ensino, equipes, eventos e finanças, e a sua igreja usa os que fizerem sentido. Alguns recursos, como células e consolidação, têm nomes e fluxos próprios do sistema." },
+  { q: "Preciso trabalhar com células ou com consolidação?", a: "Não. Esses recursos existem para quem os utiliza. Você pode começar apenas com cadastro de pessoas, eventos, ministérios e finanças." },
+  { q: "Como faço para começar?", a: "Cadastre a sua igreja pelo botão desta página. Nossa equipe analisa o cadastro em até 24 horas úteis e avisa por e-mail quando o acesso for liberado." },
+  { q: "Os dados da minha igreja ficam separados dos de outras igrejas?", a: "Sim. Cada igreja tem o seu próprio endereço e o seu ambiente, e os dados não se misturam." },
+  { q: "Quem pode ver as finanças e os atendimentos pastorais?", a: "Somente quem recebe esse acesso. O sistema tem perfis por função, e áreas como tesouraria e aconselhamento têm acesso restrito." },
+  { q: "Funciona no celular?", a: "Sim. Dá para usar no navegador do celular e instalar como aplicativo, sem precisar de loja de aplicativos." },
+  { q: "Quanto custa?", a: "O plano Básico custa R$ 97 por mês e o Pro, R$ 197 por mês. Para redes e ministérios com necessidades próprias, conversamos para entender o que a sua realidade pede." },
+  { q: "Posso ver o sistema antes de cadastrar?", a: "Sim. A demonstração interativa mostra como o sistema funciona, com dados de exemplo. Se preferir, fale com a nossa equipe." },
+] as const;
 
 const SOCIAL_LABELS = { instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", tiktok: "TikTok" } as const;
 
@@ -76,349 +170,366 @@ export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { contact, whatsappLink } = usePlatformContact();
   const socialLinks = (Object.keys(SOCIAL_LABELS) as Array<keyof typeof SOCIAL_LABELS>).filter(key => contact.social[key]);
+  const closeMenu = () => setMobileMenuOpen(false);
+
+  const planButton = (plan: (typeof PLANS)[number]) => {
+    const button = (
+      <Button
+        className={`w-full ${
+          plan.highlight ? "bg-[#c9a84c] hover:bg-[#b8943e] text-[#1e3a5f] font-bold" : "bg-[#1e3a5f] hover:bg-[#162d4a] text-white"
+        }`}
+      >
+        {plan.cta}
+      </Button>
+    );
+    if (plan.contactOnly && whatsappLink) {
+      return <a href={whatsappLink} target="_blank" rel="noopener noreferrer">{button}</a>;
+    }
+    return <Link href={plan.contactOnly ? "/contato" : "/cadastro-igreja"}>{button}</Link>;
+  };
 
   return (
-    <div className="min-h-screen bg-[#f5f0e8] font-sans">
-      {/* Sacred geometry background */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden opacity-[0.04]" aria-hidden="true">
-        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="50%" cy="50%" r="300" fill="none" stroke="#c9a84c" strokeWidth="1" />
-          <circle cx="50%" cy="50%" r="500" fill="none" stroke="#c9a84c" strokeWidth="0.8" />
-          <circle cx="50%" cy="50%" r="700" fill="none" stroke="#c9a84c" strokeWidth="0.6" />
-          <circle cx="30%" cy="40%" r="250" fill="none" stroke="#c9a84c" strokeWidth="0.7" />
-          <circle cx="70%" cy="60%" r="250" fill="none" stroke="#c9a84c" strokeWidth="0.7" />
-          <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#c9a84c" strokeWidth="0.5" />
-          <line x1="50%" y1="0" x2="50%" y2="100%" stroke="#c9a84c" strokeWidth="0.5" />
-        </svg>
-      </div>
+    <div className="min-h-screen bg-[#f5f0e8] font-sans text-[#1e3a5f] antialiased">
+      <a
+        href="#conteudo"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-md focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:shadow-lg"
+      >
+        Ir para o conteúdo
+      </a>
 
-      {/* HEADER */}
-      <header className="relative z-50 bg-[#f5f0e8]/95 backdrop-blur-sm border-b border-[#c9a84c]/20 sticky top-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-[#1e3a5f] rounded-lg flex items-center justify-center overflow-hidden" aria-hidden="true">
-                <img src="/manus-storage/ide-fazei-symbol_59bf82d4.png" alt="" className="w-6 h-6 object-contain" />
-              </div>
-              <div>
-                <span className="font-bold text-[#1e3a5f] text-lg tracking-tight">Ide Fazei</span>
-                <span className="text-[#c9a84c] text-xs block leading-none tracking-widest uppercase">Plataforma Ministerial</span>
-              </div>
+      {/* CABEÇALHO */}
+      <header className="sticky top-0 z-50 border-b border-[#1e3a5f]/10 bg-[#f5f0e8]/95 backdrop-blur-sm">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+          <a href="#topo" className="flex items-center gap-3" aria-label="Ide Fazei, início da página">
+            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-[#1e3a5f]" aria-hidden="true">
+              <img src="/manus-storage/ide-fazei-symbol_59bf82d4.png" alt="" className="h-6 w-6 object-contain" />
             </div>
-
-            <nav className="hidden md:flex items-center gap-8">
-              <a href="#recursos" className="text-[#1e3a5f]/70 hover:text-[#1e3a5f] text-sm font-medium transition-colors">Recursos</a>
-              <a href="#planos" className="text-[#1e3a5f]/70 hover:text-[#1e3a5f] text-sm font-medium transition-colors">Planos</a>
-              <a href="#funil" className="text-[#1e3a5f]/70 hover:text-[#1e3a5f] text-sm font-medium transition-colors">Funil</a>
-              <Link href="/demo" className="text-[#1e3a5f]/70 hover:text-[#1e3a5f] text-sm font-medium transition-colors">Demo</Link>
-              <a href="#contato" className="text-[#1e3a5f]/70 hover:text-[#1e3a5f] text-sm font-medium transition-colors">Contato</a>
-            </nav>
-
-            <div className="hidden md:flex items-center gap-3">
-              <Link href="/cadastro-igreja">
-                <Button size="sm" className="bg-[#1e3a5f] hover:bg-[#162d4a] text-white">
-                  Cadastrar Igreja
-                </Button>
-              </Link>
+            <div className="leading-none">
+              <span className={`block text-lg font-bold tracking-tight ${NAVY}`}>Ide Fazei</span>
+              <span className={`mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.18em] ${EYEBROW}`}>Gestão para igrejas</span>
             </div>
+          </a>
 
-            <button
-              className="md:hidden p-2 text-[#1e3a5f]"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label={mobileMenuOpen ? "Fechar menu" : "Abrir menu"}
-              aria-expanded={mobileMenuOpen}
-            >
-              {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-            </button>
+          <nav className="hidden items-center gap-7 md:flex" aria-label="Seções da página">
+            {[
+              ["#areas", "Recursos"],
+              ["#como-funciona", "Como funciona"],
+              ["#planos", "Planos"],
+              ["#perguntas", "Perguntas"],
+              ["#contato", "Contato"],
+            ].map(([href, label]) => (
+              <a key={href} href={href} className="text-sm font-medium text-[#1e3a5f]/75 transition-colors hover:text-[#1e3a5f]">{label}</a>
+            ))}
+            <Link href="/demo" className="text-sm font-medium text-[#1e3a5f]/75 transition-colors hover:text-[#1e3a5f]">Demonstração</Link>
+          </nav>
+
+          <div className="hidden md:block">
+            <Link href="/cadastro-igreja">
+              <Button size="sm" className="bg-[#1e3a5f] text-white hover:bg-[#162d4a]">Cadastrar minha igreja</Button>
+            </Link>
           </div>
+
+          <button
+            className="rounded-md p-2 text-[#1e3a5f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f] md:hidden"
+            onClick={() => setMobileMenuOpen(open => !open)}
+            aria-label={mobileMenuOpen ? "Fechar menu" : "Abrir menu"}
+            aria-expanded={mobileMenuOpen}
+            aria-controls="menu-mobile"
+          >
+            {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
         </div>
 
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-[#c9a84c]/20 bg-[#f5f0e8] px-4 py-4 space-y-3">
-            <a href="#recursos" className="block text-[#1e3a5f] font-medium py-2">Recursos</a>
-            <a href="#planos" className="block text-[#1e3a5f] font-medium py-2">Planos</a>
-            <a href="#funil" className="block text-[#1e3a5f] font-medium py-2">Funil</a>
-            <Link href="/demo" className="block text-[#1e3a5f] font-medium py-2">Demo</Link>
-            <a href="#contato" className="block text-[#1e3a5f] font-medium py-2">Contato</a>
-            <Link href="/cadastro-igreja">
-              <Button className="w-full bg-[#1e3a5f] text-white">Cadastrar Igreja</Button>
+          <div id="menu-mobile" className="space-y-1 border-t border-[#1e3a5f]/10 bg-[#f5f0e8] px-4 py-4 md:hidden">
+            {[
+              ["#areas", "Recursos"],
+              ["#como-funciona", "Como funciona"],
+              ["#planos", "Planos"],
+              ["#perguntas", "Perguntas"],
+              ["#contato", "Contato"],
+            ].map(([href, label]) => (
+              <a key={href} href={href} onClick={closeMenu} className="block py-2.5 font-medium text-[#1e3a5f]">{label}</a>
+            ))}
+            <Link href="/demo" onClick={closeMenu} className="block py-2.5 font-medium text-[#1e3a5f]">Demonstração</Link>
+            <Link href="/cadastro-igreja" onClick={closeMenu}>
+              <Button className="mt-2 w-full bg-[#1e3a5f] text-white">Cadastrar minha igreja</Button>
             </Link>
           </div>
         )}
       </header>
 
-      {/* HERO */}
-      <section className="relative pt-20 pb-28 px-4">
-        <div className="max-w-5xl mx-auto text-center">
-          <Badge className="mb-6 bg-[#c9a84c]/10 text-[#c9a84c] border-[#c9a84c]/30 hover:bg-[#c9a84c]/20 font-medium tracking-wider uppercase text-xs px-4 py-1.5">
-            ✦ Plataforma de Crescimento, Discipulado e Multiplicação
-          </Badge>
-
-          <h1 className="font-serif text-5xl md:text-7xl font-bold text-[#1e3a5f] leading-tight mb-6">
-            Ganhar, Consolidar,{" "}
-            <span className="text-[#c9a84c]">Discipular</span>
-            <br />e Multiplicar
-          </h1>
-
-          <p className="font-serif text-xl md:text-2xl text-[#1e3a5f]/60 italic max-w-3xl mx-auto mb-10 leading-relaxed">
-            A plataforma ministerial completa para igrejas que desejam crescer com propósito, precisão e excelência espiritual.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link href="/cadastro-igreja">
-              <Button size="lg" className="bg-[#1e3a5f] hover:bg-[#162d4a] text-white px-8 py-4 text-base font-semibold group">
-                Cadastrar Minha Igreja
-                <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </Link>
-            <a href="#planos">
-              <Button size="lg" variant="outline" className="border-[#1e3a5f]/30 text-[#1e3a5f] hover:bg-[#1e3a5f]/5 px-8 py-4 text-base">
-                Ver Planos
-              </Button>
-            </a>
+      <main id="conteudo">
+        {/* TOPO */}
+        <section id="topo" className="relative overflow-hidden px-4 pb-20 pt-16 sm:px-6 md:pb-28 md:pt-24">
+          <div className="pointer-events-none absolute inset-0 opacity-[0.05]" aria-hidden="true">
+            <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="80%" cy="30%" r="320" fill="none" stroke="#7a5c0f" strokeWidth="1" />
+              <circle cx="80%" cy="30%" r="520" fill="none" stroke="#7a5c0f" strokeWidth="0.8" />
+              <circle cx="10%" cy="90%" r="260" fill="none" stroke="#7a5c0f" strokeWidth="0.8" />
+            </svg>
           </div>
-
-          <div className="mt-12 flex flex-wrap justify-center gap-8 text-sm text-[#1e3a5f]/50">
-            <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-[#c9a84c]" /> 14 dias grátis</span>
-            <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-[#c9a84c]" /> Sem cartão de crédito</span>
-            <span className="flex items-center gap-2"><CheckCircle2 size={14} className="text-[#c9a84c]" /> Suporte em português</span>
-          </div>
-        </div>
-      </section>
-
-      {/* FUNIL VISUAL */}
-      <section id="funil" className="py-20 bg-[#1e3a5f] relative overflow-hidden">
-        <div className="absolute inset-0 opacity-5">
-          <svg width="100%" height="100%">
-            <circle cx="50%" cy="50%" r="400" fill="none" stroke="#c9a84c" strokeWidth="1" />
-            <circle cx="50%" cy="50%" r="600" fill="none" stroke="#c9a84c" strokeWidth="0.8" />
-          </svg>
-        </div>
-        <div className="max-w-6xl mx-auto px-4 relative z-10">
-          <div className="text-center mb-12">
-            <h2 className="font-serif text-4xl font-bold text-white mb-4">O Funil de Discipulado</h2>
-            <p className="font-serif text-[#c9a84c]/80 italic text-lg">Da Nova Alma ao Multiplicador — 8 etapas de formação</p>
-          </div>
-
-          <div className="flex flex-wrap justify-center gap-2 md:gap-0">
-            {FUNNEL_STEPS.map((step, i) => (
-              <div key={i} className="flex items-center">
-                <div
-                  className="px-4 py-2.5 rounded-lg text-center min-w-[110px] transition-transform hover:scale-105"
-                  style={{ backgroundColor: step.color + "33", border: `1px solid ${step.color}66` }}
-                >
-                  <div className="text-[#c9a84c] text-xs mb-0.5">{step.icon}</div>
-                  <div className="text-white text-xs font-medium leading-tight">{step.label}</div>
-                </div>
-                {i < FUNNEL_STEPS.length - 1 && (
-                  <ChevronRight className="text-[#c9a84c]/40 mx-1 hidden md:block" size={16} />
-                )}
+          <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.15fr_1fr]">
+            <div>
+              <p className={`mb-5 text-xs font-semibold uppercase tracking-[0.2em] ${EYEBROW}`}>Plataforma de gestão para igrejas</p>
+              <h1 className="font-serif text-4xl font-bold leading-[1.1] text-[#1e3a5f] sm:text-5xl lg:text-6xl">
+                Mais organização para sua igreja.{" "}
+                <span className={EYEBROW}>Mais atenção a cada pessoa.</span>
+              </h1>
+              <p className={`mt-6 max-w-xl text-lg leading-relaxed ${BODY}`}>
+                O Ide Fazei reúne pessoas, cuidado pastoral, ensino, equipes, eventos e finanças em um só lugar, para você cuidar de quem Deus confiou à sua igreja e apoiar a sua missão.
+              </p>
+              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+                <Link href="/cadastro-igreja">
+                  <Button size="lg" className="group w-full bg-[#1e3a5f] px-8 text-base font-semibold text-white hover:bg-[#162d4a] sm:w-auto">
+                    Cadastrar minha igreja
+                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </Button>
+                </Link>
+                <Link href="/demo">
+                  <Button size="lg" variant="outline" className="w-full border-[#1e3a5f]/30 px-8 text-base text-[#1e3a5f] hover:bg-[#1e3a5f]/5 sm:w-auto">
+                    <Play className="mr-2 h-4 w-4" /> Ver demonstração
+                  </Button>
+                </Link>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* RECURSOS */}
-      <section id="recursos" className="py-24 px-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <Badge className="mb-4 bg-[#c9a84c]/10 text-[#c9a84c] border-[#c9a84c]/30 text-xs tracking-widest uppercase">Funcionalidades</Badge>
-            <h2 className="font-serif text-4xl md:text-5xl font-bold text-[#1e3a5f] mb-4">
-              Tudo que sua igreja precisa
-            </h2>
-            <p className="text-[#1e3a5f]/60 max-w-2xl mx-auto">
-              Uma plataforma integrada que acompanha cada pessoa desde a primeira visita até se tornar um multiplicador.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {FEATURES.map((f, i) => (
-              <Card key={i} className="bg-white/60 border-[#c9a84c]/20 hover:border-[#c9a84c]/50 hover:shadow-lg transition-all group">
-                <CardContent className="p-6">
-                  <div className="w-10 h-10 rounded-lg bg-[#1e3a5f]/5 flex items-center justify-center mb-4 group-hover:bg-[#c9a84c]/10 transition-colors">
-                    <f.icon size={20} className="text-[#1e3a5f] group-hover:text-[#c9a84c] transition-colors" />
-                  </div>
-                  <h3 className="font-semibold text-[#1e3a5f] mb-2">{f.title}</h3>
-                  <p className="text-[#1e3a5f]/60 text-sm leading-relaxed">{f.desc}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* PLANOS */}
-      <section id="planos" className="py-24 px-4 bg-[#1e3a5f]/5">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <Badge className="mb-4 bg-[#c9a84c]/10 text-[#c9a84c] border-[#c9a84c]/30 text-xs tracking-widest uppercase">Planos</Badge>
-            <h2 className="font-serif text-4xl md:text-5xl font-bold text-[#1e3a5f] mb-4">
-              Invista no crescimento da sua igreja
-            </h2>
-            <p className="text-[#1e3a5f]/60 max-w-2xl mx-auto">
-              Planos flexíveis para igrejas de todos os tamanhos. Comece gratuitamente por 14 dias.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {PLANS.map((plan, i) => (
-              <div
-                key={i}
-                className={`relative rounded-2xl p-8 transition-all hover:-translate-y-1 ${
-                  plan.highlight
-                    ? "bg-[#1e3a5f] text-white shadow-2xl ring-2 ring-[#c9a84c]"
-                    : "bg-white/80 border border-[#c9a84c]/20 hover:shadow-lg"
-                }`}
-              >
-                {plan.highlight && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-[#c9a84c] text-[#1e3a5f] font-bold text-xs px-4">Mais Popular</Badge>
-                  </div>
-                )}
-                <div className="mb-6">
-                  <h3 className={`font-bold text-xl mb-1 ${plan.highlight ? "text-white" : "text-[#1e3a5f]"}`}>{plan.name}</h3>
-                  <p className={`text-sm mb-4 ${plan.highlight ? "text-white/60" : "text-[#1e3a5f]/60"}`}>{plan.description}</p>
-                  <div className="flex items-baseline gap-1">
-                    <span className={`font-serif text-4xl font-bold ${plan.highlight ? "text-[#c9a84c]" : "text-[#1e3a5f]"}`}>{plan.price}</span>
-                    <span className={`text-sm ${plan.highlight ? "text-white/50" : "text-[#1e3a5f]/50"}`}>{plan.period}</span>
-                  </div>
-                </div>
-
-                <ul className="space-y-3 mb-8">
-                  {plan.features.map((feat, j) => (
-                    <li key={j} className="flex items-center gap-2 text-sm">
-                      <CheckCircle2 size={14} className={plan.highlight ? "text-[#c9a84c]" : "text-[#c9a84c]"} />
-                      <span className={plan.highlight ? "text-white/80" : "text-[#1e3a5f]/70"}>{feat}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                {(() => {
-                  const button = (
-                    <Button
-                      className={`w-full ${
-                        plan.highlight
-                          ? "bg-[#c9a84c] hover:bg-[#b8943e] text-[#1e3a5f] font-bold"
-                          : "bg-[#1e3a5f] hover:bg-[#162d4a] text-white"
-                      }`}
-                    >
-                      {plan.cta}
-                    </Button>
-                  );
-                  if (plan.contactOnly && whatsappLink) {
-                    return <a href={whatsappLink} target="_blank" rel="noopener noreferrer">{button}</a>;
-                  }
-                  return <Link href={plan.contactOnly ? "/contato" : "/cadastro-igreja"}>{button}</Link>;
-                })()}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* PRINCÍPIOS DA PLATAFORMA */}
-      <section className="py-24 px-4">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="font-serif text-4xl font-bold text-[#1e3a5f] mb-4">Feita para o cuidado ministerial</h2>
-            <p className="text-[#1e3a5f]/60 max-w-2xl mx-auto">Uma base organizada para acompanhar pessoas, fortalecer líderes e multiplicar comunidades com responsabilidade.</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              { title: "Jornada visível", text: "Organize cada etapa do discipulado, da nova alma à multiplicação, em uma visão única e acompanhável." },
-              { title: "Cuidado proativo", text: "Use indicadores, consolidação e células para identificar necessidades de acompanhamento no momento certo." },
-              { title: "Gestão responsável", text: "Mantenha informações da igreja protegidas por tenant, com perfis de acesso e processos claros." },
-            ].map((item) => (
-              <Card key={item.title} className="bg-white/60 border-[#c9a84c]/20">
-                <CardContent className="p-6">
-                  <CheckCircle2 className="w-5 h-5 text-[#c9a84c] mb-4" />
-                  <h3 className="font-semibold text-[#1e3a5f] mb-2">{item.title}</h3>
-                  <p className="text-[#1e3a5f]/70 text-sm leading-relaxed">{item.text}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA */}
-      <section className="py-24 px-4 bg-[#1e3a5f] relative overflow-hidden">
-        <div className="absolute inset-0 opacity-5">
-          <svg width="100%" height="100%">
-            <circle cx="20%" cy="50%" r="300" fill="none" stroke="#c9a84c" strokeWidth="1" />
-            <circle cx="80%" cy="50%" r="300" fill="none" stroke="#c9a84c" strokeWidth="1" />
-          </svg>
-        </div>
-        <div className="max-w-3xl mx-auto text-center relative z-10">
-          <h2 className="font-serif text-4xl md:text-5xl font-bold text-white mb-6">
-            Pronto para transformar sua gestão ministerial?
-          </h2>
-          <p className="text-white/60 text-lg mb-10">
-            Cadastre sua igreja hoje e experimente gratuitamente por 14 dias. Sem cartão de crédito.
-          </p>
-          <Link href="/cadastro-igreja">
-            <Button size="lg" className="bg-[#c9a84c] hover:bg-[#b8943e] text-[#1e3a5f] font-bold px-10 py-4 text-base">
-              Cadastrar Minha Igreja Agora
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
-      </section>
-
-      {/* CONTATO */}
-      <section id="contato" className="py-20 px-4">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="font-serif text-3xl font-bold text-[#1e3a5f] mb-4">Fale Conosco</h2>
-          <p className="text-[#1e3a5f]/60 mb-8">Tem dúvidas? Nossa equipe está pronta para ajudar.</p>
-          <div className="flex flex-wrap justify-center gap-x-8 gap-y-4 text-sm text-[#1e3a5f]/70">
-            {whatsappLink && (
-              <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
-                <MessageCircle size={14} /> WhatsApp {formatBrazilianPhone(contact.whatsapp)}
-              </a>
-            )}
-            {contact.phone && (
-              <a href={`tel:+55${contact.phone}`} className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
-                <Phone size={14} /> {formatBrazilianPhone(contact.phone)}
-              </a>
-            )}
-            {contact.email && (
-              <a href={`mailto:${contact.email}`} className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
-                <Mail size={14} /> {contact.email}
-              </a>
-            )}
-            {contact.address && (
-              <span className="flex items-center gap-2"><MapPin size={14} /> {contact.address}</span>
-            )}
-            <Link href="/contato" className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
-              <Send size={14} /> Enviar mensagem
-            </Link>
-          </div>
-          {contact.businessHours && (
-            <p className="mt-6 text-xs text-[#1e3a5f]/50 whitespace-pre-line">{contact.businessHours}</p>
-          )}
-        </div>
-      </section>
-
-      {/* FOOTER */}
-      <footer className="bg-[#1e3a5f] text-white/50 py-10 px-4">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-[#c9a84c] rounded flex items-center justify-center">
-              <span className="text-[#1e3a5f] text-xs font-bold">✦</span>
+              <ul className={`mt-8 flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:gap-x-6 ${BODY}`}>
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} className={EYEBROW} aria-hidden="true" /> Cadastro analisado em até 24 horas úteis</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} className={EYEBROW} aria-hidden="true" /> Use no celular e no computador</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} className={EYEBROW} aria-hidden="true" /> Atendimento em português</li>
+              </ul>
             </div>
-            <span className="text-white font-semibold">Ide Fazei</span>
+
+            <nav aria-label="Áreas do sistema" className="grid grid-cols-2 gap-3 sm:gap-4">
+              {AREAS.map(area => (
+                <a
+                  key={area.id}
+                  href={`#${area.id}`}
+                  className="group rounded-2xl border border-[#1e3a5f]/10 bg-white/80 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c9a84c]/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f] sm:p-5"
+                >
+                  <area.icon className="mb-3 h-6 w-6 text-[#1e3a5f]" aria-hidden="true" />
+                  <span className="block text-sm font-semibold leading-snug text-[#1e3a5f]">{area.title}</span>
+                </a>
+              ))}
+            </nav>
           </div>
-          <div className="text-sm text-center">
-            <p>© 2026 {contact.legalName || "Ide Fazei Plataforma Ministerial"}. Todos os direitos reservados.</p>
-            {contact.cnpj && <p className="text-xs mt-1">CNPJ {formatCnpj(contact.cnpj)}</p>}
-            <p className="text-xs mt-1">Já é cliente? Acesse o endereço da sua igreja: <span className="text-white/70">nomedasuaigreja.idefazei.com.br</span></p>
+        </section>
+
+        {/* ÁREAS */}
+        <section id="areas" className="bg-white/60 px-4 py-20 sm:px-6 md:py-24">
+          <div className="mx-auto max-w-6xl">
+            <div className="mx-auto mb-14 max-w-2xl text-center">
+              <p className={`mb-3 text-xs font-semibold uppercase tracking-[0.2em] ${EYEBROW}`}>O que o sistema faz</p>
+              <h2 className="font-serif text-3xl font-bold text-[#1e3a5f] md:text-4xl">Tudo o que a rotina da igreja pede, em seis áreas</h2>
+              <p className={`mt-4 ${BODY}`}>Comece pelo que a sua igreja já faz hoje. Os recursos se complementam, mas você não precisa usar todos.</p>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+              {AREAS.map(area => (
+                <article key={area.id} id={area.id} className="scroll-mt-24 rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/60 p-6 sm:p-8">
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1e3a5f]">
+                      <area.icon className="h-5 w-5 text-[#c9a84c]" aria-hidden="true" />
+                    </div>
+                    <h3 className="font-serif text-xl font-bold leading-snug text-[#1e3a5f]">{area.title}</h3>
+                  </div>
+                  <p className={`mb-5 ${BODY}`}>{area.summary}</p>
+                  <ul className="space-y-2.5">
+                    {area.items.map(item => (
+                      <li key={item} className={`flex items-start gap-2.5 text-sm leading-relaxed ${BODY}`}>
+                        <CheckCircle2 size={16} className={`mt-0.5 shrink-0 ${EYEBROW}`} aria-hidden="true" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* PARA A REALIDADE DE CADA IGREJA */}
+        <section className="px-4 py-20 sm:px-6 md:py-24">
+          <div className="mx-auto max-w-6xl">
+            <div className="mx-auto mb-12 max-w-2xl text-center">
+              <p className={`mb-3 text-xs font-semibold uppercase tracking-[0.2em] ${EYEBROW}`}>Para a realidade da sua igreja</p>
+              <h2 className="font-serif text-3xl font-bold text-[#1e3a5f] md:text-4xl">Igrejas diferentes, a mesma necessidade de cuidar bem</h2>
+              <p className={`mt-4 ${BODY}`}>Pensado para igrejas de diferentes denominações, tamanhos e formas de organização, com segurança e controle de acesso.</p>
+            </div>
+            <div className="grid gap-6 md:grid-cols-3">
+              {FIT.map(item => (
+                <div key={item.title} className="rounded-2xl border border-[#1e3a5f]/10 bg-white/70 p-6">
+                  <item.icon className="mb-4 h-6 w-6 text-[#1e3a5f]" aria-hidden="true" />
+                  <h3 className="mb-2 font-semibold text-[#1e3a5f]">{item.title}</h3>
+                  <p className={`text-sm leading-relaxed ${BODY}`}>{item.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* COMO FUNCIONA */}
+        <section id="como-funciona" className="bg-[#1e3a5f] px-4 py-20 sm:px-6 md:py-24">
+          <div className="mx-auto max-w-6xl">
+            <div className="mx-auto mb-12 max-w-2xl text-center">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-[#c9a84c]">Como funciona</p>
+              <h2 className="font-serif text-3xl font-bold text-white md:text-4xl">Do cadastro ao uso no dia a dia</h2>
+            </div>
+            <ol className="grid gap-6 md:grid-cols-3">
+              {STEPS.map((step, index) => (
+                <li key={step.title} className="rounded-2xl border border-white/10 bg-white/5 p-6">
+                  <div className="mb-4 flex items-center gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#c9a84c] text-sm font-bold text-[#1e3a5f]" aria-hidden="true">{index + 1}</span>
+                    <step.icon className="h-5 w-5 text-[#c9a84c]" aria-hidden="true" />
+                  </div>
+                  <h3 className="mb-2 font-semibold text-white">{step.title}</h3>
+                  <p className="text-sm leading-relaxed text-white/75">{step.text}</p>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-10 text-center">
+              <Link href="/demo">
+                <Button size="lg" className="bg-[#c9a84c] px-8 font-bold text-[#1e3a5f] hover:bg-[#b8943e]">
+                  <Play className="mr-2 h-4 w-4" /> Ver demonstração interativa
+                </Button>
+              </Link>
+              <p className="mt-3 text-xs text-white/60">A demonstração usa dados de exemplo.</p>
+            </div>
+          </div>
+        </section>
+
+        {/* PLANOS */}
+        <section id="planos" className="px-4 py-20 sm:px-6 md:py-24">
+          <div className="mx-auto max-w-6xl">
+            <div className="mx-auto mb-14 max-w-2xl text-center">
+              <p className={`mb-3 text-xs font-semibold uppercase tracking-[0.2em] ${EYEBROW}`}>Planos</p>
+              <h2 className="font-serif text-3xl font-bold text-[#1e3a5f] md:text-4xl">Planos simples, para igrejas de diferentes tamanhos</h2>
+              <p className={`mt-4 ${BODY}`}>Valores mensais. Se tiver dúvida sobre qual plano combina com a sua igreja, fale com a nossa equipe.</p>
+            </div>
+            <div className="grid gap-6 md:grid-cols-3 md:gap-8">
+              {PLANS.map(plan => (
+                <div
+                  key={plan.name}
+                  className={`relative flex flex-col rounded-2xl p-7 sm:p-8 ${
+                    plan.highlight ? "bg-[#1e3a5f] text-white shadow-xl ring-2 ring-[#c9a84c]" : "border border-[#1e3a5f]/10 bg-white/80"
+                  }`}
+                >
+                  {plan.highlight && (
+                    <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#c9a84c] px-4 py-1 text-xs font-bold text-[#1e3a5f]">Mais escolhido</span>
+                  )}
+                  <h3 className={`text-xl font-bold ${plan.highlight ? "text-white" : "text-[#1e3a5f]"}`}>{plan.name}</h3>
+                  <p className={`mt-1 text-sm ${plan.highlight ? "text-white/75" : BODY}`}>{plan.description}</p>
+                  <p className="mt-5 flex items-baseline gap-1">
+                    <span className={`font-serif text-4xl font-bold ${plan.highlight ? "text-[#c9a84c]" : "text-[#1e3a5f]"}`}>{plan.price}</span>
+                    <span className={`text-sm ${plan.highlight ? "text-white/70" : BODY}`}>{plan.period}</span>
+                  </p>
+                  <ul className="my-7 flex-1 space-y-3">
+                    {plan.features.map(feature => (
+                      <li key={feature} className="flex items-start gap-2.5 text-sm">
+                        <CheckCircle2 size={16} className={`mt-0.5 shrink-0 ${plan.highlight ? "text-[#c9a84c]" : EYEBROW}`} aria-hidden="true" />
+                        <span className={plan.highlight ? "text-white/85" : BODY}>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {planButton(plan)}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* PERGUNTAS FREQUENTES */}
+        <section id="perguntas" className="bg-white/60 px-4 py-20 sm:px-6 md:py-24">
+          <div className="mx-auto max-w-3xl">
+            <div className="mb-10 text-center">
+              <p className={`mb-3 text-xs font-semibold uppercase tracking-[0.2em] ${EYEBROW}`}>Perguntas frequentes</p>
+              <h2 className="font-serif text-3xl font-bold text-[#1e3a5f] md:text-4xl">Tire as suas dúvidas</h2>
+            </div>
+            <div className="space-y-3">
+              {FAQ.map(item => (
+                <details key={item.q} className="group rounded-xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/70 p-5 open:bg-white">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold text-[#1e3a5f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f] [&::-webkit-details-marker]:hidden">
+                    {item.q}
+                    <ChevronDown className="h-5 w-5 shrink-0 transition-transform group-open:rotate-180" aria-hidden="true" />
+                  </summary>
+                  <p className={`mt-3 text-sm leading-relaxed ${BODY}`}>{item.a}</p>
+                </details>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* FECHAMENTO */}
+        <section className="relative overflow-hidden bg-[#1e3a5f] px-4 py-20 sm:px-6 md:py-24">
+          <div className="relative mx-auto max-w-3xl text-center">
+            <h2 className="font-serif text-3xl font-bold text-white md:text-4xl">Pronto para dar mais atenção a cada pessoa?</h2>
+            <p className="mt-4 text-lg text-white/75">Cadastre a sua igreja e organize o cuidado, o ensino, as equipes e as finanças em um só lugar.</p>
+            <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link href="/cadastro-igreja">
+                <Button size="lg" className="w-full bg-[#c9a84c] px-10 text-base font-bold text-[#1e3a5f] hover:bg-[#b8943e] sm:w-auto">
+                  Cadastrar minha igreja <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+              <Link href="/contato">
+                <Button size="lg" variant="outline" className="w-full border-white/40 bg-transparent px-10 text-base text-white hover:bg-white/10 hover:text-white sm:w-auto">
+                  Falar com a equipe
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </section>
+
+        {/* CONTATO */}
+        <section id="contato" className="px-4 py-16 sm:px-6">
+          <div className="mx-auto max-w-4xl text-center">
+            <h2 className="font-serif text-2xl font-bold text-[#1e3a5f] md:text-3xl">Fale conosco</h2>
+            <p className={`mb-8 mt-3 ${BODY}`}>Tem dúvidas? Nossa equipe está pronta para ajudar.</p>
+            <div className={`flex flex-wrap justify-center gap-x-8 gap-y-4 text-sm ${BODY}`}>
+              {whatsappLink && (
+                <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-[#1e3a5f]">
+                  <MessageCircle size={16} aria-hidden="true" /> WhatsApp {formatBrazilianPhone(contact.whatsapp)}
+                </a>
+              )}
+              {contact.phone && (
+                <a href={`tel:+55${contact.phone}`} className="flex items-center gap-2 hover:text-[#1e3a5f]">
+                  <Phone size={16} aria-hidden="true" /> {formatBrazilianPhone(contact.phone)}
+                </a>
+              )}
+              {contact.email && (
+                <a href={`mailto:${contact.email}`} className="flex items-center gap-2 hover:text-[#1e3a5f]">
+                  <Mail size={16} aria-hidden="true" /> {contact.email}
+                </a>
+              )}
+              {contact.address && (
+                <span className="flex items-center gap-2"><MapPin size={16} aria-hidden="true" /> {contact.address}</span>
+              )}
+              <Link href="/contato" className="flex items-center gap-2 hover:text-[#1e3a5f]">
+                <Send size={16} aria-hidden="true" /> Enviar mensagem
+              </Link>
+            </div>
+            {contact.businessHours && <p className="mt-6 whitespace-pre-line text-xs text-[#1e3a5f]/70">{contact.businessHours}</p>}
+          </div>
+        </section>
+      </main>
+
+      {/* RODAPÉ */}
+      <footer className="bg-[#14283f] px-4 py-10 text-white/70 sm:px-6">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 md:flex-row">
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-[#c9a84c]" aria-hidden="true">
+              <span className="text-xs font-bold text-[#1e3a5f]">✦</span>
+            </div>
+            <span className="font-semibold text-white">Ide Fazei</span>
+          </div>
+          <div className="text-center text-sm">
+            <p>© {new Date().getFullYear()} {contact.legalName || "Ide Fazei"}. Todos os direitos reservados.</p>
+            {contact.cnpj && <p className="mt-1 text-xs">CNPJ {formatCnpj(contact.cnpj)}</p>}
+            <p className="mt-1 text-xs">Já é cliente? Acesse o endereço da sua igreja: <span className="text-white/90">nomedasuaigreja.idefazei.com.br</span></p>
           </div>
           <div className="flex flex-wrap justify-center gap-4 text-sm">
             {socialLinks.map(key => (
-              <a key={key} href={contact.social[key]} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">{SOCIAL_LABELS[key]}</a>
+              <a key={key} href={contact.social[key]} target="_blank" rel="noopener noreferrer" className="hover:text-white">{SOCIAL_LABELS[key]}</a>
             ))}
-            <Link href="/contato" className="hover:text-white transition-colors">Fale conosco</Link>
+            <Link href="/contato" className="hover:text-white">Fale conosco</Link>
           </div>
         </div>
       </footer>
@@ -429,7 +540,7 @@ export default function LandingPage() {
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Falar com a equipe pelo WhatsApp"
-          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-[#1ebe5b] transition-colors"
+          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-[#1f8f4e] px-4 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-[#177a41] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#1f8f4e]"
         >
           <MessageCircle size={20} aria-hidden="true" />
           <span className="hidden sm:inline">Falar no WhatsApp</span>
