@@ -98,6 +98,7 @@ import {
   getChurchUserIdsWithActiveCell,
   getChurchUserByEmail,
   getPendingChurchUsers,
+  createReceptionSoul,
   resolveChurchUserRegistration,
   linkChurchUserToPerson,
   updateChurchUserAssignment,
@@ -1792,6 +1793,7 @@ const churchRouter = router({
         socialMedia: socialMediaInputSchema,
         pastoralSupport: pastoralSupportInputSchema,
         publicRegistrationEnabled: z.boolean().optional(),
+        publicRegistrationAccessMode: z.enum(["manual", "automatico"]).optional(),
         publicRegistrationTitle: z.string().trim().min(3).max(140).optional(),
         publicRegistrationMessage: z.string().trim().min(10).max(500).optional(),
       })
@@ -5255,8 +5257,10 @@ const ministriesRouter = router({
         message: "Pessoa não encontrada.",
       });
     const account = (await getChurchUsersByChurch(input.churchId)).find(candidate => candidate.active && candidate.personId === input.personId);
+      const pendingAccount = (await getPendingChurchUsers(input.churchId)).find(candidate => candidate.personId === input.personId);
       return {
         accountLinked: Boolean(account),
+        pendingAccountId: pendingAccount?.id ?? null,
         accountEmail: account?.email ?? null,
         roles: account ? await getEffectivePersonRoles(input.personId, input.churchId) : [],
       };
@@ -7201,6 +7205,14 @@ const churchAuthRouter = router({
           code: "NOT_FOUND",
           message: "Cadastro pendente não encontrado.",
         });
+      if (input.approved && ENV.emailVerificationEnabled && user.emailVerificationRequired && !user.emailVerifiedAt) {
+        // Cadastro feito pelo link ficou pendente: o link de confirmação só sai depois que a liderança libera o acesso.
+        try {
+          await issueEmailVerification({ churchId: input.churchId, churchUserId: user.id, email: user.email, recipientName: user.name, requestIp: ctx.req.ip || null });
+        } catch (error) {
+          console.error("[register.resolveRegistration] Falha ao enviar a confirmação de e-mail:", error instanceof Error ? error.message : error);
+        }
+      }
       if (input.approved) {
         await emitNotificationWithoutBlocking({
           churchId: input.churchId,
@@ -7740,36 +7752,65 @@ const registerRouter = router({
           code: "CONFLICT",
           message: "Este e-mail já possui um cadastro. Solicite acesso à liderança ou use outro e-mail.",
         });
-      const existingIdentity = await findPossiblePeopleByIdentity(church.id, {
+      const accessMode = church.publicRegistrationAccessMode === "automatico" ? "automatico" : "manual";
+      const candidates = await findPossiblePeopleByIdentity(church.id, {
         fullName: input.name,
         phone: input.phone || input.whatsapp,
         email: input.email,
       });
-      if (existingIdentity.length)
+      // Quem já faz parte da igreja é reconhecido por e-mail ou telefone (nunca só pelo nome) e não ganha ficha duplicada.
+      const digits = (value?: string | null) => (value ?? "").replace(/\D/g, "");
+      const inputPhones = [digits(input.phone), digits(input.whatsapp)].filter(Boolean);
+      const existingPerson = candidates.find(
+        candidate =>
+          (candidate.email && candidate.email.trim().toLowerCase() === input.email.trim().toLowerCase()) ||
+          inputPhones.some(phone => phone === digits(candidate.phone) || phone === digits(candidate.whatsapp)),
+      );
+      if (!existingPerson && candidates.length)
         throw new TRPCError({
           code: "CONFLICT",
           message: "Já existe uma Pessoa com estes dados nesta igreja. Solicite acesso à liderança.",
         });
-      const person = await createPerson({
-        churchId: church.id,
-        fullName: input.name,
-        email: input.email.toLowerCase(),
-        birthDate: parseCivilDateAsUtcNoon(input.birthDate),
-        phone: input.phone || null,
-        whatsapp: input.whatsapp || null,
-        zipCode: input.zipCode.replace(/\D/g, ""),
-        street: input.street || null,
-        number: input.number,
-        neighborhood: input.neighborhood || null,
-        city: input.city || null,
-        state: input.state?.toUpperCase() || null,
-        active: true,
-      });
+      if (existingPerson) {
+        const accounts = await getChurchUsersByChurch(church.id);
+        if (accounts.some(account => account.personId === existingPerson.id))
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Você já tem acesso. Entre com seu e-mail e senha ou use “Esqueci minha senha” na tela de login.",
+          });
+      }
+      const person =
+        existingPerson ??
+        (await createPerson({
+          churchId: church.id,
+          fullName: input.name,
+          email: input.email.toLowerCase(),
+          birthDate: parseCivilDateAsUtcNoon(input.birthDate),
+          phone: input.phone || null,
+          whatsapp: input.whatsapp || null,
+          zipCode: input.zipCode.replace(/\D/g, ""),
+          street: input.street || null,
+          number: input.number,
+          neighborhood: input.neighborhood || null,
+          city: input.city || null,
+          state: input.state?.toUpperCase() || null,
+          active: true,
+        }));
       if (!person)
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
           message: "Não foi possível criar a ficha do discípulo.",
         });
+      // Pessoa nova entra na fila de Novas Almas; quem já era da igreja não.
+      if (!existingPerson) {
+        try {
+          await createReceptionSoul({ churchId: church.id, personId: person.id, name: input.name, phone: input.whatsapp || input.phone || null });
+        } catch (error) {
+          console.error("[register.disciple] Falha ao criar a nova alma:", error instanceof Error ? error.message : error);
+        }
+      }
+      // Existente ou em modo manual: o login fica pendente até a liderança liberar. Só pessoa nova em modo automático entra direto.
+      const releaseNow = accessMode === "automatico" && !existingPerson;
       const user = await createChurchUser({
         churchId: church.id,
         name: input.name,
@@ -7777,13 +7818,13 @@ const registerRouter = router({
         password: input.password,
         role: "membro",
         personId: person.id,
-        active: true,
-        registrationStatus: "approved",
-        approvedAt: new Date(),
+        active: releaseNow,
+        registrationStatus: releaseNow ? "approved" : "pending",
+        approvedAt: releaseNow ? new Date() : null,
         approvedByChurchUserId: null,
         emailVerificationRequired: ENV.emailVerificationEnabled,
       });
-      if (ENV.emailVerificationEnabled) {
+      if (releaseNow && ENV.emailVerificationEnabled) {
         try {
           await issueEmailVerification({
             churchId: church.id,
@@ -7799,12 +7840,44 @@ const registerRouter = router({
           });
         }
       }
+      // Avisa quem recebe: pastores, supervisores e consolidadores. Falha de aviso nunca desfaz o cadastro.
+      try {
+        const accounts = await getChurchUsersByChurch(church.id);
+        const recipients = accounts.filter(account => account.active && (PASTOR_OR_SUPERVISOR_ROLES.has(account.role) || account.role === "consolidador")).map(account => account.id);
+        await emitNotificationWithoutBlocking({
+          churchId: church.id,
+          type: "cadastro_pendente",
+          recipientChurchUserIds: recipients,
+          title: existingPerson ? "Membro pediu acesso" : "Nova pessoa chegou pelo link da igreja",
+          body: existingPerson
+            ? `${person.fullName} já está na igreja e pediu acesso à plataforma. Confirme e libere o login.`
+            : releaseNow
+              ? `${input.name} se cadastrou e já tem acesso liberado. Faça o primeiro contato.`
+              : `${input.name} se cadastrou e aguarda o primeiro contato. Receba e libere o acesso na ficha.`,
+          entityType: "church_user",
+          entityId: user.id,
+          metadata: { personId: person.id, existingMember: Boolean(existingPerson), accessMode },
+          dedupeKey: `cadastro-publico:${user.id}`,
+          push: true,
+          url: `/app/pessoas?personId=${person.id}`,
+        });
+      } catch (error) {
+        console.error("[register.disciple] Falha ao avisar a liderança:", error instanceof Error ? error.message : error);
+      }
+      const existingMember = Boolean(existingPerson);
       return {
         success: true,
         userId: user.id,
-        registrationStatus: "approved" as const,
-        emailVerificationPending: ENV.emailVerificationEnabled,
-        message: ENV.emailVerificationEnabled ? "Cadastro recebido. Confirme seu e-mail pelo link enviado antes de entrar na plataforma." : "Cadastro aprovado. Você já pode entrar na plataforma com o e-mail e a senha cadastrados.",
+        registrationStatus: releaseNow ? ("approved" as const) : ("pending" as const),
+        existingMember,
+        emailVerificationPending: releaseNow && ENV.emailVerificationEnabled,
+        message: releaseNow
+          ? ENV.emailVerificationEnabled
+            ? "Cadastro recebido. Confirme seu e-mail pelo link enviado antes de entrar na plataforma."
+            : "Cadastro aprovado. Você já pode entrar na plataforma com o e-mail e a senha cadastrados."
+          : existingMember
+            ? "Encontramos seu cadastro na igreja. A liderança vai confirmar e liberar seu acesso em breve."
+            : "Cadastro recebido. A equipe vai entrar em contato pelo WhatsApp e seu acesso será liberado após o primeiro contato.",
       };
     }),
 });

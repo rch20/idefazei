@@ -56,6 +56,8 @@ export const churches = mysqlTable("churches", {
   socialMedia: json("socialMedia"), // { instagram, facebook, youtube }
   pastoralSupport: json("pastoralSupport"), // { url, label, enabled, showPublic, showAuthenticated }
   publicRegistrationEnabled: boolean("publicRegistrationEnabled").notNull().default(true),
+  /** manual: o login de quem se cadastra pelo link/QR fica pendente até a liderança liberar; automatico: liberado na hora. */
+  publicRegistrationAccessMode: mysqlEnum("publicRegistrationAccessMode", ["manual", "automatico"]).notNull().default("manual"),
   publicRegistrationTitle: varchar("publicRegistrationTitle", { length: 140 }).notNull().default("Cadastre-se e fique por perto"),
   publicRegistrationMessage: varchar("publicRegistrationMessage", { length: 500 }).notNull().default("Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você."),
   vision: text("vision"),

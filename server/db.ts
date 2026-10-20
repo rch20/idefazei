@@ -6784,6 +6784,28 @@ export async function createPublicRegistrationLead(input: { churchId: number; na
   });
 }
 
+/** Recepção: toda pessoa nova que se cadastra pelo link/QR entra na fila de Novas Almas, já ligada à ficha. */
+export async function createReceptionSoul(input: { churchId: number; personId: number; name: string; phone?: string | null; source?: "qrcode" | "convite" | "evento" | "link" }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const origin = input.source === "evento" ? ("evento" as const) : input.source === "convite" ? ("indicacao" as const) : input.source === "link" ? ("redes_sociais" as const) : ("visita_espontanea" as const);
+  const result = await db.insert(souls).values({
+    churchId: input.churchId,
+    personId: input.personId,
+    name: input.name,
+    phone: input.phone ?? null,
+    decisionDate: currentCivilDateAsUtcNoon(),
+    origin,
+    acceptedJesus: false,
+    reconciliation: false,
+    firstVisit: true,
+    wonById: null,
+    notes: "Cadastro feito pelo link ou QR Code oficial da igreja.",
+    status: "nova_alma",
+  });
+  return Number((result[0] as { insertId?: number } | undefined)?.insertId ?? 0) || null;
+}
+
 export async function getPublicRegistrationLeadsByChurch(churchId: number) {
   const db = await getDb();
   if (!db) return [];

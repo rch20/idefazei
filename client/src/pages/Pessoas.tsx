@@ -409,6 +409,13 @@ export default function Pessoas() {
     },
     onError: (error) => toast.error(error.message || "Não foi possível atualizar o responsável."),
   });
+  const releasePendingAccess = trpc.churchAuth.resolveRegistration.useMutation({
+    onSuccess: async () => {
+      toast.success("Acesso liberado. A pessoa será avisada.");
+      await Promise.all([personAccessQuery.refetch(), directoryQuery.refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível liberar o acesso."),
+  });
   const startConsolidation = trpc.consolidation.create.useMutation({
     onSuccess: async () => {
       toast.success("Consolidação iniciada. O discipulador principal permanece o mesmo.");
@@ -1585,6 +1592,15 @@ export default function Pessoas() {
             </section>
           )}
 
+          {effectivePersonSection === "resumo" && selectedPerson && personAccessQuery.data?.pendingAccountId && (
+            <section aria-label="Cadastro aguardando liberação" className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-amber-900">Cadastro aguardando liberação</h3>
+                <p className="mt-1 text-xs leading-relaxed text-amber-900/80">Esta pessoa se cadastrou pelo link da igreja e ainda não consegue entrar. Faça o primeiro contato e libere o acesso quando estiver tudo certo.</p>
+              </div>
+              <Button type="button" size="sm" className="shrink-0 bg-emerald-600 text-white hover:bg-emerald-700" disabled={releasePendingAccess.isPending} onClick={() => releasePendingAccess.mutate({ churchId, userId: personAccessQuery.data!.pendingAccountId!, approved: true })}>{releasePendingAccess.isPending ? "Liberando…" : "Liberar acesso"}</Button>
+            </section>
+          )}
           {effectivePersonSection === "resumo" && selectedPerson && (
             <PersonExecutiveSummary
               stageLabel={getFormationStageLabel(selectedPerson.discipleshipStage)}

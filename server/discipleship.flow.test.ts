@@ -156,6 +156,7 @@ vi.mock("./db", () => ({
   getChurchUsersByChurch: vi.fn().mockResolvedValue([]),
   getChurchUserByEmail: vi.fn().mockResolvedValue(null),
   getStartupDiagnostics: vi.fn().mockResolvedValue([]),
+  createReceptionSoul: vi.fn().mockResolvedValue(1),
   getPendingChurchUsers: vi.fn().mockResolvedValue([]),
   resolveChurchUserRegistration: vi.fn().mockResolvedValue({ id: 77, churchId: 100, active: true, registrationStatus: "approved" }),
   linkChurchUserToPerson: vi.fn().mockResolvedValue({ id: 1, personId: 10 }),

@@ -250,6 +250,7 @@ export default function Configuracoes() {
     socialMedia: socialMediaFormFromValue(church?.socialMedia),
     pastoralSupport: pastoralSupportFormFromValue(church?.pastoralSupport),
     publicRegistrationEnabled: church?.publicRegistrationEnabled ?? true,
+    publicRegistrationAccessMode: (church?.publicRegistrationAccessMode ?? "manual") as "manual" | "automatico",
     publicRegistrationTitle: church?.publicRegistrationTitle ?? "Cadastre-se e fique por perto",
     publicRegistrationMessage: church?.publicRegistrationMessage ?? "Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você.",
   });
@@ -287,6 +288,7 @@ export default function Configuracoes() {
       socialMedia: socialMediaFormFromValue(church.socialMedia),
       pastoralSupport: pastoralSupportFormFromValue(church.pastoralSupport),
       publicRegistrationEnabled: church.publicRegistrationEnabled ?? true,
+      publicRegistrationAccessMode: (church.publicRegistrationAccessMode ?? "manual") as "manual" | "automatico",
       publicRegistrationTitle: church.publicRegistrationTitle ?? "Cadastre-se e fique por perto",
       publicRegistrationMessage: church.publicRegistrationMessage ?? "Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você.",
     };
@@ -655,7 +657,22 @@ export default function Configuracoes() {
                 <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-xs leading-relaxed text-muted-foreground">Os links são validados no servidor e aceitam somente os domínios oficiais de cada plataforma. Deixe em branco para ocultar uma rede do site.</p>
               </section>
               <section className="card-sacred p-5 sm:p-6">
-                <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="text-base font-semibold text-navy">Convite e cadastro público</h3><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Compartilhe uma página de entrada com a identidade da sua igreja. Cadastros feitos por este link oficial entram como registros públicos pendentes para a equipe; nenhuma conta de acesso é criada automaticamente.</p></div><Switch checked={churchForm.publicRegistrationEnabled} onCheckedChange={(enabled) => setChurchForm({ ...churchForm, publicRegistrationEnabled: enabled })} aria-label="Ativar cadastro público" /></div>
+                <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="text-base font-semibold text-navy">Convite e cadastro público</h3><p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">Compartilhe uma página de entrada com a identidade da sua igreja. Quem se cadastra por este link ou QR Code vira uma nova alma na fila da recepção, e a liderança é avisada. Quem já faz parte da igreja é reconhecido pelo e-mail ou telefone e não gera ficha duplicada. Abaixo, escolha como o login é liberado.</p></div><Switch checked={churchForm.publicRegistrationEnabled} onCheckedChange={(enabled) => setChurchForm({ ...churchForm, publicRegistrationEnabled: enabled })} aria-label="Ativar cadastro público" /></div>
+                <fieldset className="mt-5">
+                  <legend className="text-sm font-semibold text-navy">Como liberar o login de quem se cadastra</legend>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    {([
+                      ["manual", "Aprovar manualmente (recomendado)", "A ficha entra na recepção e o login fica pendente até a liderança liberar, na ficha da pessoa ou em Cadastros pendentes. Ideal para link compartilhado em grupos e redes."],
+                      ["automatico", "Liberar automaticamente", "Pessoas novas entram na hora, com e-mail e senha. Pensado para o QR Code no telão durante o culto. Quem já é da igreja continua passando pela confirmação da liderança."],
+                    ] as const).map(([value, title, description]) => (
+                      <label key={value} className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm ${churchForm.publicRegistrationAccessMode === value ? "border-gold bg-gold/5" : "border-border bg-background"}`}>
+                        <input type="radio" name="public-registration-access-mode" className="mt-1 h-4 w-4 accent-navy" checked={churchForm.publicRegistrationAccessMode === value} onChange={() => setChurchForm({ ...churchForm, publicRegistrationAccessMode: value })} />
+                        <span><span className="block font-medium text-navy">{title}</span><span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{description}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">Vale só para novos cadastros; quem já tem login não é afetado. Lembre-se de salvar as configurações.</p>
+                </fieldset>
                 <div className="mt-5 grid gap-4 lg:grid-cols-2">
                   <div><Label htmlFor="public-registration-title">Título da página</Label><Input id="public-registration-title" value={churchForm.publicRegistrationTitle} maxLength={140} onChange={(event) => setChurchForm({ ...churchForm, publicRegistrationTitle: event.target.value })} className="mt-1" placeholder="Cadastre-se e fique por perto" /><p className="mt-1 text-xs text-muted-foreground">Um título curto funciona melhor no celular.</p></div>
                   <div><Label htmlFor="public-registration-message">Mensagem de boas-vindas</Label><Textarea id="public-registration-message" value={churchForm.publicRegistrationMessage} maxLength={500} onChange={(event) => setChurchForm({ ...churchForm, publicRegistrationMessage: event.target.value })} className="mt-1" rows={3} placeholder="Faça seu cadastro e acompanhe tudo o que sua igreja tem preparado para você." /><p className="mt-1 text-xs text-muted-foreground">{churchForm.publicRegistrationMessage.length}/500 caracteres</p></div>

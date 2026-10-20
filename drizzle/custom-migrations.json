@@ -192,6 +192,12 @@
       "file": "drizzle/0102_stage_progress_source.sql",
       "kind": "custom-additive",
       "sha256": "0805c174d878a5c92a0f54862bbca61f9fe20d199a8d3bd0b13ed66bfd393351"
+    },
+    {
+      "id": "0103",
+      "file": "drizzle/0103_public_registration_access_mode.sql",
+      "kind": "custom-additive",
+      "sha256": "900ed9a778779b3c67ed65e0c4c3976acf54a926b136d16253cb94614f4e9982"
     }
   ]
 }
