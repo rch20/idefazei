@@ -426,7 +426,7 @@ export async function markMediaAssetDeleted(id: number, churchId: number) {
 
 // ─── NOTIFICAÇÕES MULTI-CANAL ─────────────────────────────────────────────────
 
-export type NotificationEventType = "cadastro_pendente" | "pessoa_aprovada" | "visita_agendada" | "lembrete_visita" | "visita_nao_realizada" | "responsabilidade_atribuida" | "funcao_ministerial_atribuida" | "evento_igreja" | "comunicado_lideranca" | "encaminhamento_sem_aceite" | "lembrete_escala" | "escala_atribuida" | "escala_alterada" | "escala_cancelada" | "celula_encontro_registrado" | "celula_aviso";
+export type NotificationEventType = "cadastro_pendente" | "pessoa_aprovada" | "visita_agendada" | "lembrete_visita" | "visita_nao_realizada" | "responsabilidade_atribuida" | "funcao_ministerial_atribuida" | "evento_igreja" | "comunicado_lideranca" | "encaminhamento_sem_aceite" | "lembrete_escala" | "escala_atribuida" | "escala_alterada" | "escala_cancelada" | "celula_encontro_registrado" | "celula_aviso" | "escala_confirmada";
 
 export type NotificationChannel = "sistema" | "whatsapp";
 

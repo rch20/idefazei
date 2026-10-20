@@ -180,6 +180,12 @@
       "file": "drizzle/0100_platform_settings.sql",
       "kind": "custom-additive",
       "sha256": "58cfb57299891f211c6aba259e59841fd4d95d216e627bd08bda72be5040753f"
+    },
+    {
+      "id": "0101",
+      "file": "drizzle/0101_notification_schedule_confirmed.sql",
+      "kind": "custom-additive",
+      "sha256": "67a3eeae8bccb03bbc8f152f8f4944de3f75162ebb36a8a38901fb3870ca9251"
     }
   ]
 }

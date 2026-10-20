@@ -5737,7 +5737,7 @@ const schedulesRouter = router({
         const dateLabel = formatCivilDateValue(item.scheduledDate).split("-").reverse().join("/");
         await emitNotificationWithoutBlocking({
           churchId: input.churchId,
-          type: "escala_alterada",
+          type: "escala_confirmada",
           recipientChurchUserIds: recipients,
           title: "Presença confirmada na Escala",
           body: `${person?.fullName ?? "Uma pessoa"} confirmou presença no ${ministry?.name ?? "Ministério"} em ${dateLabel}.`,

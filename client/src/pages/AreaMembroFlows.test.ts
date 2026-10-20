@@ -99,6 +99,7 @@ describe("Área do Membro — contato e login", () => {
     const routerSource = readFileSync(new URL("../../../server/routers.ts", import.meta.url), "utf8");
     const block = routerSource.slice(routerSource.indexOf("confirmMine: protectedProcedure"), routerSource.indexOf("confirmMine: protectedProcedure") + 3000);
     expect(block).toContain("Presença confirmada na Escala");
+    expect(block).toContain('type: "escala_confirmada"');
     expect(block).toContain("PASTOR_ROLES.has(account.role)");
     expect(block).toContain("ministry.leaderId");
     expect(block).toContain("account.id !== actor.id");
