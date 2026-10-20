@@ -236,6 +236,31 @@ export default function AreaMembro() {
         </Card>
       )}
 
+      <section aria-label="Atalhos da minha caminhada" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        {[
+          { label: "Minhas células", hint: "Encontros e grupo", icon: MapPin, href: "/app/celulas" },
+          { label: "Escola de Fundamentos", hint: "Meu curso", icon: BookOpen, href: "/app/escola-fundamentos" },
+          { label: "Pedir oração", hint: "Enviar um pedido", icon: Heart, href: "/app/oracao" },
+          { label: "Contribuir", hint: "Dízimo e ofertas", icon: CircleDollarSign, onClick: () => setActiveTab("contribuir") },
+        ].map(({ label, hint, icon: Icon, href, onClick }) => {
+          const content = (
+            <>
+              <Icon className="h-4 w-4 shrink-0 text-[#c9a84c]" aria-hidden="true" />
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold text-[#1e3a5f]">{label}</span>
+                <span className="block truncate text-[11px] text-[#1e3a5f]/50">{hint}</span>
+              </span>
+            </>
+          );
+          const className = "flex items-center gap-2.5 rounded-xl border border-[#1e3a5f]/10 bg-white px-3 py-3 text-left transition-colors hover:bg-[#1e3a5f]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c9a84c]/70";
+          return href ? (
+            <Link key={label} href={href} className={className}>{content}</Link>
+          ) : (
+            <button key={label} type="button" className={className} onClick={onClick}>{content}</button>
+          );
+        })}
+      </section>
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList aria-label="Navegação da Área do Membro" className="w-full justify-start overflow-x-auto rounded-xl border border-[#1e3a5f]/10 bg-white p-1">
@@ -244,6 +269,7 @@ export default function AreaMembro() {
             { id: "eventos", label: "Eventos", icon: Calendar },
             { id: "avisos", label: "Avisos", icon: Bell },
             { id: "oracao", label: "Oração", icon: Heart },
+            { id: "contribuir", label: "Contribuir", icon: CircleDollarSign },
           ].map(({ id, label, icon: Icon }) => (
             <TabsTrigger
               key={id}
@@ -336,8 +362,11 @@ export default function AreaMembro() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
 
-          <Card className="mt-4 border-[#1e3a5f]/10">
+        {/* Contribuir */}
+        <TabsContent value="contribuir" className="mt-4">
+          <Card className="border-[#1e3a5f]/10">
               <CardHeader className="flex flex-col items-stretch justify-between gap-3 pb-3 sm:flex-row sm:items-start">
                 <div>
                   <CardTitle className="text-[#1e3a5f] font-serif text-base flex items-center gap-2">
