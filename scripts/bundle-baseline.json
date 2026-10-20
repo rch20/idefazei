@@ -2052,6 +2052,12 @@
       "assets/Pessoas.js",
       "assets/FormationBackfillCard.js",
       "assets/index.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/Pessoas.js",
+      "assets/PersonDetailsSection.js",
+      "assets/index.js"
     ]
   ]
 }
