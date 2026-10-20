@@ -6050,6 +6050,46 @@ export async function getPrayerRequestsByChurch(churchId: number) {
   return db.select().from(prayerRequests).where(eq(prayerRequests.churchId, churchId)).orderBy(desc(prayerRequests.createdAt)).limit(50);
 }
 
+/**
+ * Visão da caminhada da própria Pessoa: célula, ministérios e cursos ativos.
+ * Expõe só nome, dia e líder — nunca endereço, anfitrião ou dados de outras pessoas.
+ */
+export async function getMemberJourneyOverview(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return { cells: [], ministries: [], courses: [] };
+  const leader = alias(people, "journey_leader");
+  const [memberCells, memberMinistries, memberCourses] = await Promise.all([
+    db
+      .select({
+        id: cells.id,
+        name: cells.name,
+        meetingDay: cells.meetingDay,
+        meetingTime: cells.meetingTime,
+        neighborhood: cells.neighborhood,
+        leaderName: leader.fullName,
+      })
+      .from(cellMembers)
+      .innerJoin(cells, eq(cells.id, cellMembers.cellId))
+      .leftJoin(leader, and(eq(leader.id, cells.leaderId), eq(leader.churchId, churchId)))
+      .where(and(eq(cellMembers.personId, personId), eq(cellMembers.active, true), eq(cells.churchId, churchId), eq(cells.active, true)))
+      .limit(5),
+    db
+      .select({ id: ministries.id, name: ministries.name, type: ministries.type })
+      .from(ministryMembers)
+      .innerJoin(ministries, eq(ministries.id, ministryMembers.ministryId))
+      .where(and(eq(ministryMembers.personId, personId), eq(ministryMembers.active, true), eq(ministries.churchId, churchId), eq(ministries.active, true)))
+      .limit(10),
+    db
+      .select({ id: courses.id, name: courses.name, status: courseEnrollments.status })
+      .from(courseEnrollments)
+      .innerJoin(courses, eq(courses.id, courseEnrollments.courseId))
+      .where(and(eq(courseEnrollments.personId, personId), eq(courses.churchId, churchId), eq(courses.active, true)))
+      .orderBy(desc(courseEnrollments.enrolledAt))
+      .limit(10),
+  ]);
+  return { cells: memberCells, ministries: memberMinistries, courses: memberCourses };
+}
+
 export async function getPrayerRequestsByPerson(churchId: number, personId: number) {
   const db = await getDb();
   if (!db) return [];

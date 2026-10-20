@@ -26,6 +26,9 @@ const DISCIPLESHIP_STAGES = [
   "Batismo", "Encontro com Deus", "Escola de Líderes", "Liderança", "Multiplicador"
 ];
 
+const DAY_LABELS: Record<string, string> = { segunda: "segunda", terca: "terça", quarta: "quarta", quinta: "quinta", sexta: "sexta", sabado: "sábado", domingo: "domingo" };
+const COURSE_STATUS_LABELS: Record<string, string> = { matriculado: "Matriculado", em_andamento: "Em andamento", concluido: "Concluído" };
+
 export default function AreaMembro() {
   const { churchId, accessSummary } = useChurch();
   const [activeTab, setActiveTab] = useState("perfil");
@@ -41,7 +44,8 @@ export default function AreaMembro() {
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey);
   const personId = accessSummary?.actorPersonId ?? 0;
   const utils = trpc.useUtils();
-  const canSubmitOnlineContribution = Boolean(churchId && personId);
+  const hasLinkedPerson = Boolean(churchId && personId);
+  const canSubmitOnlineContribution = hasLinkedPerson;
 
   const { data: member, isLoading: loadingPeople } = trpc.people.getById.useQuery(
     { churchId: churchId!, id: personId },
@@ -51,6 +55,8 @@ export default function AreaMembro() {
   const { data: publicSite, isLoading: loadingAnnouncements } = trpc.tenantPublic.current.useQuery(undefined, { enabled: !!churchId, staleTime: 60_000 });
   const announcements = publicSite?.publicAnnouncements ?? [];
   const { data: prayers, isLoading: loadingPrayers } = trpc.prayer.mine.useQuery({ churchId: churchId! }, { enabled: !!churchId });
+  const journeyQuery = trpc.people.myJourney.useQuery({ churchId: churchId! }, { enabled: hasLinkedPerson });
+  const journey = journeyQuery.data;
   const pixQuery = trpc.treasury.pixForMember.useQuery({ churchId: churchId! }, { enabled: canSubmitOnlineContribution });
   const updateContact = trpc.people.updateMyContact.useMutation({
     onSuccess: () => {
@@ -260,6 +266,68 @@ export default function AreaMembro() {
           );
         })}
       </section>
+
+      {hasLinkedPerson && (
+        <Card className="border-[#1e3a5f]/10" aria-label="Minha caminhada">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-[#1e3a5f] font-serif text-base flex items-center gap-2">
+              <Star className="w-4 h-4 text-[#c9a84c]" />
+              Minha caminhada
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {journeyQuery.isLoading ? (
+              <Skeleton className="h-16 w-full" />
+            ) : journeyQuery.isError || !journey ? (
+              <p className="text-xs text-[#1e3a5f]/55">Não foi possível carregar sua célula, ministérios e cursos agora.</p>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1e3a5f]/45">Célula</p>
+                  {journey.cells.length === 0 ? (
+                    <p className="mt-1 text-sm text-[#1e3a5f]/60">Você ainda não está em uma célula. Fale com sua liderança.</p>
+                  ) : journey.cells.map((cell) => (
+                    <div key={cell.id} className="mt-1">
+                      <p className="text-sm font-semibold text-[#1e3a5f]">{cell.name}</p>
+                      <p className="text-xs text-[#1e3a5f]/60">
+                        {[cell.meetingDay ? DAY_LABELS[cell.meetingDay] : null, cell.meetingTime, cell.neighborhood].filter(Boolean).join(" · ") || "Horário a combinar"}
+                      </p>
+                      {cell.leaderName && <p className="text-xs text-[#1e3a5f]/60">Líder: {cell.leaderName}</p>}
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1e3a5f]/45">Ministérios</p>
+                  {journey.ministries.length === 0 ? (
+                    <p className="mt-1 text-sm text-[#1e3a5f]/60">Você ainda não serve em um ministério.</p>
+                  ) : (
+                    <ul className="mt-1 space-y-1">
+                      {journey.ministries.map((ministry) => (
+                        <li key={ministry.id} className="text-sm font-semibold text-[#1e3a5f]">{ministry.name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1e3a5f]/45">Cursos</p>
+                  {journey.courses.length === 0 ? (
+                    <p className="mt-1 text-sm text-[#1e3a5f]/60">Nenhuma matrícula em curso.</p>
+                  ) : (
+                    <ul className="mt-1 space-y-1">
+                      {journey.courses.map((course) => (
+                        <li key={course.id} className="text-sm text-[#1e3a5f]">
+                          <span className="font-semibold">{course.name}</span>
+                          <span className="text-xs text-[#1e3a5f]/60"> · {COURSE_STATUS_LABELS[course.status ?? "matriculado"]}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>

@@ -62,4 +62,17 @@ describe("Área do Membro — contato e login", () => {
     expect(source).toContain("w-full shrink-0 sm:w-auto");
     expect(source).toContain("max-h-[calc(100dvh-1rem)] overflow-y-auto");
   });
+
+  it("mostra célula, ministérios e cursos da própria Pessoa sem expor endereço", () => {
+    const serverSource = readFileSync(new URL("../../../server/db.ts", import.meta.url), "utf8");
+    const fn = serverSource.slice(serverSource.indexOf("export async function getMemberJourneyOverview"), serverSource.indexOf("export async function getPrayerRequestsByPerson"));
+    expect(source).toContain("people.myJourney.useQuery");
+    expect(source).toContain("Minha caminhada");
+    expect(fn).toContain("eq(cellMembers.personId, personId)");
+    expect(fn).toContain("eq(cells.churchId, churchId)");
+    expect(fn).toContain("eq(ministries.churchId, churchId)");
+    expect(fn).toContain("eq(courses.churchId, churchId)");
+    expect(fn).not.toContain("address");
+    expect(fn).not.toContain("hostId");
+  });
 });

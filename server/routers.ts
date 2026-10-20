@@ -252,6 +252,7 @@ import {
   getPersonById,
   getPrimaryDisciplerHistory,
   getPrayerRequestsByChurch,
+  getMemberJourneyOverview,
   getPrayerRequestsByPerson,
   getOperationalCareHistoryByPerson,
   getCurrentOperationalCareAssignment,
@@ -1968,6 +1969,20 @@ const peopleRouter = router({
       });
       }
       return getPersonById(input.id, input.churchId);
+    }),
+
+  myJourney: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      if (ctx.tenantChurchId !== null && ctx.tenantChurchId !== input.churchId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "O tenant da sessão não corresponde à igreja informada.",
+        });
+      }
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) return { cells: [], ministries: [], courses: [] };
+      return getMemberJourneyOverview(input.churchId, actor.personId);
     }),
 
   updateMyContact: tenantProcedure
