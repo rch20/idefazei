@@ -1,0 +1,277 @@
+name: Ide Fazei — produção
+
+# Publicação em PRODUÇÃO pelo GitHub, sempre pelo usuário restrito `ghdeploy`.
+# Nada é executado como `manus`. Todas as travas de /usr/local/sbin/idefazei-production-deploy
+# continuam valendo (runtime, rotas, migrations, systemd, saúde e rollback automático).
+#
+# Início: somente manual (Actions → "Ide Fazei — produção" → Run workflow).
+# Depois da primeira publicação validada, ative a publicação automática descomentando
+# o bloco `push` abaixo.
+
+on:
+  # push:
+  #   branches:
+  #     - feat/foundation-compact-reader-20261018
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "preflight = só confere; apply = publica; rollback = volta a uma versão anterior"
+        required: true
+        type: choice
+        default: preflight
+        options:
+          - preflight
+          - apply
+          - rollback
+      rollback_release_id:
+        description: "Só para rollback: ID da versão para a qual voltar (ex.: prod-abc123def456-123456-1)"
+        required: false
+        type: string
+      frontend_route_added:
+        description: "Só se o preflight pedir: telas (chunks .js) adicionadas, separadas por vírgula"
+        required: false
+        type: string
+      frontend_route_removed:
+        description: "Só se o preflight pedir: telas (chunks .js) removidas, separadas por vírgula"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ide-fazei-production
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22.x"
+  PUBLIC_BASE_URL: https://idefazei.com.br
+  REMOTE_TOOL: /usr/local/sbin/idefazei-github-production-deploy
+  REMOTE_INCOMING: /var/lib/idefazei-incoming/production
+
+jobs:
+  validate:
+    name: Validar código e bundle
+    if: inputs.action != 'rollback'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: TypeScript
+        run: pnpm check
+      - name: Testes automatizados
+        run: CI=1 pnpm exec vitest run --reporter=dot
+      - name: Build
+        run: pnpm build
+      - name: Integridade dos bundles
+        run: pnpm bundle:check
+
+  package:
+    name: Empacotar release
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      release_id: ${{ steps.release.outputs.release_id }}
+      server_sha: ${{ steps.release.outputs.server_sha }}
+      foundation_sha: ${{ steps.release.outputs.foundation_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Montar e auditar o pacote
+        id: release
+        shell: bash
+        env:
+          FRONTEND_ROUTE_ADDED: ${{ inputs.frontend_route_added }}
+          FRONTEND_ROUTE_REMOVED: ${{ inputs.frontend_route_removed }}
+        run: |
+          set -Eeuo pipefail
+          release_id="prod-${GITHUB_SHA::12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          root="$RUNNER_TEMP/$release_id"
+          package="$RUNNER_TEMP/$release_id.tar.gz"
+          mkdir -p "$root/patches"
+          cp -a dist "$root/dist"
+          cp package.json pnpm-lock.yaml "$root/"
+          cp patches/exceljs@4.4.0.patch "$root/patches/"
+          pnpm release:package "$root" "$package" "$GITHUB_WORKSPACE"
+          python3 .github/scripts/audit_release_package.py "$package" \
+            --required ./dist/public/index.html --required ./dist/index.js \
+            --required ./dist/foundation-import-runtime.mjs --required ./package.json \
+            --required ./pnpm-lock.yaml --required ./patches/exceljs@4.4.0.patch \
+            --required ./release-source.json
+          ! tar -tzf "$package" | grep -Eiq '(^|/)(\.env|uploads?/|data/|logs?/|backups?/|dumps?/|node_modules/|\.git/|drizzle/|migrations?/|.*\.sql$)'
+          {
+            echo "release_id=$release_id"
+            echo "server_sha=$(sha256sum "$root/dist/index.js" | cut -d' ' -f1)"
+            echo "foundation_sha=$(sha256sum "$root/dist/foundation-import-runtime.mjs" | cut -d' ' -f1)"
+          } >> "$GITHUB_OUTPUT"
+          cp "$package" "$RUNNER_TEMP/package.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-release-${{ steps.release.outputs.release_id }}
+          path: ${{ runner.temp }}/package.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Produção — ${{ inputs.action }}
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://idefazei.com.br
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: production-release-${{ needs.package.outputs.release_id }}
+          path: release
+
+      - name: Conexão SSH (usuário ghdeploy)
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.GHDEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.GHDEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_HOST: ${{ vars.DEPLOY_SSH_HOST }}
+        run: bash .github/scripts/ssh_setup.sh
+
+      - name: Versão ativa em produção
+        id: active
+        run: |
+          set -Eeuo pipefail
+          out="$(ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" status)"
+          echo "$out"
+          get() { printf '%s\n' "$out" | sed -n "s/^$1=//p" | head -1; }
+          commit="$(get ACTIVE_COMMIT)"
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::A produção não informa o commit ativo (release-source.json)."; exit 1; }
+          {
+            echo "commit=$commit"
+            echo "release_id=$(get ACTIVE_RELEASE_ID)"
+            echo "server_sha=$(get ACTIVE_SERVER_SHA)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Travas antes de publicar (ordem do histórico e banco)
+        env:
+          ACTIVE_COMMIT: ${{ steps.active.outputs.commit }}
+          ACTIVE_SERVER_SHA: ${{ steps.active.outputs.server_sha }}
+          NEW_SERVER_SHA: ${{ needs.package.outputs.server_sha }}
+        run: |
+          set -Eeuo pipefail
+          git cat-file -e "$ACTIVE_COMMIT^{commit}" 2>/dev/null \
+            || { echo "::error::O commit ativo na produção não existe neste repositório."; exit 1; }
+          git merge-base --is-ancestor "$ACTIVE_COMMIT" "$GITHUB_SHA" \
+            || { echo "::error::O código novo não descende do que está em produção. Publicação bloqueada."; exit 1; }
+          changed="$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- drizzle)"
+          if [[ -n "$changed" ]]; then
+            echo "::error::Há mudança de banco/migration (drizzle/) nesta versão. Este fluxo não aplica banco: faça o backup do banco e o fluxo de migration antes (docs/publicacao-producao.md)."
+            printf '%s\n' "$changed"
+            exit 1
+          fi
+          if [[ "$ACTIVE_SERVER_SHA" != "$NEW_SERVER_SHA" ]]; then
+            echo "::warning::O servidor (dist/index.js) mudou em relação à produção. O deploy de produção só aceita hash de servidor aprovado e deve bloquear no preflight."
+          fi
+
+      - name: Enviar pacote e rodar preflight
+        id: preflight
+        env:
+          RELEASE_ID: ${{ needs.package.outputs.release_id }}
+        run: |
+          set -Eeuo pipefail
+          scp -F "$DEPLOY_SSH_CONFIG" release/package.tar.gz "ide-fazei-deploy:${REMOTE_INCOMING}/${RELEASE_ID}.tar.gz"
+          ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" preflight "$RELEASE_ID"
+
+      - name: Publicar (apply)
+        if: inputs.action == 'apply'
+        id: apply
+        env:
+          RELEASE_ID: ${{ needs.package.outputs.release_id }}
+        run: |
+          set -Eeuo pipefail
+          ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" apply "$RELEASE_ID" | tee "$RUNNER_TEMP/apply.log"
+          grep -Fxq 'PRODUCTION_DEPLOY_SUCCESS=1' "$RUNNER_TEMP/apply.log"
+
+      - name: Conferência pública (volta sozinho se falhar)
+        if: inputs.action == 'apply'
+        env:
+          OLD_RELEASE_ID: ${{ steps.active.outputs.release_id }}
+        run: |
+          set -uo pipefail
+          check() {
+            local root login prot
+            root="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$PUBLIC_BASE_URL/")"
+            login="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$PUBLIC_BASE_URL/login")"
+            prot="$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$PUBLIC_BASE_URL/api/trpc/people.primaryDisciplerHistory")"
+            echo "raiz=$root login=$login protegida=$prot"
+            [[ "$root" == 200 && "$login" == 200 && "$prot" == 401 ]]
+          }
+          for i in 1 2 3 4 5; do check && exit 0; sleep 6; done
+          echo "::error::Conferência pública falhou. Voltando para $OLD_RELEASE_ID."
+          [[ "$OLD_RELEASE_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$ ]] || exit 1
+          ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" rollback "$OLD_RELEASE_ID"
+          exit 1
+
+      - name: Relatório (o que mudou e o que testar)
+        if: always() && steps.active.outputs.commit != ''
+        env:
+          ACTIVE_COMMIT: ${{ steps.active.outputs.commit }}
+          OLD_RELEASE_ID: ${{ steps.active.outputs.release_id }}
+          RELEASE_ID: ${{ needs.package.outputs.release_id }}
+          ACTION: ${{ inputs.action }}
+        run: |
+          {
+            echo "# Produção — $ACTION"
+            echo
+            echo "Nova versão: \`$RELEASE_ID\` (commit \`${GITHUB_SHA::12}\`)"
+            echo "Versão anterior, para voltar: \`$OLD_RELEASE_ID\` — use a ação **rollback** com esse ID."
+            echo
+            python3 -I .github/scripts/release_summary.py "$ACTIVE_COMMIT" "$GITHUB_SHA"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Limpar chaves temporárias
+        if: always()
+        run: rm -f "$DEPLOY_SSH_KEY" "$DEPLOY_SSH_CONFIG" "$DEPLOY_SSH_KNOWN"
+
+  rollback:
+    name: Produção — voltar versão
+    if: inputs.action == 'rollback'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://idefazei.com.br
+    steps:
+      - uses: actions/checkout@v4
+      - name: Conexão SSH (usuário ghdeploy)
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.GHDEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.GHDEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_HOST: ${{ vars.DEPLOY_SSH_HOST }}
+        run: bash .github/scripts/ssh_setup.sh
+      - name: Voltar versão
+        env:
+          TARGET: ${{ inputs.rollback_release_id }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$TARGET" =~ ^prod-[a-z0-9-]{6,80}$ ]] || { echo "::error::Informe um ID válido em rollback_release_id."; exit 1; }
+          ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" rollback "$TARGET"
+      - name: Limpar chaves temporárias
+        if: always()
+        run: rm -f "$DEPLOY_SSH_KEY" "$DEPLOY_SSH_CONFIG" "$DEPLOY_SSH_KNOWN"
