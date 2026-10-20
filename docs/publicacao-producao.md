@@ -79,9 +79,20 @@ Quando `server/`, `shared/`, `package.json`, `pnpm-lock.yaml` ou `patches/` muda
 5. apply, conferência pública e rollback automático, como na interface.
 O controle passa a ser o acesso ao GitHub: Environment `production` restrito à branch de produção, proteção da branch e 2FA.
 
-## Banco (migrations) — fase seguinte
+## Banco (migrations aditivas, automático)
 
-Ainda bloqueado de propósito (o workflow falha quando `drizzle/` muda). Regra de projeto: migrations **aditivas e retrocompatíveis**.
-Ordem: testes de migration → `db-backup antes-<descricao>` → aplicar com um aplicador instalado na VPS (não código vindo do pipeline)
-e conta MySQL própria só com DDL no banco `idefazei` → conferir ledger e esquema → publicar o servidor. Falha: voltar o código;
-restaurar o banco só se a migration não for retrocompatível.
+Convenção do projeto: migration nova = arquivo `drizzle/NNNN_nome.sql` **novo** + entrada no `drizzle/custom-migrations.json`
+(`kind: custom-additive`, `sha256` do arquivo), em ordem crescente. O workflow bloqueia qualquer outra mudança em `drizzle/`
+(editar migration já existente, `meta/`, SQL fora do ledger). `schema.ts` e `relations.ts` podem mudar.
+
+Ordem no workflow: testes → `migrate-plan` (confere sem gravar) → `db-backup antes-<commit>` → preflight do código →
+`migrate-apply` → apply do código → conferência pública. O aplicador (`/usr/local/libexec/idefazei-apply-migrations`, instalado
+na VPS) lê só DADOS (ledger + .sql), confere checksums contra o ledger e contra a tabela `idefazei_custom_migrations`, e executa com a
+conta MySQL `idefazei_migrator` (sem DROP/DELETE/UPDATE/TRUNCATE).
+
+Permitido: `CREATE TABLE`, `CREATE INDEX`, `ALTER TABLE … ADD COLUMN/INDEX/KEY/UNIQUE/CONSTRAINT`, `MODIFY` de enum **ampliando no fim**.
+Bloqueado (exige ato manual seu): `DROP`, `TRUNCATE`, `DELETE`, `UPDATE`, `INSERT`, `RENAME`, `CHANGE`, `MODIFY` de outro tipo,
+comentários executáveis `/*! */`, `SELECT` dentro de DDL. As 27 migrations atuais do repositório passam nesse filtro (teste automatizado).
+
+Se o código novo falhar depois da migration: o deploy volta o código sozinho; como a migration é aditiva, o código anterior continua
+funcionando e o banco **não** é restaurado. Restaurar o banco só em caso de dados corrompidos (comando no tópico de recuperação).

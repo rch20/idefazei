@@ -1,0 +1,473 @@
+#!/usr/bin/env python3
+"""
+idefazei-apply-migrations: aplicador de migrations ADITIVAS do Ide Fazei, instalado na VPS (root:root 750).
+
+Não executa código vindo do pipeline: lê apenas DADOS (drizzle/custom-migrations.json e os .sql citados),
+confere checksums contra o ledger do repositório e contra a tabela idefazei_custom_migrations do banco,
+classifica cada comando SQL e só executa o que for aditivo. Roda no MySQL com uma conta própria
+(--defaults-extra-file), sem DROP/DELETE/UPDATE/TRUNCATE.
+
+Uso:
+  idefazei-apply-migrations plan  BUNDLE_DIR   confere e mostra o que seria aplicado (não grava no banco)
+  idefazei-apply-migrations apply BUNDLE_DIR   aplica as pendentes, na ordem, e registra no ledger do banco
+  idefazei-apply-migrations selftest           cria um banco de teste descartável e prova o aplicador de ponta a ponta
+
+Aditivo permitido: CREATE TABLE [IF NOT EXISTS] t (...), CREATE [UNIQUE|FULLTEXT] INDEX [IF NOT EXISTS] i ON t (...),
+ALTER TABLE t ADD [COLUMN] ..., ADD INDEX/KEY/UNIQUE ..., ADD CONSTRAINT ... FOREIGN KEY/UNIQUE/CHECK ...,
+MODIFY COLUMN c ENUM(...) apenas ampliando o enum no fim. Todo o resto (DROP, TRUNCATE, DELETE, UPDATE, INSERT,
+RENAME, CHANGE, MODIFY de outro tipo, comentários executáveis /*! */ etc.) é bloqueado.
+"""
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+
+DB_NAME = os.environ.get("IDEFAZEI_MIGRATION_DB", "idefazei")
+CNF = "/etc/ide-fazei/migrator.cnf"
+LEDGER_TABLE = "idefazei_custom_migrations"
+MAX_PENDING = 20
+MAX_STATEMENTS = 300
+IDENT = re.compile(r"^[A-Za-z0-9_]{1,64}$")
+FILE_RE = re.compile(r"^drizzle/(\d{4})_[A-Za-z0-9_]+\.sql$")
+
+
+class Blocked(Exception):
+    def __init__(self, code, detail=""):
+        super().__init__(code)
+        self.code, self.detail = code, detail
+
+
+# ----------------------------------------------------------------------------- SQL
+def clean_statements(source):
+    """Divide em comandos e remove comentários (fora de aspas). Rejeita comentários executáveis /*! */."""
+    out, buf = [], []
+    quote = None
+    i, n = 0, len(source)
+    while i < n:
+        c = source[i]
+        nxt = source[i + 1] if i + 1 < n else ""
+        if quote:
+            buf.append(c)
+            if c == "\\" and quote != "`":
+                if i + 1 < n:
+                    buf.append(nxt)
+                i += 2
+                continue
+            if c == quote:
+                if nxt == quote:
+                    buf.append(nxt)
+                    i += 2
+                    continue
+                quote = None
+            i += 1
+            continue
+        if c == "-" and nxt == "-" and source[i + 2:i + 3] in (" ", "\n", "\r", "\t", ""):
+            while i < n and source[i] != "\n":
+                i += 1
+            continue
+        if c == "#":
+            while i < n and source[i] != "\n":
+                i += 1
+            continue
+        if c == "/" and nxt == "*":
+            if source[i + 2:i + 3] in ("!", "+"):
+                raise Blocked("COMENTARIO_EXECUTAVEL")
+            end = source.find("*/", i + 2)
+            if end < 0:
+                raise Blocked("COMENTARIO_NAO_FECHADO")
+            buf.append(" ")
+            i = end + 2
+            continue
+        if c in "'\"`":
+            quote = c
+            buf.append(c)
+            i += 1
+            continue
+        if c == ";":
+            stmt = "".join(buf).strip()
+            if stmt:
+                out.append(stmt)
+            buf = []
+            i += 1
+            continue
+        buf.append(c)
+        i += 1
+    if quote:
+        raise Blocked("ASPAS_NAO_FECHADAS")
+    tail = "".join(buf).strip()
+    if tail:
+        out.append(tail)
+    return out
+
+
+def mask_strings(sql):
+    """Troca o conteúdo de aspas por espaços para inspecionar só a estrutura."""
+    return re.sub(r"'(?:[^'\\]|\\.|'')*'|\"(?:[^\"\\]|\\.|\"\")*\"", lambda m: "'" + " " * (len(m.group(0)) - 2) + "'", sql, flags=re.S)
+
+
+def split_top_level(text):
+    parts, depth, cur, quote = [], 0, [], None
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if quote:
+            cur.append(c)
+            if c == "\\" and quote != "`" and i + 1 < len(text):
+                cur.append(text[i + 1])
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+            i += 1
+            continue
+        if c in "'\"`":
+            quote = c
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+        elif c == "," and depth == 0:
+            parts.append("".join(cur).strip())
+            cur = []
+            i += 1
+            continue
+        cur.append(c)
+        i += 1
+    parts.append("".join(cur).strip())
+    return parts
+
+
+def ident(token):
+    token = token.strip()
+    if token.startswith("`") and token.endswith("`") and len(token) > 2:
+        token = token[1:-1]
+    if not IDENT.match(token):
+        raise Blocked("IDENTIFICADOR_INVALIDO", token[:40])
+    return token
+
+
+ID = r"(`[A-Za-z0-9_]{1,64}`|[A-Za-z0-9_]{1,64})"
+RE_CREATE_TABLE = re.compile(r"^CREATE\s+TABLE\s+(IF\s+NOT\s+EXISTS\s+)?" + ID + r"\s*\(", re.I)
+RE_CREATE_INDEX = re.compile(r"^CREATE\s+(UNIQUE\s+|FULLTEXT\s+)?INDEX\s+(IF\s+NOT\s+EXISTS\s+)?" + ID + r"\s+ON\s+" + ID + r"\s*\(", re.I)
+RE_ALTER = re.compile(r"^ALTER\s+TABLE\s+" + ID + r"\s+(.*)$", re.I | re.S)
+RE_ADD_COLUMN = re.compile(r"^ADD\s+(COLUMN\s+)?(IF\s+NOT\s+EXISTS\s+)?" + ID + r"\s+\S", re.I | re.S)
+RE_ADD_INDEX = re.compile(r"^ADD\s+((UNIQUE|FULLTEXT)\s+)?(INDEX|KEY)\s+", re.I)
+RE_ADD_UNIQUE = re.compile(r"^ADD\s+UNIQUE\s+", re.I)
+RE_ADD_CONSTRAINT = re.compile(r"^ADD\s+CONSTRAINT\s+" + ID + r"\s+(FOREIGN\s+KEY|UNIQUE|CHECK)\b", re.I)
+RE_MODIFY_ENUM = re.compile(r"^MODIFY\s+(COLUMN\s+)?" + ID + r"\s+ENUM\s*\((.*?)\)(\s|$)", re.I | re.S)
+RE_ENUM_VALUES = re.compile(r"'((?:[^'\\]|\\.|'')*)'", re.S)
+
+
+def classify(statement):
+    """Devolve um dict descrevendo o comando, ou levanta Blocked."""
+    masked = mask_strings(statement)
+    if re.search(r"\bSELECT\b|\bINTO\s+(OUTFILE|DUMPFILE)\b", masked, re.I):
+        raise Blocked("COMANDO_NAO_ADITIVO", "contém SELECT/OUTFILE")
+    m = RE_CREATE_TABLE.match(statement)
+    if m:
+        return {"kind": "create_table", "table": ident(m.group(2)), "if_not_exists": bool(m.group(1))}
+    m = RE_CREATE_INDEX.match(statement)
+    if m:
+        return {"kind": "create_index", "index": ident(m.group(3)), "table": ident(m.group(4)),
+                "if_not_exists": bool(m.group(2))}
+    m = RE_ALTER.match(statement)
+    if m:
+        table = ident(m.group(1))
+        specs = split_top_level(m.group(2))
+        if not specs or any(not s for s in specs):
+            raise Blocked("ALTER_VAZIO")
+        parsed = []
+        for spec in specs:
+            if RE_ADD_COLUMN.match(spec) and not RE_ADD_INDEX.match(spec) and not RE_ADD_UNIQUE.match(spec) \
+                    and not re.match(r"^ADD\s+(CONSTRAINT|PRIMARY|FOREIGN|CHECK|PARTITION)\b", spec, re.I):
+                mc = RE_ADD_COLUMN.match(spec)
+                parsed.append({"spec": "add_column", "column": ident(mc.group(3)), "if_not_exists": bool(mc.group(2))})
+            elif RE_ADD_INDEX.match(spec):
+                parsed.append({"spec": "add_index"})
+            elif RE_ADD_UNIQUE.match(spec):
+                parsed.append({"spec": "add_index"})
+            elif RE_ADD_CONSTRAINT.match(spec):
+                parsed.append({"spec": "add_constraint"})
+            else:
+                mm = RE_MODIFY_ENUM.match(spec)
+                if mm:
+                    values = [v for v in RE_ENUM_VALUES.findall(mm.group(3))]
+                    if not values:
+                        raise Blocked("ENUM_VAZIO")
+                    parsed.append({"spec": "modify_enum", "column": ident(mm.group(2)), "values": values})
+                else:
+                    raise Blocked("ALTER_NAO_ADITIVO", spec[:60])
+        return {"kind": "alter", "table": table, "specs": parsed}
+    raise Blocked("COMANDO_NAO_ADITIVO", statement[:60])
+
+
+# ----------------------------------------------------------------------------- banco
+class MysqlCli:
+    def __init__(self, database=DB_NAME, cnf=CNF):
+        self.database, self.cnf = database, cnf
+
+    def _run(self, sql):
+        cmd = ["mysql"]
+        if self.cnf:
+            cmd.append("--defaults-extra-file=" + self.cnf)
+        cmd += ["--batch", "--skip-column-names", "--default-character-set=utf8mb4"]
+        if self.database:
+            cmd.append("--database=" + self.database)
+        cmd += ["-e", sql]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        if res.returncode != 0:
+            raise RuntimeError(res.stderr.strip()[:400])
+        return res.stdout
+
+    def execute(self, sql):
+        self._run(sql)
+
+    def ledger_rows(self):
+        out = self._run("SELECT id, file, sha256 FROM %s ORDER BY id" % LEDGER_TABLE)
+        rows = {}
+        for line in out.splitlines():
+            parts = line.split("\t")
+            if len(parts) == 3:
+                rows[parts[0]] = (parts[1], parts[2])
+        return rows
+
+    def count(self, sql):
+        return int((self._run(sql).strip() or "0").splitlines()[0])
+
+    def column_exists(self, table, column):
+        return self.count("SELECT COUNT(*) FROM information_schema.columns WHERE TABLE_SCHEMA='%s' AND TABLE_NAME='%s' AND COLUMN_NAME='%s'" % (self.database, table, column)) > 0
+
+    def index_exists(self, table, index):
+        return self.count("SELECT COUNT(*) FROM information_schema.statistics WHERE TABLE_SCHEMA='%s' AND TABLE_NAME='%s' AND INDEX_NAME='%s'" % (self.database, table, index)) > 0
+
+    def column_type(self, table, column):
+        out = self._run("SELECT COLUMN_TYPE FROM information_schema.columns WHERE TABLE_SCHEMA='%s' AND TABLE_NAME='%s' AND COLUMN_NAME='%s'" % (self.database, table, column))
+        return out.strip()
+
+    def record(self, mid, file, sha):
+        self._run("INSERT INTO %s (id, file, sha256) VALUES ('%s', '%s', '%s')" % (LEDGER_TABLE, mid, file, sha))
+
+
+# ----------------------------------------------------------------------------- ledger / plano
+def load_bundle(bundle):
+    ledger_path = os.path.join(bundle, "drizzle", "custom-migrations.json")
+    try:
+        with open(ledger_path, encoding="utf-8") as handle:
+            ledger = json.load(handle)
+    except Exception as exc:
+        raise Blocked("LEDGER_ILEGIVEL", str(exc)[:80])
+    if ledger.get("formatVersion") != 1 or not isinstance(ledger.get("entries"), list) or not ledger["entries"]:
+        raise Blocked("LEDGER_INVALIDO")
+    entries, last = [], -1
+    for e in ledger["entries"]:
+        mid, file, sha = e.get("id"), e.get("file"), e.get("sha256")
+        if not (isinstance(mid, str) and re.fullmatch(r"\d{4}", mid)) or not isinstance(file, str) \
+                or not (isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{64}", sha)):
+            raise Blocked("LEDGER_ENTRADA_INVALIDA", str(mid))
+        fm = FILE_RE.match(file)
+        if not fm or fm.group(1) != mid:
+            raise Blocked("ARQUIVO_FORA_DO_PADRAO", file[:80])
+        if int(mid) <= last:
+            raise Blocked("LEDGER_FORA_DE_ORDEM", mid)
+        last = int(mid)
+        entries.append({"id": mid, "file": file, "sha256": sha, "kind": e.get("kind")})
+    return entries
+
+
+def read_sql(bundle, entry, required):
+    path = os.path.realpath(os.path.join(bundle, entry["file"]))
+    root = os.path.realpath(bundle) + os.sep
+    if not path.startswith(root):
+        raise Blocked("CAMINHO_FORA_DO_PACOTE", entry["file"])
+    if not os.path.isfile(path):
+        if required:
+            raise Blocked("ARQUIVO_SQL_AUSENTE", entry["file"])
+        return None
+    with open(path, "rb") as handle:
+        data = handle.read()
+    if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+        raise Blocked("CHECKSUM_DO_ARQUIVO_DIVERGE", entry["id"])
+    return data.decode("utf-8")
+
+
+def make_plan(bundle, db):
+    entries = load_bundle(bundle)
+    recorded = db.ledger_rows()
+    max_applied = max([int(k) for k in recorded] or [-1])
+    pending, legacy = [], 0
+    for e in entries:
+        rec = recorded.get(e["id"])
+        if rec:
+            if rec != (e["file"], e["sha256"]):
+                raise Blocked("REGISTRO_NO_BANCO_DIVERGE", e["id"])
+            continue
+        if int(e["id"]) < max_applied:
+            legacy += 1
+            continue
+        pending.append(e)
+    if len(pending) > MAX_PENDING:
+        raise Blocked("PENDENTES_DEMAIS", str(len(pending)))
+    steps = []
+    total = 0
+    for e in pending:
+        if e.get("kind") != "custom-additive":
+            raise Blocked("MIGRATION_NAO_ADITIVA", e["id"])
+        sql = read_sql(bundle, e, True)
+        statements = []
+        for segment in sql.split("--> statement-breakpoint"):
+            statements.extend(clean_statements(segment))
+        if not statements:
+            raise Blocked("MIGRATION_VAZIA", e["id"])
+        total += len(statements)
+        if total > MAX_STATEMENTS:
+            raise Blocked("COMANDOS_DEMAIS")
+        plan = []
+        for st in statements:
+            try:
+                plan.append((st, classify(st)))
+            except Blocked as exc:
+                raise Blocked(exc.code, "%s: %s" % (e["id"], exc.detail))
+        steps.append((e, plan))
+    # entradas do ledger que também têm arquivo no pacote, mas já aplicadas, precisam bater (conferido acima por sha do registro)
+    for e in entries:
+        if e["id"] in recorded:
+            read_sql(bundle, e, False)  # se o arquivo está presente, o checksum precisa bater
+    return {"entries": entries, "recorded": recorded, "legacy": legacy, "steps": steps}
+
+
+def check_enum(db, table, spec):
+    current = db.column_type(table, spec["column"])
+    old = RE_ENUM_VALUES.findall(current) if current.lower().startswith("enum(") else None
+    if old is None:
+        raise Blocked("MODIFY_EM_COLUNA_QUE_NAO_E_ENUM", "%s.%s" % (table, spec["column"]))
+    if spec["values"][:len(old)] != old:
+        raise Blocked("ENUM_NAO_APENAS_AMPLIADO", "%s.%s" % (table, spec["column"]))
+
+
+def run_statement(db, mid, st, info):
+    if info["kind"] == "alter":
+        for spec in info["specs"]:
+            if spec["spec"] == "modify_enum":
+                check_enum(db, info["table"], spec)
+        if len(info["specs"]) == 1 and info["specs"][0]["spec"] == "add_column" and info["specs"][0]["if_not_exists"]:
+            col = info["specs"][0]["column"]
+            if db.column_exists(info["table"], col):
+                return "COLUNA_JA_EXISTE %s.%s" % (info["table"], col)
+            st = re.sub(r"(?i)^(ALTER\s+TABLE\s+\S+\s+ADD\s+(?:COLUMN\s+)?)IF\s+NOT\s+EXISTS\s+", r"\1", st, count=1)
+    elif info["kind"] == "create_index" and info["if_not_exists"]:
+        if db.index_exists(info["table"], info["index"]):
+            return "INDICE_JA_EXISTE %s.%s" % (info["table"], info["index"])
+        st = re.sub(r"(?i)\s+IF\s+NOT\s+EXISTS\s+", " ", st, count=1)
+    db.execute(st)
+    return "OK"
+
+
+def cmd_plan(bundle, db):
+    plan = make_plan(bundle, db)
+    print("LEDGER_ENTRADAS=%d REGISTRADAS_NO_BANCO=%d LEGADO_SEM_REGISTRO=%d" % (len(plan["entries"]), len(plan["recorded"]), plan["legacy"]))
+    print("PENDENTES=%s" % (",".join(e["id"] for e, _ in plan["steps"]) or "NENHUMA"))
+    for e, items in plan["steps"]:
+        for st, info in items:
+            print("  %s %s %s" % (e["id"], info["kind"], info.get("table", "")))
+    print("PLAN_OK")
+    return plan
+
+
+def cmd_apply(bundle, db):
+    plan = cmd_plan(bundle, db)
+    for e, items in plan["steps"]:
+        print("APLICANDO %s (%d comandos)" % (e["id"], len(items)))
+        for n, (st, info) in enumerate(items, 1):
+            try:
+                result = run_statement(db, e["id"], st, info)
+            except Blocked as exc:
+                print("MIGRATION_BLOQUEADA %s comando=%d %s %s" % (e["id"], n, exc.code, exc.detail), file=sys.stderr)
+                raise
+            except RuntimeError as exc:
+                print("MIGRATION_FALHOU %s comando=%d erro=%s" % (e["id"], n, exc), file=sys.stderr)
+                raise Blocked("FALHA_NO_BANCO", "%s#%d" % (e["id"], n))
+            if result != "OK":
+                print("  %s" % result)
+        db.record(e["id"], e["file"], e["sha256"])
+        print("APLICADA %s" % e["id"])
+    after = db.ledger_rows()
+    for e, _ in plan["steps"]:
+        if after.get(e["id"]) != (e["file"], e["sha256"]):
+            raise Blocked("REGISTRO_POS_APLICACAO_DIVERGE", e["id"])
+    print("APPLY_OK aplicadas=%d" % len(plan["steps"]))
+
+
+def cmd_selftest():
+    """Banco descartável: prova criação de tabela, ADD COLUMN IF NOT EXISTS (2x), índice, enum ampliado e bloqueios."""
+    import tempfile, shutil
+    scratch = "idefazei_migtest"
+    root = MysqlCli(database=None, cnf=None)  # root por socket local, só para criar/descartar o banco de teste
+    work = tempfile.mkdtemp(prefix="migtest.")
+    try:
+        os.makedirs(os.path.join(work, "drizzle"))
+        files = {
+            "0001_t.sql": "CREATE TABLE `t_demo` (`id` int AUTO_INCREMENT NOT NULL, `s` enum('a','b') NOT NULL, PRIMARY KEY(`id`));--> statement-breakpoint\n"
+                          "ALTER TABLE `t_demo` ADD COLUMN IF NOT EXISTS `x` varchar(10);--> statement-breakpoint\n"
+                          "CREATE INDEX IF NOT EXISTS `t_demo_x_idx` ON `t_demo` (`x`);",
+            "0002_t.sql": "ALTER TABLE `t_demo` ADD COLUMN IF NOT EXISTS `x` varchar(10);--> statement-breakpoint\n"
+                          "ALTER TABLE `t_demo` MODIFY COLUMN `s` enum('a','b','c') NOT NULL;",
+        }
+        entries = []
+        for name, sql in files.items():
+            open(os.path.join(work, "drizzle", name), "w", encoding="utf-8").write(sql)
+            entries.append({"id": name[:4], "file": "drizzle/" + name, "kind": "custom-additive",
+                            "sha256": hashlib.sha256(sql.encode()).hexdigest()})
+        json.dump({"formatVersion": 1, "entries": entries}, open(os.path.join(work, "drizzle", "custom-migrations.json"), "w"))
+        root._run("DROP DATABASE IF EXISTS %s; CREATE DATABASE %s" % (scratch, scratch))
+        root._run("GRANT SELECT, INSERT, CREATE, ALTER, INDEX, REFERENCES ON %s.* TO 'idefazei_migrator'@'localhost'" % scratch)
+        db = MysqlCli(database=scratch)
+        db._run("CREATE TABLE %s (id VARCHAR(8) NOT NULL, file VARCHAR(255) NOT NULL, sha256 CHAR(64) NOT NULL, appliedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (id))" % LEDGER_TABLE)
+        cmd_apply(work, db)
+        cmd_apply(work, db)  # idempotente: nada pendente
+        bad = {"0003_t.sql": "DROP TABLE `t_demo`;"}
+        for name, sql in bad.items():
+            open(os.path.join(work, "drizzle", name), "w", encoding="utf-8").write(sql)
+            entries.append({"id": name[:4], "file": "drizzle/" + name, "kind": "custom-additive",
+                            "sha256": hashlib.sha256(sql.encode()).hexdigest()})
+        json.dump({"formatVersion": 1, "entries": entries}, open(os.path.join(work, "drizzle", "custom-migrations.json"), "w"))
+        try:
+            cmd_apply(work, db)
+            print("SELFTEST_FALHOU: DROP TABLE nao foi bloqueado", file=sys.stderr)
+            sys.exit(1)
+        except Blocked as exc:
+            assert exc.code == "COMANDO_NAO_ADITIVO", exc.code
+        assert db.count("SELECT COUNT(*) FROM information_schema.tables WHERE TABLE_SCHEMA='%s' AND TABLE_NAME='t_demo'" % scratch) == 1
+        print("SELFTEST_OK")
+    finally:
+        for cleanup in ("REVOKE ALL PRIVILEGES ON %s.* FROM 'idefazei_migrator'@'localhost'" % scratch,
+                        "DROP DATABASE IF EXISTS %s" % scratch):
+            try:
+                root._run(cleanup)
+            except Exception:
+                pass
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def main(argv):
+    if len(argv) >= 2 and argv[1] == "selftest" and len(argv) == 2:
+        cmd_selftest()
+        return 0
+    if len(argv) != 3 or argv[1] not in ("plan", "apply"):
+        print(__doc__, file=sys.stderr)
+        return 2
+    db = MysqlCli()
+    try:
+        (cmd_plan if argv[1] == "plan" else cmd_apply)(argv[2], db)
+        return 0
+    except Blocked as exc:
+        print("MIGRATION_BLOCKED:%s:%s" % (exc.code, exc.detail), file=sys.stderr)
+        return 3
+    except RuntimeError as exc:
+        print("MIGRATION_DB_ERROR:%s" % exc, file=sys.stderr)
+        return 4
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
