@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getChurchMemberByUserId: vi.fn(),
@@ -79,6 +79,16 @@ function makeContext(role = "pastor_presidente") {
     __memberRole: role,
   } as never;
 }
+
+// O estado do hold (prazo de revisão, vencimento) depende do relógio: fixa a data para o teste não envelhecer.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-10T12:00:00.000Z"));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
