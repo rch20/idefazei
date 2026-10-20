@@ -2027,6 +2027,19 @@
       "assets/AdminPanel.js",
       "assets/trending-up.js",
       "assets/index.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/Configuracoes.js",
+      "assets/NotificationPreferencesSettings.js",
+      "assets/skeleton.js",
+      "assets/index.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/Configuracoes.js",
+      "assets/NotificationPreferencesSettings.js",
+      "assets/index.js"
     ]
   ]
 }
