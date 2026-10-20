@@ -6,9 +6,10 @@ const db = readFileSync(new URL("./db.ts", import.meta.url), "utf8");
 const migration = readFileSync(new URL("../drizzle/0102_stage_progress_source.sql", import.meta.url), "utf8");
 
 describe("prontuário da pessoa", () => {
-  it("a migration só adiciona colunas e usa IF NOT EXISTS", () => {
-    expect(migration).toContain("ADD COLUMN IF NOT EXISTS `source`");
-    expect(migration).toContain("ADD COLUMN IF NOT EXISTS `sourceRef`");
+  it("a migration só adiciona colunas, com sintaxe aceita pelo MySQL de produção", () => {
+    expect(migration).toContain("ADD COLUMN `source`");
+    expect(migration).toContain("ADD COLUMN `sourceRef`");
+    expect(migration).not.toContain("IF NOT EXISTS");
     expect(migration).not.toMatch(/DROP|DELETE|UPDATE|TRUNCATE/i);
   });
 
