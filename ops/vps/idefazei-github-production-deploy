@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# Intermediário das publicações de PRODUÇÃO vindas do GitHub.
+# Instalar em /usr/local/sbin/idefazei-github-production-deploy (root:root, 750).
+# O usuário ghdeploy o chama via sudo. Modos:
+#   status                      mostra a versão ativa (somente leitura)
+#   preflight RELEASE_ID        valida o pacote enviado e roda o preflight de produção
+#   apply RELEASE_ID            aplica (exige preflight feito há menos de 15 min)
+#   baseline                    envia (tar na saída) os dois runtimes ativos: dist/index.js e dist/foundation-import-runtime.mjs
+#   rollback RELEASE_ID         volta para uma versão que já existe em /opt/ide-fazei/releases
+#   db-backup LABEL             dump só do banco da aplicação (usar antes de mudança de banco)
+#
+# NÃO substitui nem enfraquece /usr/local/sbin/idefazei-production-deploy: todas as
+# travas dele (hash do runtime, migrations, rotas, systemd, saúde, rollback) continuam
+# valendo. Este arquivo só (1) recebe o pacote do GitHub, (2) valida e reempacota sem
+# privilégios, (3) entrega um pacote limpo no formato que o deploy de produção exige.
+set -Eeuo pipefail
+umask 077
+
+INCOMING_USER="ghdeploy"
+INCOMING_DIR="/var/lib/idefazei-incoming/production"
+WORK_ROOT="/var/lib/idefazei-incoming/.work"
+STATE_DIR="/var/lib/idefazei/github-production"
+TARGET_DIR="/home/manus"
+TARGET_OWNER="manus"
+TARGET_GROUP="manus"
+DEPLOY_BIN="/usr/local/sbin/idefazei-production-deploy"
+VALIDATOR="/usr/local/libexec/idefazei-validate-package"
+SANDBOX_USER="nobody"
+APP_LINK="/opt/ide-fazei/app"
+RELEASES_DIR="/opt/ide-fazei/releases"
+DB_NAME="idefazei"
+DB_BACKUP_DIR="/var/backups/idefazei/db"
+LOCK_FILE="/run/idefazei-github-production-deploy.lock"
+MAX_BYTES=$((200 * 1024 * 1024))
+KEEP_DAYS=14
+DB_KEEP_DAYS=30
+
+WORK_DIR_CLEAN=""
+trap 'if [[ -n "${WORK_DIR_CLEAN}" ]]; then rm -rf -- "${WORK_DIR_CLEAN}"; fi' EXIT
+die() { echo "GITHUB_PRODUCTION_DEPLOY_FAILED:$1" >&2; exit "${2:-2}"; }
+
+[[ "${EUID}" -eq 0 ]] || die ROOT_REQUIRED 1
+[[ $# -ge 1 ]] || die USAGE
+MODE="$1"
+
+require_release_id() {
+  [[ "${1:-}" =~ ^prod-[a-z0-9-]{6,58}$ ]] || die INVALID_RELEASE_ID
+}
+# rollback aceita também IDs antigos e mais longos, no mesmo formato do deploy de produção
+require_existing_release_id() {
+  [[ "${1:-}" =~ ^prod-[a-z0-9-]{6,80}$ ]] || die INVALID_RELEASE_ID
+}
+
+[[ -x "${DEPLOY_BIN}" ]] || die DEPLOY_PROGRAM_MISSING 1
+exec 9>>"${LOCK_FILE}"
+flock -n 9 || die ANOTHER_DEPLOY_RUNNING 1
+
+# ---------------------------------------------------------------- status
+do_status() {
+  local active id commit server found
+  active="$(readlink -e "${APP_LINK}")" || die ACTIVE_ROOT_UNRESOLVED 1
+  id="$(basename "${active}")"
+  commit="$(python3 -I - "${active}/release-source.json" <<'PY' || true
+import json, sys
+try:
+    print(json.load(open(sys.argv[1], encoding="utf-8")).get("commitSha", ""))
+except Exception:
+    print("")
+PY
+)"
+  server="$(sha256sum "${active}/dist/index.js" | cut -d' ' -f1)"
+  found="$(sha256sum "${active}/dist/foundation-import-runtime.mjs" | cut -d' ' -f1)"
+  echo "ACTIVE_RELEASE=${active}"
+  echo "ACTIVE_RELEASE_ID=${id}"
+  echo "ACTIVE_COMMIT=${commit}"
+  echo "ACTIVE_SERVER_SHA=${server}"
+  echo "ACTIVE_FOUNDATION_SHA=${found}"
+  echo "SERVICE_ACTIVE=$(systemctl is-active idefazei || true)"
+  echo "PREVIOUS_RELEASES=$(find "${RELEASES_DIR}" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' \
+    | sort -rn | awk '{print $2}' | grep -vxF "${id}" | head -5 | paste -sd, -)"
+}
+
+do_baseline() {
+  local active
+  active="$(readlink -e "${APP_LINK}")" || die ACTIVE_ROOT_UNRESOLVED 1
+  tar --format=gnu --numeric-owner --owner=0 --group=0 -C "${active}" -cf - \
+    dist/index.js dist/foundation-import-runtime.mjs
+}
+
+# ------------------------------------------------- pacote limpo (sem privilégios)
+prepare_package() {
+  local release_id="$1" src dest orig size orig_sha clean_sha work
+  src="${INCOMING_DIR}/${release_id}.tar.gz"
+  dest="${TARGET_DIR}/${release_id}.tar.gz"
+  [[ ! -e "${dest}" && ! -L "${dest}" ]] || die TARGET_ALREADY_EXISTS
+  [[ ! -e "${RELEASES_DIR}/${release_id}" ]] || die RELEASE_ALREADY_EXISTS
+  runuser -u "${INCOMING_USER}" -- test -f "${src}" || die PACKAGE_NOT_FOUND
+  id "${SANDBOX_USER}" >/dev/null 2>&1 || die SANDBOX_USER_MISSING 1
+  [[ -r "${VALIDATOR}" ]] || die VALIDATOR_MISSING 1
+
+  install -d -m 755 -o root -g root "${WORK_ROOT}"
+  install -d -m 700 -o root -g root "${STATE_DIR}"
+  work="$(mktemp -d "${WORK_ROOT}/run.XXXXXX")"
+  chmod 711 "${work}"
+  WORK_DIR_CLEAN="${work}"
+
+  orig="${work}/original.tar.gz"
+  runuser -u "${INCOMING_USER}" -- head -c "$((MAX_BYTES + 1))" -- "${src}" > "${orig}"
+  size="$(stat -c %s -- "${orig}")"
+  (( size > 0 )) || die PACKAGE_EMPTY
+  (( size <= MAX_BYTES )) || die PACKAGE_TOO_LARGE
+  gzip -t -- "${orig}" 2>/dev/null || die PACKAGE_NOT_GZIP
+  orig_sha="$(sha256sum -- "${orig}" | cut -d' ' -f1)"
+
+  runuser -u "${SANDBOX_USER}" -- timeout --kill-after=10 180 python3 -I "${VALIDATOR}" < "${orig}" \
+    || die PACKAGE_VALIDATION_FAILED
+
+  install -d -m 700 -o "${SANDBOX_USER}" -g "$(id -gn "${SANDBOX_USER}")" "${work}/tree"
+  runuser -u "${SANDBOX_USER}" -- sh -c 'umask 022 && exec timeout --kill-after=10 300 tar -xzf - --no-same-owner --no-same-permissions -C "$1"' _ "${work}/tree" < "${orig}" \
+    || die PACKAGE_EXTRACT_FAILED
+  [[ -z "$(find "${work}/tree" -mindepth 1 \( ! -type f -a ! -type d \) -print -quit)" ]] || die TREE_HAS_SPECIAL_FILE
+  [[ -z "$(find "${work}/tree" -type f -links +1 -print -quit)" ]] || die TREE_HAS_HARDLINK
+  [[ -z "$(find "${work}/tree" -perm /6000 -print -quit)" ]] || die TREE_HAS_SETUID
+  # o deploy de produção recusa arquivo gravável por grupo/outros; garantimos aqui
+  chmod -R go-w "${work}/tree" 2>/dev/null || true
+
+  tar --format=gnu --numeric-owner --owner=0 --group=0 --sort=name -czf "${dest}" -C "${work}/tree" .
+  chown "${TARGET_OWNER}:${TARGET_GROUP}" "${dest}"
+  chmod 600 "${dest}"
+  (( $(stat -c %s -- "${dest}") <= MAX_BYTES )) || { rm -f -- "${dest}"; die CLEAN_PACKAGE_TOO_LARGE; }
+  clean_sha="$(sha256sum -- "${dest}" | cut -d' ' -f1)"
+  printf '%s\n' "${clean_sha}" > "${STATE_DIR}/${release_id}.sha256"
+  logger -t idefazei-github-production "prepared release=${release_id} original_sha256=${orig_sha} clean_sha256=${clean_sha} requested_by=${SUDO_USER:-unknown}"
+  echo "GITHUB_PRODUCTION_PACKAGE_READY release=${release_id} original_sha256=${orig_sha} clean_sha256=${clean_sha}"
+}
+
+do_preflight() {
+  local release_id="$1" dest rc
+  dest="${TARGET_DIR}/${release_id}.tar.gz"
+  prepare_package "${release_id}"
+  if "${DEPLOY_BIN}" --preflight "${dest}" "${release_id}"; then rc=0; else rc=$?; fi
+  if (( rc != 0 )); then
+    rm -f -- "${dest}" "${STATE_DIR}/${release_id}.sha256"
+    echo "GITHUB_PRODUCTION_PREFLIGHT_FAILED rc=${rc}" >&2
+    exit "${rc}"
+  fi
+  echo "GITHUB_PRODUCTION_PREFLIGHT_OK release=${release_id}"
+}
+
+do_apply() {
+  local release_id="$1" dest expected actual rc
+  dest="${TARGET_DIR}/${release_id}.tar.gz"
+  [[ -f "${dest}" && ! -L "${dest}" ]] || die PREFLIGHT_PACKAGE_MISSING
+  [[ -f "${STATE_DIR}/${release_id}.sha256" ]] || die PREFLIGHT_STATE_MISSING
+  expected="$(cat "${STATE_DIR}/${release_id}.sha256")"
+  actual="$(sha256sum -- "${dest}" | cut -d' ' -f1)"
+  [[ "${expected}" == "${actual}" ]] || die PACKAGE_CHANGED_AFTER_PREFLIGHT
+  logger -t idefazei-github-production "apply release=${release_id} sha256=${actual} requested_by=${SUDO_USER:-unknown}"
+  if "${DEPLOY_BIN}" --apply "${dest}" "${release_id}"; then rc=0; else rc=$?; fi
+  rm -f -- "${dest}" "${STATE_DIR}/${release_id}.sha256"
+  runuser -u "${INCOMING_USER}" -- find "${INCOMING_DIR}" -maxdepth 1 -type f \
+    -name 'prod-*.tar.gz' -mtime "+${KEEP_DAYS}" -delete || true
+  exit "${rc}"
+}
+
+do_rollback() {
+  local release_id="$1"
+  logger -t idefazei-github-production "rollback release=${release_id} requested_by=${SUDO_USER:-unknown}"
+  exec "${DEPLOY_BIN}" --rollback "${release_id}"
+}
+
+# ---------------------------------------------------------------- backup do banco
+do_db_backup() {
+  local label="$1" stamp out tmp
+  [[ "${label}" =~ ^[a-z0-9-]{3,60}$ ]] || die INVALID_LABEL
+  command -v mysqldump >/dev/null || die MYSQLDUMP_MISSING 1
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  install -d -m 700 -o root -g root "${DB_BACKUP_DIR}"
+  out="${DB_BACKUP_DIR}/db-${DB_NAME}-${label}-${stamp}.sql.gz"
+  tmp="${out}.part"
+  if ! mysqldump --single-transaction --quick --routines --triggers --events \
+        --default-character-set=utf8mb4 --databases "${DB_NAME}" | gzip -9 > "${tmp}"; then
+    rm -f -- "${tmp}"; die DB_DUMP_FAILED 1
+  fi
+  gzip -t -- "${tmp}" || { rm -f -- "${tmp}"; die DB_DUMP_CORRUPT 1; }
+  (( $(stat -c %s -- "${tmp}") > 1024 )) || { rm -f -- "${tmp}"; die DB_DUMP_TOO_SMALL 1; }
+  mv -- "${tmp}" "${out}"
+  chmod 600 "${out}"
+  ( cd "${DB_BACKUP_DIR}" && sha256sum "$(basename "${out}")" > "$(basename "${out}").sha256" )
+  find "${DB_BACKUP_DIR}" -maxdepth 1 -type f -name "db-${DB_NAME}-*" -mtime "+${DB_KEEP_DAYS}" -delete || true
+  logger -t idefazei-github-production "db-backup file=${out} requested_by=${SUDO_USER:-unknown}"
+  echo "DB_BACKUP_FILE=${out}"
+  echo "DB_BACKUP_SIZE=$(stat -c %s -- "${out}")"
+  echo "DB_BACKUP_SHA256=$(cut -d' ' -f1 "${out}.sha256")"
+}
+
+case "${MODE}" in
+  status)    [[ $# -eq 1 ]] || die USAGE; do_status ;;
+  baseline)  [[ $# -eq 1 ]] || die USAGE; do_baseline ;;
+  preflight) [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_preflight "$2" ;;
+  apply)     [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_apply "$2" ;;
+  rollback)  [[ $# -eq 2 ]] || die USAGE; require_existing_release_id "$2"; do_rollback "$2" ;;
+  db-backup) [[ $# -eq 2 ]] || die USAGE; do_db_backup "$2" ;;
+  *) die USAGE ;;
+esac

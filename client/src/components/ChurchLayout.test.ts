@@ -94,7 +94,7 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain('label: "Eventos", mobileLabel: "Eventos", path: "/app/eventos", accessKey: "isExecutive"');
     expect(source).toContain('label: "Painel do discípulo", mobileLabel: "Meu painel", path: "/app/membro"');
     expect(source).toContain('...quickAccessItems.filter((item) => item.path !== "/app/membro")');
-    expect(source).toContain('{ icon: Users, label: "Área do Membro", path: "/app/membro", group: "membros" }');
+    expect(source).toContain('{ icon: UserRound, label: "Área do Membro", path: "/app/membro", group: "membros" }');
     expect(source).toContain('aria-label="Acesso rápido"');
     expect(source).toContain('aria-label="Acesso rápido móvel"');
     expect(source).toContain('aria-label="Mais opções"');

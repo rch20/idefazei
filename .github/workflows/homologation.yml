@@ -70,6 +70,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Ativar pnpm (antes do cache do Node)
+        run: corepack enable
+
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
@@ -118,6 +121,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Ativar pnpm (antes do cache do Node)
+        run: corepack enable
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4
@@ -395,6 +401,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+
+      - name: Ativar pnpm (antes do cache do Node)
+        run: corepack enable
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4

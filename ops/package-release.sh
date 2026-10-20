@@ -5,7 +5,7 @@ PACKAGE_ROOT="${1:-}"
 OUTPUT_PACKAGE="${2:-}"
 SOURCE_ROOT="${3:-$(pwd)}"
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AUDITOR="${AUDITOR:-/home/ubuntu/skills/safe-multitenant-homolog-deploy/scripts/audit_release_package.py}"
+AUDITOR="${AUDITOR:-${SCRIPT_ROOT}/.github/scripts/audit_release_package.py}"
 
 if [[ -z "$PACKAGE_ROOT" || -z "$OUTPUT_PACKAGE" || ! -d "$PACKAGE_ROOT" ]]; then
   echo "USAGE: package-release.sh PACKAGE_ROOT OUTPUT_PACKAGE [SOURCE_GIT_ROOT]" >&2

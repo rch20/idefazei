@@ -22,8 +22,6 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10.4.1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -48,6 +46,11 @@ jobs:
 
       - name: Check bundle size, imports and cycles
         run: pnpm bundle:check
+
+      - name: Hash dos runtimes do servidor (informativo)
+        run: |
+          echo "::notice title=server-runtime::$(sha256sum dist/index.js | cut -d' ' -f1)"
+          echo "::notice title=foundation-runtime::$(sha256sum dist/foundation-import-runtime.mjs | cut -d' ' -f1)"
 
       - name: Smoke somente leitura da homologação
         env:
