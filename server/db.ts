@@ -2202,15 +2202,54 @@ export async function recordPriorChurchStage(input: { churchId: number; personId
   });
 }
 
+/** Desfaz um registro automático ou de outra igreja, devolvendo a etapa a "não registrada". Mantém o evento no histórico. */
+export async function undoStageRecord(input: { churchId: number; personId: number; stage: JourneyStageKey; actorChurchUserId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  return db.transaction(async tx => {
+    const rows = await tx
+      .select({ id: discipleshipStageProgress.id, status: discipleshipStageProgress.status, source: discipleshipStageProgress.source, sourceRef: discipleshipStageProgress.sourceRef })
+      .from(discipleshipStageProgress)
+      .where(and(eq(discipleshipStageProgress.churchId, input.churchId), eq(discipleshipStageProgress.personId, input.personId), eq(discipleshipStageProgress.stage, input.stage)))
+      .limit(1)
+      .for("update");
+    const row = rows[0];
+    if (!row || row.status !== "concluida" || row.source === "manual") return { ok: false as const };
+    const note = `Registro desfeito (origem: ${row.source === "automatico" ? "automático" : "outra igreja"}${row.sourceRef ? ` — ${row.sourceRef}` : ""}).`;
+    await tx
+      .update(discipleshipStageProgress)
+      .set({ status: "nao_registrada", isCurrent: false, notes: null, completedAt: null, source: "manual", sourceRef: null, updatedByChurchUserId: input.actorChurchUserId })
+      .where(eq(discipleshipStageProgress.id, row.id));
+    await tx.insert(discipleshipStageEvents).values({
+      churchId: input.churchId,
+      personId: input.personId,
+      stage: input.stage,
+      status: "nao_registrada",
+      notes: note,
+      changedByChurchUserId: input.actorChurchUserId,
+    });
+    return { ok: true as const };
+  });
+}
+
 /**
  * Preenche o prontuário com o que já foi concluído antes da automação existir.
  * Repetir é seguro: etapas já concluídas nunca são alteradas.
  */
-export async function backfillFormationFromRecords(churchId: number, actorChurchUserId: number) {
+export async function backfillFormationFromRecords(churchId: number, actorChurchUserId: number, dryRun = false) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   const note = "Preenchido automaticamente a partir do histórico já concluído.";
   const result = { batismo: 0, encontro: 0, fundamentos: 0, jaRegistradas: 0 };
+  const apply = async (args: Parameters<typeof recordAutomaticStageCompletion>[0]) => {
+    if (!dryRun) return recordAutomaticStageCompletion(args);
+    const rows = await db
+      .select({ status: discipleshipStageProgress.status })
+      .from(discipleshipStageProgress)
+      .where(and(eq(discipleshipStageProgress.churchId, args.churchId), eq(discipleshipStageProgress.personId, args.personId), eq(discipleshipStageProgress.stage, args.stage)))
+      .limit(1);
+    return { changed: rows[0]?.status !== "concluida" };
+  };
   const count = (outcome: { changed: boolean }, key: "batismo" | "encontro" | "fundamentos") => {
     if (outcome.changed) result[key] += 1;
     else result.jaRegistradas += 1;
@@ -2220,14 +2259,14 @@ export async function backfillFormationFromRecords(churchId: number, actorChurch
     .from(baptismEnrollments)
     .where(and(eq(baptismEnrollments.churchId, churchId), eq(baptismEnrollments.status, "concluiu")));
   for (const row of baptisms) {
-    count(await recordAutomaticStageCompletion({ churchId, personId: row.personId, stage: "batismo", sourceRef: `batismo:${row.id}`, actorChurchUserId, note, completedAt: row.completedAt ?? undefined }), "batismo");
+    count(await apply({ churchId, personId: row.personId, stage: "batismo", sourceRef: `batismo:${row.id}`, actorChurchUserId, note, completedAt: row.completedAt ?? undefined }), "batismo");
   }
   const encounters = await db
     .select({ id: encounterEnrollments.id, personId: encounterEnrollments.personId, completedAt: encounterEnrollments.completedAt })
     .from(encounterEnrollments)
     .where(and(eq(encounterEnrollments.churchId, churchId), eq(encounterEnrollments.status, "concluiu")));
   for (const row of encounters) {
-    count(await recordAutomaticStageCompletion({ churchId, personId: row.personId, stage: "encontro_com_deus", sourceRef: `encontro:${row.id}`, actorChurchUserId, note, completedAt: row.completedAt ?? undefined }), "encontro");
+    count(await apply({ churchId, personId: row.personId, stage: "encontro_com_deus", sourceRef: `encontro:${row.id}`, actorChurchUserId, note, completedAt: row.completedAt ?? undefined }), "encontro");
   }
   const finishedCourses = await db
     .select({ id: courseEnrollments.id, personId: courseEnrollments.personId, completedAt: courseEnrollments.completedAt })
@@ -2239,7 +2278,7 @@ export async function backfillFormationFromRecords(churchId: number, actorChurch
   for (const row of finishedCourses) lastByPerson.set(row.personId, row);
   for (const [personId, row] of Array.from(lastByPerson.entries())) {
     if (!(await hasFinishedAllFoundationCourses(churchId, personId))) continue;
-    count(await recordAutomaticStageCompletion({ churchId, personId, stage: "fundamentos", sourceRef: `curso:${row.id}`, actorChurchUserId, note, completedAt: row.completedAt ?? undefined }), "fundamentos");
+    count(await apply({ churchId, personId, stage: "fundamentos", sourceRef: `curso:${row.id}`, actorChurchUserId, note, completedAt: row.completedAt ?? undefined }), "fundamentos");
   }
   return result;
 }

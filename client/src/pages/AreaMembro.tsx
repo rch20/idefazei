@@ -19,12 +19,15 @@ import {
   Phone, Mail, Home, Church, CheckCircle2, Clock, AlertCircle, CircleDollarSign, Copy, FileCheck2, Upload, Loader2
 } from "lucide-react";
 import { toast } from "sonner";
+import { DISCIPLESHIP_STAGE_LABELS } from "@/lib/discipleshipState";
 import { DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE } from "../../../shared/onlineContribution";
 
 const DISCIPLESHIP_STAGES = [
   "Nova Alma", "Consolidação", "Fundamentos",
   "Batismo", "Encontro com Deus", "Escola de Líderes", "Liderança", "Multiplicador"
 ];
+
+const MEMBER_JOURNEY_STAGES = ["nova_alma", "consolidacao", "fundamentos", "batismo", "encontro_com_deus", "escola_de_lideres", "lideranca", "multiplicador"] as const;
 
 const DAY_LABELS: Record<string, string> = { segunda: "segunda", terca: "terça", quarta: "quarta", quinta: "quinta", sexta: "sexta", sabado: "sábado", domingo: "domingo" };
 const COURSE_STATUS_LABELS: Record<string, string> = { matriculado: "Matriculado", em_andamento: "Em andamento", concluido: "Concluído" };
@@ -65,6 +68,7 @@ export default function AreaMembro() {
     },
     onError: (error) => toast.error(error.message),
   });
+  const formationQuery = trpc.people.myFormation.useQuery({ churchId: churchId! }, { enabled: hasLinkedPerson });
   const pixQuery = trpc.treasury.pixForMember.useQuery({ churchId: churchId! }, { enabled: canSubmitOnlineContribution });
   const updateContact = trpc.people.updateMyContact.useMutation({
     onSuccess: () => {
@@ -364,6 +368,7 @@ export default function AreaMembro() {
         <TabsList aria-label="Navegação da Área do Membro" className="w-full justify-start overflow-x-auto rounded-xl border border-[#1e3a5f]/10 bg-white p-1">
           {[
             { id: "perfil", label: "Meu Perfil", icon: User },
+            { id: "jornada", label: "Minha jornada", icon: Star },
             { id: "eventos", label: "Eventos", icon: Calendar },
             { id: "avisos", label: "Avisos", icon: Bell },
             { id: "oracao", label: "Oração", icon: Heart },
@@ -460,6 +465,76 @@ export default function AreaMembro() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Minha jornada */}
+        <TabsContent value="jornada" className="mt-4">
+          <Card className="border-[#1e3a5f]/10">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-[#1e3a5f] font-serif text-base flex items-center gap-2">
+                <Star className="w-4 h-4 text-[#c9a84c]" />
+                Meu prontuário de formação
+              </CardTitle>
+              <p className="mt-1 text-xs text-[#1e3a5f]/55">Seu caminho na igreja: o que já foi concluído e o que vem a seguir. Os registros vêm dos cursos, do batismo e dos encontros dos quais você participou.</p>
+            </CardHeader>
+            <CardContent>
+              {formationQuery.isLoading ? (
+                <Skeleton className="h-24 w-full" />
+              ) : formationQuery.isError || !formationQuery.data ? (
+                <p role="alert" className="text-xs text-rose-800">Não foi possível carregar sua jornada agora.</p>
+              ) : (() => {
+                const byStage = new Map(formationQuery.data.stages.map((item) => [item.stage, item] as const));
+                const records = formationQuery.data.records;
+                const rows = [
+                  ...records.courses.map((item) => ({ key: `curso-${item.id}`, kind: "Curso", name: item.name, label: item.status === "concluido" ? "Concluído" : item.status === "em_andamento" ? "Em andamento" : "Matriculado", completedAt: item.completedAt })),
+                  ...records.baptisms.map((item) => ({ key: `batismo-${item.id}`, kind: "Batismo", name: item.name, label: item.status === "concluiu" ? "Concluído" : item.status === "participou" ? "Participou" : item.status === "cancelado" ? "Cancelado" : "Inscrito", completedAt: item.completedAt })),
+                  ...records.encounters.map((item) => ({ key: `encontro-${item.id}`, kind: "Encontro", name: item.name, label: item.status === "concluiu" ? "Concluído" : item.status === "participou" ? "Participou" : item.status === "confirmado" ? "Confirmado" : item.status === "cancelado" ? "Cancelado" : "Inscrito", completedAt: item.completedAt })),
+                ];
+                return (
+                  <div className="space-y-5">
+                    <ol className="space-y-2">
+                      {MEMBER_JOURNEY_STAGES.map((stage) => {
+                        const item = byStage.get(stage);
+                        const done = item?.status === "concluida";
+                        const next = item?.status === "pendente";
+                        return (
+                          <li key={stage} className="flex items-start gap-3 rounded-xl border border-[#1e3a5f]/10 p-3">
+                            <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${done ? "bg-emerald-100 text-emerald-800" : next ? "bg-[#c9a84c]/20 text-[#1e3a5f]" : "bg-[#1e3a5f]/5 text-[#1e3a5f]/40"}`} aria-hidden="true">{done ? "✓" : MEMBER_JOURNEY_STAGES.indexOf(stage) + 1}</span>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-[#1e3a5f]">{DISCIPLESHIP_STAGE_LABELS[stage]}</p>
+                              <p className="text-xs text-[#1e3a5f]/60">
+                                {done
+                                  ? `Concluída${item?.completedAt ? ` em ${new Date(item.completedAt).toLocaleDateString("pt-BR")}` : ""}${item?.origin ? ` · veio de ${item.origin}` : ""}`
+                                  : next ? "Próxima etapa" : "Ainda não registrada"}
+                              </p>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    <div>
+                      <h3 className="text-sm font-semibold text-[#1e3a5f]">Cursos e eventos</h3>
+                      {rows.length === 0 ? (
+                        <p className="mt-2 text-xs text-[#1e3a5f]/60">Você ainda não tem matrícula ou participação registrada.</p>
+                      ) : (
+                        <ul className="mt-2 divide-y divide-[#1e3a5f]/10">
+                          {rows.map((row) => (
+                            <li key={row.key} className="flex items-center justify-between gap-3 py-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-medium text-[#1e3a5f]">{row.name}</p>
+                                <p className="text-[11px] text-[#1e3a5f]/55">{row.kind}{row.completedAt ? ` · ${new Date(row.completedAt).toLocaleDateString("pt-BR")}` : ""}</p>
+                              </div>
+                              <Badge variant="outline" className="shrink-0 text-[10px]">{row.label}</Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Contribuir */}

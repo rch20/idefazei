@@ -258,6 +258,7 @@ import {
   getBaptismEnrollmentById,
   backfillFormationFromRecords,
   recordPriorChurchStage,
+  undoStageRecord,
   getPersonFormationRecords,
   hasFinishedAllFoundationCourses,
   recordAutomaticStageCompletion,
@@ -2108,10 +2109,41 @@ const peopleRouter = router({
     }),
 
   backfillFormation: protectedProcedure
-    .input(z.object({ churchId: z.number().int().positive() }))
+    .input(z.object({ churchId: z.number().int().positive(), dryRun: z.boolean().optional() }))
     .mutation(async ({ input, ctx }) => {
       const actor = await requireNotificationPreferenceManager(ctx.user.id, input.churchId, "preencher o prontuário");
-      return backfillFormationFromRecords(input.churchId, actor.id);
+      return backfillFormationFromRecords(input.churchId, actor.id, input.dryRun ?? false);
+    }),
+
+  undoStageRecord: protectedProcedure
+    .input(
+      z.object({
+        id: z.number().int().positive(),
+        churchId: z.number().int().positive(),
+        stage: z.enum(["consolidacao", "fundamentos", "batismo", "encontro_com_deus", "escola_de_lideres", "lideranca", "multiplicador"]),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireJourneyStagePermission(ctx.user.id, input.churchId, input.id);
+      const result = await undoStageRecord({ churchId: input.churchId, personId: input.id, stage: input.stage, actorChurchUserId: actor.id });
+      if (!result.ok) throw new TRPCError({ code: "BAD_REQUEST", message: "Só é possível desfazer registros automáticos ou de outra igreja já concluídos." });
+      return result;
+    }),
+
+  myFormation: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) return { stages: [], records: { courses: [], baptisms: [], encounters: [] } };
+      const [progress, records] = await Promise.all([
+        getDiscipleshipStageProgress(input.churchId, actor.personId),
+        getPersonFormationRecords(input.churchId, actor.personId),
+      ]);
+      // O membro vê situação, data e origem; observações da liderança ficam de fora.
+      return {
+        stages: progress.map(item => ({ stage: item.stage, status: item.status, completedAt: item.completedAt, source: item.source, origin: item.source === "outra_igreja" ? item.sourceRef : null })),
+        records,
+      };
     }),
 
   formationRecords: protectedProcedure

@@ -69,4 +69,23 @@ describe("prontuário da pessoa", () => {
     expect(fn).toContain("eq(encounterEnrollments.churchId, churchId)");
     expect(fn).toContain("eq(courses.churchId, churchId)");
   });
+
+  it("a prévia não grava e o desfazer só atinge registros automáticos ou de outra igreja", () => {
+    const backfill = db.slice(db.indexOf("export async function backfillFormationFromRecords"), db.indexOf("export async function hasFinishedAllFoundationCourses"));
+    expect(backfill).toContain("if (!dryRun) return recordAutomaticStageCompletion(args);");
+    const undo = db.slice(db.indexOf("export async function undoStageRecord"), db.indexOf("export async function backfillFormationFromRecords"));
+    expect(undo).toContain('row.source === "manual"');
+    expect(undo).toContain("eq(discipleshipStageProgress.churchId, input.churchId)");
+    expect(undo).toContain("discipleshipStageEvents");
+    const start = routers.indexOf("undoStageRecord: protectedProcedure");
+    expect(routers.slice(start, start + 900)).toContain("requireJourneyStagePermission(ctx.user.id, input.churchId, input.id)");
+  });
+
+  it("o membro lê só o próprio prontuário e sem as observações da liderança", () => {
+    const start = routers.indexOf("myFormation: protectedProcedure");
+    const block = routers.slice(start, start + 1400);
+    expect(block).toContain("actor.personId");
+    expect(block).not.toContain("input.id");
+    expect(block).not.toContain("notes:");
+  });
 });

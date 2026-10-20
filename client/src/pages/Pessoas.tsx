@@ -427,6 +427,15 @@ export default function Pessoas() {
     onError: (error) => toast.error(error.message || "Não foi possível enviar o encaminhamento."),
   });
   const [priorStage, setPriorStage] = useState<JourneyStage | null>(null);
+  const [undoStage, setUndoStage] = useState<JourneyStage | null>(null);
+  const undoStageRecord = trpc.people.undoStageRecord.useMutation({
+    onSuccess: async () => {
+      toast.success("Registro desfeito. A etapa voltou para não registrada.");
+      setUndoStage(null);
+      await Promise.all([journeyQuery.refetch(), refetch(), directoryQuery.refetch()]);
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível desfazer o registro."),
+  });
   const updateJourneyStage = trpc.people.updateJourneyStage.useMutation({
     onSuccess: async (_, variables) => {
       toast.success(variables.status === "concluida" ? "Etapa marcada como concluída." : variables.status === "pendente" ? "Etapa marcada como pendente." : "Etapa redefinida como não registrada.");
@@ -1382,6 +1391,15 @@ export default function Pessoas() {
                                 >
                                   {status === "concluida" ? "Marcar pendente" : "Concluir etapa"}
                                 </Button>
+                                {status === "concluida" && stage !== "nova_alma" && (progress?.source === "automatico" || progress?.source === "outra_igreja") && <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-9 text-[11px] text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                                  onClick={() => setUndoStage(stage)}
+                                >
+                                  Desfazer registro
+                                </Button>}
                                 {status !== "concluida" && stage !== "nova_alma" && <Button
                                   type="button"
                                   size="sm"
@@ -1469,6 +1487,17 @@ export default function Pessoas() {
                   );
                 })()}
               </div>
+              <ConfirmDestructiveActionDialog
+                open={undoStage !== null}
+                title="Desfazer este registro?"
+                description={<>A etapa <strong>{undoStage ? STAGES_LABELS[undoStage] : ""}</strong> volta para "não registrada". O histórico guarda que o registro existiu e foi desfeito.</>}
+                confirmLabel="Desfazer registro"
+                pendingLabel="Desfazendo…"
+                pending={undoStageRecord.isPending}
+                onOpenChange={(open) => { if (!open) setUndoStage(null); }}
+                onCancel={() => setUndoStage(null)}
+                onConfirm={() => { if (undoStage && selectedPerson && undoStage !== "nova_alma") undoStageRecord.mutate({ churchId, id: selectedPerson.id, stage: undoStage }); }}
+              />
               {canManageJourney && selectedPerson && (
                 <Suspense fallback={null}>
                   <PriorStageDialog
