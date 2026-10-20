@@ -2040,6 +2040,18 @@
       "assets/Configuracoes.js",
       "assets/NotificationPreferencesSettings.js",
       "assets/index.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/Configuracoes.js",
+      "assets/FormationBackfillCard.js",
+      "assets/index.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/Pessoas.js",
+      "assets/PriorStageDialog.js",
+      "assets/index.js"
     ]
   ]
 }
