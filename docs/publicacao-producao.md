@@ -5,6 +5,12 @@ Fluxo: GitHub Actions → usuário `ghdeploy` (sem senha, chave restrita) → `s
 privilégios → chama `/usr/local/sbin/idefazei-production-deploy` (o mesmo programa de hoje).
 O acesso do usuário `manus` não é alterado.
 
+## Gatilho automático
+
+Cada push na branch de produção roda: validar → travas → preflight → apply → conferência pública (volta sozinho se
+falhar). Se `client/` não mudou desde a versão ativa, o workflow termina sem publicar. Se mudou servidor, banco ou
+dependências, ele falha de propósito e avisa (ver abaixo). Manual: Actions → Run workflow (preflight, apply ou rollback).
+
 ## O que continua protegido (não remover sem decisão explícita)
 
 | Trava (no deploy de produção) | Efeito na publicação pelo GitHub |

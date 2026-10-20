@@ -4,14 +4,16 @@ name: Ide Fazei — produção
 # Nada é executado como `manus`. Todas as travas de /usr/local/sbin/idefazei-production-deploy
 # continuam valendo (runtime, rotas, migrations, systemd, saúde e rollback automático).
 #
-# Início: somente manual (Actions → "Ide Fazei — produção" → Run workflow).
-# Depois da primeira publicação validada, ative a publicação automática descomentando
-# o bloco `push` abaixo.
+# Automático: cada push na branch de produção publica a interface nova (validar → travas →
+# preflight → apply → conferência pública → rollback se falhar). Manual: Actions → Run workflow.
 
 on:
-  # push:
-  #   branches:
-  #     - feat/foundation-compact-reader-20261018
+  push:
+    branches:
+      - feat/foundation-compact-reader-20261018
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   workflow_dispatch:
     inputs:
       action:
@@ -73,7 +75,7 @@ jobs:
         run: pnpm bundle:check
 
   deploy:
-    name: Produção — ${{ inputs.action }}
+    name: Produção — ${{ inputs.action || 'apply' }}
     needs: validate
     if: inputs.action != 'rollback'
     runs-on: ubuntu-latest
@@ -133,8 +135,22 @@ jobs:
             printf '%s\n' "$srv"; exit 1
           fi
 
+      - name: Há interface nova para publicar?
+        id: ui
+        env:
+          ACTIVE_COMMIT: ${{ steps.active.outputs.commit }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" && -z "$(git diff --name-only "$ACTIVE_COMMIT" "$GITHUB_SHA" -- client)" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Nenhuma mudança de interface (client/) desde a versão ativa: nada a publicar."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Montar pacote (interface nova + runtimes ativos da produção)
         id: pkg
+        if: steps.ui.outputs.skip != 'true'
         env:
           ACTIVE_SERVER_SHA: ${{ steps.active.outputs.server_sha }}
           FRONTEND_ROUTE_ADDED: ${{ inputs.frontend_route_added }}
@@ -164,6 +180,7 @@ jobs:
 
       - name: Enviar pacote e rodar preflight
         id: preflight
+        if: steps.ui.outputs.skip != 'true'
         env:
           RELEASE_ID: ${{ steps.pkg.outputs.release_id }}
         run: |
@@ -172,7 +189,7 @@ jobs:
           ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" preflight "$RELEASE_ID"
 
       - name: Publicar (apply)
-        if: inputs.action == 'apply'
+        if: steps.ui.outputs.skip != 'true' && (github.event_name == 'push' || inputs.action == 'apply')
         id: apply
         env:
           RELEASE_ID: ${{ steps.pkg.outputs.release_id }}
@@ -182,7 +199,7 @@ jobs:
           grep -Fxq 'PRODUCTION_DEPLOY_SUCCESS=1' "$RUNNER_TEMP/apply.log"
 
       - name: Conferência pública (volta sozinho se falhar)
-        if: inputs.action == 'apply'
+        if: steps.ui.outputs.skip != 'true' && (github.event_name == 'push' || inputs.action == 'apply')
         env:
           OLD_RELEASE_ID: ${{ steps.active.outputs.release_id }}
         run: |
@@ -202,12 +219,12 @@ jobs:
           exit 1
 
       - name: Relatório (o que mudou e o que testar)
-        if: always() && steps.active.outputs.commit != ''
+        if: always() && steps.active.outputs.commit != '' && steps.pkg.outputs.release_id != ''
         env:
           ACTIVE_COMMIT: ${{ steps.active.outputs.commit }}
           OLD_RELEASE_ID: ${{ steps.active.outputs.release_id }}
           RELEASE_ID: ${{ steps.pkg.outputs.release_id }}
-          ACTION: ${{ inputs.action }}
+          ACTION: ${{ inputs.action || 'apply' }}
         run: |
           {
             echo "# Produção — $ACTION"
