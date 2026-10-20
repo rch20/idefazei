@@ -72,7 +72,15 @@ jobs:
       - name: Build
         run: pnpm build
       - name: Integridade dos bundles
-        run: pnpm bundle:check
+        run: |
+          set +e
+          pnpm bundle:check 2>&1 | tee "${RUNNER_TEMP}/bundle-check.txt"
+          rc=${PIPESTATUS[0]}
+          # Mostra os motivos nas anotações do GitHub (o log completo nem sempre é acessível).
+          grep -E '^(ERROR|WARN) ' "${RUNNER_TEMP}/bundle-check.txt" | head -20 | while IFS= read -r line; do
+            case "$line" in ERROR*) echo "::error::${line}" ;; *) echo "::warning::${line}" ;; esac
+          done
+          exit "$rc"
 
   deploy:
     name: Produção — ${{ inputs.action || 'apply' }}
