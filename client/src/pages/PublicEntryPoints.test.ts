@@ -13,6 +13,13 @@ describe("entry points públicos", () => {
     expect(landing).toContain('href="/contato"');
   });
 
+  it("não mostra o acesso do Super Admin na página de venda e orienta quem já é cliente", () => {
+    const landing = readFileSync(resolve(pagesRoot, "LandingPage.tsx"), "utf8");
+
+    expect(landing).not.toContain("/admin");
+    expect(landing).toContain("Já é cliente?");
+  });
+
   it("leva o botão Ver Demo para a demonstração pública", () => {
     const landing = readFileSync(resolve(pagesRoot, "LandingPage.tsx"), "utf8");
 

@@ -585,6 +585,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
 export default function AdminPanel() {
   const [, navigate] = useLocation();
+  // O painel do Super Admin não deve aparecer em buscadores (o servidor também envia X-Robots-Tag).
+  useEffect(() => {
+    const meta = document.createElement("meta");
+    meta.name = "robots";
+    meta.content = "noindex, nofollow, noarchive";
+    document.head.appendChild(meta);
+    return () => {
+      meta.remove();
+    };
+  }, []);
   const [token, setToken] = useState<string | null>(readAdminToken);
   const bootstrapStatus = trpc.adminAuth.bootstrapStatus.useQuery(undefined, { retry: false, staleTime: 0 });
 

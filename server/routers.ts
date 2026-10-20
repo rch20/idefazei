@@ -29,6 +29,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { ENV } from "./_core/env";
 import { normalizePlatformContactInput } from "../shared/platformContact";
+import { clientIpFromRequest, createLoginThrottle } from "./adminLoginThrottle";
 import { adminProcedure, protectedProcedure, publicProcedure, router, tenantProcedure } from "./_core/trpc";
 import { loginChurchUser, normalizeChurchLoginIdentifier, loginSuperAdmin, createChurchUser, createSuperAdmin, createInitialSuperAdmin, isInitialSuperAdminSetupAvailable } from "./auth";
 import { requestChurchPasswordReset, resetChurchPassword } from "./passwordRecovery";
@@ -478,6 +479,8 @@ import { generateReportHTML, htmlToBase64 } from "./reports";
 import { emitInternalNotification } from "./notifications";
 import { deriveSecurityAuditHoldState, SECURITY_HOLD_EVENT_TYPE } from "./security-audit-holds";
 import { leadershipStudyRouter } from "./leadershipSchoolStudyRouter";
+
+const adminLoginThrottle = createLoginThrottle();
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const birthDateInput = z
@@ -7118,13 +7121,24 @@ const adminAuthRouter = router({
       return login;
     }),
 
-  login: publicProcedure.input(z.object({ email: z.string().email(), password: z.string().min(6) })).mutation(async ({ input }) => {
+  login: publicProcedure.input(z.object({ email: z.string().email(), password: z.string().min(6) })).mutation(async ({ input, ctx }) => {
+      const ip = clientIpFromRequest(ctx.req as unknown as Parameters<typeof clientIpFromRequest>[0]);
+      const waitSeconds = adminLoginThrottle.retryAfterSeconds(ip, input.email);
+      if (waitSeconds > 0) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: `Muitas tentativas. Aguarde ${Math.ceil(waitSeconds / 60)} minuto(s) e tente novamente.`,
+        });
+      }
       const result = await loginSuperAdmin(input.email, input.password);
-    if (!result)
+    if (!result) {
+      adminLoginThrottle.recordFailure(ip, input.email);
       throw new TRPCError({
         code: "UNAUTHORIZED",
         message: "Credenciais inválidas",
       });
+    }
+      adminLoginThrottle.recordSuccess(ip, input.email);
       return result;
     }),
 

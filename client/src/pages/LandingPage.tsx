@@ -31,6 +31,7 @@ const PLANS = [
     features: ["Até 200 membros", "Funil de Discipulado", "Gestão de Células", "Módulo Ganhar Almas", "Consolidação", "Suporte por email"],
     cta: "Começar Grátis",
     highlight: false,
+    contactOnly: false,
   },
   {
     name: "Pro",
@@ -40,6 +41,7 @@ const PLANS = [
     features: ["Até 1.000 membros", "Tudo do Básico", "Mapa Geográfico", "Radar Espiritual", "Árvore de Discipulado", "Biblioteca Digital", "Notificações automáticas", "Suporte prioritário"],
     cta: "Assinar Pro",
     highlight: true,
+    contactOnly: false,
   },
   {
     name: "Enterprise",
@@ -49,6 +51,7 @@ const PLANS = [
     features: ["Membros ilimitados", "Tudo do Pro", "Multi-campus", "API personalizada", "Relatórios avançados", "Gerente de conta dedicado", "Treinamento presencial", "SLA garantido"],
     cta: "Falar com Especialista",
     highlight: false,
+    contactOnly: true,
   },
 ];
 
@@ -112,11 +115,6 @@ export default function LandingPage() {
             </nav>
 
             <div className="hidden md:flex items-center gap-3">
-              <Link href="/admin/login">
-                <Button variant="ghost" size="sm" className="text-[#1e3a5f]/70 hover:text-[#1e3a5f]">
-                  Admin
-                </Button>
-              </Link>
               <Link href="/cadastro-igreja">
                 <Button size="sm" className="bg-[#1e3a5f] hover:bg-[#162d4a] text-white">
                   Cadastrar Igreja
@@ -127,6 +125,8 @@ export default function LandingPage() {
             <button
               className="md:hidden p-2 text-[#1e3a5f]"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={mobileMenuOpen ? "Fechar menu" : "Abrir menu"}
+              aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
@@ -138,6 +138,7 @@ export default function LandingPage() {
             <a href="#recursos" className="block text-[#1e3a5f] font-medium py-2">Recursos</a>
             <a href="#planos" className="block text-[#1e3a5f] font-medium py-2">Planos</a>
             <a href="#funil" className="block text-[#1e3a5f] font-medium py-2">Funil</a>
+            <Link href="/demo" className="block text-[#1e3a5f] font-medium py-2">Demo</Link>
             <a href="#contato" className="block text-[#1e3a5f] font-medium py-2">Contato</a>
             <Link href="/cadastro-igreja">
               <Button className="w-full bg-[#1e3a5f] text-white">Cadastrar Igreja</Button>
@@ -293,17 +294,23 @@ export default function LandingPage() {
                   ))}
                 </ul>
 
-                <Link href="/cadastro-igreja">
-                  <Button
-                    className={`w-full ${
-                      plan.highlight
-                        ? "bg-[#c9a84c] hover:bg-[#b8943e] text-[#1e3a5f] font-bold"
-                        : "bg-[#1e3a5f] hover:bg-[#162d4a] text-white"
-                    }`}
-                  >
-                    {plan.cta}
-                  </Button>
-                </Link>
+                {(() => {
+                  const button = (
+                    <Button
+                      className={`w-full ${
+                        plan.highlight
+                          ? "bg-[#c9a84c] hover:bg-[#b8943e] text-[#1e3a5f] font-bold"
+                          : "bg-[#1e3a5f] hover:bg-[#162d4a] text-white"
+                      }`}
+                    >
+                      {plan.cta}
+                    </Button>
+                  );
+                  if (plan.contactOnly && whatsappLink) {
+                    return <a href={whatsappLink} target="_blank" rel="noopener noreferrer">{button}</a>;
+                  }
+                  return <Link href={plan.contactOnly ? "/contato" : "/cadastro-igreja"}>{button}</Link>;
+                })()}
               </div>
             ))}
           </div>
@@ -405,13 +412,13 @@ export default function LandingPage() {
           <div className="text-sm text-center">
             <p>© 2026 {contact.legalName || "Ide Fazei Plataforma Ministerial"}. Todos os direitos reservados.</p>
             {contact.cnpj && <p className="text-xs mt-1">CNPJ {formatCnpj(contact.cnpj)}</p>}
+            <p className="text-xs mt-1">Já é cliente? Acesse o endereço da sua igreja: <span className="text-white/70">nomedasuaigreja.idefazei.com.br</span></p>
           </div>
           <div className="flex flex-wrap justify-center gap-4 text-sm">
             {socialLinks.map(key => (
               <a key={key} href={contact.social[key]} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">{SOCIAL_LABELS[key]}</a>
             ))}
             <Link href="/contato" className="hover:text-white transition-colors">Fale conosco</Link>
-            <Link href="/admin/login" className="hover:text-white transition-colors">Admin</Link>
           </div>
         </div>
       </footer>

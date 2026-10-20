@@ -79,3 +79,24 @@ describe("adminAuth.bootstrap", () => {
     })).rejects.toMatchObject({ code: "CONFLICT" });
   });
 });
+
+describe("adminAuth.login — limite de tentativas", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("bloqueia a origem após várias senhas erradas, sem consultar o banco de novo", async () => {
+    authMocks.loginSuperAdmin.mockResolvedValue(null);
+    const caller = appRouter.createCaller({
+      user: null,
+      req: { protocol: "https", headers: { "cf-connecting-ip": "203.0.113.77" } },
+      res: {},
+    } as unknown as TrpcContext);
+
+    for (let i = 0; i < 5; i++) {
+      await expect(caller.adminAuth.login({ email: "limite@idefazei.com.br", password: "senha-errada" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    }
+    await expect(caller.adminAuth.login({ email: "limite@idefazei.com.br", password: "senha-errada" })).rejects.toMatchObject({ code: "TOO_MANY_REQUESTS" });
+    expect(authMocks.loginSuperAdmin).toHaveBeenCalledTimes(5);
+  });
+});
