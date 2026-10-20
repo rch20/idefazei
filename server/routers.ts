@@ -28,6 +28,7 @@ import { FoundationCreationPayloadMismatchError } from "./foundationCreationIdem
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { ENV } from "./_core/env";
+import { normalizePlatformContactInput } from "../shared/platformContact";
 import { adminProcedure, protectedProcedure, publicProcedure, router, tenantProcedure } from "./_core/trpc";
 import { loginChurchUser, normalizeChurchLoginIdentifier, loginSuperAdmin, createChurchUser, createSuperAdmin, createInitialSuperAdmin, isInitialSuperAdminSetupAvailable } from "./auth";
 import { requestChurchPasswordReset, resetChurchPassword } from "./passwordRecovery";
@@ -78,6 +79,8 @@ import {
   getCellMeetingByDate,
   getCellMeetingSummaries,
   getStartupDiagnostics,
+  getPlatformContact,
+  savePlatformContact,
   createCellMeetingWithAttendance,
   getActiveCellMembership,
   getPeopleWithoutActiveCell,
@@ -7148,6 +7151,17 @@ const superAdminRouter = router({
 
   pendingRegistrations: adminProcedure.query(() => getPendingRegistrations()),
 
+  contactSettings: adminProcedure.query(() => getPlatformContact()),
+
+  updateContactSettings: adminProcedure.input(z.record(z.string(), z.unknown())).mutation(async ({ input, ctx }) => {
+    const result = normalizePlatformContactInput(input);
+    if (!result.ok) {
+      throw new TRPCError({ code: "BAD_REQUEST", message: Object.values(result.errors)[0] ?? "Dados inválidos", cause: new Error(JSON.stringify(result.errors)) });
+    }
+    await savePlatformContact(result.value, ctx.user.email || ctx.user.name || "super-admin");
+    return result.value;
+  }),
+
   reviewRegistration: adminProcedure
     .input(
       z.object({
@@ -13370,6 +13384,10 @@ export const appRouter = router({
   notifications: notificationsRouter,
   securityAudit: securityAuditRouter,
   stripe: stripeRouter,
+  platform: router({
+    // Contatos exibidos na página de venda, no Fale conosco e no rodapé (públicos por natureza).
+    publicContact: publicProcedure.query(() => getPlatformContact()),
+  }),
   contact: router({
     send: publicProcedure
       .input(

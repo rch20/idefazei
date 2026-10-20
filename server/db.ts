@@ -99,6 +99,7 @@ import {
   notificationDeliveries,
   notificationEvents,
   people,
+  platformSettings,
   discipleshipStageProgress,
   discipleshipStageEvents,
   pastoralCoverages,
@@ -121,6 +122,7 @@ import {
   securityAccessAuditHoldEvents,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { parseStoredPlatformContact, type PlatformContact } from "../shared/platformContact";
 import { buildSecurityAuditHoldExpireUpdate, buildSecurityAuditHoldExpiredEvent, buildSecurityAuditHoldOpenedEvent, buildSecurityAuditHoldReleaseUpdate, buildSecurityAuditHoldReleasedEvent, buildSecurityAuditHoldReviewUpdate, buildSecurityAuditHoldReviewedEvent, buildSecurityAuditHoldInsert, decideSecurityAuditRetention, deriveSecurityAuditHoldState, type CreateSecurityAuditHoldInput, type ReleaseSecurityAuditHoldInput, type ReviewSecurityAuditHoldInput, type SecurityAuditHoldStatus } from "./security-audit-holds";
 import { insertSecurityAccessAuditLog } from "./security-audit-persistence";
 import type { SecurityAccessEvent } from "./security-access-monitoring";
@@ -6294,6 +6296,31 @@ export async function getGlobalStats() {
     totalCells: Number(cellCount?.count ?? 0),
     totalSouls: Number(soulCount?.count ?? 0),
   };
+}
+
+// ─── CONFIGURAÇÕES DA PLATAFORMA ──────────────────────────────────────────────
+
+export const PLATFORM_CONTACT_SETTING_KEY = "public_contact";
+
+/** Contatos públicos da plataforma. Sem banco ou sem tabela (migration ainda não aplicada), devolve vazio. */
+export async function getPlatformContact(): Promise<PlatformContact> {
+  const db = await getDb();
+  if (!db) return parseStoredPlatformContact(null);
+  try {
+    const [row] = await db.select({ value: platformSettings.settingValue }).from(platformSettings).where(eq(platformSettings.settingKey, PLATFORM_CONTACT_SETTING_KEY)).limit(1);
+    return parseStoredPlatformContact(row?.value);
+  } catch (error) {
+    console.error("[platform-settings] falha ao ler contatos públicos:", error instanceof Error ? error.message : error);
+    return parseStoredPlatformContact(null);
+  }
+}
+
+export async function savePlatformContact(contact: PlatformContact, updatedBy: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const value = JSON.stringify(contact);
+  await db.insert(platformSettings).values({ settingKey: PLATFORM_CONTACT_SETTING_KEY, settingValue: value, updatedBy: updatedBy.slice(0, 160) })
+    .onDuplicateKeyUpdate({ set: { settingValue: value, updatedBy: updatedBy.slice(0, 160) } });
 }
 
 // ─── VISITOR LEADS ────────────────────────────────────────────────────────────

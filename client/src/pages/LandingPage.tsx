@@ -6,8 +6,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Users, MapPin, BarChart3, Bell, BookOpen, Heart,
   ChevronRight, CheckCircle2, ArrowRight, Menu, X,
-  Layers, GitBranch, Globe, Shield, Zap, Phone
+  Layers, GitBranch, Globe, Shield, Zap, Phone, Mail, MessageCircle, Send
 } from "lucide-react";
+import { usePlatformContact } from "@/hooks/usePlatformContact";
+import { formatBrazilianPhone, formatCnpj } from "@shared/platformContact";
 
 const FUNNEL_STEPS = [
   { label: "Nova Alma", color: "#e8d5b7", icon: "✦" },
@@ -65,8 +67,12 @@ const FEATURES = [
   { icon: Phone, title: "App do Líder", desc: "Interface simplificada para líderes de célula gerenciarem sua equipe." },
 ];
 
+const SOCIAL_LABELS = { instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", tiktok: "TikTok" } as const;
+
 export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { contact, whatsappLink } = usePlatformContact();
+  const socialLinks = (Object.keys(SOCIAL_LABELS) as Array<keyof typeof SOCIAL_LABELS>).filter(key => contact.social[key]);
 
   return (
     <div className="min-h-screen bg-[#f5f0e8] font-sans">
@@ -358,14 +364,32 @@ export default function LandingPage() {
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="font-serif text-3xl font-bold text-[#1e3a5f] mb-4">Fale Conosco</h2>
           <p className="text-[#1e3a5f]/60 mb-8">Tem dúvidas? Nossa equipe está pronta para ajudar.</p>
-          <div className="flex flex-wrap justify-center gap-6 text-sm text-[#1e3a5f]/70">
-            <a href="mailto:contato@idefazei.com.br" className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
-              <span>✉</span> contato@idefazei.com.br
-            </a>
+          <div className="flex flex-wrap justify-center gap-x-8 gap-y-4 text-sm text-[#1e3a5f]/70">
+            {whatsappLink && (
+              <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
+                <MessageCircle size={14} /> WhatsApp {formatBrazilianPhone(contact.whatsapp)}
+              </a>
+            )}
+            {contact.phone && (
+              <a href={`tel:+55${contact.phone}`} className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
+                <Phone size={14} /> {formatBrazilianPhone(contact.phone)}
+              </a>
+            )}
+            {contact.email && (
+              <a href={`mailto:${contact.email}`} className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
+                <Mail size={14} /> {contact.email}
+              </a>
+            )}
+            {contact.address && (
+              <span className="flex items-center gap-2"><MapPin size={14} /> {contact.address}</span>
+            )}
             <Link href="/contato" className="flex items-center gap-2 hover:text-[#c9a84c] transition-colors">
-              <Phone size={14} /> Falar com a equipe
+              <Send size={14} /> Enviar mensagem
             </Link>
           </div>
+          {contact.businessHours && (
+            <p className="mt-6 text-xs text-[#1e3a5f]/50 whitespace-pre-line">{contact.businessHours}</p>
+          )}
         </div>
       </section>
 
@@ -378,13 +402,32 @@ export default function LandingPage() {
             </div>
             <span className="text-white font-semibold">Ide Fazei</span>
           </div>
-          <p className="text-sm">© 2026 Ide Fazei Plataforma Ministerial. Todos os direitos reservados.</p>
-          <div className="flex gap-4 text-sm">
+          <div className="text-sm text-center">
+            <p>© 2026 {contact.legalName || "Ide Fazei Plataforma Ministerial"}. Todos os direitos reservados.</p>
+            {contact.cnpj && <p className="text-xs mt-1">CNPJ {formatCnpj(contact.cnpj)}</p>}
+          </div>
+          <div className="flex flex-wrap justify-center gap-4 text-sm">
+            {socialLinks.map(key => (
+              <a key={key} href={contact.social[key]} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">{SOCIAL_LABELS[key]}</a>
+            ))}
             <Link href="/contato" className="hover:text-white transition-colors">Fale conosco</Link>
             <Link href="/admin/login" className="hover:text-white transition-colors">Admin</Link>
           </div>
         </div>
       </footer>
+
+      {whatsappLink && (
+        <a
+          href={whatsappLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Falar com a equipe pelo WhatsApp"
+          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-[#25D366] px-4 py-3 text-sm font-semibold text-white shadow-lg hover:bg-[#1ebe5b] transition-colors"
+        >
+          <MessageCircle size={20} aria-hidden="true" />
+          <span className="hidden sm:inline">Falar no WhatsApp</span>
+        </a>
+      )}
     </div>
   );
 }

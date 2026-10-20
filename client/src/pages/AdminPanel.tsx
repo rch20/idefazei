@@ -12,6 +12,7 @@ import { Loader2, Eye, EyeOff, Building2, Users, TrendingUp, Shield, CheckCircle
 import { trpc } from "@/lib/trpc";
 import { readBrowserStorage, removeBrowserStorage } from "@/lib/browserStorage";
 import { toast } from "sonner";
+import PlatformContactSettings from "@/components/PlatformContactSettings";
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 
@@ -550,16 +551,16 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 
           {/* Settings */}
           {activeTab === "settings" && (
-            <div>
+            <div className="max-w-4xl">
               <h1 className="font-serif text-2xl font-bold text-white mb-1">Configurações da Plataforma</h1>
-              <p className="text-white/40 text-sm mb-8">Configurações globais do SaaS</p>
-              <Card className="bg-white/5 border-white/10">
+              <p className="text-white/40 text-sm mb-8">Contatos e dados públicos do Ide Fazei, usados na página de venda e no Fale conosco.</p>
+              <PlatformContactSettings />
+              <Card className="bg-white/5 border-white/10 mt-6">
                 <CardContent className="pt-6">
                   <div className="space-y-4">
                     {[
                       { label: "Nome da Plataforma", value: "Ide Fazei" },
                       { label: "Domínio Principal", value: "idefazei.com.br" },
-                      { label: "Versão", value: "1.0.0" },
                     ].map((item) => (
                       <div key={item.label} className="flex items-center justify-between py-3 border-b border-white/10 last:border-0">
                         <span className="text-white/60 text-sm">{item.label}</span>

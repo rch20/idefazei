@@ -3262,3 +3262,13 @@ export type SecurityAccessAuditHoldEvent =
   typeof securityAccessAuditHoldEvents.$inferSelect;
 export type InsertSecurityAccessAuditHoldEvent =
   typeof securityAccessAuditHoldEvents.$inferInsert;
+
+// Configurações globais da plataforma (chave/valor), editadas pelo Super Admin.
+export const platformSettings = mysqlTable("platform_settings", {
+  settingKey: varchar("settingKey", { length: 64 }).primaryKey(),
+  settingValue: text("settingValue").notNull(),
+  updatedBy: varchar("updatedBy", { length: 160 }),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PlatformSetting = typeof platformSettings.$inferSelect;

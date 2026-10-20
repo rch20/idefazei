@@ -7,8 +7,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { usePlatformContact } from "@/hooks/usePlatformContact";
+import { formatBrazilianPhone } from "@shared/platformContact";
 
 export default function Contato() {
+  const { contact, whatsappLink } = usePlatformContact();
   const [submitted, setSubmitted] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", church: "", message: "" });
 
@@ -75,40 +78,34 @@ export default function Contato() {
               <h2 className="font-serif text-2xl font-bold text-[#1e3a5f] mb-6">Informações de contato</h2>
               <div className="space-y-4">
                 {[
-                  { icon: Mail, label: "Email", value: "contato@idefazei.com.br" },
-                  { icon: Phone, label: "WhatsApp", value: "(11) 99999-9999" },
-                  { icon: MapPin, label: "Localização", value: "São Paulo, SP — Brasil" },
-                ].map(({ icon: Icon, label, value }) => (
+                  { icon: Mail, label: "Email", value: contact.email, href: contact.email ? `mailto:${contact.email}` : null },
+                  { icon: Phone, label: "WhatsApp", value: contact.whatsapp ? formatBrazilianPhone(contact.whatsapp) : null, href: whatsappLink },
+                  { icon: Phone, label: "Telefone", value: contact.phone ? formatBrazilianPhone(contact.phone) : null, href: contact.phone ? `tel:+55${contact.phone}` : null },
+                  { icon: MapPin, label: "Localização", value: contact.address, href: null },
+                ].filter(item => item.value).map(({ icon: Icon, label, value, href }) => (
                   <div key={label} className="flex items-center gap-4">
                     <div className="w-10 h-10 rounded-xl bg-[#1e3a5f]/10 flex items-center justify-center shrink-0">
                       <Icon className="w-5 h-5 text-[#1e3a5f]" />
                     </div>
                     <div>
                       <div className="text-xs text-[#1e3a5f]/40 uppercase tracking-wider">{label}</div>
-                      <div className="text-[#1e3a5f] font-medium">{value}</div>
+                      {href ? (
+                        <a href={href} target={href.startsWith("http") ? "_blank" : undefined} rel="noopener noreferrer" className="text-[#1e3a5f] font-medium hover:text-[#c9a84c]">{value}</a>
+                      ) : (
+                        <div className="text-[#1e3a5f] font-medium">{value}</div>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="bg-white rounded-2xl p-6 border border-[#1e3a5f]/10">
-              <h3 className="font-serif font-bold text-[#1e3a5f] mb-3">Horário de atendimento</h3>
-              <div className="space-y-2 text-sm text-[#1e3a5f]/60">
-                <div className="flex justify-between">
-                  <span>Segunda a Sexta</span>
-                  <span className="font-medium text-[#1e3a5f]">8h às 18h</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Sábado</span>
-                  <span className="font-medium text-[#1e3a5f]">9h às 13h</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Domingo</span>
-                  <span className="text-[#1e3a5f]/30">Fechado</span>
-                </div>
+            {contact.businessHours && (
+              <div className="bg-white rounded-2xl p-6 border border-[#1e3a5f]/10">
+                <h3 className="font-serif font-bold text-[#1e3a5f] mb-3">Horário de atendimento</h3>
+                <div className="space-y-2 text-sm text-[#1e3a5f]/70 whitespace-pre-line">{contact.businessHours}</div>
               </div>
-            </div>
+            )}
 
             <div className="bg-[#1e3a5f] rounded-2xl p-6 text-white">
               <h3 className="font-serif font-bold text-lg mb-2">Pronto para começar?</h3>
