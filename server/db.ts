@@ -2237,7 +2237,7 @@ export async function backfillFormationFromRecords(churchId: number, actorChurch
     .orderBy(asc(courseEnrollments.id));
   const lastByPerson = new Map<number, (typeof finishedCourses)[number]>();
   for (const row of finishedCourses) lastByPerson.set(row.personId, row);
-  for (const [personId, row] of lastByPerson) {
+  for (const [personId, row] of Array.from(lastByPerson.entries())) {
     if (!(await hasFinishedAllFoundationCourses(churchId, personId))) continue;
     count(await recordAutomaticStageCompletion({ churchId, personId, stage: "fundamentos", sourceRef: `curso:${row.id}`, actorChurchUserId, note, completedAt: row.completedAt ?? undefined }), "fundamentos");
   }

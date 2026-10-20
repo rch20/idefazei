@@ -1381,7 +1381,7 @@ export default function Pessoas() {
                                 >
                                   {status === "concluida" ? "Marcar pendente" : "Concluir etapa"}
                                 </Button>
-                                {status !== "concluida" && stage !== "nova_alma" && stage !== "celula" && <Button
+                                {status !== "concluida" && stage !== "nova_alma" && <Button
                                   type="button"
                                   size="sm"
                                   variant="outline"
