@@ -72,6 +72,8 @@ describe("Área do Membro — contato e login", () => {
     expect(fn).toContain("eq(cells.churchId, churchId)");
     expect(fn).toContain("eq(ministries.churchId, churchId)");
     expect(fn).toContain("eq(courses.churchId, churchId)");
+    expect(fn).toContain("eq(scheduleItems.personId, personId)");
+    expect(fn).toContain("eq(scheduleItems.churchId, churchId)");
     expect(fn).not.toContain("address");
     expect(fn).not.toContain("hostId");
   });

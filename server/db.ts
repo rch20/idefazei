@@ -6056,9 +6056,10 @@ export async function getPrayerRequestsByChurch(churchId: number) {
  */
 export async function getMemberJourneyOverview(churchId: number, personId: number) {
   const db = await getDb();
-  if (!db) return { cells: [], ministries: [], courses: [] };
+  if (!db) return { cells: [], ministries: [], courses: [], schedules: [] };
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
   const leader = alias(people, "journey_leader");
-  const [memberCells, memberMinistries, memberCourses] = await Promise.all([
+  const [memberCells, memberMinistries, memberCourses, memberSchedules] = await Promise.all([
     db
       .select({
         id: cells.id,
@@ -6086,8 +6087,28 @@ export async function getMemberJourneyOverview(churchId: number, personId: numbe
       .where(and(eq(courseEnrollments.personId, personId), eq(courses.churchId, churchId), eq(courses.active, true)))
       .orderBy(desc(courseEnrollments.enrolledAt))
       .limit(10),
+    db
+      .select({
+        id: scheduleItems.id,
+        date: sql<string>`DATE_FORMAT(${scheduleItems.scheduledDate}, '%Y-%m-%d')`,
+        startTime: scheduleItems.startTime,
+        role: scheduleItems.role,
+        confirmed: scheduleItems.confirmed,
+        ministryName: ministries.name,
+      })
+      .from(scheduleItems)
+      .innerJoin(ministries, eq(ministries.id, scheduleItems.ministryId))
+      .where(and(
+        eq(scheduleItems.personId, personId),
+        eq(scheduleItems.churchId, churchId),
+        eq(ministries.churchId, churchId),
+        eq(scheduleItems.status, "agendada"),
+        sql`${scheduleItems.scheduledDate} >= ${today}`,
+      ))
+      .orderBy(asc(scheduleItems.scheduledDate), asc(scheduleItems.startTime))
+      .limit(5),
   ]);
-  return { cells: memberCells, ministries: memberMinistries, courses: memberCourses };
+  return { cells: memberCells, ministries: memberMinistries, courses: memberCourses, schedules: memberSchedules };
 }
 
 export async function getPrayerRequestsByPerson(churchId: number, personId: number) {

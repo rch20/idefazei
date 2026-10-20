@@ -1981,7 +1981,7 @@ const peopleRouter = router({
         });
       }
       const actor = await requireChurchMember(ctx.user.id, input.churchId);
-      if (!actor.personId) return { cells: [], ministries: [], courses: [] };
+      if (!actor.personId) return { cells: [], ministries: [], courses: [], schedules: [] };
       return getMemberJourneyOverview(input.churchId, actor.personId);
     }),
 

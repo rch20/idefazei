@@ -281,7 +281,7 @@ export default function AreaMembro() {
             ) : journeyQuery.isError || !journey ? (
               <p className="text-xs text-[#1e3a5f]/55">Não foi possível carregar sua célula, ministérios e cursos agora.</p>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1e3a5f]/45">Célula</p>
                   {journey.cells.length === 0 ? (
@@ -304,6 +304,21 @@ export default function AreaMembro() {
                     <ul className="mt-1 space-y-1">
                       {journey.ministries.map((ministry) => (
                         <li key={ministry.id} className="text-sm font-semibold text-[#1e3a5f]">{ministry.name}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-[#1e3a5f]/45">Minhas escalas</p>
+                  {journey.schedules.length === 0 ? (
+                    <p className="mt-1 text-sm text-[#1e3a5f]/60">Nenhuma escala marcada para você.</p>
+                  ) : (
+                    <ul className="mt-1 space-y-1">
+                      {journey.schedules.map((item) => (
+                        <li key={item.id} className="text-sm text-[#1e3a5f]">
+                          <span className="font-semibold">{item.date.split("-").reverse().slice(0, 2).join("/")}{item.startTime ? ` às ${item.startTime}` : ""}</span>
+                          <span className="block text-xs text-[#1e3a5f]/60">{item.ministryName}{item.role ? ` · ${item.role}` : ""}</span>
+                        </li>
                       ))}
                     </ul>
                   )}
