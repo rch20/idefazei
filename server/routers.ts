@@ -3953,7 +3953,7 @@ const careRouter = router({
         responsiblePersonId: z.number(),
         role: z.enum(["quem_ganhou", "consolidador", "lider_celula", "discipulador", "pastor"]),
         notes: z.string().max(1000).optional(),
-        releaseAccess: z.boolean().default(true),
+        releaseAccess: z.boolean().default(false),
       })
     )
     .mutation(async ({ input, ctx }) => {

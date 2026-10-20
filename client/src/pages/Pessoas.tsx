@@ -262,7 +262,7 @@ export default function Pessoas() {
   const birthdayMonth = currentCivilParts?.month ?? currentDate.getMonth() + 1;
   const birthdayDay = currentCivilParts?.day ?? currentDate.getDate();
   const [birthdayMonthFilter, setBirthdayMonthFilter] = useState(birthdayMonth);
-  const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true });
+  const [careForm, setCareForm] = useState({ responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: false });
   const [selectedCellId, setSelectedCellId] = useState("");
   const [referralForm, setReferralForm] = useState({ reason: "", notes: "", preferredConsolidatorId: "", idempotencyKey: createIdempotencyKey() });
   const [coverageForm, setCoverageForm] = useState(defaultCoverageForm);
@@ -820,7 +820,7 @@ export default function Pessoas() {
 
   function cancelPrimaryDisciplerForm() {
     if (!selectedPerson?.id) return;
-    setCareForm((current) => ({ ...current, responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: true }));
+    setCareForm((current) => ({ ...current, responsiblePersonId: "", role: "consolidador", notes: "", releaseAccess: false }));
     const nextLocation = getPersonHref(selectedPerson.id, "cuidado");
     if (location !== nextLocation) navigate(nextLocation);
   }
@@ -830,7 +830,7 @@ export default function Pessoas() {
     setPersonSection(section);
     setJourneyNoteStage(null);
     setJourneyNote("");
-    setCareForm({ responsiblePersonId: "", role: careFocus === "discipulador" ? "discipulador" : "consolidador", notes: "", releaseAccess: careFocus !== "discipulador" });
+    setCareForm({ responsiblePersonId: "", role: careFocus === "discipulador" ? "discipulador" : "consolidador", notes: "", releaseAccess: false });
     setSelectedCellId("");
     setReferralForm({ reason: "", notes: "", preferredConsolidatorId: "", idempotencyKey: createIdempotencyKey() });
     setCoverageForm(defaultCoverageForm);
@@ -1834,7 +1834,7 @@ export default function Pessoas() {
               />
               <span>
                 <span className="block font-medium text-navy">Liberar acesso ao login após salvar</span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">A conta pendente desta Pessoa será aprovada e ativada. Desmarque para apenas registrar o responsável.</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Marque só se quiser aprovar agora a conta pendente desta Pessoa. Por padrão, apenas registra o responsável.</span>
               </span>
             </label>
             <div className="mt-3">
