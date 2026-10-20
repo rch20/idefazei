@@ -255,6 +255,10 @@ import {
   getPrayerRequestsByChurch,
   confirmOwnScheduleItem,
   getMemberJourneyOverview,
+  getBaptismEnrollmentById,
+  getPersonFormationRecords,
+  hasFinishedAllFoundationCourses,
+  recordAutomaticStageCompletion,
   getSystemNotificationPreferences,
   setSystemNotificationPreference,
   getPrayerRequestsByPerson,
@@ -2070,6 +2074,13 @@ const peopleRouter = router({
         progress,
         events,
       };
+    }),
+
+  formationRecords: protectedProcedure
+    .input(z.object({ id: z.number().int().positive(), churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireJourneyReadPermission(ctx.user.id, input.churchId, input.id);
+      return getPersonFormationRecords(input.churchId, input.id);
     }),
 
   consolidationHistory: protectedProcedure
@@ -9309,10 +9320,29 @@ const escolaFundamentosRouter = router({
           message: "Matrícula não encontrada nesta igreja.",
         });
       }
+      const courseEnrollment = await getCourseEnrollmentById(input.id, input.churchId);
       await updateCourseEnrollment(input.id, {
         status: input.status,
         completedAt: input.completedAt,
       });
+      if (input.status === "concluido" && courseEnrollment) {
+        try {
+          const actor = await requireChurchMember(ctx.user.id, input.churchId);
+          const personId = courseEnrollment.enrollment.personId;
+          if (await hasFinishedAllFoundationCourses(input.churchId, personId)) {
+            await recordAutomaticStageCompletion({
+              churchId: input.churchId,
+              personId,
+              stage: "fundamentos",
+              sourceRef: `curso:${input.id}`,
+              actorChurchUserId: actor.id,
+              note: "Preenchido automaticamente: todos os cursos da Escola de Fundamentos foram concluídos.",
+            });
+          }
+        } catch (error) {
+          console.error("[prontuario] Falha ao registrar Fundamentos automaticamente:", error);
+        }
+      }
       return { success: true };
     }),
 });
@@ -9339,7 +9369,7 @@ const batismoRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
       await createBaptismClass(input);
       return { success: true };
     }),
@@ -9372,11 +9402,28 @@ const batismoRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      await requireChurchMember(ctx.user.id, input.churchId);
+      const actor = await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const baptismEnrollment = await getBaptismEnrollmentById(input.id, input.churchId);
+      if (!baptismEnrollment) throw new TRPCError({ code: "NOT_FOUND", message: "Matrícula de batismo não encontrada nesta igreja." });
       await updateBaptismEnrollment(input.id, input.churchId, {
         status: input.status,
         completedAt: input.completedAt,
       });
+      if (input.status === "concluiu") {
+        try {
+          await recordAutomaticStageCompletion({
+            churchId: input.churchId,
+            personId: baptismEnrollment.personId,
+            stage: "batismo",
+            sourceRef: `batismo:${input.id}`,
+            actorChurchUserId: actor.id,
+            note: "Preenchido automaticamente: turma de batismo concluída.",
+            completedAt: input.completedAt ?? undefined,
+          });
+        } catch (error) {
+          console.error("[prontuario] Falha ao registrar Batismo automaticamente:", error);
+        }
+      }
       return { success: true };
     }),
 });
@@ -9625,6 +9672,21 @@ const encontroRouter = router({
         status: input.status,
         notes: input.notes,
       });
+      if (input.status === "concluiu") {
+        try {
+          const actor = await requireChurchMember(ctx.user.id, input.churchId);
+          await recordAutomaticStageCompletion({
+            churchId: input.churchId,
+            personId: enrollment.personId,
+            stage: "encontro_com_deus",
+            sourceRef: `encontro:${input.id}`,
+            actorChurchUserId: actor.id,
+            note: "Preenchido automaticamente: Encontro com Deus concluído.",
+          });
+        } catch (error) {
+          console.error("[prontuario] Falha ao registrar Encontro com Deus automaticamente:", error);
+        }
+      }
       return { success: true };
     }),
   reviewDiscipleForm: protectedProcedure

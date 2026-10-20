@@ -186,6 +186,12 @@
       "file": "drizzle/0101_notification_schedule_confirmed.sql",
       "kind": "custom-additive",
       "sha256": "67a3eeae8bccb03bbc8f152f8f4944de3f75162ebb36a8a38901fb3870ca9251"
+    },
+    {
+      "id": "0102",
+      "file": "drizzle/0102_stage_progress_source.sql",
+      "kind": "custom-additive",
+      "sha256": "3a9f42e79b6cef54cc97925e6007e905e3f2ab24d2f05cbff3f47ca1b5554ba1"
     }
   ]
 }

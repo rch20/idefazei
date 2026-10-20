@@ -361,6 +361,10 @@ export default function Pessoas() {
     { churchId, id: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id) }
   );
+  const formationRecordsQuery = trpc.people.formationRecords.useQuery(
+    { churchId, id: selectedPerson?.id ?? 0 },
+    { enabled: Boolean(selectedPerson?.id) }
+  );
   const consolidationHistoryQuery = trpc.people.consolidationHistory.useQuery(
     { churchId, id: selectedPerson?.id ?? 0 },
     { enabled: Boolean(selectedPerson?.id && canManageJourney) }
@@ -1340,6 +1344,8 @@ export default function Pessoas() {
                               </div>
                               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                                 <span className="font-semibold text-foreground/80">{statusLabel}</span>
+                                {status === "concluida" && progress?.source === "automatico" && <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-[10px] text-emerald-800">Registrado automaticamente</Badge>}
+                                {status === "concluida" && progress?.source === "outra_igreja" && <Badge variant="outline" className="border-sky-300 bg-sky-50 text-[10px] text-sky-800">Veio de outra igreja</Badge>}
                                 {progress?.notes && <span className="text-muted-foreground">{progress.notes}</span>}
                               </div>
                               <p className="mt-2 max-w-2xl text-xs leading-relaxed text-muted-foreground">{JOURNEY_STAGE_DESCRIPTIONS[stage]}</p>
@@ -1420,6 +1426,36 @@ export default function Pessoas() {
                 </>
               )}
               {!canManageJourney && <p className="mt-3 text-xs text-muted-foreground">Você pode consultar este percurso de formação, mas a atualização é feita pela liderança responsável.</p>}
+              <div className="mt-6 rounded-2xl border border-border p-4" aria-label="Cursos e eventos">
+                <h4 className="text-sm font-semibold text-navy">Cursos e eventos</h4>
+                <p className="mt-1 text-xs text-muted-foreground">Matrículas e participações registradas pelos módulos da igreja. Ao concluir batismo, Encontro com Deus ou todos os cursos de Fundamentos, a etapa correspondente é preenchida sozinha.</p>
+                {formationRecordsQuery.isLoading ? (
+                  <p className="mt-3 text-xs text-muted-foreground">Carregando…</p>
+                ) : formationRecordsQuery.isError || !formationRecordsQuery.data ? (
+                  <p className="mt-3 text-xs text-rose-700">Não foi possível carregar cursos e eventos desta pessoa.</p>
+                ) : (() => {
+                  const records = formationRecordsQuery.data;
+                  const rows = [
+                    ...records.courses.map((item) => ({ key: `curso-${item.id}`, kind: "Curso", name: item.name, done: item.status === "concluido", label: item.status === "concluido" ? "Concluído" : item.status === "em_andamento" ? "Em andamento" : "Matriculado", completedAt: item.completedAt })),
+                    ...records.baptisms.map((item) => ({ key: `batismo-${item.id}`, kind: "Batismo", name: item.name, done: item.status === "concluiu", label: item.status === "concluiu" ? "Concluído" : item.status === "cancelado" ? "Cancelado" : item.status === "participou" ? "Participou" : "Inscrito", completedAt: item.completedAt })),
+                    ...records.encounters.map((item) => ({ key: `encontro-${item.id}`, kind: "Encontro", name: item.name, done: item.status === "concluiu", label: item.status === "concluiu" ? "Concluído" : item.status === "cancelado" ? "Cancelado" : item.status === "participou" ? "Participou" : item.status === "confirmado" ? "Confirmado" : "Inscrito", completedAt: item.completedAt })),
+                  ];
+                  if (rows.length === 0) return <p className="mt-3 text-xs text-muted-foreground">Nenhuma matrícula ou participação registrada ainda.</p>;
+                  return (
+                    <ul className="mt-3 divide-y divide-border">
+                      {rows.map((row) => (
+                        <li key={row.key} className="flex items-center justify-between gap-3 py-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-navy">{row.name}</p>
+                            <p className="text-[11px] text-muted-foreground">{row.kind}{row.completedAt ? ` · ${new Date(row.completedAt).toLocaleDateString("pt-BR")}` : ""}</p>
+                          </div>
+                          <Badge variant="outline" className={`shrink-0 text-[10px] ${row.done ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-border text-muted-foreground"}`}>{row.label}</Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                })()}
+              </div>
             </section>
           )}
 

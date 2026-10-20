@@ -348,6 +348,10 @@ export const discipleshipStageProgress = mysqlTable("discipleship_stage_progress
     /** Indica uma frente paralela atualmente ativa, sem substituir a etapa principal em people.discipleshipStage. */
     isCurrent: boolean("isCurrent").notNull().default(false),
     notes: text("notes"),
+  /** Origem do registro: lançado à mão, preenchido por curso/batismo/encontro concluído, ou vindo de outra igreja. */
+  source: mysqlEnum("source", ["manual", "automatico", "outra_igreja"]).notNull().default("manual"),
+  /** Referência legível ao registro de origem, ex.: "batismo:12". */
+  sourceRef: varchar("sourceRef", { length: 80 }),
   completedAt: timestamp("completedAt"),
   updatedByChurchUserId: int("updatedByChurchUserId"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

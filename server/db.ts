@@ -2034,6 +2034,8 @@ export async function upsertDiscipleshipStageProgress(input: { churchId: number;
       notes: input.notes?.trim() || null,
       completedAt,
       updatedByChurchUserId: input.updatedByChurchUserId,
+      source: "manual" as const,
+      sourceRef: null,
     };
 
     let state: {
@@ -2090,6 +2092,113 @@ export async function upsertDiscipleshipStageProgress(input: { churchId: number;
     }
     return { ...state, eventId };
   });
+}
+
+type JourneyStageKey = "nova_alma" | "consolidacao" | "fundamentos" | "celula" | "batismo" | "encontro_com_deus" | "escola_de_lideres" | "lideranca" | "multiplicador";
+
+/**
+ * Preenche o prontuário a partir de um registro concluído (curso, batismo, encontro).
+ * Nunca sobrescreve uma etapa já concluída (inclusive as lançadas à mão ou vindas de outra igreja).
+ */
+export async function recordAutomaticStageCompletion(input: { churchId: number; personId: number; stage: JourneyStageKey; sourceRef: string; actorChurchUserId: number; note: string; completedAt?: Date }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const completedAt = input.completedAt ?? new Date();
+  return db.transaction(async tx => {
+    const personRows = await tx
+      .select({ id: people.id, baptismDate: people.baptismDate })
+      .from(people)
+      .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)))
+      .limit(1)
+      .for("update");
+    if (!personRows[0]) return { changed: false as const, reason: "pessoa_nao_encontrada" as const };
+    const existing = await tx
+      .select({ id: discipleshipStageProgress.id, status: discipleshipStageProgress.status, isCurrent: discipleshipStageProgress.isCurrent })
+      .from(discipleshipStageProgress)
+      .where(and(eq(discipleshipStageProgress.churchId, input.churchId), eq(discipleshipStageProgress.personId, input.personId), eq(discipleshipStageProgress.stage, input.stage)))
+      .limit(1)
+      .for("update");
+    if (existing[0]?.status === "concluida") return { changed: false as const, reason: "ja_concluida" as const };
+    const data = {
+      status: "concluida" as const,
+      isCurrent: false,
+      notes: input.note,
+      completedAt,
+      updatedByChurchUserId: input.actorChurchUserId,
+      source: "automatico" as const,
+      sourceRef: input.sourceRef,
+    };
+    if (existing[0]) {
+      await tx.update(discipleshipStageProgress).set(data).where(eq(discipleshipStageProgress.id, existing[0].id));
+    } else {
+      await tx.insert(discipleshipStageProgress).values({ churchId: input.churchId, personId: input.personId, stage: input.stage, ...data });
+    }
+    await tx.insert(discipleshipStageEvents).values({
+      churchId: input.churchId,
+      personId: input.personId,
+      stage: input.stage,
+      status: "concluida",
+      notes: input.note,
+      changedByChurchUserId: input.actorChurchUserId,
+    });
+    if (input.stage === "batismo" && !personRows[0].baptismDate) {
+      await tx.update(people).set({ baptismDate: completedAt }).where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)));
+    }
+    return { changed: true as const };
+  });
+}
+
+/** Pessoa terminou todos os cursos da Escola de Fundamentos em que estava matriculada (e concluiu ao menos um). */
+export async function hasFinishedAllFoundationCourses(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  const rows = await db
+    .select({ status: courseEnrollments.status })
+    .from(courseEnrollments)
+    .innerJoin(courses, eq(courses.id, courseEnrollments.courseId))
+    .where(and(eq(courseEnrollments.personId, personId), eq(courses.churchId, churchId), eq(courses.active, true)));
+  return rows.some(row => row.status === "concluido") && rows.every(row => row.status === "concluido");
+}
+
+export async function getBaptismEnrollmentById(id: number, churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(baptismEnrollments)
+    .where(and(eq(baptismEnrollments.id, id), eq(baptismEnrollments.churchId, churchId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Cursos, batismo e encontros de uma Pessoa, lidos direto dos registros de origem. */
+export async function getPersonFormationRecords(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return { courses: [], baptisms: [], encounters: [] };
+  const [courseRows, baptismRows, encounterRows] = await Promise.all([
+    db
+      .select({ id: courseEnrollments.id, name: courses.name, status: courseEnrollments.status, completedAt: courseEnrollments.completedAt })
+      .from(courseEnrollments)
+      .innerJoin(courses, eq(courses.id, courseEnrollments.courseId))
+      .where(and(eq(courseEnrollments.personId, personId), eq(courses.churchId, churchId)))
+      .orderBy(desc(courseEnrollments.enrolledAt))
+      .limit(30),
+    db
+      .select({ id: baptismEnrollments.id, name: baptismClasses.name, status: baptismEnrollments.status, completedAt: baptismEnrollments.completedAt })
+      .from(baptismEnrollments)
+      .innerJoin(baptismClasses, eq(baptismClasses.id, baptismEnrollments.baptismClassId))
+      .where(and(eq(baptismEnrollments.personId, personId), eq(baptismEnrollments.churchId, churchId), eq(baptismClasses.churchId, churchId)))
+      .orderBy(desc(baptismEnrollments.enrolledAt))
+      .limit(10),
+    db
+      .select({ id: encounterEnrollments.id, name: encounterEvents.name, status: encounterEnrollments.status, completedAt: encounterEnrollments.completedAt })
+      .from(encounterEnrollments)
+      .innerJoin(encounterEvents, and(eq(encounterEvents.id, encounterEnrollments.encounterEventId), eq(encounterEvents.churchId, encounterEnrollments.churchId)))
+      .where(and(eq(encounterEnrollments.personId, personId), eq(encounterEnrollments.churchId, churchId)))
+      .orderBy(desc(encounterEnrollments.id))
+      .limit(10),
+  ]);
+  return { courses: courseRows, baptisms: baptismRows, encounters: encounterRows };
 }
 
 export async function setParallelJourneyStage(input: { churchId: number; personId: number; stage: "nova_alma" | "consolidacao" | "fundamentos" | "celula" | "batismo" | "encontro_com_deus" | "escola_de_lideres" | "lideranca" | "multiplicador"; isCurrent: boolean; updatedByChurchUserId: number }) {
