@@ -15,9 +15,9 @@ describe("confirmação de logout no painel", () => {
 
   it("implementa acordeão de grupos na sidebar para compactar a navegação", () => {
     const source = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
-    expect(source).toContain("const [expandedGroup, setExpandedGroup] = useState");
-    expect(source).toContain("expandedGroup === group.key");
-    expect(source).toContain("setExpandedGroup((current) => current === group.key ? null : group.key)");
+    expect(source).toContain("const [expandedGroups, setExpandedGroups] = useState");
+    expect(source).toContain("expandedGroups.includes(group.key)");
+    expect(source).toContain("current.filter((key) => key !== group.key)");
     expect(source).toContain('aria-expanded={isExpanded}');
   });
 
@@ -92,9 +92,9 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain('label: "Pedido de oração", mobileLabel: "Oração", path: "/app/oracao"');
     expect(source).toContain('label: "Nova alma", mobileLabel: "Nova alma", path: "/app/almas"');
     expect(source).toContain('label: "Eventos", mobileLabel: "Eventos", path: "/app/eventos", accessKey: "isExecutive"');
-    expect(source).toContain('label: "Painel do discípulo", mobileLabel: "Meu painel", path: "/app/membro"');
+    expect(source).toContain('label: "Meu painel", mobileLabel: "Meu painel", path: "/app/membro"');
     expect(source).toContain('...quickAccessItems.filter((item) => item.path !== "/app/membro")');
-    expect(source).toContain('{ icon: UserRound, label: "Área do Membro", path: "/app/membro", group: "membros" }');
+    expect(source).toContain('{ icon: UserRound, label: "Meu painel", path: "/app/membro", group: "membros" }');
     expect(source).toContain('aria-label="Acesso rápido"');
     expect(source).toContain('aria-label="Acesso rápido móvel"');
     expect(source).toContain('aria-label="Mais opções"');

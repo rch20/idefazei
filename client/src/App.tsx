@@ -38,7 +38,6 @@ const EstudosCelulas = lazy(() => import("./pages/EstudosCelulas"));
 const Eventos = lazy(() => import("./pages/Eventos"));
 const Oracao = lazy(() => import("./pages/Oracao"));
 const Mural = lazy(() => import("./pages/Mural"));
-const Placeholder = lazy(() => import("./pages/Placeholder"));
 const Familias = lazy(() => import("./pages/Familias"));
 const Ministerios = lazy(() => import("./pages/Ministerios"));
 const EstruturaOrganizacional = lazy(() => import("./pages/EstruturaOrganizacional"));
@@ -188,9 +187,7 @@ function Router() {
       </Route>
 
       <Route path="/app/arvore">
-        <AppPage title="Árvore de Discipulado" requiredAccess="isExecutive">
-          <Placeholder title="Árvore de Discipulado" description="Genealogia espiritual visual da sua igreja" />
-        </AppPage>
+        <Redirect to="/app/dashboard" />
       </Route>
 
       {/* ── App — Ciclo de Discipulado ── */}

@@ -43,7 +43,6 @@ import {
   Shield,
   Sparkles,
   Star,
-  TreePine,
   UserRound,
   Users,
   UsersRound,
@@ -120,7 +119,6 @@ const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: "Visão geral", path: "/app/dashboard", group: "principal", accessKey: "isExecutive" },
   { icon: Heart, label: "Cuidado", path: "/app/cuidado", group: "principal", accessKey: "isPastoralWorker" },
   { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "principal", accessKey: "isExecutive" },
-  { icon: TreePine, label: "Árvore de Discipulado", path: "/app/arvore", group: "principal", accessKey: "isExecutive" },
   { icon: Flame, label: "Novas Almas", path: "/app/almas", group: "discipulado" },
   { icon: HeartHandshake, label: "Consolidação", path: "/app/consolidacao", group: "discipulado", accessKey: "canAccessVisits" },
   { icon: Route, label: "Acompanhamento", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
@@ -146,8 +144,8 @@ const navItems: NavItem[] = [
   { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin", accessKey: "canManageChurch", underConstruction: true },
   { icon: WalletCards, label: "Tesouraria", path: "/app/tesouraria", group: "admin", accessKey: "canAccessTreasury" },
   { icon: CreditCard, label: "Faturamento", path: "/app/faturamento", group: "admin", accessKey: "canManageChurch", underConstruction: true },
-  { icon: UserRound, label: "Área do Membro", path: "/app/membro", group: "membros" },
-  { icon: Star, label: "App do Líder", path: "/app/lider", group: "membros", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"] },
+  { icon: UserRound, label: "Meu painel", path: "/app/membro", group: "membros" },
+  { icon: Star, label: "Minha equipe", path: "/app/lider", group: "membros", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"] },
 ];
 
 type QuickAccessItem = { icon: typeof Home; label: string; mobileLabel: string; path: string; accessKey?: keyof ChurchAccessSummary };
@@ -156,7 +154,7 @@ const quickAccessItems: QuickAccessItem[] = [
   { icon: MessageCircle, label: "Pedido de oração", mobileLabel: "Oração", path: "/app/oracao" },
   { icon: Flame, label: "Nova alma", mobileLabel: "Nova alma", path: "/app/almas" },
   { icon: CalendarDays, label: "Eventos", mobileLabel: "Eventos", path: "/app/eventos", accessKey: "isExecutive" },
-  { icon: Users, label: "Painel do discípulo", mobileLabel: "Meu painel", path: "/app/membro" },
+  { icon: Users, label: "Meu painel", mobileLabel: "Meu painel", path: "/app/membro" },
 ];
 
 // O catálogo desktop permanece completo. No mobile, Início é a âncora permanente;
@@ -182,7 +180,7 @@ const groups = [
   { key: "membros", label: "Discípulos" },
   { key: "celulas", label: "Células" },
   { key: "ministerio", label: "Atuação" },
-  { key: "lideranca", label: "Formação e liderança" },
+  { key: "lideranca", label: "Liderança" },
   { key: "comunicacao", label: "Comunicação" },
   { key: "admin", label: "Igreja" },
 ];
@@ -263,7 +261,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { churchName, logoUrl, accessSummary } = useChurch();
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [expandedGroup, setExpandedGroup] = useState<string | null>("principal");
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(["principal", "membros"]);
   const currentRole = user?.role ?? "membro";
   const effectiveRoles = Array.from(new Set([currentRole, ...(accessSummary?.roles ?? [])]));
   const isPastoralAdmin = Boolean(accessSummary?.canManageChurch || ["pastor_presidente", "pastor_local"].includes(currentRole));
@@ -273,7 +271,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
   useEffect(() => {
     const activeGroup = groups.find((group) => navItems.some((item) => item.group === group.key && (location === item.path || location.startsWith(item.path + "/"))));
-    if (activeGroup) setExpandedGroup(activeGroup.key);
+    if (activeGroup) setExpandedGroups((current) => current.includes(activeGroup.key) ? current : [...current, activeGroup.key]);
   }, [location]);
   const canReviewRegistrations = Boolean(accessSummary?.canManageChurch);
   const pendingRegistrationsQuery = trpc.churchAuth.pendingRegistrations.useQuery(
@@ -329,7 +327,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
           {groups.map((group) => {
             const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))) && (!i.accessKey || Boolean(accessSummary?.[i.accessKey])) && (!i.requiresEncounterAccess || encounterAccessQuery.data === true));
             if (!items.length) return null;
-            const isExpanded = expandedGroup === group.key;
+            const isExpanded = expandedGroups.includes(group.key);
             const contextualGroupLabel = group.key === "membros"
               ? (isPastoralAdmin ? "Pessoas" : "Minha área")
               : group.label;
@@ -338,7 +336,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
                 <button
                   type="button"
                   className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-white/45 transition-colors hover:bg-white/5 hover:text-white/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
-                  onClick={() => setExpandedGroup((current) => current === group.key ? null : group.key)}
+                  onClick={() => setExpandedGroups((current) => current.includes(group.key) ? current.filter((key) => key !== group.key) : [...current, group.key])}
                   aria-expanded={isExpanded}
                   aria-controls={`sidebar-group-${group.key}`}
                 >
@@ -358,7 +356,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
                             : item.path === "/app/escalas"
                               ? (isPastoralAdmin ? "Escalas" : "Minhas Escalas")
                               : item.path === "/app/lider"
-                                ? (isPastoralAdmin ? "App do Líder" : "Meu painel")
+                                ? "Minha equipe"
                                 : item.label;
                       return (
                         <button
