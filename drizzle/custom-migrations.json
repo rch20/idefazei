@@ -168,6 +168,12 @@
       "file": "drizzle/0098_leadership_school_study_structure.sql",
       "sha256": "89735d140e7a97cd56da59deaa795e0fae38ce27197127d8d44270368a116a26",
       "kind": "custom-additive"
+    },
+    {
+      "id": "0099",
+      "file": "drizzle/0099_pipeline_probe.sql",
+      "kind": "custom-additive",
+      "sha256": "628ab2f565c09dc4e6aa885bffcb2e5e37c2bdf61adec207ef210efb454263de"
     }
   ]
 }
