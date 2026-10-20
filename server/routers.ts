@@ -1,4 +1,5 @@
 import { COOKIE_NAME } from "@shared/const";
+import { NOTIFICATION_EVENT_CATALOG, NOTIFICATION_EVENT_TYPES } from "../shared/notificationPreferences";
 import { randomBytes } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -254,6 +255,8 @@ import {
   getPrayerRequestsByChurch,
   confirmOwnScheduleItem,
   getMemberJourneyOverview,
+  getSystemNotificationPreferences,
+  setSystemNotificationPreference,
   getPrayerRequestsByPerson,
   getOperationalCareHistoryByPerson,
   getCurrentOperationalCareAssignment,
@@ -12901,7 +12904,30 @@ const treasuryRouter = router({
 
 // ─── NOTIFICAÇÕES ──────────────────────────────────────────────────────────────
 
+async function requireNotificationPreferenceManager(userId: number, churchId: number) {
+  const member = await requireChurchMember(userId, churchId);
+  const roles = await getEffectiveChurchRoles(userId, churchId, member);
+  if (!roles.some(role => PASTOR_OR_SUPERVISOR_ROLES.has(role))) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Somente pastores e supervisores podem alterar os avisos do sistema." });
+  }
+  return member;
+}
+
 const notificationsRouter = router({
+  preferences: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireNotificationPreferenceManager(ctx.user.id, input.churchId);
+      const stored = await getSystemNotificationPreferences(input.churchId);
+      return NOTIFICATION_EVENT_CATALOG.map(item => ({ ...item, active: stored[item.type] ?? true }));
+    }),
+  setPreference: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), eventType: z.enum(NOTIFICATION_EVENT_TYPES), active: z.boolean() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireNotificationPreferenceManager(ctx.user.id, input.churchId);
+      await setSystemNotificationPreference(input);
+      return { ok: true as const };
+    }),
   mine: protectedProcedure
     .input(
       z.object({

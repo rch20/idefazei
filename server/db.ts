@@ -441,6 +441,26 @@ export async function isNotificationChannelActive(churchId: number, eventType: N
   return preference[0]?.active ?? channel === "sistema";
 }
 
+/** Preferências do canal "sistema": tipos sem registro seguem ligados. */
+export async function getSystemNotificationPreferences(churchId: number) {
+  const db = await getDb();
+  if (!db) return {} as Record<string, boolean>;
+  const rows = await db
+    .select({ eventType: churchNotificationPreferences.eventType, active: churchNotificationPreferences.active })
+    .from(churchNotificationPreferences)
+    .where(and(eq(churchNotificationPreferences.churchId, churchId), eq(churchNotificationPreferences.channel, "sistema")));
+  return Object.fromEntries(rows.map((row) => [row.eventType, row.active])) as Record<string, boolean>;
+}
+
+export async function setSystemNotificationPreference(data: { churchId: number; eventType: NotificationEventType; active: boolean }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .insert(churchNotificationPreferences)
+    .values({ churchId: data.churchId, eventType: data.eventType, channel: "sistema", active: data.active })
+    .onDuplicateKeyUpdate({ set: { active: data.active } });
+}
+
 export async function getNotificationEventByDedupeKey(churchId: number, dedupeKey: string) {
   const db = await getDb();
   if (!db) return null;

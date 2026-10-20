@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useChurch } from "@/components/ChurchLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { trpc } from "@/lib/trpc";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
-import { Building2, ExternalLink, Palette, Users, Globe, MessageCircle, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, RotateCcw, Share2, Copy, QrCode, Zap } from "lucide-react";
+import { Building2, ExternalLink, Palette, Users, Globe, MessageCircle, Save, Upload, UserCheck, UserX, ChevronRight, ShieldCheck, Eye, Plug, Smartphone, CheckCircle2, RotateCcw, Share2, Copy, QrCode, Zap, Bell } from "lucide-react";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { TenantPublicSettings } from "@/components/TenantPublicSettings";
@@ -204,7 +204,9 @@ const COMPLEMENTARY_ROLES = [
   { value: "levita", label: "Levita" },
 ] as const;
 
-type ConfigQuickActionTab = "geral" | "identidade" | "pagina-publica" | "membros" | "integracao";
+const NotificationPreferencesSettings = lazy(() => import("@/components/NotificationPreferencesSettings"));
+
+type ConfigQuickActionTab = "geral" | "identidade" | "pagina-publica" | "membros" | "integracao" | "avisos";
 
 const CONFIG_QUICK_ACTIONS = [
   { tab: "geral", icon: Building2, title: "Dados institucionais", description: "Contato, endereço, visão e missão", requiresRoleManagement: false },
@@ -212,6 +214,7 @@ const CONFIG_QUICK_ACTIONS = [
   { tab: "pagina-publica", icon: Globe, title: "Presença pública", description: "Site, blocos, SEO e publicação", requiresRoleManagement: true },
   { tab: "membros", icon: Users, title: "Pessoas e acessos", description: "Vínculos, perfis e pendências", requiresRoleManagement: false },
   { tab: "integracao", icon: MessageCircle, title: "Atendimento pastoral", description: "Link e visibilidade do atendimento", requiresRoleManagement: false },
+  { tab: "avisos", icon: Bell, title: "Avisos do sistema", description: "Quais avisos a igreja recebe", requiresRoleManagement: true },
 ] as const;
 
 function serializeChurchSettings(value: unknown) {
@@ -629,6 +632,9 @@ export default function Configuracoes() {
             <TabsTrigger value="integracao" className="flex-none gap-2 px-3">
               <Plug className="w-4 h-4" /> Integração
             </TabsTrigger>
+            {canManageRoles && <TabsTrigger value="avisos" className="flex-none gap-2 px-3">
+              <Bell className="w-4 h-4" /> Avisos
+            </TabsTrigger>}
           </TabsList>
         </div>
         <p className="mt-1 text-[11px] text-muted-foreground sm:hidden">Deslize horizontalmente para acessar todas as seções.</p>
@@ -892,6 +898,13 @@ export default function Configuracoes() {
               </>}
             </div>
           </TabsContent>
+
+          {/* Avisos do sistema */}
+          {canManageRoles && churchId && <TabsContent value="avisos">
+            <Suspense fallback={<div className="py-8 text-sm text-muted-foreground">Carregando...</div>}>
+              <NotificationPreferencesSettings churchId={churchId} />
+            </Suspense>
+          </TabsContent>}
 
           {/* Integração */}
           <TabsContent value="integracao">
