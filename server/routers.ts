@@ -252,6 +252,7 @@ import {
   getPersonById,
   getPrimaryDisciplerHistory,
   getPrayerRequestsByChurch,
+  confirmOwnScheduleItem,
   getMemberJourneyOverview,
   getPrayerRequestsByPerson,
   getOperationalCareHistoryByPerson,
@@ -5712,6 +5713,19 @@ async function validateScheduleEvent(churchId: number, eventId: number | null | 
   }
 }
 const schedulesRouter = router({
+  confirmMine: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Sua conta ainda não está vinculada a uma Pessoa." });
+      }
+      const confirmed = await confirmOwnScheduleItem({ id: input.id, churchId: input.churchId, personId: actor.personId });
+      if (!confirmed) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Escala não encontrada, já passou ou não é sua." });
+      }
+      return { ok: true as const };
+    }),
   list: protectedProcedure
     .input(
       z.object({

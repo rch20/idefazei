@@ -5762,6 +5762,8 @@ export async function updateScheduleItem(data: { id: number; churchId: number; m
         startTime: data.startTime,
         endTime: data.endTime,
         role: data.role ?? null,
+        // Qualquer edição da gestão pede nova confirmação da pessoa escalada.
+        confirmed: false,
       })
       .where(and(eq(scheduleItems.id, data.id), eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.status, "agendada")));
     const updatedRows = await tx
@@ -5771,6 +5773,25 @@ export async function updateScheduleItem(data: { id: number; churchId: number; m
       .limit(1);
     return updatedRows[0] ?? null;
   });
+}
+
+/** A própria pessoa confirma presença numa escala futura e ativa. Retorna false se não for dela. */
+export async function confirmOwnScheduleItem(data: { id: number; churchId: number; personId: number }) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  const result = await db
+    .update(scheduleItems)
+    .set({ confirmed: true })
+    .where(and(
+      eq(scheduleItems.id, data.id),
+      eq(scheduleItems.churchId, data.churchId),
+      eq(scheduleItems.personId, data.personId),
+      eq(scheduleItems.status, "agendada"),
+      sql`${scheduleItems.scheduledDate} >= ${today}`,
+    ));
+  const header = (Array.isArray(result) ? result[0] : result) as { affectedRows?: number; changedRows?: number } | undefined;
+  return Number(header?.affectedRows ?? 0) > 0;
 }
 
 export async function cancelScheduleItem(data: { id: number; churchId: number; cancelledByChurchUserId: number; cancelReason?: string | null }) {

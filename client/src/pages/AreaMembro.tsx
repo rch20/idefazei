@@ -57,6 +57,14 @@ export default function AreaMembro() {
   const { data: prayers, isLoading: loadingPrayers } = trpc.prayer.mine.useQuery({ churchId: churchId! }, { enabled: !!churchId });
   const journeyQuery = trpc.people.myJourney.useQuery({ churchId: churchId! }, { enabled: hasLinkedPerson });
   const journey = journeyQuery.data;
+  const confirmSchedule = trpc.schedules.confirmMine.useMutation({
+    onSuccess: () => {
+      void utils.people.myJourney.invalidate();
+      void utils.schedules.list.invalidate();
+      toast.success("Presença confirmada. Sua liderança já vê a confirmação.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
   const pixQuery = trpc.treasury.pixForMember.useQuery({ churchId: churchId! }, { enabled: canSubmitOnlineContribution });
   const updateContact = trpc.people.updateMyContact.useMutation({
     onSuccess: () => {
@@ -318,6 +326,13 @@ export default function AreaMembro() {
                         <li key={item.id} className="text-sm text-[#1e3a5f]">
                           <span className="font-semibold">{item.date.split("-").reverse().slice(0, 2).join("/")}{item.startTime ? ` às ${item.startTime}` : ""}</span>
                           <span className="block text-xs text-[#1e3a5f]/60">{item.ministryName}{item.role ? ` · ${item.role}` : ""}</span>
+                          {item.confirmed ? (
+                            <span className="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-emerald-700"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />Presença confirmada</span>
+                          ) : (
+                            <Button type="button" size="sm" variant="outline" className="mt-1 h-7 px-2 text-xs" disabled={confirmSchedule.isPending} onClick={() => churchId && confirmSchedule.mutate({ churchId, id: item.id })}>
+                              Confirmar presença
+                            </Button>
+                          )}
                         </li>
                       ))}
                     </ul>

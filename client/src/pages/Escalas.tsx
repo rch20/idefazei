@@ -20,7 +20,7 @@ const MONTHS = [
 ];
 
 type ScheduleForm = { ministryId: string; departmentId: string; eventId: string; personId: string; scheduledDate: string; startTime: string; endTime: string; role: string };
-type ScheduleItem = { id: number; ministryId: number; departmentId?: number | null; eventId?: number | null; personId: number; scheduledDate: Date | string; startTime: string | null; endTime: string | null; role: string | null; status: "agendada" | "cancelada"; cancelReason?: string | null; hasTimeConflict?: boolean };
+type ScheduleItem = { id: number; ministryId: number; departmentId?: number | null; eventId?: number | null; personId: number; scheduledDate: Date | string; startTime: string | null; endTime: string | null; role: string | null; status: "agendada" | "cancelada"; confirmed?: boolean | null; cancelReason?: string | null; hasTimeConflict?: boolean };
 const EMPTY_FORM: ScheduleForm = { ministryId: "", departmentId: "", eventId: "", personId: "", scheduledDate: "", startTime: "", endTime: "", role: "" };
 
 export default function Escalas() {
@@ -460,6 +460,9 @@ export default function Escalas() {
                       <p className="text-xs font-medium text-navy">{peopleById.get(scale.personId) ?? `Pessoa #${scale.personId}`}</p>
                       <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><Clock className="h-3 w-3" />{scale.startTime && scale.endTime ? `${scale.startTime}–${scale.endTime}` : "Horário não definido"}</p>
                       {scale.role && <p className="text-xs text-muted-foreground">{scale.role}</p>}
+                      {scale.status !== "cancelada" && (scale.confirmed
+                        ? <p className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-700"><span aria-hidden="true">✓</span>Presença confirmada</p>
+                        : <p className="mt-1 text-xs font-medium text-amber-700">Aguardando confirmação</p>)}
                       {scale.status === "cancelada" && <p className="mt-1 text-xs font-medium text-slate-600">Cancelada{scale.cancelReason ? `: ${scale.cancelReason}` : ""}</p>}
                       {scale.hasTimeConflict && <p className="mt-1 flex items-center gap-1 text-xs font-medium text-rose-700"><AlertTriangle className="h-3 w-3" />Conflito de horário</p>}
                       {scale.status !== "cancelada" && (

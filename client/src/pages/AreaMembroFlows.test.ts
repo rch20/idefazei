@@ -77,4 +77,21 @@ describe("Área do Membro — contato e login", () => {
     expect(fn).not.toContain("address");
     expect(fn).not.toContain("hostId");
   });
+
+  it("permite confirmar a própria escala e reflete a confirmação para a gestão", () => {
+    const dbSource = readFileSync(new URL("../../../server/db.ts", import.meta.url), "utf8");
+    const routerSource = readFileSync(new URL("../../../server/routers.ts", import.meta.url), "utf8");
+    const escalasSource = readFileSync(new URL("./Escalas.tsx", import.meta.url), "utf8");
+    const fn = dbSource.slice(dbSource.indexOf("export async function confirmOwnScheduleItem"), dbSource.indexOf("export async function cancelScheduleItem"));
+    expect(source).toContain("schedules.confirmMine.useMutation");
+    expect(source).toContain("Confirmar presença");
+    expect(routerSource).toContain("confirmMine: protectedProcedure");
+    expect(routerSource).toContain("personId: actor.personId");
+    expect(fn).toContain("eq(scheduleItems.personId, data.personId)");
+    expect(fn).toContain("eq(scheduleItems.churchId, data.churchId)");
+    expect(fn).toContain('eq(scheduleItems.status, "agendada")');
+    expect(dbSource).toContain("confirmed: false");
+    expect(escalasSource).toContain("Presença confirmada");
+    expect(escalasSource).toContain("Aguardando confirmação");
+  });
 });
