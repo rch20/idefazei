@@ -244,8 +244,11 @@ jobs:
           RELEASE_ID: ${{ steps.pkg.outputs.release_id }}
         run: |
           set -Eeuo pipefail
+          # Guarda a resposta do servidor e a mostra nos avisos da execução se algo falhar.
+          REMOTE_LOG="$RUNNER_TEMP/remote-preflight.log"; : > "$REMOTE_LOG"
+          trap 'tail -n 30 "$REMOTE_LOG" | sed "s/^/::error::servidor: /"' ERR
           scp -F "$DEPLOY_SSH_CONFIG" "${{ steps.pkg.outputs.package }}" "ide-fazei-deploy:${REMOTE_INCOMING}/${RELEASE_ID}.tar.gz"
-          remote() { ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" "$@"; }
+          remote() { ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" "$@" 2>&1 | tee -a "$REMOTE_LOG"; return "${PIPESTATUS[0]}"; }
           if [[ "$DB" == "true" ]]; then
             scp -F "$DEPLOY_SSH_CONFIG" "${{ steps.pkg.outputs.migrations }}" "ide-fazei-deploy:${REMOTE_INCOMING}/${RELEASE_ID}-migrations.tar.gz"
             remote migrate-plan "$RELEASE_ID"   # confere tudo antes de qualquer escrita
