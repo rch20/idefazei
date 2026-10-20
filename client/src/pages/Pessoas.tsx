@@ -22,6 +22,7 @@ import { getPersonListLocation, getVisiblePersonSection, PERSON_SECTION_VALUES, 
 import { toggleJourneyNoteStage } from "@/lib/journeyNote";
 import { PersonExecutiveSummary } from "@/components/PersonExecutiveSummary";
 import { PersonHistoryTimeline, type PersonHistoryEvent } from "@/components/PersonHistoryTimeline";
+const PersonDetailsSection = lazy(() => import("@/components/PersonDetailsSection"));
 const PriorStageDialog = lazy(() => import("@/components/PriorStageDialog"));
 const FormationBackfillCard = lazy(() => import("@/components/FormationBackfillCard"));
 import { PersonSectionState, resolvePersonSectionState } from "@/components/PersonSectionState";
@@ -53,6 +54,7 @@ type PendingDestructiveAction =
 const PERSON_SECTIONS = PERSON_SECTION_VALUES;
 const PERSON_SECTION_OPTIONS: Array<{ value: PersonSection; label: string; description: string; pastoralOnly?: boolean }> = [
   { value: "resumo", label: "Resumo", description: "Visão geral, próximo passo e situação atual." },
+  { value: "dados", label: "Dados", description: "Contato, endereço, nascimento e batismo." },
   { value: "jornada", label: "Prontuário", description: "Etapas, cursos, batismo e encontros da pessoa." },
   { value: "cuidado", label: "Cuidado", description: "Responsável, acompanhamento e encaminhamentos." },
   { value: "participacoes", label: "Participações", description: "Célula atual, histórico e atuações ministeriais." },
@@ -306,6 +308,7 @@ export default function Pessoas() {
   );
   const isPastorPresident = effectiveRoles.includes("pastor_presidente");
   const isPastor = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local"].includes(role));
+  const canEditPersonDetails = effectiveRoles.some((role) => ["pastor_presidente", "pastor_local", "secretario", "supervisor"].includes(role));
   const canManagePrimaryDiscipler = isPastor || effectiveRoles.includes("supervisor");
   const canReadExecutiveAttention = Boolean(accessSummary?.isExecutive || accessSummary?.canManageChurch);
   const careAttention = trpc.dashboard.careAttention.useQuery(
@@ -1303,7 +1306,7 @@ export default function Pessoas() {
             </p>
           </div>
 
-          <div role="tablist" aria-label="Seções da ficha da Pessoa" className={`hidden gap-1 rounded-xl bg-muted p-1 sm:grid ${canManagePastoralCoverage ? "sm:grid-cols-6" : "sm:grid-cols-5"}`}>
+          <div role="tablist" aria-label="Seções da ficha da Pessoa" className={`hidden gap-1 rounded-xl bg-muted p-1 sm:grid ${canManagePastoralCoverage ? "sm:grid-cols-7" : "sm:grid-cols-6"}`}>
             {PERSON_SECTION_OPTIONS.filter((option) => !option.pastoralOnly || canManagePastoralCoverage).map(({ value, label }) => (
               <button
                 key={value}
@@ -1320,6 +1323,21 @@ export default function Pessoas() {
           </div>
 
           <div id="person-section-content" role="tabpanel" tabIndex={-1} aria-label={`Conteúdo da seção ${PERSON_SECTION_OPTIONS.find((option) => option.value === effectivePersonSection)?.label ?? "Resumo"}`} className="space-y-5">
+          {effectivePersonSection === "dados" && selectedPerson && (
+            <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-muted" aria-label="Carregando dados" />}>
+              <PersonDetailsSection
+                key={`${selectedPerson.id}-${String(selectedPerson.updatedAt ?? "")}`}
+                person={selectedPerson}
+                churchId={churchId}
+                canEdit={canEditPersonDetails}
+                canSeeNotes={canEditPersonDetails}
+                onSaved={async (updated) => {
+                  if (updated) setSelectedPerson((current: any) => ({ ...current, ...updated }));
+                  await Promise.all([directoryQuery.refetch(), utils.people.getById.invalidate()]);
+                }}
+              />
+            </Suspense>
+          )}
           {effectivePersonSection === "jornada" && selectedPerson && (
             <section className="rounded-xl border border-navy/10 bg-gradient-to-br from-navy/[0.03] via-background to-gold/[0.08] p-4 sm:p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1423,12 +1441,12 @@ export default function Pessoas() {
                                     Reabrir etapa
                                   </Button>
                                 )}
-                                <details className="group relative">
+                                <details className="group">
                                   <summary className="flex h-9 cursor-pointer list-none items-center gap-1 rounded-md px-3 text-[11px] font-medium text-navy hover:bg-navy/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 [&::-webkit-details-marker]:hidden">
                                     Mais opções
                                     <span aria-hidden="true" className="transition-transform group-open:rotate-180">▾</span>
                                   </summary>
-                                  <div className="mt-1 flex min-w-[220px] flex-col items-stretch gap-1 rounded-lg border border-border bg-background p-1.5 shadow-md lg:absolute lg:right-0 lg:z-10">
+                                  <div className="mt-1 flex w-full min-w-[220px] flex-col items-stretch gap-1 rounded-lg border border-border bg-background p-1.5">
                                     <Button
                                       type="button"
                                       size="sm"

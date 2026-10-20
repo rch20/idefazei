@@ -504,6 +504,15 @@ const birthDateInput = z
   return Boolean(date && date.getTime() <= Date.now());
 }, "Informe uma data de nascimento válida e não futura.");
 
+const pastCivilDateInput = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Informe a data no formato AAAA-MM-DD.")
+  .refine(value => {
+    const date = parseCivilDateAsUtcNoon(value);
+    return Boolean(date && date.getTime() <= Date.now());
+  }, "A data não pode estar no futuro.");
+
 const whatsappInput = z
   .string()
   .trim()
@@ -2373,6 +2382,78 @@ const peopleRouter = router({
         await requireChurchAdministrator(ctx.user.id, churchId);
       }
       return updatePerson(id, churchId, data as any);
+    }),
+
+  updateDetails: protectedProcedure
+    .input(
+      z.object({
+        id: z.number().int().positive(),
+        churchId: z.number().int().positive(),
+        fullName: z.string().trim().min(2, "Informe o nome completo.").max(255),
+        phone: z.string().trim().max(20).nullable(),
+        whatsapp: z.string().trim().max(20).nullable(),
+        email: z.string().trim().email("Informe um e-mail válido.").max(320).nullable(),
+        birthDate: birthDateInput.nullable(),
+        gender: z.enum(["masculino", "feminino", "outro"]).nullable(),
+        maritalStatus: z.enum(["solteiro", "casado", "divorciado", "viuvo", "uniao_estavel"]).nullable(),
+        profession: z.string().trim().max(100).nullable(),
+        zipCode: z.string().trim().max(9).nullable(),
+        street: z.string().trim().max(255).nullable(),
+        number: z.string().trim().max(10).nullable(),
+        neighborhood: z.string().trim().max(100).nullable(),
+        city: z.string().trim().max(100).nullable(),
+        state: z.string().trim().length(2, "Use a sigla do estado com 2 letras.").nullable(),
+        conversionDate: pastCivilDateInput.nullable(),
+        baptismDate: pastCivilDateInput.nullable(),
+        previousChurch: z.string().trim().max(255).nullable(),
+        pastoralNotes: z.string().trim().max(2000).nullable(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      const person = await getPersonById(input.id, input.churchId);
+      if (!person) throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada nesta igreja." });
+      const normalizeContact = (value: string | null) => {
+        const normalized = value?.trim() ?? "";
+        if (!normalized) return null;
+        const digits = normalized.replace(/\D/g, "");
+        if (digits.length < 10 || digits.length > 15) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Informe telefone e WhatsApp com DDD." });
+        }
+        return normalized;
+      };
+      const phone = normalizeContact(input.phone);
+      const whatsapp = normalizeContact(input.whatsapp);
+      const blank = (value: string | null) => (value && value.length > 0 ? value : null);
+      try {
+        if (phone !== (person.phone ?? null) || whatsapp !== (person.whatsapp ?? null)) {
+          await updatePersonContact(input.churchId, input.id, { phone, whatsapp });
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message === "PERSON_CONTACT_ALREADY_IN_USE") {
+          throw new TRPCError({ code: "CONFLICT", message: "Este telefone ou WhatsApp já está cadastrado para outra Pessoa desta igreja." });
+        }
+        throw error;
+      }
+      await updatePerson(input.id, input.churchId, {
+        fullName: input.fullName,
+        email: blank(input.email),
+        birthDate: input.birthDate ? parseCivilDateAsUtcNoon(input.birthDate) : null,
+        gender: input.gender,
+        maritalStatus: input.maritalStatus,
+        profession: blank(input.profession),
+        zipCode: blank(input.zipCode),
+        street: blank(input.street),
+        number: blank(input.number),
+        neighborhood: blank(input.neighborhood),
+        city: blank(input.city),
+        state: input.state ? input.state.toUpperCase() : null,
+        conversionDate: input.conversionDate ? parseCivilDateAsUtcNoon(input.conversionDate) : null,
+        baptismDate: input.baptismDate ? parseCivilDateAsUtcNoon(input.baptismDate) : null,
+        previousChurch: blank(input.previousChurch),
+        pastoralNotes: blank(input.pastoralNotes),
+      });
+      return { ok: true as const, person: await getPersonById(input.id, input.churchId) };
     }),
 
   setPrimaryDiscipler: protectedProcedure

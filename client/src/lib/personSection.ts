@@ -1,4 +1,4 @@
-export const PERSON_SECTION_VALUES = ["resumo", "jornada", "participacoes", "cuidado", "cobertura", "historico"] as const;
+export const PERSON_SECTION_VALUES = ["resumo", "dados", "jornada", "participacoes", "cuidado", "cobertura", "historico"] as const;
 
 export type PersonSection = typeof PERSON_SECTION_VALUES[number];
 
