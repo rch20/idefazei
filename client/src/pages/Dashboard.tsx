@@ -6,8 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { buildDashboardMetricValues } from "./dashboardMetrics";
 import {
-  AlertTriangle,
-  BookOpen,
   Cake,
   CheckCircle2,
   ChevronRight,
@@ -17,9 +15,7 @@ import {
   Heart,
   Layers,
   Music,
-  TrendingUp,
   Users,
-  Zap,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useMemo } from "react";
@@ -63,114 +59,12 @@ function MetricCard({
         >
           <Icon className="w-5 h-5" style={{ color: color ?? "#1e3a5f" }} />
         </div>
-        <TrendingUp className="w-4 h-4 text-muted-foreground" />
       </div>
       <div>
         <p className="text-2xl font-bold font-display text-navy">{value}</p>
         <p className="text-sm font-medium text-foreground">{label}</p>
         {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
       </div>
-    </div>
-  );
-}
-
-// ─── RADAR ESPIRITUAL ─────────────────────────────────────────────────────────
-
-function RadarEspiritual({ churchId }: { churchId: number }) {
-  const { data, isLoading } = trpc.dashboard.radarEspiritual.useQuery({ churchId });
-
-  const items = [
-    {
-      key: "semCelula",
-      label: "Sem Célula",
-      desc: "Pessoas não inseridas em célula",
-      color: "#f59e0b",
-      icon: Globe,
-    },
-    {
-      key: "semDiscipulador",
-      label: "Sem Discipulador",
-      desc: "Pessoas sem acompanhamento",
-      color: "#f43f5e",
-      icon: Users,
-    },
-    {
-      key: "semConsolidacao",
-      label: "Sem Consolidação",
-      desc: "Novas almas sem consolidador",
-      color: "#ef4444",
-      icon: Heart,
-    },
-    {
-      key: "semCurso",
-      label: "Sem Curso",
-      desc: "Pessoas sem matrícula em curso",
-      color: "#8b5cf6",
-      icon: BookOpen,
-    },
-  ];
-
-  return (
-    <div className="card-sacred p-6">
-      <div className="flex items-center gap-3 mb-5">
-        <div className="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
-          <Zap className="w-5 h-5 text-amber-600" />
-        </div>
-        <div>
-          <h2 className="font-display font-bold text-navy text-lg">Radar Espiritual</h2>
-          <p className="text-xs text-muted-foreground">Pessoas que precisam de atenção</p>
-        </div>
-        <Link href="/app/radar" className="ml-auto">
-          <Button variant="ghost" size="sm" className="gap-1 text-xs text-navy hover:bg-amber-50">
-            Ver detalhes <ChevronRight className="h-3.5 w-3.5" />
-          </Button>
-        </Link>
-      </div>
-
-      {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-14 bg-muted rounded-lg animate-pulse" />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {items.map((item) => {
-            const count = (data as any)?.[item.key] ?? 0;
-            const isAlert = count > 0;
-            return (
-              <div
-                key={item.key}
-                className={`flex items-center gap-4 p-3 rounded-xl border transition-colors ${
-                  isAlert
-                    ? "bg-red-50/50 border-red-100"
-                    : "bg-green-50/50 border-green-100"
-                }`}
-              >
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: `${item.color}18` }}
-                >
-                  <item.icon className="w-4 h-4" style={{ color: item.color }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-navy">{item.label}</p>
-                  <p className="text-xs text-muted-foreground">{item.desc}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className="text-2xl font-bold font-display"
-                    style={{ color: isAlert ? item.color : "#22c55e" }}
-                  >
-                    {count}
-                  </span>
-                  {isAlert && <AlertTriangle className="w-4 h-4 text-amber-500" />}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -636,11 +530,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <FunilVisual churchId={churchId} />
-        <RadarEspiritual churchId={churchId} />
-      </div>
+      <FunilVisual churchId={churchId} />
 
       <BirthdayTodayCard churchId={churchId} />
 
