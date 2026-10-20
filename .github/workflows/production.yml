@@ -68,7 +68,7 @@ jobs:
       - name: TypeScript
         run: pnpm check
       - name: Testes automatizados
-        run: CI=1 pnpm exec vitest run --reporter=dot
+        run: CI=1 pnpm exec vitest run --reporter=dot --reporter=github-actions
       - name: Build
         run: pnpm build
       - name: Integridade dos bundles
