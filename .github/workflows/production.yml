@@ -246,7 +246,7 @@ jobs:
           set -Eeuo pipefail
           # Guarda a resposta do servidor e a mostra nos avisos da execução se algo falhar.
           REMOTE_LOG="$RUNNER_TEMP/remote-preflight.log"; : > "$REMOTE_LOG"
-          trap 'tail -n 30 "$REMOTE_LOG" | sed "s/^/::error::servidor: /"' ERR
+          trap 'grep -Ei "fail|erro|error|bloque|block|recus|diverg|rota|route|refus|mismatch|chunk|unexpected|missing|not " "$REMOTE_LOG" | grep -v "^[+]" | head -n 40 | sed "s/^/::error::servidor: /"' ERR
           scp -F "$DEPLOY_SSH_CONFIG" "${{ steps.pkg.outputs.package }}" "ide-fazei-deploy:${REMOTE_INCOMING}/${RELEASE_ID}.tar.gz"
           remote() { ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" "$@" 2>&1 | tee -a "$REMOTE_LOG"; return "${PIPESTATUS[0]}"; }
           if [[ "$DB" == "true" ]]; then
