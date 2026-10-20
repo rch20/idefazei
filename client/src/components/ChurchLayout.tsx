@@ -273,6 +273,14 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     const activeGroup = groups.find((group) => navItems.some((item) => item.group === group.key && (location === item.path || location.startsWith(item.path + "/"))));
     if (activeGroup) setExpandedGroups((current) => current.includes(activeGroup.key) ? current : [...current, activeGroup.key]);
   }, [location]);
+  // Quem não administra a igreja vê "Minha área" logo depois do Início.
+  const orderedGroups = isPastoralAdmin
+    ? groups
+    : [
+        ...groups.filter((group) => group.key === "principal"),
+        ...groups.filter((group) => group.key === "membros"),
+        ...groups.filter((group) => group.key !== "principal" && group.key !== "membros"),
+      ];
   const canReviewRegistrations = Boolean(accessSummary?.canManageChurch);
   const pendingRegistrationsQuery = trpc.churchAuth.pendingRegistrations.useQuery(
     { churchId: user?.churchId ?? 0 },
@@ -324,16 +332,17 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Navegação principal">
-          {groups.map((group) => {
+          {orderedGroups.map((group) => {
             const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))) && (!i.accessKey || Boolean(accessSummary?.[i.accessKey])) && (!i.requiresEncounterAccess || encounterAccessQuery.data === true));
             if (!items.length) return null;
-            const isExpanded = expandedGroups.includes(group.key);
+            const isFlat = group.key === "principal";
+            const isExpanded = isFlat || expandedGroups.includes(group.key);
             const contextualGroupLabel = group.key === "membros"
               ? (isPastoralAdmin ? "Pessoas" : "Minha área")
               : group.label;
             return (
               <section key={group.key} className="border-b border-white/5 pb-1 last:border-0">
-                <button
+                {!isFlat && <button
                   type="button"
                   className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-white/45 transition-colors hover:bg-white/5 hover:text-white/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
                   onClick={() => setExpandedGroups((current) => current.includes(group.key) ? current.filter((key) => key !== group.key) : [...current, group.key])}
@@ -342,7 +351,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
                 >
                   <span>{contextualGroupLabel}</span>
                   <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} aria-hidden="true" />
-                </button>
+                </button>}
                 {isExpanded && (
                   <div id={`sidebar-group-${group.key}`} className="space-y-0.5 pb-1">
                     {items.map((item) => {
