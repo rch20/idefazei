@@ -2021,6 +2021,12 @@
       "assets/Contato.js",
       "assets/usePlatformContact.js",
       "assets/index.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/AdminPanel.js",
+      "assets/trending-up.js",
+      "assets/index.js"
     ]
   ]
 }
