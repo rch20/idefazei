@@ -263,6 +263,14 @@ export function buildTreasuryReportHtml(input: {
   </body></html>`;
 }
 
+/** Data e hora no fuso do navegador (Brasil), para conferência com o extrato bancário. */
+export function formatDateTimePtBr(value: Date | string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "medium" });
+}
+
 export function buildTreasuryReceiptHtml(input: {
   churchName: string;
   receiptNumber: number;
@@ -272,10 +280,14 @@ export function buildTreasuryReceiptHtml(input: {
   paymentMethod: string;
   amountCents: number;
   description: string;
+  /** Quando o doador enviou o comprovante (se o recibo veio de doação pública ou do aplicativo). */
+  submittedAt?: Date | string | null;
+  /** Quando a tesouraria confirmou e lançou a entrada. */
+  confirmedAt?: Date | string | null;
 }) {
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Recibo ${input.receiptNumber}</title><style>${financialDocumentStyles()}</style></head><body>
     <header><div class="eyebrow">Ide Fazei · Tesouraria</div><h1>Recibo de contribuição</h1><div><strong>${escapeTreasuryHtml(input.churchName)}</strong> · Recibo nº ${input.receiptNumber}</div></header>
-    <section class="two-columns"><div class="panel"><span class="muted">Recebemos de</span><h2>${escapeTreasuryHtml(input.contributorName)}</h2></div><div class="panel"><span class="muted">Data</span><h2>${escapeTreasuryHtml(formatDatePtBr(input.date))}</h2></div><div class="panel"><span class="muted">Referente a</span><h2>${escapeTreasuryHtml(input.categoryName)}</h2></div><div class="panel"><span class="muted">Forma de recebimento</span><h2>${escapeTreasuryHtml(PAYMENT_LABELS[input.paymentMethod] ?? input.paymentMethod)}</h2></div></section>
+    <section class="two-columns"><div class="panel"><span class="muted">Recebemos de</span><h2>${escapeTreasuryHtml(input.contributorName)}</h2></div><div class="panel"><span class="muted">Data</span><h2>${escapeTreasuryHtml(formatDatePtBr(input.date))}</h2></div><div class="panel"><span class="muted">Referente a</span><h2>${escapeTreasuryHtml(input.categoryName)}</h2></div><div class="panel"><span class="muted">Forma de recebimento</span><h2>${escapeTreasuryHtml(PAYMENT_LABELS[input.paymentMethod] ?? input.paymentMethod)}</h2></div>${input.submittedAt ? `<div class="panel"><span class="muted">Comprovante enviado em</span><h2>${escapeTreasuryHtml(formatDateTimePtBr(input.submittedAt))}</h2></div>` : ""}${input.confirmedAt ? `<div class="panel"><span class="muted">Lançado na Tesouraria em</span><h2>${escapeTreasuryHtml(formatDateTimePtBr(input.confirmedAt))}</h2></div>` : ""}</section>
     <h2>Valor recebido</h2><p style="font-size:28px;font-weight:700;color:#157347">${escapeTreasuryHtml(formatBrl(input.amountCents))}</p><p>${escapeTreasuryHtml(input.description)}</p>
     <div class="signatures"><div class="signature">Tesoureiro(a)</div><div class="signature">Contribuinte</div></div>
     <footer>Recibo emitido eletronicamente pelo módulo Tesouraria da Ide Fazei.</footer><script>window.addEventListener('load',()=>window.print())<\/script>

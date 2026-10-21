@@ -47,3 +47,16 @@ describe("Tesouraria — painéis do acesso rápido", () => {
     for (const action of loaders) expect(lazyList).toContain(`"${action}"`);
   });
 });
+
+describe("Tesouraria — recibo com data e hora para conferência bancária", () => {
+  it("o servidor devolve quando o doador enviou o comprovante e a tela/PDF mostram data e hora", () => {
+    const page = readFileSync("client/src/pages/Tesouraria.tsx", "utf8");
+    const lib = readFileSync("client/src/lib/treasury.ts", "utf8");
+    expect(db).toContain("publicDonationSubmissions.financialTransactionId, transactionId");
+    expect(db).toContain('via: "pagina_publica" as const');
+    expect(page).toContain("Comprovante enviado em");
+    expect(page).toContain("Lançado na Tesouraria em");
+    expect(lib).toContain("Comprovante enviado em");
+    expect(lib).toContain("export function formatDateTimePtBr");
+  });
+});

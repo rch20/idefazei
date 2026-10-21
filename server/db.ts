@@ -69,6 +69,7 @@ import {
   financialReconciliations,
   financialTransactions,
   onlineContributions,
+  publicDonationSubmissions,
   treasuryServices,
   treasuryRecurringSchedules,
   treasuryCountSheets,
@@ -10915,11 +10916,30 @@ export async function getFinancialReceiptData(transactionId: number, churchId: n
       : Promise.resolve([]),
   ]);
   if (!account || !category) return null;
+  // Quando o lançamento nasceu de uma doação pública ou de uma contribuição do aplicativo, o recibo mostra quando o doador enviou o comprovante.
+  const [publicDonationRows, onlineContributionRows] = await Promise.all([
+    db
+      .select({ submittedAt: publicDonationSubmissions.submittedAt })
+      .from(publicDonationSubmissions)
+      .where(and(eq(publicDonationSubmissions.churchId, churchId), eq(publicDonationSubmissions.financialTransactionId, transactionId)))
+      .limit(1),
+    db
+      .select({ submittedAt: onlineContributions.submittedAt })
+      .from(onlineContributions)
+      .where(and(eq(onlineContributions.churchId, churchId), eq(onlineContributions.financialTransactionId, transactionId)))
+      .limit(1),
+  ]);
+  const submission = publicDonationRows[0]
+    ? { submittedAt: publicDonationRows[0].submittedAt, via: "pagina_publica" as const }
+    : onlineContributionRows[0]
+      ? { submittedAt: onlineContributionRows[0].submittedAt, via: "aplicativo" as const }
+      : null;
   return {
     transaction,
     account,
     category,
     contributor: contributorRows[0] ?? null,
+    submission,
   };
 }
 

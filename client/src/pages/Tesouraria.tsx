@@ -34,6 +34,7 @@ import {
   formatApprovedOnlineContributionsDisclosure,
   formatBrl,
   formatDatePtBr,
+  formatDateTimePtBr,
   openTreasuryPrintDocument,
   parseBrlToCents,
 } from "@/lib/treasury";
@@ -822,6 +823,8 @@ export default function Tesouraria() {
         description:
           data.transaction.description ||
           "Contribuição registrada na Tesouraria da igreja.",
+        submittedAt: data.submission?.submittedAt ?? null,
+        confirmedAt: data.transaction.confirmedAt ?? null,
       })
     );
     if (!opened)
@@ -2535,7 +2538,30 @@ export default function Tesouraria() {
                       </span>
                       {receiptQuery.data.transaction.paymentMethod}
                     </p>
+                    {receiptQuery.data.submission && (
+                      <p>
+                        <span className="block text-xs text-muted-foreground">
+                          Comprovante enviado em
+                        </span>
+                        {formatDateTimePtBr(receiptQuery.data.submission.submittedAt)}
+                        <span className="block text-xs text-muted-foreground">
+                          {receiptQuery.data.submission.via === "pagina_publica" ? "Pela página pública" : "Pelo aplicativo"}
+                        </span>
+                      </p>
+                    )}
+                    <p>
+                      <span className="block text-xs text-muted-foreground">
+                        Lançado na Tesouraria em
+                      </span>
+                      {formatDateTimePtBr(
+                        receiptQuery.data.transaction.confirmedAt ??
+                          receiptQuery.data.transaction.createdAt
+                      )}
+                    </p>
                   </div>
+                  <p className="text-xs text-muted-foreground">
+                    Para conferir no banco, compare o valor e a data/hora com o extrato do Pix.
+                  </p>
                   <p className="text-sm text-muted-foreground">
                     {receiptQuery.data.transaction.description ||
                       "Contribuição registrada na Tesouraria."}
