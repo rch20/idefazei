@@ -4,6 +4,7 @@ import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { formatDatePtBr, formatEventTimeRange, getCivilDateParts, getTodayCivilDateInput } from "@/lib/treasury";
 import { ArrowRight, Bell, BookOpen, CalendarDays, CheckCircle2, ChevronRight, Clock3, GraduationCap, Heart, MapPin, UsersRound, WalletCards } from "lucide-react";
 import { Link } from "wouter";
+import { ChurchSetupTrail } from "@/components/ChurchSetupTrail";
 
 type NextStep = {
   eyebrow: string;
@@ -264,6 +265,8 @@ export default function Inicio() {
           </div>
         </div>
       </section>
+
+      {accessSummary?.canManageChurch && user?.churchId ? <ChurchSetupTrail churchId={user.churchId} /> : null}
 
       {isError ? (
         <section className="rounded-2xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive" role="alert">

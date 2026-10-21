@@ -1604,6 +1604,18 @@ export const onboardingProgress = mysqlTable("onboarding_progress", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+/** Passos do trilho de configuração que a igreja escolheu pular por enquanto. */
+export const churchSetupSkips = mysqlTable(
+  "church_setup_skips",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    stepKey: varchar("stepKey", { length: 32 }).notNull(),
+    skippedAt: timestamp("skippedAt").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("church_setup_skips_church_step_unique").on(table.churchId, table.stepKey)]
+);
+
 export type OnboardingProgress = typeof onboardingProgress.$inferSelect;
 export type InsertOnboardingProgress = typeof onboardingProgress.$inferInsert;
 

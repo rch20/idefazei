@@ -3,6 +3,7 @@ import { NOTIFICATION_EVENT_CATALOG, NOTIFICATION_EVENT_TYPES } from "../shared/
 import { randomBytes } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
+import { CHURCH_SETUP_STEP_KEYS } from "../shared/churchSetup";
 import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
 import { HERO_PRESET_IDS } from "../shared/publicHero";
@@ -314,6 +315,8 @@ import {
   publishTenantPublicSiteByChurchId,
   saveTenantPublicDraftByChurchId,
   upsertOnboardingProgress,
+  getChurchSetupStatus,
+  setChurchSetupStepSkipped,
   importPeopleFromCSV,
   // Escola de Fundamentos
   getCoursesByChurch,
@@ -8161,6 +8164,17 @@ const onboardingRouter = router({
   get: protectedProcedure.input(z.object({ churchId: z.number() })).query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
       return getOnboardingProgress(input.churchId);
+    }),
+  setup: protectedProcedure.input(z.object({ churchId: z.number().int().positive() })).query(async ({ input, ctx }) => {
+    await requirePastor(ctx.user.id, input.churchId);
+    return getChurchSetupStatus(input.churchId);
+  }),
+  setSetupStepSkipped: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), stepKey: z.enum(CHURCH_SETUP_STEP_KEYS), skipped: z.boolean() }))
+    .mutation(async ({ input, ctx }) => {
+      await requirePastor(ctx.user.id, input.churchId);
+      await setChurchSetupStepSkipped(input.churchId, input.stepKey, input.skipped);
+      return { success: true };
     }),
   update: protectedProcedure
     .input(

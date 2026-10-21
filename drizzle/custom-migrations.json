@@ -204,6 +204,12 @@
       "file": "drizzle/0104_financial_account_opening_date.sql",
       "kind": "custom-additive",
       "sha256": "a90de7073d7b0276361828b19865affcd3967d26429d411cac1e308df81e02c1"
+    },
+    {
+      "id": "0105",
+      "file": "drizzle/0105_church_setup_skips.sql",
+      "kind": "custom-additive",
+      "sha256": "3d35212d980171bfd32f93c4766bb2909c8e99934b67037aaddc9192df17f4af"
     }
   ]
 }

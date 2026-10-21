@@ -259,7 +259,11 @@ export default function Configuracoes() {
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUploadingPwaIcon, setIsUploadingPwaIcon] = useState(false);
   const [pwaIconPreviewUrl, setPwaIconPreviewUrl] = useState<string | null>(church?.pwaIcon192Url ?? church?.logoUrl ?? null);
-  const [activeTab, setActiveTab] = useState<ConfigQuickActionTab>("geral");
+  const [activeTab, setActiveTab] = useState<ConfigQuickActionTab>(() => {
+    // O trilho de configuração abre direto na aba certa: /app/configuracoes?aba=identidade
+    const requested = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("aba");
+    return requested && ["geral", "identidade", "pagina-publica", "membros", "integracao", "avisos"].includes(requested) ? (requested as ConfigQuickActionTab) : "geral";
+  });
   const [quickAccessOpen, setQuickAccessOpen] = useState(false);
   const [savedFormSnapshot, setSavedFormSnapshot] = useState("");
   const [shareDialogOpen, setShareDialogOpen] = useState(false);

@@ -119,6 +119,8 @@ import {
   visitorLeads,
   publicRegistrationLeads,
   onboardingProgress,
+  churchSetupSkips,
+  treasuryPixSettings,
   securityAccessAuditHolds,
   securityAccessAuditHoldEvents,
 } from "../drizzle/schema";
@@ -130,6 +132,7 @@ import type { SecurityAccessEvent } from "./security-access-monitoring";
 import { getDerivedLogoIconUrls, getOptimizedMediaUrls } from "./media";
 import { currentCivilDateAsUtcNoon, formatCivilDateInput, formatCivilDateValue, parseCivilDateAsUtcNoon } from "./civilDate";
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
+import { CHURCH_SETUP_STEP_KEYS, type ChurchSetupStepKey } from "../shared/churchSetup";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
 import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus, shouldFlagLegacyConsolidationPending, shouldFlagModernFirstContactPending } from "../shared/consolidation";
@@ -7117,6 +7120,47 @@ export async function getOnboardingProgress(churchId: number) {
   if (!db) return null;
   const rows = await db.select().from(onboardingProgress).where(eq(onboardingProgress.churchId, churchId)).limit(1);
   return rows[0] ?? null;
+}
+
+/** Trilho de configuração: cada passo é conferido pelos próprios dados; só o "pular" é guardado. */
+export async function getChurchSetupStatus(churchId: number): Promise<Array<{ key: ChurchSetupStepKey; done: boolean; skipped: boolean }>> {
+  const db = await getDb();
+  if (!db) return CHURCH_SETUP_STEP_KEYS.map(key => ({ key, done: false, skipped: false }));
+  const [churchRow] = await db.select().from(churches).where(eq(churches.id, churchId)).limit(1);
+  const total = async (query: PromiseLike<Array<{ n: number }>>) => Number((await query)[0]?.n ?? 0);
+  const [cellCount, studyCount, ministryCount, pixCount, peopleCount, wordCount, skips] = await Promise.all([
+    total(db.select({ n: count() }).from(cells).where(eq(cells.churchId, churchId))),
+    total(db.select({ n: count() }).from(cellStudies).where(and(eq(cellStudies.churchId, churchId), eq(cellStudies.status, "publicado")))),
+    total(db.select({ n: count() }).from(ministries).where(eq(ministries.churchId, churchId))),
+    total(db.select({ n: count() }).from(treasuryPixSettings).where(and(eq(treasuryPixSettings.churchId, churchId), eq(treasuryPixSettings.active, true)))),
+    total(db.select({ n: count() }).from(people).where(eq(people.churchId, churchId))),
+    total(db.select({ n: count() }).from(announcements).where(and(eq(announcements.churchId, churchId), eq(announcements.type, "devocional")))),
+    db.select({ stepKey: churchSetupSkips.stepKey }).from(churchSetupSkips).where(eq(churchSetupSkips.churchId, churchId)),
+  ]);
+  const social = normalizeSocialMediaLinks(churchRow?.socialMedia);
+  const done: Record<ChurchSetupStepKey, boolean> = {
+    identidade: Boolean(churchRow?.logoUrl),
+    dados: Boolean((churchRow?.phone || churchRow?.whatsapp) && (churchRow?.address || churchRow?.city)),
+    redes: Object.values(social ?? {}).some(value => typeof value === "string" && value.trim().length > 0),
+    celula: cellCount > 0,
+    estudo: studyCount > 0,
+    ministerio: ministryCount > 0,
+    pix: pixCount > 0,
+    membros: peopleCount > 1,
+    palavra: wordCount > 0,
+  };
+  const skipped = new Set(skips.map(row => row.stepKey));
+  return CHURCH_SETUP_STEP_KEYS.map(key => ({ key, done: done[key], skipped: !done[key] && skipped.has(key) }));
+}
+
+export async function setChurchSetupStepSkipped(churchId: number, stepKey: ChurchSetupStepKey, skipped: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  if (skipped) {
+    await db.insert(churchSetupSkips).values({ churchId, stepKey }).onDuplicateKeyUpdate({ set: { skippedAt: sql`CURRENT_TIMESTAMP` } });
+  } else {
+    await db.delete(churchSetupSkips).where(and(eq(churchSetupSkips.churchId, churchId), eq(churchSetupSkips.stepKey, stepKey)));
+  }
 }
 
 export async function upsertOnboardingProgress(data: { churchId: number; stepWelcome?: boolean; stepImportMembers?: boolean; stepCreateCell?: boolean; stepInviteLeaders?: boolean }) {
