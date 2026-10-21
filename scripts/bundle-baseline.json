@@ -185,8 +185,8 @@
     "assets/EscolaFundamentos-CCZYgQXL.js": {
       "logicalName": "EscolaFundamentos.js",
       "type": "js",
-      "bytes": 160527,
-      "gzipBytes": 29068
+      "bytes": 202200,
+      "gzipBytes": 36500
     },
     "assets/EscolaLideres-qhBjqU1k.js": {
       "logicalName": "EscolaLideres.js",
@@ -2057,6 +2057,12 @@
       "assets/index.js",
       "assets/Pessoas.js",
       "assets/PersonDetailsSection.js",
+      "assets/index.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/EscolaFundamentos.js",
+      "assets/FoundationStudentRecord.js",
       "assets/index.js"
     ]
   ]

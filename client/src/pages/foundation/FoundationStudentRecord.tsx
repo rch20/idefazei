@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, CircleAlert, MessageSquareText, XCircle } from "lucide-react";
+import { CheckCircle2, CircleAlert, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { Badge } from "@/components/ui/badge";
@@ -114,7 +114,7 @@ export function FoundationStudentRecord({
               </div>
               {progress?.reflection?.trim() ? (
                 <div className="rounded-xl border border-black/5 bg-white p-4">
-                  <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-[#1e3a5f]"><MessageSquareText className="h-4 w-4 text-[#c9a84c]" />Anotação geral</p>
+                  <p className="mb-1 text-sm font-semibold text-[#1e3a5f]">Anotação geral</p>
                   <p className="whitespace-pre-line text-sm leading-6 text-slate-700">{progress.reflection}</p>
                 </div>
               ) : null}
