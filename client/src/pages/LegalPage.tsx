@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { Link } from "wouter";
-import { ArrowLeft } from "lucide-react";
 import { usePlatformContact } from "@/hooks/usePlatformContact";
 import { formatCnpj } from "@shared/platformContact";
 
@@ -16,7 +15,7 @@ export function LegalPage({ title, intro, updatedAt, sections }: { title: string
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-4 sm:px-6">
           <Link href="/" className="font-serif text-lg font-bold text-[#1e3a5f]">Ide Fazei</Link>
           <Link href="/" className="inline-flex items-center gap-1 text-sm text-[#1e3a5f]/70 hover:text-[#1e3a5f]">
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Voltar
+            <span aria-hidden="true">←</span> Voltar
           </Link>
         </div>
       </header>

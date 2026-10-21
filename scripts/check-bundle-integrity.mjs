@@ -259,6 +259,9 @@ console.log(`BUNDLE_CYCLES=${cycles.length}`);
 console.log(`BUNDLE_WARNINGS=${warnings.length}`);
 console.log(`BUNDLE_ERRORS=${errors.length}`);
 for (const message of warnings) console.warn(`WARN ${message}`);
-for (const message of errors) console.error(`ERROR ${message}`);
+for (const message of errors) {
+  console.error(`ERROR ${message}`);
+  console.error(`::error title=Bundle::${message}`);
+}
 
 if (errors.length > 0) process.exit(1);
