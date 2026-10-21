@@ -105,7 +105,7 @@ describe("Tesouraria — regressões de interface e lógica", () => {
       "openingBalanceCents: openingBalances.reduce"
     );
     expect(dbSourceNormalized).toContain(
-      "formatCivilDateValue(account.createdAt) <= previousPeriodEndDate"
+      "financialAccountOpeningSeed(account, previousPeriodEndDate)"
     );
     expect(dbSourceNormalized).toContain(
       "const accounts = data.accountId ? allAccounts.filter"
