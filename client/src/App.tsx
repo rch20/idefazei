@@ -28,6 +28,8 @@ const AdminPanel = lazy(() => import("./pages/AdminPanel"));
 const Planos = lazy(() => import("./pages/Planos"));
 const Recursos = lazy(() => import("./pages/Recursos"));
 const Contato = lazy(() => import("./pages/Contato"));
+const Termos = lazy(() => import("./pages/Termos"));
+const Privacidade = lazy(() => import("./pages/Privacidade"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Inicio = lazy(() => import("./pages/Inicio"));
 const GanharAlmas = lazy(() => import("./pages/GanharAlmas"));
@@ -136,6 +138,8 @@ function Router() {
       <Route path="/planos" component={Planos} />
       <Route path="/recursos" component={Recursos} />
       <Route path="/contato" component={Contato} />
+      <Route path="/termos" component={Termos} />
+      <Route path="/privacidade" component={Privacidade} />
 
       {/* Prévia visual estática: nunca é publicada nem substitui o gate Em construção. */}
       <Route path="/preview/escola-fundamentos">

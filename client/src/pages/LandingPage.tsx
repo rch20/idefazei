@@ -529,6 +529,8 @@ export default function LandingPage() {
             {socialLinks.map(key => (
               <a key={key} href={contact.social[key]} target="_blank" rel="noopener noreferrer" className="hover:text-white">{SOCIAL_LABELS[key]}</a>
             ))}
+            <Link href="/termos" className="hover:text-white">Termos de uso</Link>
+            <Link href="/privacidade" className="hover:text-white">Privacidade</Link>
             <Link href="/contato" className="hover:text-white">Fale conosco</Link>
           </div>
         </div>

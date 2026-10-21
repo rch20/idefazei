@@ -244,7 +244,7 @@ export default function PortalVisitante() {
           </Button>
 
           <p className="text-center text-xs text-[#1e3a5f]/40">
-            Seus dados são tratados com respeito e privacidade.
+            Seus dados são tratados com respeito e privacidade. Veja a <a href="/privacidade" className="underline">Política de privacidade</a>.
           </p>
         </form>
       </div>

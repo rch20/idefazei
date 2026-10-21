@@ -294,7 +294,10 @@ export default function CadastroIgreja() {
                   <p>Após o envio, seu cadastro será analisado pela equipe Ide Fazei. Você receberá um email de confirmação quando a igreja for aprovada.</p>
                 </div>
 
-                <div className="flex gap-3">
+                <p className="mb-3 text-center text-xs text-[#1e3a5f]/60">
+                    Ao confirmar, você concorda com os <a href="/termos" target="_blank" rel="noopener noreferrer" className="underline">Termos de uso</a> e com a <a href="/privacidade" target="_blank" rel="noopener noreferrer" className="underline">Política de privacidade</a>.
+                  </p>
+                  <div className="flex gap-3">
                   <Button type="button" variant="outline" className="flex-1 border-[#1e3a5f]/20" onClick={() => setStep(1)}>
                     <ChevronLeft className="mr-1 h-4 w-4" /> Voltar
                   </Button>
