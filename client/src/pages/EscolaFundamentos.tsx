@@ -1098,8 +1098,8 @@ function FoundationCourseRoster({
   const orderedStudies = Array.from(
     new Map(progressRows.map(row => [row.study.id, row.study])).values()
   ).sort((left, right) =>
-    String(left.weekStart ?? "9999").localeCompare(
-      String(right.weekStart ?? "9999")
+    String(left.weekStart ?? "0000").localeCompare(
+      String(right.weekStart ?? "0000")
     ) || left.id - right.id
   );
   const progressOf = (enrollmentId: number) => {
