@@ -121,7 +121,7 @@ describe("integração Pagar.me", () => {
 
   it("registra a migration aditiva no ledger e deixa o bloqueio desligado por padrão", () => {
     const sql = read("drizzle/0106_platform_billing.sql");
-    expect(sql).not.toMatch(/\b(DROP|DELETE|UPDATE|TRUNCATE)\b/i);
+    expect(sql.replaceAll("ON UPDATE CURRENT_TIMESTAMP", "")).not.toMatch(/\b(DROP|DELETE|UPDATE|TRUNCATE)\b/i);
     const entry = JSON.parse(read("drizzle/custom-migrations.json")).entries.find((item: { id: string }) => item.id === "0106");
     expect(entry.sha256).toBe(createHash("sha256").update(sql).digest("hex"));
     expect(read("server/billing.ts")).toContain("enforce: false");
