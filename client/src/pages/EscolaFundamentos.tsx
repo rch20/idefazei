@@ -79,6 +79,12 @@ const StudentLearningExperience = lazy(() =>
   }))
 );
 
+const FoundationStudentRecord = lazy(() =>
+  import("./foundation/FoundationStudentRecord").then(module => ({
+    default: module.FoundationStudentRecord,
+  }))
+);
+
 function StudentLearningExperienceFallback() {
   return (
     <div
@@ -1232,10 +1238,46 @@ function FoundationCourseRoster({
     },
     onError: error => toast.error(error.message),
   });
+  const { data: progressRows = [] } =
+    trpc.escolaFundamentos.courseProgress.useQuery({
+      churchId,
+      courseId: course.id,
+    });
+  const [recordEnrollmentId, setRecordEnrollmentId] = useState<number | null>(
+    null
+  );
   const rows = enrollments as Array<{
     enrollment: { id: number; status: string | null };
     person: { id: number; fullName: string };
   }>;
+  const orderedStudies = Array.from(
+    new Map(progressRows.map(row => [row.study.id, row.study])).values()
+  ).sort((left, right) =>
+    String(left.weekStart ?? "9999").localeCompare(
+      String(right.weekStart ?? "9999")
+    ) || left.id - right.id
+  );
+  const progressOf = (enrollmentId: number) => {
+    const own = progressRows.filter(row => row.enrollment.id === enrollmentId);
+    return {
+      done: own.filter(row => row.progress?.status === "concluida").length,
+      total: orderedStudies.length,
+      needsReinforcement: own.filter(
+        row => row.progress?.reviewStatus === "precisa_reforco"
+      ).length,
+      studies: orderedStudies.map(study => {
+        const row = own.find(item => item.study.id === study.id);
+        return {
+          id: study.id,
+          title: study.title,
+          weekStart: study.weekStart ? String(study.weekStart) : null,
+          status: row?.progress?.status ?? null,
+          reviewStatus: row?.progress?.reviewStatus ?? null,
+        };
+      }),
+    };
+  };
+  const recordRow = rows.find(row => row.enrollment.id === recordEnrollmentId);
   return (
     <Card className="border-[#c9a84c]/20">
       <CardHeader className="pb-3">
@@ -1251,23 +1293,48 @@ function FoundationCourseRoster({
         {isLoading ? (
           <div className="h-20 animate-pulse rounded-lg bg-muted/30" />
         ) : rows.length ? (
-          rows.map(({ enrollment, person }) => (
+          rows.map(({ enrollment, person }) => {
+            const own = progressOf(enrollment.id);
+            return (
             <div
               key={enrollment.id}
               className="flex flex-col gap-2 rounded-xl border bg-white p-3 sm:flex-row sm:items-center sm:justify-between"
             >
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-[#1e3a5f]">
                   {person.fullName}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {enrollment.status === "concluido"
-                    ? "Preparação concluída"
-                    : enrollment.status === "em_andamento"
-                      ? "Preparação em andamento"
-                      : "Ainda não iniciada"}
+                  {own.total > 0
+                    ? `${own.done} de ${own.total} ${own.total === 1 ? "estudo concluído" : "estudos concluídos"}`
+                    : "Nenhum estudo publicado ainda"}
                 </p>
+                {own.total > 0 ? (
+                  <div className="mt-1.5 h-1.5 max-w-[14rem] overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-[#1e3a5f]"
+                      style={{ width: `${Math.round((own.done / own.total) * 100)}%` }}
+                    />
+                  </div>
+                ) : null}
+                {own.needsReinforcement > 0 ? (
+                  <p className="mt-1 text-xs font-medium text-amber-700">
+                    Precisa de reforço em {own.needsReinforcement}{" "}
+                    {own.needsReinforcement === 1 ? "estudo" : "estudos"}
+                  </p>
+                ) : null}
               </div>
+              {own.total > 0 ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => setRecordEnrollmentId(enrollment.id)}
+                >
+                  Ver respostas
+                </Button>
+              ) : null}
               <Select
                 value={enrollment.status ?? "matriculado"}
                 onValueChange={value =>
@@ -1292,7 +1359,8 @@ function FoundationCourseRoster({
                 </SelectContent>
               </Select>
             </div>
-          ))
+            );
+          })
         ) : (
           <p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
             Nenhum aluno matriculado nesta turma ainda. A matrícula continua
@@ -1300,6 +1368,23 @@ function FoundationCourseRoster({
           </p>
         )}
       </CardContent>
+      {recordRow ? (
+        <Suspense fallback={null}>
+          <FoundationStudentRecord
+            churchId={churchId}
+            courseId={course.id}
+            enrollmentId={recordRow.enrollment.id}
+            studentName={recordRow.person.fullName}
+            studies={progressOf(recordRow.enrollment.id).studies}
+            initialStudyId={
+              [...progressOf(recordRow.enrollment.id).studies]
+                .reverse()
+                .find(study => study.status)?.id ?? null
+            }
+            onClose={() => setRecordEnrollmentId(null)}
+          />
+        </Suspense>
+      ) : null}
     </Card>
   );
 }

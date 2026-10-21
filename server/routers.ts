@@ -365,6 +365,7 @@ import {
   hasCompletedFoundationQuestions,
   getFoundationLessonProgress,
   getFoundationCourseProgress,
+  getFoundationStudentStudyDetail,
   getFoundationWeeklyOverview,
   touchFoundationLessonProgress,
   touchFoundationBlockProgress,
@@ -8987,6 +8988,21 @@ const escolaFundamentosRouter = router({
           message: "Turma não encontrada nesta igreja.",
         });
       return getFoundationCourseProgress(input.churchId, input.courseId);
+    }),
+  studentStudyDetail: tenantProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        enrollmentId: z.number().int().positive(),
+        studyId: z.number().int().positive(),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      await requireFoundationStudyManager(ctx.user.id, input.churchId);
+      const [enrollment, study] = await Promise.all([getCourseEnrollmentById(input.enrollmentId, input.churchId), getFoundationStudyById(input.studyId, input.churchId)]);
+      if (!enrollment || !study || enrollment.courseId !== study.courseId)
+        throw new TRPCError({ code: "NOT_FOUND", message: "Matrícula ou estudo não pertence a esta igreja." });
+      return getFoundationStudentStudyDetail(input.churchId, input.enrollmentId, input.studyId);
     }),
   weeklyOverview: tenantProcedure
     .input(

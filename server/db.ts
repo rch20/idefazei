@@ -12794,3 +12794,70 @@ export async function setScheduleItemsConfirmed(data: { churchId: number; ids: n
   const header = (Array.isArray(result) ? result[0] : result) as { affectedRows?: number } | undefined;
   return Number(header?.affectedRows ?? 0);
 }
+
+
+/** Ficha do aluno em um estudo: anotações por etapa e respostas às perguntas (visão da liderança). */
+export async function getFoundationStudentStudyDetail(churchId: number, enrollmentId: number, studyId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [progress, blocks, blockProgress] = await Promise.all([
+    getFoundationLessonProgress(churchId, enrollmentId, studyId),
+    db
+      .select()
+      .from(foundationStudyBlocks)
+      .where(and(eq(foundationStudyBlocks.churchId, churchId), eq(foundationStudyBlocks.studyId, studyId), eq(foundationStudyBlocks.active, true)))
+      .orderBy(asc(foundationStudyBlocks.position), asc(foundationStudyBlocks.id)),
+    db
+      .select()
+      .from(foundationBlockProgress)
+      .where(and(eq(foundationBlockProgress.churchId, churchId), eq(foundationBlockProgress.enrollmentId, enrollmentId), eq(foundationBlockProgress.studyId, studyId))),
+  ]);
+  const blockIds = blocks.map(block => block.id);
+  const questions = blockIds.length
+    ? await db
+        .select()
+        .from(foundationQuestions)
+        .where(and(eq(foundationQuestions.churchId, churchId), inArray(foundationQuestions.blockId, blockIds), eq(foundationQuestions.active, true)))
+        .orderBy(asc(foundationQuestions.position), asc(foundationQuestions.id))
+    : [];
+  const questionIds = questions.map(question => question.id);
+  const attempts = questionIds.length
+    ? await db
+        .select()
+        .from(foundationQuestionAttempts)
+        .where(and(eq(foundationQuestionAttempts.churchId, churchId), eq(foundationQuestionAttempts.enrollmentId, enrollmentId), inArray(foundationQuestionAttempts.questionId, questionIds)))
+        .orderBy(asc(foundationQuestionAttempts.attemptNumber))
+    : [];
+  return {
+    progress: progress ?? null,
+    blocks: blocks.map(block => {
+      const blockState = blockProgress.find(item => item.blockId === block.id) ?? null;
+      return {
+        id: block.id,
+        title: block.title,
+        position: block.position,
+        reflectionPrompt: block.reflectionPrompt,
+        status: blockState?.status ?? null,
+        reflection: blockState?.reflection ?? null,
+        questions: questions
+          .filter(question => question.blockId === block.id)
+          .map(question => {
+            const options = (Array.isArray(question.options) ? question.options : []) as Array<{ id: string; text: string }>;
+            const questionAttempts = attempts.filter(attempt => attempt.questionId === question.id);
+            const textOf = (id: string) => options.find(option => option.id === id)?.text ?? id;
+            return {
+              id: question.id,
+              prompt: question.prompt,
+              correctText: textOf(question.correctOptionId),
+              attempts: questionAttempts.map(attempt => ({
+                attemptNumber: attempt.attemptNumber,
+                isCorrect: attempt.isCorrect,
+                selectedText: textOf(attempt.selectedOptionId),
+                answeredAt: attempt.answeredAt,
+              })),
+            };
+          }),
+      };
+    }),
+  };
+}
