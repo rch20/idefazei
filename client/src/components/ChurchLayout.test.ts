@@ -94,7 +94,7 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain('label: "Eventos", mobileLabel: "Eventos", path: "/app/eventos", accessKey: "isExecutive"');
     expect(source).toContain('label: "Meu painel", mobileLabel: "Meu painel", path: "/app/membro"');
     expect(source).toContain('...quickAccessItems.filter((item) => item.path !== "/app/membro")');
-    expect(source).toContain('{ icon: UserRound, label: "Meu painel", path: "/app/membro", group: "membros" }');
+    expect(source).toContain('{ icon: UserRound, label: "Meu painel", path: "/app/membro", group: "principal" }');
     expect(source).toContain('aria-label="Acesso rápido"');
     expect(source).toContain('aria-label="Acesso rápido móvel"');
     expect(source).toContain('aria-label="Mais opções"');
@@ -109,8 +109,12 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain("lg:block");
     expect(source).toContain('!item.accessKey || Boolean(accessSummary?.[item.accessKey])');
     expect(source).toContain('label: "Discípulos", path: "/app/pessoas", group: "membros", accessKey: "canReadPeople"');
-    expect(source).toContain('{ key: "membros", label: "Discípulos" }');
+    expect(source).toContain('{ key: "membros", label: "Pessoas" }');
     expect(source).not.toContain('label: "Pessoas", path: "/app/pessoas"');
+    expect(source).toContain('{ key: "cuidado", label: "Cuidado" }');
+    expect(source).toContain('label: "Mensagens", path: "/app/comunicacao"');
+    expect(source).toContain('label: "Configurações", path: "/app/configuracoes"');
+    expect(source).toContain('!i.underConstruction');
     expect(source).not.toContain('label: "Agenda"');
     expect(source).not.toContain('label: "Aprovações"');
     expect(source).not.toContain('label: "Indicações"');

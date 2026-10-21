@@ -346,7 +346,7 @@ function Router() {
       </Route>
 
       <Route path="/app/gestao-lideranca">
-        <AppPage title="Gestão de Liderança" requiredAccess="isExecutive">
+        <AppPage title="Equipe de liderança" requiredAccess="isExecutive">
           <GestaoLideranca />
         </AppPage>
       </Route>
@@ -358,7 +358,7 @@ function Router() {
       </Route>
 
       <Route path="/app/comunicacao">
-        <AppPage title="Comunicação" requiredAccess="isCommunicationManager">
+        <AppPage title="Mensagens" requiredAccess="isCommunicationManager">
           <Comunicacao />
         </AppPage>
       </Route>

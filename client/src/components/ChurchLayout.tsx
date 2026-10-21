@@ -116,36 +116,36 @@ type NavItem = { icon: typeof Home; label: string; path: string; group: string; 
 
 const navItems: NavItem[] = [
   { icon: Home, label: "Início", path: "/app/inicio", group: "principal" },
+  { icon: UserRound, label: "Meu painel", path: "/app/membro", group: "principal" },
   { icon: LayoutDashboard, label: "Visão geral", path: "/app/dashboard", group: "principal", accessKey: "isExecutive" },
-  { icon: Heart, label: "Cuidado", path: "/app/cuidado", group: "principal", accessKey: "isPastoralWorker" },
-  { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "membros", accessKey: "isExecutive" },
-  { icon: Flame, label: "Novas Almas", path: "/app/almas", group: "discipulado" },
-  { icon: HeartHandshake, label: "Consolidação", path: "/app/consolidacao", group: "discipulado", accessKey: "canAccessVisits" },
+  { icon: Heart, label: "Cuidado", path: "/app/cuidado", group: "cuidado", accessKey: "isPastoralWorker" },
+  { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "cuidado", accessKey: "isExecutive" },
+  { icon: HeartHandshake, label: "Consolidação", path: "/app/consolidacao", group: "cuidado", accessKey: "canAccessVisits" },
+  { icon: Shield, label: "Aconselhamento", path: "/app/aconselhamento", group: "cuidado", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
+  { icon: MessageCircle, label: "Pedidos de Oração", path: "/app/oracao", group: "cuidado" },
   { icon: Route, label: "Painel da formação", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
+  { icon: Flame, label: "Novas Almas", path: "/app/almas", group: "discipulado" },
+  { icon: School, label: "Escola de Fundamentos", path: "/app/escola-fundamentos", group: "discipulado" },
+  { icon: Droplets, label: "Batismo nas Águas", path: "/app/batismo", group: "discipulado", accessKey: "isExecutive" },
+  { icon: Sparkles, label: "Encontro com Deus", path: "/app/encontro-com-deus", group: "discipulado", accessKey: "canManageEncounter", requiresEncounterAccess: true },
   { icon: Users, label: "Discípulos", path: "/app/pessoas", group: "membros", accessKey: "canReadPeople" },
   { icon: UsersRound, label: "Famílias", path: "/app/familias", group: "membros", accessKey: "isExecutive" },
   { icon: Globe, label: "Células", path: "/app/celulas", group: "celulas" },
   { icon: Map, label: "Mapa de Células", path: "/app/mapa", group: "celulas" },
   { icon: BookOpen, label: "Estudos de Células", path: "/app/estudos-celulas", group: "celulas" },
-  { icon: CalendarDays, label: "Eventos", path: "/app/eventos", group: "ministerio", accessKey: "isExecutive" },
+  { icon: Star, label: "Minha equipe", path: "/app/lider", group: "celulas", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"] },
   { icon: Music, label: "Ministérios", path: "/app/ministerios", group: "ministerio", accessKey: "canAccessMinistry" },
   { icon: ClipboardList, label: "Escalas", path: "/app/escalas", group: "ministerio", accessKey: "canManageSchedules" },
-  { icon: School, label: "Escola de Fundamentos", path: "/app/escola-fundamentos", group: "discipulado" },
-  { icon: Droplets, label: "Batismo nas Águas", path: "/app/batismo", group: "discipulado", accessKey: "isExecutive" },
-  { icon: Sparkles, label: "Encontro com Deus", path: "/app/encontro-com-deus", group: "discipulado", accessKey: "canManageEncounter", requiresEncounterAccess: true },
+  { icon: CalendarDays, label: "Eventos", path: "/app/eventos", group: "ministerio", accessKey: "isExecutive" },
   { icon: GraduationCap, label: "Escola de Líderes", path: "/app/escola-lideres", group: "lideranca", accessKey: "isExecutive" },
-  { icon: Crown, label: "Liderança", path: "/app/gestao-lideranca", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
-  { icon: Shield, label: "Aconselhamento", path: "/app/aconselhamento", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
-  { icon: MessageCircle, label: "Pedidos de Oração", path: "/app/oracao", group: "comunicacao" },
+  { icon: Crown, label: "Equipe de liderança", path: "/app/gestao-lideranca", group: "lideranca", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
   { icon: Megaphone, label: "Mural", path: "/app/mural", group: "comunicacao", accessKey: "isCommunicationManager" },
-  { icon: MessageSquare, label: "Comunicação", path: "/app/comunicacao", group: "comunicacao", roles: ["pastor_presidente", "pastor_local", "secretario"], accessKey: "isCommunicationManager" },
+  { icon: MessageSquare, label: "Mensagens", path: "/app/comunicacao", group: "comunicacao", roles: ["pastor_presidente", "pastor_local", "secretario"], accessKey: "isCommunicationManager" },
   { icon: Library, label: "Biblioteca", path: "/app/biblioteca", group: "comunicacao" },
-  { icon: Building2, label: "Igreja", path: "/app/configuracoes", group: "admin", accessKey: "canManageChurch" },
-  { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin", accessKey: "canManageChurch", underConstruction: true },
+  { icon: Building2, label: "Configurações", path: "/app/configuracoes", group: "admin", accessKey: "canManageChurch" },
   { icon: WalletCards, label: "Tesouraria", path: "/app/tesouraria", group: "admin", accessKey: "canAccessTreasury" },
+  { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin", accessKey: "canManageChurch", underConstruction: true },
   { icon: CreditCard, label: "Faturamento", path: "/app/faturamento", group: "admin", accessKey: "canManageChurch", underConstruction: true },
-  { icon: UserRound, label: "Meu painel", path: "/app/membro", group: "membros" },
-  { icon: Star, label: "Minha equipe", path: "/app/lider", group: "membros", roles: ["pastor_presidente", "pastor_local", "supervisor", "lider"] },
 ];
 
 type QuickAccessItem = { icon: typeof Home; label: string; mobileLabel: string; path: string; accessKey?: keyof ChurchAccessSummary };
@@ -176,10 +176,11 @@ function preloadRouteOnIntent(path: string) {
 
 const groups = [
   { key: "principal", label: "Início" },
+  { key: "cuidado", label: "Cuidado" },
   { key: "discipulado", label: "Formação" },
-  { key: "membros", label: "Discípulos" },
+  { key: "membros", label: "Pessoas" },
   { key: "celulas", label: "Células" },
-  { key: "ministerio", label: "Atuação" },
+  { key: "ministerio", label: "Ministérios" },
   { key: "lideranca", label: "Liderança" },
   { key: "comunicacao", label: "Comunicação" },
   { key: "admin", label: "Igreja" },
@@ -261,7 +262,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { churchName, logoUrl, accessSummary } = useChurch();
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<string[]>(["principal", "membros"]);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(["principal", "cuidado", "discipulado"]);
   const currentRole = user?.role ?? "membro";
   const effectiveRoles = Array.from(new Set([currentRole, ...(accessSummary?.roles ?? [])]));
   const isPastoralAdmin = Boolean(accessSummary?.canManageChurch || ["pastor_presidente", "pastor_local"].includes(currentRole));
@@ -273,14 +274,7 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
     const activeGroup = groups.find((group) => navItems.some((item) => item.group === group.key && (location === item.path || location.startsWith(item.path + "/"))));
     if (activeGroup) setExpandedGroups((current) => current.includes(activeGroup.key) ? current : [...current, activeGroup.key]);
   }, [location]);
-  // Quem não administra a igreja vê "Minha área" logo depois do Início.
-  const orderedGroups = isPastoralAdmin
-    ? groups
-    : [
-        ...groups.filter((group) => group.key === "principal"),
-        ...groups.filter((group) => group.key === "membros"),
-        ...groups.filter((group) => group.key !== "principal" && group.key !== "membros"),
-      ];
+  const orderedGroups = groups;
   const canReviewRegistrations = Boolean(accessSummary?.canManageChurch);
   const pendingRegistrationsQuery = trpc.churchAuth.pendingRegistrations.useQuery(
     { churchId: user?.churchId ?? 0 },
@@ -333,13 +327,11 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         {/* Navigation */}
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Navegação principal">
           {orderedGroups.map((group) => {
-            const items = navItems.filter((i) => i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))) && (!i.accessKey || Boolean(accessSummary?.[i.accessKey])) && (!i.requiresEncounterAccess || encounterAccessQuery.data === true));
+            const items = navItems.filter((i) => !i.underConstruction && i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))) && (!i.accessKey || Boolean(accessSummary?.[i.accessKey])) && (!i.requiresEncounterAccess || encounterAccessQuery.data === true));
             if (!items.length) return null;
             const isFlat = group.key === "principal";
             const isExpanded = isFlat || expandedGroups.includes(group.key);
-            const contextualGroupLabel = group.key === "membros"
-              ? (isPastoralAdmin ? "Pessoas" : "Minha área")
-              : group.label;
+            const contextualGroupLabel = group.label;
             return (
               <section key={group.key} className="border-b border-white/5 pb-1 last:border-0">
                 {!isFlat && <button

@@ -132,7 +132,7 @@ export default function Comunicacao() {
         <div>
           <h1 className="text-2xl font-bold text-[#1e3a5f] flex items-center gap-2">
             <MessageSquare className="h-6 w-6 text-[#c9a84c]" />
-            Comunicação
+            Mensagens
           </h1>
           <p className="text-muted-foreground mt-1">Organize mensagens, automações e o histórico da comunicação da igreja.</p>
         </div>
