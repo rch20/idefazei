@@ -34,8 +34,9 @@ const EMPTY_CONFIG: StoredConfig = { baseUrl: PAGARME_TEST_BASE_URL, secretKeyEn
 
 // ─── Criptografia da chave secreta (nunca volta para o navegador) ─────────────
 function encryptionKey() {
-  if (!ENV.cookieSecret) throw new Error("JWT_SECRET ausente: não é possível guardar a chave secreta com segurança.");
-  return createHash("sha256").update(`pagarme-settings:${ENV.cookieSecret}`).digest();
+  const secret = ENV.cookieSecret || process.env.JWT_SECRET || "";
+  if (!secret) throw new Error("JWT_SECRET ausente: não é possível guardar a chave secreta com segurança.");
+  return createHash("sha256").update(`pagarme-settings:${secret}`).digest();
 }
 
 export function encryptSecret(plain: string): string {
