@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
-import { CheckCircle2, ChevronDown, Circle, Clock3, Sparkles } from "lucide-react";
+import { CheckCircle2, Clock3, Sparkles } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { CHURCH_SETUP_STEPS, type ChurchSetupStepKey } from "@shared/churchSetup";
 
@@ -46,7 +46,7 @@ export function ChurchSetupTrail({ churchId }: { churchId: number }) {
           ) : null}
         </div>
         <button type="button" onClick={() => setOpen(!expanded)} aria-expanded={expanded} aria-label={expanded ? "Recolher passos" : "Ver todos os passos"} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-navy hover:bg-navy/5">
-          <ChevronDown className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`h-5 w-5 transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true"><path d="m5 8 5 5 5-5" /></svg>
         </button>
       </div>
       {expanded ? (
@@ -56,7 +56,7 @@ export function ChurchSetupTrail({ churchId }: { churchId: number }) {
             return (
               <li key={step.key} className={`rounded-xl border p-3 ${step.done ? "border-emerald-200 bg-emerald-50/60" : "border-slate-200 bg-slate-50/60"}`}>
                 <div className="flex items-start gap-3">
-                  {step.done ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-label="Feito" /> : step.skipped ? <Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-label="Pulado" /> : <Circle className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" aria-label="Pendente" />}
+                  {step.done ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-label="Feito" /> : step.skipped ? <Clock3 className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-label="Pulado" /> : <span className="mt-0.5 h-5 w-5 shrink-0 rounded-full border-2 border-slate-300" role="img" aria-label="Pendente" />}
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-navy">{info.title}{step.skipped ? <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">Pulado</span> : null}</p>
                     {!step.done ? <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{info.description}</p> : null}
