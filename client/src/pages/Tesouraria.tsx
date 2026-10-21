@@ -222,6 +222,7 @@ const QUICK_ACTION_TILES: TreasuryQuickActionTile[] = [
 
 const LAZY_QUICK_ACTIONS: TreasuryQuickAction[] = [
   "contribuicoes-online",
+  "doacoes-publicas",
   "contas-a-pagar",
   "pix",
   "programacao",

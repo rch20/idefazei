@@ -36,3 +36,14 @@ describe("Tesouraria — saldo inicial com data", () => {
     expect(db).toContain("newAccountOpeningCents");
   });
 });
+
+describe("Tesouraria — painéis do acesso rápido", () => {
+  it("todo cartão que abre painel carregável está registrado para renderizar", () => {
+    const page = readFileSync("client/src/pages/Tesouraria.tsx", "utf8");
+    const host = readFileSync("client/src/components/TreasuryQuickActionHost.tsx", "utf8");
+    const lazyList = /const LAZY_QUICK_ACTIONS[^=]*= \[([\s\S]*?)\];/.exec(page)?.[1] ?? "";
+    const loaders = Array.from(host.matchAll(/^  "([a-z-]+)": async \(\) => \{/gm)).map(match => match[1]);
+    expect(loaders).toContain("doacoes-publicas");
+    for (const action of loaders) expect(lazyList).toContain(`"${action}"`);
+  });
+});
