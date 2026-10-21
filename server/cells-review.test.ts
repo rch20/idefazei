@@ -18,3 +18,12 @@ describe("Células: revisão", () => {
     expect(studies).toContain("function isCurrentWeek");
   });
 });
+
+describe("Estudos de Células: cartão simples para estudo pronto", () => {
+  it("estudo enviado em arquivo mostra só título e PDF, sem seções vazias", () => {
+    expect(studies).toContain("function isReadyStudy");
+    expect(studies).toContain("function StudySections");
+    expect(studies).not.toContain("Não informado.");
+    expect(studies).not.toContain("Estudo oficial preparado para aplicação na Célula.");
+  });
+});
