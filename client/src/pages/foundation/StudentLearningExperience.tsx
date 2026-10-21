@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useVersionedStageNote } from "./useVersionedStageNote";
 import { StudentNoteConflict } from "./StudentNoteConflict";
 import type { CSSProperties } from "react";
@@ -315,6 +315,12 @@ function StepRail({
   onSelect: (index: number) => void;
   theme: FoundationTheme;
 }) {
+  const railRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const rail = railRef.current;
+    const current = rail?.querySelector<HTMLElement>('[aria-current="step"]');
+    if (rail && current) rail.scrollTo({ left: current.offsetLeft - rail.clientWidth / 2 + current.offsetWidth / 2, behavior: "smooth" });
+  }, [selectedBlockIndex]);
   const getStatus = (block: SessionBlock): SessionBlock["status"] =>
     completedBlockIds.has(block.id) ? "concluida" : block.status;
   const getStatusLabel = (status: SessionBlock["status"]) =>
@@ -324,168 +330,40 @@ function StepRail({
         ? "Aguardando a etapa anterior"
         : "Parte atual";
   return (
-    <>
-      <div
-        className="mb-3 grid grid-cols-2 gap-2 lg:hidden"
-        aria-label="Etapas do estudo"
-      >
-        {blocks.map((block, index) => {
-          const status = getStatus(block);
-          return (
-            <button
-              key={block.id}
-              type="button"
-              disabled={status === "bloqueada"}
-              aria-current={index === selectedBlockIndex ? "step" : undefined}
-              aria-label={`${index + 1}. ${block.title}. ${getStatusLabel(status)}`}
-              title={block.title}
-              onClick={() => onSelect(index)}
-              className="flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-45"
-              style={
-                index === selectedBlockIndex
-                  ? {
-                      backgroundColor: theme.primarySoft,
-                      borderColor: makeFoundationSoftColor(
-                        theme.primary,
-                        45,
-                        "white"
-                      ),
-                      color: theme.primary,
-                    }
-                  : {
-                      backgroundColor: "white",
-                      borderColor: "#e1e5e1",
-                      color: "#68736c",
-                    }
-              }
-            >
-              <StepMarker
-                index={index}
-                status={status}
-                active={index === selectedBlockIndex}
-                theme={theme}
-              />
-              <span className="min-w-0 truncate">{block.title}</span>
-            </button>
-          );
-        })}
-      </div>
-      <aside className="hidden min-w-0 rounded-2xl border border-black/5 bg-white p-4 shadow-sm lg:block">
-        <p
-          className="mb-4 font-display text-lg font-bold"
-          style={{ color: theme.primary }}
-        >
-          Etapas do estudo
-        </p>
-        <div className="relative space-y-1 before:absolute before:bottom-6 before:left-4 before:top-6 before:w-px before:bg-slate-200">
-          {blocks.map((block, index) => {
-            const status = getStatus(block);
-            return (
-              <button
-                key={block.id}
-                type="button"
-                disabled={status === "bloqueada"}
-                aria-current={index === selectedBlockIndex ? "step" : undefined}
-                aria-label={`${index + 1}. ${block.title}. ${getStatusLabel(status)}`}
-                onClick={() => onSelect(index)}
-                className="relative flex w-full items-center gap-3 rounded-xl p-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45"
-                style={
-                  index === selectedBlockIndex
-                    ? {
-                        backgroundColor: theme.primarySoft,
-                        color: theme.primary,
-                      }
-                    : { color: "#68736c" }
-                }
-              >
-                <StepMarker
-                  index={index}
-                  status={status}
-                  active={index === selectedBlockIndex}
-                  theme={theme}
-                />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold">
-                    {index + 1}. {block.title}
-                  </span>
-                  <span className="mt-0.5 block truncate text-xs text-slate-500">
-                    {getStatusLabel(status)}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="mt-5 border-t border-black/5 pt-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-            Retomada
-          </p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Você pode voltar às etapas concluídas sem perder suas respostas.
-          </p>
-        </div>
-      </aside>
-    </>
-  );
-}
-
-function StudentStudyProgressSummary({
-  blocks,
-  selectedBlockIndex,
-  completedBlockIds,
-  theme,
-}: {
-  blocks: SessionBlock[];
-  selectedBlockIndex: number;
-  completedBlockIds: Set<number>;
-  theme: FoundationTheme;
-}) {
-  const completedCount = blocks.filter(
-    block => block.status === "concluida" || completedBlockIds.has(block.id)
-  ).length;
-  const total = blocks.length;
-  const percentage = total ? Math.round((completedCount / total) * 100) : 0;
-  const activeBlock = blocks[selectedBlockIndex] ?? null;
-  return (
-    <section
-      className="mt-4 rounded-xl border border-black/5 bg-[#f8f8f5] p-3 sm:p-4"
-      aria-label="Progresso do estudo"
+    <nav
+      ref={railRef}
+      className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
+      aria-label="Etapas do estudo"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Progresso do estudo
-          </p>
-          <p className="mt-1 font-semibold" style={{ color: theme.primary }}>
-            {completedCount} de {total} partes concluídas
-          </p>
-        </div>
-        <span className="text-sm font-bold" style={{ color: theme.primary }}>
-          {percentage}%
-        </span>
-      </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
-        <div
-          className="h-full rounded-full transition-[width] duration-200 motion-reduce:transition-none"
-          style={{ width: `${percentage}%`, backgroundColor: theme.primary }}
-        />
-      </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="font-medium text-slate-600">
-          Parte atual:{" "}
-          {activeBlock
-            ? `${selectedBlockIndex + 1}. ${activeBlock.title}`
-            : "preparação inicial"}
-        </span>
-        <span className="font-semibold" style={{ color: theme.primary }}>
-          {activeBlock &&
-          (activeBlock.status === "concluida" ||
-            completedBlockIds.has(activeBlock.id))
-            ? "Parte concluída"
-            : "Continue daqui"}
-        </span>
-      </div>
-    </section>
+      {blocks.map((block, index) => {
+        const status = getStatus(block);
+        const active = index === selectedBlockIndex;
+        return (
+          <button
+            key={block.id}
+            type="button"
+            disabled={status === "bloqueada"}
+            aria-current={index === selectedBlockIndex ? "step" : undefined}
+            aria-label={`${index + 1}. ${block.title}. ${getStatusLabel(status)}`}
+            title={block.title}
+            onClick={() => onSelect(index)}
+            className="flex shrink-0 items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 text-left text-sm disabled:cursor-not-allowed disabled:opacity-45"
+            style={
+              active
+                ? {
+                    backgroundColor: theme.primarySoft,
+                    borderColor: makeFoundationSoftColor(theme.primary, 45, "white"),
+                    color: theme.primary,
+                  }
+                : { backgroundColor: "white", borderColor: "#e1e5e1", color: "#68736c" }
+            }
+          >
+            <StepMarker index={index} status={status} active={active} theme={theme} />
+            <span className={active ? "max-w-[11rem] truncate font-semibold" : "max-w-[7rem] truncate"}>{block.title}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -756,6 +634,9 @@ export function StudentLearningExperience({
   const session = sessionQuery.data as StudentSession | undefined;
   const blocks = session?.blocks ?? [];
   const activeBlock = blocks[selectedBlockIndex] ?? null;
+  const completedStudyBlocks = blocks.filter(
+    block => block.status === "concluida" || completedBlockIds.has(block.id)
+  ).length;
   const activeBlockCompleted = Boolean(
     activeBlock &&
       (activeBlock.status === "concluida" ||
@@ -1575,7 +1456,7 @@ export function StudentLearningExperience({
                 >
                   {selectedLesson?.study.title}
                 </DialogTitle>
-                <DialogDescription className="mt-1 max-w-[38ch] text-sm leading-5 text-muted-foreground">
+                <DialogDescription className="sr-only mt-1 max-w-[38ch] text-sm leading-5 text-muted-foreground sm:not-sr-only">
                   <span className="sm:hidden">
                     Você pode voltar sem perder o que escreveu.
                   </span>
@@ -1600,7 +1481,7 @@ export function StudentLearningExperience({
                 ) : null}
               </div>
               {session?.study.weekStart ? (
-                <Badge variant="outline" className="shrink-0">
+                <Badge variant="outline" className="hidden shrink-0 sm:inline-flex">
                   Semana de {formatCivilDate(session.study.weekStart)}
                 </Badge>
               ) : null}
@@ -1608,24 +1489,21 @@ export function StudentLearningExperience({
             {blocks.length ? (
               <div
                 data-testid="foundation-study-reader-progress"
-                className="mt-4"
+                className="mt-2 sm:mt-4"
               >
                 <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
                   <span>
                     Etapa {selectedBlockIndex + 1} de {blocks.length}
                   </span>
                   <span>
-                    {Math.round(
-                      ((selectedBlockIndex + 1) / blocks.length) * 100
-                    )}
-                    %
+                    {completedStudyBlocks} {completedStudyBlocks === 1 ? "concluída" : "concluídas"}
                   </span>
                 </div>
-                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100">
                   <div
-                    className="h-full rounded-full"
+                    className="h-full rounded-full transition-[width] duration-200 motion-reduce:transition-none"
                     style={{
-                      width: `${Math.round(((selectedBlockIndex + 1) / blocks.length) * 100)}%`,
+                      width: `${Math.round((completedStudyBlocks / blocks.length) * 100)}%`,
                       backgroundColor: theme.primary,
                     }}
                   />
@@ -1656,12 +1534,6 @@ export function StudentLearningExperience({
                   onSelect={selectBlock}
                   theme={theme}
                 />
-                <StudentStudyProgressSummary
-                  blocks={blocks}
-                  selectedBlockIndex={selectedBlockIndex}
-                  completedBlockIds={completedBlockIds}
-                  theme={theme}
-                />
                 <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
                   <main className="min-w-0 space-y-4">
                     <Card className="border-black/5 shadow-sm">
@@ -1669,15 +1541,6 @@ export function StudentLearningExperience({
                         {activeBlock ? (
                           <>
                             <div className="flex flex-wrap items-center gap-2">
-                              <Badge
-                                style={{
-                                  backgroundColor: theme.accent,
-                                  color: theme.accentForeground,
-                                }}
-                              >
-                                ETAPA {selectedBlockIndex + 1} DE{" "}
-                                {blocks.length}
-                              </Badge>
                               {activeBlockCompleted ? (
                                 <Badge variant="default">Concluída</Badge>
                               ) : null}
@@ -1689,9 +1552,6 @@ export function StudentLearningExperience({
                               >
                                 {activeBlock.title}
                               </h3>
-                              <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                                Parte atual da preparação
-                              </p>
                               <p className="mt-3 whitespace-pre-line text-base leading-8 text-slate-700">
                                 {activeBlock.content}
                               </p>

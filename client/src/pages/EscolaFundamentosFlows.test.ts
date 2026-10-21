@@ -124,17 +124,15 @@ describe("Formação de Fundamentos", () => {
     expect(source).toContain("hidden sm:inline");
   });
 
-  it("mostra claramente o progresso dentro das partes do estudo", () => {
-    expect(source).toContain("StudentStudyProgressSummary");
+  it("mostra o progresso em um só lugar e navega por etapas compactas", () => {
+    expect(source).toContain("completedStudyBlocks");
     expect(source).toContain("completedBlockIds");
-    expect(source).toContain("Progresso do estudo");
-    expect(source).toContain("partes concluídas");
-    expect(source).toContain("Parte atual:");
+    expect(source).not.toContain("StudentStudyProgressSummary");
     expect(source).toContain(
       'aria-current={index === selectedBlockIndex ? "step" : undefined}'
     );
     expect(source).toContain("Aguardando a etapa anterior");
-    expect(source).toContain("Parte atual da preparação");
+    expect(source).toContain("overflow-x-auto");
   });
 
   it("mantém perguntas e prévia ligadas à parte e ao estudo atuais", () => {

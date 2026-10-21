@@ -263,7 +263,6 @@ describe("Escola de Fundamentos", () => {
     expect(source).toContain("Estudo da semana");
     expect(source).toContain("Preparação concluída");
     expect(source).toContain("Sequência da preparação");
-    expect(source).toContain("ETAPA {selectedBlockIndex + 1} DE");
-    expect(source).toContain("{blocks.length}");
+    expect(source).toContain("Etapa {selectedBlockIndex + 1} de {blocks.length}");
   });
 });
