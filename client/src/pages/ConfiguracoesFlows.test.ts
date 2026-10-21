@@ -24,7 +24,8 @@ const churchLayoutSource = readFileSync(resolve(root, "client/src/components/Chu
 describe("Fluxo estrutural da Configuração da Igreja", () => {
   it("organiza a configuração por seções com cartões de acesso rápido e navegação acessível", () => {
     expect(settingsSource).toContain("ConfigQuickCard");
-    expect(settingsSource).toContain('const [activeTab, setActiveTab] = useState<ConfigQuickActionTab>("geral")');
+    expect(settingsSource).toContain("const [activeTab, setActiveTab] = useState<ConfigQuickActionTab>(() => {");
+    expect(settingsSource).toContain(': "geral";');
     expect(settingsSource).toContain('role="region" aria-label="Seções da configuração"');
     expect(settingsSource).toContain("Deslize horizontalmente para acessar todas as seções.");
     expect(settingsSource).toContain('Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ConfigQuickActionTab)}');
