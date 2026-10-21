@@ -5,8 +5,7 @@ import { Check, Circle, Search } from "lucide-react";
 import { useChurch } from "@/components/ChurchLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 
@@ -219,22 +218,27 @@ export default function FunilDiscipulado() {
 
       {target && (
         <Dialog open onOpenChange={(open) => { if (!open && !updateStage.isPending) setTarget(null); }}>
-          <AdaptiveFormDialogContent className="sm:max-w-md">
-            <div className={adaptiveFormDialogHeaderClassName}>
-              <DialogTitle className="font-display text-navy">{stageLabel(target.stage)}</DialogTitle>
-              <DialogDescription className="mt-1 text-sm text-muted-foreground">{target.personName} · hoje: <strong>{STATUS_LABEL[target.status]}</strong>. A alteração fica registrada no Prontuário, com data e responsável.</DialogDescription>
+          {/* Confirmação curta: no celular vira uma folha na base da tela; no computador, um modal compacto no centro. */}
+          <DialogContent className="top-auto bottom-0 left-0 right-0 max-w-none translate-x-0 translate-y-0 gap-3 rounded-b-none rounded-t-2xl border-x-0 border-b-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:top-[50%] sm:bottom-auto sm:left-[50%] sm:right-auto sm:max-w-sm sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-2xl sm:border sm:p-6">
+            <div aria-hidden="true" className="mx-auto h-1 w-10 rounded-full bg-border sm:hidden" />
+            <div className="pr-6">
+              <DialogTitle className="font-display text-xl text-navy">{stageLabel(target.stage)}</DialogTitle>
+              <DialogDescription className="mt-1 text-sm text-muted-foreground">{target.personName}</DialogDescription>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>Situação atual:</span>
+                <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-medium text-navy ${STATUS_CELL[target.status]}`}><StatusIcon status={target.status} />{STATUS_LABEL[target.status]}</span>
+              </div>
             </div>
-            <AdaptiveFormDialogBody>
-              {targetPersonLacksBaptism && <p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">Esta pessoa ainda não tem o Batismo registrado. Tudo bem registrar o Encontro com Deus antes dele.</p>}
-              {target.stage === "batismo" && target.status !== "concluida" && <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">Ao concluir o Batismo aqui, a data não é preenchida na ficha. Se quiser a data de batismo, informe-a na aba Dados da pessoa.</p>}
-            </AdaptiveFormDialogBody>
-            <AdaptiveFormDialogFooter>
-              <Button type="button" variant="outline" disabled={updateStage.isPending} onClick={() => setTarget(null)}>Cancelar</Button>
+            {targetPersonLacksBaptism && <p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">Esta pessoa ainda não tem o Batismo registrado. Tudo bem registrar o Encontro com Deus antes dele.</p>}
+            {target.stage === "batismo" && target.status !== "concluida" && <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">A data de batismo não é preenchida aqui. Se quiser registrá-la, use a aba Dados da pessoa.</p>}
+            <div className="flex flex-col gap-2">
               {targetOptions.map((option) => (
-                <Button key={option.status} type="button" disabled={updateStage.isPending} variant={option.primary ? "default" : "outline"} className={option.primary ? "bg-navy text-white hover:bg-navy-light" : "border-navy/20 text-navy"} onClick={() => act(option.status)}>{option.label}</Button>
+                <Button key={option.status} type="button" disabled={updateStage.isPending} variant={option.primary ? "default" : "outline"} className={`h-11 w-full ${option.primary ? "bg-navy text-white hover:bg-navy-light" : "border-navy/20 text-navy"}`} onClick={() => act(option.status)}>{updateStage.isPending && option.primary ? "Salvando…" : option.label}</Button>
               ))}
-            </AdaptiveFormDialogFooter>
-          </AdaptiveFormDialogContent>
+              <Button type="button" variant="ghost" className="h-10 w-full text-muted-foreground" disabled={updateStage.isPending} onClick={() => setTarget(null)}>Cancelar</Button>
+            </div>
+            <p className="text-center text-[11px] text-muted-foreground">A alteração fica registrada no Prontuário, com data e responsável.</p>
+          </DialogContent>
         </Dialog>
       )}
     </div>
