@@ -24,3 +24,13 @@ describe("Escola de Fundamentos: ficha do aluno", () => {
     expect(record).toContain("Salvar avaliação");
   });
 });
+
+describe("Escola de Fundamentos: leitura confortável", () => {
+  it("separa parágrafos, estima o tempo e avisa quando a etapa fica longa", () => {
+    const lesson = readFileSync("client/src/pages/foundation/StudentLearningExperience.tsx", "utf8");
+    const editor = readFileSync("client/src/pages/foundation/StudyPartEditor.tsx", "utf8");
+    expect(lesson).toContain("function ReadingText");
+    expect(lesson).toContain("Leitura de cerca de");
+    expect(editor).toContain("Este texto está longo para ler no celular");
+  });
+});

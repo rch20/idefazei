@@ -302,6 +302,22 @@ function StepMarker({
   );
 }
 
+function ReadingText({ text, className = "" }: { text: string; className?: string }) {
+  const paragraphs = text.split(/\n{2,}/).map(part => part.trim()).filter(Boolean);
+  return (
+    <div className={`max-w-[68ch] space-y-3 text-[0.95rem] leading-7 text-slate-700 sm:space-y-4 sm:text-base sm:leading-8 ${className}`}>
+      {paragraphs.map((paragraph, index) => (
+        <p key={index} className="whitespace-pre-line">{paragraph}</p>
+      ))}
+    </div>
+  );
+}
+
+function readingMinutes(text: string) {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.round(words / 180));
+}
+
 function StepRail({
   blocks,
   selectedBlockIndex,
@@ -556,9 +572,7 @@ function StudyOverviewCard({
       >
         Introdução do estudo
       </p>
-      <p className="mt-2 whitespace-pre-line text-base leading-8 text-slate-700">
-        {content}
-      </p>
+      <ReadingText text={content} className="mt-2" />
     </section>
   );
 }
@@ -1552,16 +1566,14 @@ export function StudentLearningExperience({
                               >
                                 {activeBlock.title}
                               </h3>
-                              <p className="mt-3 whitespace-pre-line text-base leading-8 text-slate-700">
-                                {activeBlock.content}
-                              </p>
+                              <ReadingText text={activeBlock.content} className="mt-3" />
                             </div>
                             <div className="flex items-center gap-2 border-t border-black/5 pt-4 text-sm text-muted-foreground">
                               <Clock3
                                 className="h-4 w-4"
                                 style={{ color: theme.accent }}
                               />
-                              Leitura curta para esta etapa
+                              {`Leitura de cerca de ${readingMinutes(activeBlock.content)} min`}
                             </div>
                           </>
                         ) : (
@@ -1574,10 +1586,13 @@ export function StudentLearningExperience({
                             >
                               LEITURA DO ESTUDO
                             </Badge>
-                            <p className="mt-4 whitespace-pre-line text-base leading-8 text-slate-700">
-                              {session?.study.content ||
-                                "O conteúdo deste estudo ainda está sendo preparado."}
-                            </p>
+                            <ReadingText
+                              className="mt-4"
+                              text={
+                                session?.study.content ||
+                                "O conteúdo deste estudo ainda está sendo preparado."
+                              }
+                            />
                           </>
                         )}
                       </CardContent>

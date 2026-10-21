@@ -132,8 +132,14 @@ export function StudyPartEditor({
                 placeholder="Escreva a leitura, explicação, pergunta-guia ou aplicação desta etapa."
               />
               <p className="text-right text-xs text-muted-foreground">
+                {content.trim() ? `Leitura de cerca de ${Math.max(1, Math.round(content.trim().split(/\s+/).length / 180))} min · ` : ""}
                 {content.length}/12000
               </p>
+              {content.length > 2500 ? (
+                <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  Este texto está longo para ler no celular. Considere dividir em duas etapas ou usar parágrafos curtos, separados por uma linha em branco.
+                </p>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="foundation-part-reflection-prompt">
