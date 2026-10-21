@@ -104,6 +104,17 @@ export default function TenantPublicPage() {
           </a>
         </section>
 
+        {data.publicDevotional && (
+          <section className="tenant-public-section tenant-public-word-section" aria-labelledby="tenant-public-word-title">
+            <div className="tenant-public-container tenant-public-word-card">
+              <span className="tenant-public-eyebrow">Palavra de hoje</span>
+              <h2 id="tenant-public-word-title">{data.publicDevotional.title}</h2>
+              <p>{(() => { const text = data.publicDevotional.content.replace(/\s+/g, " ").trim(); return text.length > 240 ? `${text.slice(0, 240).trimEnd()}…` : text; })()}</p>
+              <a className="tenant-public-word-link" href="/devocional">Ler completo <ArrowUpRight size={16} aria-hidden="true" /></a>
+            </div>
+          </section>
+        )}
+
         {(about?.body ?? data.church.vision ?? data.church.mission) && (
           <section id="tenant-public-content" className="tenant-public-section">
             <div className="tenant-public-container tenant-public-prose">

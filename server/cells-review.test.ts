@@ -27,3 +27,13 @@ describe("Estudos de Células: cartão simples para estudo pronto", () => {
     expect(studies).not.toContain("Estudo oficial preparado para aplicação na Célula.");
   });
 });
+
+describe("Palavra do dia", () => {
+  it("mostra o trecho na página pública e avisa no Mural quando falta", () => {
+    const publicPage = readFileSync("client/src/pages/TenantPublicPage.tsx", "utf8");
+    const mural = readFileSync("client/src/pages/Mural.tsx", "utf8");
+    expect(publicPage).toContain("Palavra de hoje");
+    expect(mural).toContain("Nenhuma palavra do dia publicada para hoje");
+    expect(mural).toContain("Escrever devocional");
+  });
+});

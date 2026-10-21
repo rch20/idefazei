@@ -143,6 +143,11 @@ export default function Mural() {
   const regular = ((announcements ?? []) as Announcement[]).filter((announcement) => !announcement.pinned);
   const totalCount = ((announcements ?? []) as Announcement[]).length;
   const publicCount = ((announcements ?? []) as Announcement[]).filter((announcement) => announcement.publicVisible && ["publicado", "agendado"].includes(announcement.publicStatus)).length;
+  const nowForWord = new Date();
+  const hasWordToday = ((announcements ?? []) as Announcement[]).some((announcement) =>
+    announcement.type === "devocional" && announcement.publicVisible && ["publicado", "agendado"].includes(announcement.publicStatus)
+    && (!announcement.publicStartsAt || new Date(announcement.publicStartsAt) <= nowForWord)
+    && (!announcement.expiresAt || new Date(announcement.expiresAt) > nowForWord));
   const notPublicCount = Math.max(totalCount - publicCount, 0);
 
   function closeForm() {
@@ -228,6 +233,16 @@ export default function Mural() {
         <div className="card-sacred flex items-center gap-3 border-gold/30 p-4"><Globe2 className="h-5 w-5 text-gold" /><div><p className="text-2xl font-bold text-navy">{publicCount}</p><p className="text-xs text-muted-foreground">Visíveis ou agendados</p></div></div>
         <div className="card-sacred flex items-center gap-3 p-4"><Pin className="h-5 w-5 text-gold" /><div><p className="text-2xl font-bold text-navy">{pinned.length}</p><p className="text-xs text-muted-foreground">Destaques fixados</p></div></div>
       </div>
+
+      {!isLoading && !announcementsError && !hasWordToday && (
+        <div role="status" className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-semibold">Nenhuma palavra do dia publicada para hoje</p>
+            <p className="mt-0.5 text-amber-900/80">O card "Palavra do dia" do Início e da página pública está mostrando o texto padrão. Publique um devocional com "Exibir na página pública" marcado.</p>
+          </div>
+          <Button type="button" variant="outline" className="shrink-0 border-amber-400 bg-white text-amber-950" onClick={() => { openCreate(); setForm((current) => ({ ...current, type: "devocional" })); }}>Escrever devocional</Button>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-blue-950">
         <p className="font-semibold">Como funciona o Mural Público</p>
