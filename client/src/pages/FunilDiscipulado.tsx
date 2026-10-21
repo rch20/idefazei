@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { toast } from "sonner";
-import { Check, Circle, CircleDot, Search } from "lucide-react";
+import { Check, Circle, Search } from "lucide-react";
 import { useChurch } from "@/components/ChurchLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,7 @@ type CellTarget = { personId: number; personName: string; stage: StageKey; statu
 
 function StatusIcon({ status }: { status: StageStatus }) {
   if (status === "concluida") return <Check className="h-4 w-4 text-emerald-700" aria-hidden="true" />;
-  if (status === "pendente") return <CircleDot className="h-4 w-4 text-amber-600" aria-hidden="true" />;
+  if (status === "pendente") return <span className="h-3 w-3 rounded-full border-2 border-amber-500 bg-amber-200" aria-hidden="true" />;
   return <Circle className="h-4 w-4 text-slate-300" aria-hidden="true" />;
 }
 
@@ -152,7 +152,7 @@ export default function FunilDiscipulado() {
 
       <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1"><Check className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />Concluída</span>
-        <span className="inline-flex items-center gap-1"><CircleDot className="h-3.5 w-3.5 text-amber-600" aria-hidden="true" />A fazer</span>
+        <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded-full border-2 border-amber-500 bg-amber-200" aria-hidden="true" />A fazer</span>
         <span className="inline-flex items-center gap-1"><Circle className="h-3.5 w-3.5 text-slate-300" aria-hidden="true" />Sem registro</span>
         <span>{rows.length} {rows.length === 1 ? "pessoa" : "pessoas"}</span>
       </p>
