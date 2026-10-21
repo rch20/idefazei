@@ -105,6 +105,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
   const [memberReferralIdempotencyKey, setMemberReferralIdempotencyKey] = useState(createIdempotencyKey);
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [cellSearch, setCellSearch] = useState("");
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -216,6 +217,10 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
   const canCreateCell = Boolean(managementAccess.data?.canCreateAny || managementAccess.data?.canCreateOwn);
   const pageTitle = canPublishCells ? "Células" : "Minhas Células";
   const pageSubtitle = canPublishCells ? "Organize as Células e direcione cada Pessoa para a sua equipe." : "Consulte as Células do seu escopo e cuide da sua equipe.";
+  const memberCountByCell = new Map((memberCounts.data ?? []).map((item) => [item.cellId, Number(item.count)]));
+  const normalizedSearch = cellSearch.trim().toLowerCase();
+  const visibleCells = (cells ?? []).filter((cell) => !normalizedSearch || [cell.name, cell.neighborhood, cell.city].some((value) => String(value ?? "").toLowerCase().includes(normalizedSearch)));
+  const unmappedCells = (cells ?? []).filter((cell) => !hasPublicCellLocation(cell));
   const mappedCells = (cells ?? []).flatMap((cell) => {
     if (!hasPublicCellLocation(cell)) return [];
     return [{ id: cell.id, title: cell.name, latitude: Number(cell.latitude), longitude: Number(cell.longitude) }];
@@ -407,7 +412,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
         <div className="metric-card">
           <MapPin className="w-5 h-5 text-gold" />
           <p className="text-2xl font-bold font-display text-navy">
-            {(cells ?? []).filter((c) => c.latitude).length}
+            {(cells ?? []).filter((c) => hasPublicCellLocation(c)).length}
           </p>
           <p className="text-sm text-muted-foreground">Com Localização</p>
         </div>
@@ -443,7 +448,9 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
             </div>
           ) : (
             <div className="space-y-3 animate-stagger">
-              {(cells ?? []).map((cell) => (
+              {(cells ?? []).length > 5 && <Input value={cellSearch} onChange={(event) => setCellSearch(event.target.value)} placeholder="Buscar por nome, bairro ou cidade" aria-label="Buscar célula" />}
+              {visibleCells.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma célula encontrada para "{cellSearch}".</p>}
+              {visibleCells.map((cell) => (
                 <button
                   key={cell.id}
                   type="button"
@@ -461,6 +468,12 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <MapPin className="w-3 h-3" />
                           {cell.neighborhood}, {cell.city}
+                        </span>
+                      )}
+                      {memberCountByCell.has(cell.id) && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Users className="w-3 h-3" />
+                          {memberCountByCell.get(cell.id)} {memberCountByCell.get(cell.id) === 1 ? "pessoa" : "pessoas"}
                         </span>
                       )}
                       {cell.meetingDay && (
@@ -498,7 +511,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
               <MapPin className="w-4 h-4 text-gold" />
               <p className="text-sm font-semibold text-navy">Mapa de Células</p>
               <span className="text-xs text-muted-foreground ml-auto">
-                {mappedCells.length} células mapeadas
+                {mappedCells.length} {mappedCells.length === 1 ? "célula mapeada" : "células mapeadas"}
               </span>
             </div>
             <OpenStreetMap
@@ -517,6 +530,15 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
               </div>
               <p className="ml-auto">Clique nos marcadores para ver detalhes</p>
             </div>
+            {unmappedCells.length > 0 && (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-sm font-semibold text-amber-900">{unmappedCells.length} {unmappedCells.length === 1 ? "célula ainda não aparece" : "células ainda não aparecem"} no mapa</p>
+                <p className="mt-0.5 text-xs text-amber-800">Falta definir o ponto no mapa. Abra a célula e use "Configurar" na página pública.</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {unmappedCells.map((cell) => <Button key={cell.id} type="button" size="sm" variant="outline" className="h-7 bg-background px-2 text-xs" onClick={() => openCell(cell)}>{cell.name}</Button>)}
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>
