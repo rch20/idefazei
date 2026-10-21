@@ -12781,3 +12781,16 @@ export async function getRecentServiceBefore(data: { churchId: number; ministryI
   }
   return { group, people: Array.from(peopleLast, ([personId, date]) => ({ personId, date })) };
 }
+
+
+/** Confirmação registrada pela liderança (ex.: a pessoa confirmou por WhatsApp). */
+export async function setScheduleItemsConfirmed(data: { churchId: number; ids: number[]; confirmed: boolean }) {
+  const db = await getDb();
+  if (!db || data.ids.length === 0) return 0;
+  const result = await db
+    .update(scheduleItems)
+    .set({ confirmed: data.confirmed })
+    .where(and(eq(scheduleItems.churchId, data.churchId), inArray(scheduleItems.id, data.ids), eq(scheduleItems.status, "agendada")));
+  const header = (Array.isArray(result) ? result[0] : result) as { affectedRows?: number } | undefined;
+  return Number(header?.affectedRows ?? 0);
+}

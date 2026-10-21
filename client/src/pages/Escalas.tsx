@@ -151,6 +151,14 @@ export default function Escalas() {
     onError: (error) => toast.error(error.message),
   });
 
+  const setConfirmedMutation = trpc.schedules.setConfirmed.useMutation({
+    onSuccess: (result, variables) => {
+      toast.success(variables.confirmed ? `${result.count} presença(s) marcada(s) como confirmada(s).` : "Confirmação desfeita.");
+      refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
   const firstDay = new Date(currentYear, currentMonth - 1, 1).getDay();
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
@@ -199,6 +207,7 @@ export default function Escalas() {
   const ministryFilterName = ministryFilterId ? ministriesById.get(ministryFilterId) : null;
   const managedMinistryIds = new Set(ministries.filter((ministry) => ministry.canManage).map((ministry) => ministry.id));
   const schedulableDepartments = allDepartments.filter((department) => Boolean(department.active && (department.canManage || managedMinistryIds.has(department.ministryId))));
+  const canManageScale = (scale: ScheduleItem) => managedMinistryIds.has(scale.ministryId) || schedulableDepartments.some((department) => department.id === scale.departmentId);
   const schedulableMinistries = ministries.filter((ministry) => ministry.canManage || schedulableDepartments.some((department) => department.ministryId === ministry.id));
   const selectedMinistryCanManage = ministries.find((ministry) => String(ministry.id) === form.ministryId)?.canManage ?? false;
   const departmentsForMinistry = schedulableDepartments.filter((department) => String(department.ministryId) === form.ministryId);
@@ -497,6 +506,16 @@ export default function Escalas() {
                 <p className="text-xs text-muted-foreground">Não há voluntários ou ministérios escalados para esta data.</p>
               ) : (
                 <div className="space-y-2">
+                  {(() => {
+                    const open = selectedScales.filter((scale) => scale.status !== "cancelada");
+                    const confirmedCount = open.filter((scale) => scale.confirmed).length;
+                    const pending = open.filter((scale) => !scale.confirmed && canManageScale(scale as ScheduleItem));
+                    if (open.length === 0) return null;
+                    return <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-navy/5 px-3 py-2">
+                      <p className="text-xs font-semibold text-navy">{confirmedCount} de {open.length} confirmado{open.length > 1 ? "s" : ""}</p>
+                      {pending.length > 1 && <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={setConfirmedMutation.isPending} onClick={() => setConfirmedMutation.mutate({ churchId: churchId!, ids: pending.map((scale) => scale.id), confirmed: true })}>Confirmar todos ({pending.length})</Button>}
+                    </div>;
+                  })()}
                   {selectedScales.map((scale) => (
                     <div key={scale.id} className={`p-2 rounded-lg border ${scale.status === "cancelada" ? "border-slate-200 bg-slate-50 opacity-75" : scale.hasTimeConflict ? "border-rose-200 bg-rose-50" : "border-border/50 bg-muted/50"}`}>
                       <div className="flex items-center justify-between mb-1">
@@ -515,6 +534,7 @@ export default function Escalas() {
                       {scale.hasTimeConflict && <p className="mt-1 flex items-center gap-1 text-xs font-medium text-rose-700"><AlertTriangle className="h-3 w-3" />Conflito de horário</p>}
                       {scale.status !== "cancelada" && (
                         <div className="mt-2 flex flex-wrap gap-2">
+                          {canManageScale(scale as ScheduleItem) && <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={setConfirmedMutation.isPending} onClick={() => setConfirmedMutation.mutate({ churchId: churchId!, ids: [scale.id], confirmed: !scale.confirmed })}>{scale.confirmed ? "Desfazer confirmação" : "Marcar como confirmado"}</Button>}
                           <Button type="button" size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => openEditDialog(scale as ScheduleItem)}><Pencil className="mr-1 h-3 w-3" />Editar</Button>
                           <Button type="button" size="sm" variant="ghost" className="h-7 px-2 text-xs text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => { setCancelTarget(scale as ScheduleItem); setCancelReason(""); }}><XCircle className="mr-1 h-3 w-3" />Cancelar</Button>
                         </div>

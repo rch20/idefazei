@@ -21,3 +21,13 @@ describe("Escalas: grupos inteiros, turnos e aviso de serviço recente", () => {
     expect(page).toContain("recentServiceBlocked");
   });
 });
+
+describe("Escalas: confirmação pela liderança", () => {
+  it("permite marcar e desfazer confirmação, com contador e confirmar todos", () => {
+    expect(routers).toContain("setConfirmed: protectedProcedure");
+    expect(db).toContain("export async function setScheduleItemsConfirmed");
+    expect(page).toContain("Marcar como confirmado");
+    expect(page).toContain("Desfazer confirmação");
+    expect(page).toContain("Confirmar todos (");
+  });
+});

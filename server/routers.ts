@@ -220,6 +220,7 @@ import {
   getActiveDepartmentRoleKeysByPerson,
   getDepartmentMembers,
   getRecentServiceBefore,
+  setScheduleItemsConfirmed,
   getDepartmentCandidates,
   isActiveDepartmentMember,
   isActiveConsolidationMinistryMember,
@@ -5956,6 +5957,32 @@ const schedulesRouter = router({
         ...item,
         hasTimeConflict: Boolean(item.status !== "cancelada" && item.startTime && item.endTime && filtered.some(other => other.status !== "cancelada" && other.id !== item.id && other.personId === item.personId && String(other.scheduledDate) === String(item.scheduledDate) && other.startTime && other.endTime && item.startTime! < other.endTime! && item.endTime! > other.startTime!)),
       }));
+    }),
+  setConfirmed: protectedProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        ids: z.array(z.number().int().positive()).min(1).max(200),
+        confirmed: z.boolean(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { getDb } = await import("./db");
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
+      const { scheduleItems } = await import("../drizzle/schema");
+      const { and, eq, inArray } = await import("drizzle-orm");
+      const rows = await db.select().from(scheduleItems).where(and(eq(scheduleItems.churchId, input.churchId), inArray(scheduleItems.id, input.ids)));
+      if (rows.length === 0) throw new TRPCError({ code: "NOT_FOUND", message: "Escala não encontrada." });
+      const seen = new Set<string>();
+      for (const row of rows) {
+        const key = `${row.ministryId}:${row.departmentId ?? 0}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        await requireScheduleManagementPermission(ctx.user.id, input.churchId, row.ministryId, row.departmentId);
+      }
+      const count = await setScheduleItemsConfirmed({ churchId: input.churchId, ids: rows.map(row => row.id), confirmed: input.confirmed });
+      return { success: true, count };
     }),
   recentService: protectedProcedure
     .input(
