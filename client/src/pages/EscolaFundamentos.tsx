@@ -536,6 +536,7 @@ function TeacherLearningReview({
             Aula de domingo
           </CardTitle>
           <p className="text-sm font-normal text-muted-foreground">
+            A semana é coletiva: a data do estudo libera o conteúdo para todos.
             Escolha o tema, registre a data e a presença. Para avaliar um aluno,
             abra a aba Alunos e toque em Ver respostas.
           </p>
