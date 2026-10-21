@@ -319,7 +319,7 @@ function StepRail({
   useEffect(() => {
     const rail = railRef.current;
     const current = rail?.querySelector<HTMLElement>('[aria-current="step"]');
-    if (rail && current) rail.scrollTo({ left: current.offsetLeft - rail.clientWidth / 2 + current.offsetWidth / 2, behavior: "smooth" });
+    if (rail && current) rail.scrollLeft = current.offsetLeft - rail.clientWidth / 2 + current.offsetWidth / 2;
   }, [selectedBlockIndex]);
   const getStatus = (block: SessionBlock): SessionBlock["status"] =>
     completedBlockIds.has(block.id) ? "concluida" : block.status;
