@@ -323,8 +323,8 @@ function WeeklyOverview({
             Nenhum estudo semanal publicado
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Publique o primeiro tema com uma data de início para acompanhar a
-            turma por semana.
+            Publique um tema com data de início nesta turma para acompanhar a
+            semana.
           </p>
         </CardContent>
       </Card>
@@ -458,15 +458,9 @@ function TeacherLearningReview({
   churchId: number;
   courseId: number;
 }) {
-  const utils = trpc.useUtils();
   const { data: rows = [], isLoading } =
     trpc.escolaFundamentos.courseProgress.useQuery({ churchId, courseId });
-  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState("");
   const [selectedStudyId, setSelectedStudyId] = useState("");
-  const [reviewStatus, setReviewStatus] = useState<
-    "compreendeu" | "precisa_reforco" | "nao_participou"
-  >("compreendeu");
-  const [reviewNotes, setReviewNotes] = useState("");
   const [classDate, setClassDate] = useState("");
   const [classStatus, setClassStatus] = useState<
     "planejada" | "realizada" | "cancelada"
@@ -475,24 +469,6 @@ function TeacherLearningReview({
   const [attendanceStatuses, setAttendanceStatuses] = useState<
     Record<number, "presente" | "ausente" | "justificado">
   >({});
-  const reviewMutation = trpc.escolaFundamentos.reviewLesson.useMutation({
-    onSuccess: async () => {
-      toast.success("Revisão registrada.");
-      await utils.escolaFundamentos.courseProgress.invalidate({
-        churchId,
-        courseId,
-      });
-    },
-    onError: error => toast.error(error.message),
-  });
-
-  const students = useMemo(
-    () =>
-      Array.from(
-        new Map(rows.map(row => [row.enrollment.id, row.person])).entries()
-      ).map(([id, person]) => ({ id, name: person.fullName })),
-    [rows]
-  );
   const studies = useMemo(
     () =>
       Array.from(
@@ -501,31 +477,15 @@ function TeacherLearningReview({
     [rows]
   );
   useEffect(() => {
-    if (!selectedEnrollmentId && students[0])
-      setSelectedEnrollmentId(String(students[0].id));
-  }, [selectedEnrollmentId, students]);
-  useEffect(() => {
     if (!selectedStudyId && studies[0])
       setSelectedStudyId(String(studies[0].id));
   }, [selectedStudyId, studies]);
-  const selectedRow = rows.find(
-    row =>
-      String(row.enrollment.id) === selectedEnrollmentId &&
-      String(row.study.id) === selectedStudyId
-  );
   const classManagement = trpc.escolaFundamentos.classManagement.useQuery(
     { churchId, courseId, studyId: Number(selectedStudyId) || 0 },
     { enabled: Boolean(selectedStudyId) }
   );
   const classData = classManagement.data;
   const currentClassId = classData?.class?.id ?? 0;
-  useEffect(() => {
-    setReviewStatus(
-      (selectedRow?.progress?.reviewStatus as typeof reviewStatus) ??
-        "compreendeu"
-    );
-    setReviewNotes(selectedRow?.progress?.reviewNotes ?? "");
-  }, [selectedEnrollmentId, selectedStudyId, selectedRow?.progress?.id]);
   useEffect(() => {
     setClassDate(
       classData?.class?.classDate
@@ -566,157 +526,36 @@ function TeacherLearningReview({
     });
   if (isLoading)
     return <div className="mb-4 h-48 animate-pulse rounded-xl bg-muted/30" />;
-  if (!students.length || !studies.length) return null;
+  if (!rows.length || !studies.length) return null;
   return (
     <div className="mb-4 space-y-4">
-      <Card className="border-[#1e3a5f]/20 bg-[#fdfaf1]/40">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base text-[#1e3a5f]">
-            <Users className="h-4 w-4 text-[#c9a84c]" />
-            Acompanhamento individual
-          </CardTitle>
-          <p className="text-sm font-normal text-muted-foreground">
-            A semana é coletiva. Aqui, o professor registra a compreensão de
-            cada discípulo e acompanha a presença no domingo.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Aluno</Label>
-              <Select
-                value={selectedEnrollmentId}
-                onValueChange={setSelectedEnrollmentId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o aluno" />
-                </SelectTrigger>
-                <SelectContent>
-                  {students.map(student => (
-                    <SelectItem key={student.id} value={String(student.id)}>
-                      {student.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Tema</Label>
-              <Select
-                value={selectedStudyId}
-                onValueChange={setSelectedStudyId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione o tema" />
-                </SelectTrigger>
-                <SelectContent>
-                  {studies.map(study => (
-                    <SelectItem key={study.id} value={String(study.id)}>
-                      {study.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          {selectedRow ? (
-            <div className="rounded-xl border border-border bg-white p-3">
-              <div className="mb-3 flex flex-wrap gap-2 text-xs">
-                <Badge
-                  variant={
-                    selectedRow.progress?.status === "concluida"
-                      ? "default"
-                      : "secondary"
-                  }
-                >
-                  {selectedRow.progress?.status === "concluida"
-                    ? "Estudo digital concluído"
-                    : "Estudo digital pendente"}
-                </Badge>
-              </div>
-              <div className="space-y-2">
-                <Label>Avaliação do professor</Label>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <Button
-                    type="button"
-                    variant={
-                      reviewStatus === "compreendeu" ? "default" : "outline"
-                    }
-                    onClick={() => setReviewStatus("compreendeu")}
-                  >
-                    Compreendeu
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={
-                      reviewStatus === "precisa_reforco" ? "default" : "outline"
-                    }
-                    onClick={() => setReviewStatus("precisa_reforco")}
-                  >
-                    Precisa de reforço
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={
-                      reviewStatus === "nao_participou" ? "default" : "outline"
-                    }
-                    onClick={() => setReviewStatus("nao_participou")}
-                  >
-                    Não participou
-                  </Button>
-                </div>
-              </div>
-              <div className="mt-3 space-y-2">
-                <Label htmlFor="foundation-review-notes">
-                  Observação do professor
-                </Label>
-                <Textarea
-                  id="foundation-review-notes"
-                  value={reviewNotes}
-                  onChange={event => setReviewNotes(event.target.value)}
-                  maxLength={2000}
-                  rows={3}
-                  placeholder="Registre uma observação sobre a conversa..."
-                />
-              </div>
-              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={reviewMutation.isPending}
-                  onClick={() =>
-                    reviewMutation.mutate({
-                      churchId,
-                      enrollmentId: selectedRow.enrollment.id,
-                      studyId: selectedRow.study.id,
-                      reviewStatus,
-                      reviewNotes: reviewNotes || null,
-                    })
-                  }
-                >
-                  {reviewMutation.isPending ? "Salvando…" : "Registrar revisão"}
-                </Button>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                A semana é coletiva: a data do estudo define quando ele fica
-                disponível para todos os discípulos matriculados.
-              </p>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
       <Card className="border-[#c9a84c]/25">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base text-[#1e3a5f]">
             <Users className="h-4 w-4 text-[#c9a84c]" />
-            Aula presencial da semana
+            Aula de domingo
           </CardTitle>
           <p className="text-sm font-normal text-muted-foreground">
-            Registre o domingo do mesmo tema e acompanhe presença sem misturar
-            com a preparação digital.
+            Escolha o tema, registre a data e a presença. Para avaliar um aluno,
+            abra a aba Alunos e toque em Ver respostas.
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Tema da aula</Label>
+            <Select value={selectedStudyId} onValueChange={setSelectedStudyId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione o tema" />
+              </SelectTrigger>
+              <SelectContent>
+                {studies.map(study => (
+                  <SelectItem key={study.id} value={String(study.id)}>
+                    {study.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="space-y-2">
               <Label>Data do domingo</Label>
@@ -779,6 +618,11 @@ function TeacherLearningReview({
               ? "Salvando…"
               : "Salvar aula presencial"}
           </Button>
+          {classData?.metrics ? (
+            <p className="-mb-2 text-xs font-medium text-muted-foreground">
+              Resultados de “{classData.study?.title ?? "este tema"}”
+            </p>
+          ) : null}
           {classData?.metrics ? (
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="rounded-lg bg-muted/30 p-3">
@@ -2484,16 +2328,16 @@ export default function EscolaFundamentos() {
             <div className="grid gap-5 xl:grid-cols-2">
               {typedCourses.map(course => (
                 <div key={course.id} className="space-y-4">
+                  <h3 className="font-display text-lg text-[#1e3a5f]">{course.name}</h3>
                   <WeeklyOverview churchId={churchId} courseId={course.id} />
-                  <details className="group rounded-2xl border border-[#1e3a5f]/15 bg-white">
+                  <details open className="group rounded-2xl border border-[#1e3a5f]/15 bg-white">
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4">
                       <span>
                         <span className="block font-semibold text-[#1e3a5f]">
-                          Acompanhamento presencial
+                          Aula de domingo
                         </span>
                         <span className="mt-1 block text-sm font-normal text-muted-foreground">
-                          Abra somente quando precisar revisar alunos e
-                          presença.
+                          Data, presença e pontos para reforçar.
                         </span>
                       </span>
                       <ChevronRight className="h-5 w-5 shrink-0 text-[#c9a84c] transition-transform group-open:rotate-90" />
