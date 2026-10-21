@@ -68,9 +68,7 @@ describe("Estudos de Células — biblioteca semanal", () => {
     );
     expect(page).toContain(compactSource('purpose: "cell_study_attachment"'));
     expect(page).toContain(compactSource("Link externo"));
-    expect(page).toContain(
-      compactSource("baixe o PDF ou abra os materiais complementares")
-    );
+    expect(page).toContain(compactSource("Abrir PDF"));
   });
 
   it("protege gestão e leitura no backend por igreja e função", () => {
