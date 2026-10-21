@@ -5923,25 +5923,42 @@ export async function createScheduleItem(data: { churchId: number; ministryId: n
   });
 }
 
-export async function createScheduleItemsForDepartmentTeam(data: { churchId: number; ministryId: number; departmentId: number; eventId?: number | null; scheduledDate: Date; startTime: string; endTime: string; role?: string | null }) {
+export async function createScheduleItemsForDepartmentTeam(data: { churchId: number; ministryId: number; departmentId?: number | null; eventId?: number | null; scheduledDate: Date; startTime: string; endTime: string; role?: string | null }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   return db.transaction(async tx => {
-    const departmentRows = await tx
-      .select({ id: departments.id })
-      .from(departments)
-      .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId), eq(departments.ministryId, data.ministryId), eq(departments.active, true)))
-      .limit(1)
-      .for("update");
-    if (!departmentRows[0]) throw new Error("O Departamento selecionado não pertence a este Ministério.");
-    const members = await tx
-      .select({ personId: departmentMembers.personId })
-      .from(departmentMembers)
-      .innerJoin(people, eq(people.id, departmentMembers.personId))
-      .where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.active, true), eq(people.churchId, data.churchId), eq(people.active, true)))
-      .orderBy(people.fullName);
+    let members: { personId: number }[];
+    if (data.departmentId) {
+      const departmentRows = await tx
+        .select({ id: departments.id })
+        .from(departments)
+        .where(and(eq(departments.id, data.departmentId), eq(departments.churchId, data.churchId), eq(departments.ministryId, data.ministryId), eq(departments.active, true)))
+        .limit(1)
+        .for("update");
+      if (!departmentRows[0]) throw new Error("O Departamento selecionado não pertence a este Ministério.");
+      members = await tx
+        .select({ personId: departmentMembers.personId })
+        .from(departmentMembers)
+        .innerJoin(people, eq(people.id, departmentMembers.personId))
+        .where(and(eq(departmentMembers.churchId, data.churchId), eq(departmentMembers.departmentId, data.departmentId), eq(departmentMembers.active, true), eq(people.churchId, data.churchId), eq(people.active, true)))
+        .orderBy(people.fullName);
+    } else {
+      const ministryRows = await tx
+        .select({ id: ministries.id })
+        .from(ministries)
+        .where(and(eq(ministries.id, data.ministryId), eq(ministries.churchId, data.churchId)))
+        .limit(1)
+        .for("update");
+      if (!ministryRows[0]) throw new Error("O Ministério selecionado não pertence a esta igreja.");
+      members = await tx
+        .select({ personId: ministryMembers.personId })
+        .from(ministryMembers)
+        .innerJoin(people, eq(people.id, ministryMembers.personId))
+        .where(and(eq(ministryMembers.ministryId, data.ministryId), eq(ministryMembers.active, true), eq(people.churchId, data.churchId), eq(people.active, true)))
+        .orderBy(people.fullName);
+    }
     const personIds = Array.from(new Set(members.map(member => member.personId))).sort((left, right) => left - right);
-    if (personIds.length === 0) throw new Error("Este Departamento ainda não possui participantes ativos.");
+    if (personIds.length === 0) throw new Error(data.departmentId ? "Este Departamento ainda não possui participantes ativos." : "Este Ministério ainda não possui participantes ativos.");
 
     const lockedPeople = await tx
       .select({ id: people.id })
@@ -5962,7 +5979,7 @@ export async function createScheduleItemsForDepartmentTeam(data: { churchId: num
       personIds.map(personId => ({
       churchId: data.churchId,
       ministryId: data.ministryId,
-      departmentId: data.departmentId,
+      departmentId: data.departmentId ?? null,
       eventId: data.eventId ?? null,
       personId,
       scheduledDate: data.scheduledDate,
@@ -12733,4 +12750,34 @@ export async function getFamilyById(churchId: number, familyId: number) {
     .where(and(eq(families.id, familyId), eq(families.churchId, churchId)))
     .limit(1);
   return family ?? null;
+}
+
+
+/** Última vez em que o grupo (ministério/departamento) e cada pessoa serviram antes de uma data. */
+export async function getRecentServiceBefore(data: { churchId: number; ministryId: number; departmentId?: number | null; beforeDate: string; personIds?: number[] }) {
+  const db = await getDb();
+  if (!db) return { group: null, people: [] as { personId: number; date: string }[] };
+  const rows = await db
+    .select()
+    .from(scheduleItems)
+    .where(and(eq(scheduleItems.churchId, data.churchId), eq(scheduleItems.status, "agendada")));
+  const key = (value: Date | string) => formatCivilDateInput(value instanceof Date ? value : new Date(value));
+  const before = rows.filter(row => key(row.scheduledDate) < data.beforeDate);
+  const groupRows = before.filter(row => row.ministryId === data.ministryId && (!data.departmentId || row.departmentId === data.departmentId));
+  const groupDate = groupRows.map(row => key(row.scheduledDate)).sort().pop() ?? null;
+  const group = groupDate
+    ? {
+        date: groupDate,
+        slots: Array.from(new Set(groupRows.filter(row => key(row.scheduledDate) === groupDate).map(row => `${row.startTime ?? ""}-${row.endTime ?? ""}`))),
+        personIds: Array.from(new Set(groupRows.filter(row => key(row.scheduledDate) === groupDate).map(row => row.personId))),
+      }
+    : null;
+  const wanted = new Set(data.personIds ?? []);
+  const peopleLast = new Map<number, string>();
+  for (const row of before) {
+    if (!wanted.has(row.personId)) continue;
+    const date = key(row.scheduledDate);
+    if (!peopleLast.has(row.personId) || peopleLast.get(row.personId)! < date) peopleLast.set(row.personId, date);
+  }
+  return { group, people: Array.from(peopleLast, ([personId, date]) => ({ personId, date })) };
 }

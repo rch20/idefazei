@@ -21,6 +21,19 @@ const MONTHS = [
 
 type ScheduleForm = { ministryId: string; departmentId: string; eventId: string; personId: string; scheduledDate: string; startTime: string; endTime: string; role: string };
 type ScheduleItem = { id: number; ministryId: number; departmentId?: number | null; eventId?: number | null; personId: number; scheduledDate: Date | string; startTime: string | null; endTime: string | null; role: string | null; status: "agendada" | "cancelada"; confirmed?: boolean | null; cancelReason?: string | null; hasTimeConflict?: boolean };
+const SHIFT_PRESETS = [
+  { label: "Manhã 08:00–12:00", startTime: "08:00", endTime: "12:00" },
+  { label: "Tarde 12:00–18:00", startTime: "12:00", endTime: "18:00" },
+  { label: "Noite 18:00–22:00", startTime: "18:00", endTime: "22:00" },
+];
+const RECENT_SERVICE_DAYS = 14;
+function dayDiff(from: string, to: string) {
+  return Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86400000);
+}
+function brDay(date: string) {
+  const weekday = new Date(`${date}T12:00:00Z`).toLocaleDateString("pt-BR", { weekday: "long", timeZone: "UTC" });
+  return `${weekday}, ${date.slice(8, 10)}/${date.slice(5, 7)}`;
+}
 const EMPTY_FORM: ScheduleForm = { ministryId: "", departmentId: "", eventId: "", personId: "", scheduledDate: "", startTime: "", endTime: "", role: "" };
 
 export default function Escalas() {
@@ -38,6 +51,7 @@ export default function Escalas() {
   const [cancelReason, setCancelReason] = useState("");
   const [form, setForm] = useState<ScheduleForm>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
+  const [acknowledgeRecent, setAcknowledgeRecent] = useState(false);
 
   const { data: scales = [], isLoading, refetch } = trpc.schedules.list.useQuery(
     { churchId: churchId!, month: currentMonth, year: currentYear },
@@ -70,6 +84,19 @@ export default function Escalas() {
   const departmentMembers = trpc.departments.members.useQuery(
     { churchId: churchId!, departmentId: Number(form.departmentId) || 0 },
     { enabled: Boolean(churchId && form.departmentId) }
+  );
+  const recentPersonIds = teamMode
+    ? (form.departmentId ? (departmentMembers.data ?? []) : (ministryMembers.data ?? [])).map((item) => item.person.id)
+    : form.personId ? [Number(form.personId)] : [];
+  const recentService = trpc.schedules.recentService.useQuery(
+    {
+      churchId: churchId!,
+      ministryId: Number(form.ministryId),
+      departmentId: form.departmentId ? Number(form.departmentId) : null,
+      scheduledDate: form.scheduledDate,
+      personIds: recentPersonIds,
+    },
+    { enabled: Boolean(churchId && scheduleOpen && !editingSchedule && form.ministryId && /^\d{4}-\d{2}-\d{2}$/.test(form.scheduledDate)) }
   );
   const displayedScales = ministryFilterId ? scales.filter((scale) => scale.ministryId === ministryFilterId) : scales;
   const createMutation = trpc.schedules.create.useMutation({
@@ -187,16 +214,25 @@ export default function Escalas() {
     return String(scale.personId) === String(person.id) && dateKey === form.scheduledDate && scale.status !== "cancelada" && scale.startTime && scale.endTime && form.startTime < scale.endTime && form.endTime > scale.startTime;
   })));
   const hasScheduleConflict = formConflict || teamConflict;
+  const recentGroup = recentService.data?.group ?? null;
+  const recentGroupDays = recentGroup && form.scheduledDate ? dayDiff(recentGroup.date, form.scheduledDate) : null;
+  const recentPeople = (recentService.data?.people ?? []).filter((item) => form.scheduledDate && dayDiff(item.date, form.scheduledDate) <= RECENT_SERVICE_DAYS);
+  const groupServedRecently = recentGroupDays !== null && recentGroupDays <= RECENT_SERVICE_DAYS;
+  const hasRecentService = !editingSchedule && (groupServedRecently || recentPeople.length > 0);
+  const recentServiceBlocked = hasRecentService && !acknowledgeRecent;
+  const peopleNamesById = new Map(people.map((person) => [person.id, person.fullName]));
 
   const toDateInput = (value: Date | string) => formatCivilDateKeyForInput(value);
 
   function updateForm(patch: Partial<ScheduleForm>) {
+    setAcknowledgeRecent(false);
     setForm((previous) => ({ ...previous, ...patch }));
     setFormError(null);
   }
 
   function openCreateDialog(asTeam = false) {
     setEditingSchedule(null);
+    setAcknowledgeRecent(false);
     setTeamMode(asTeam);
     setForm(EMPTY_FORM);
     setFormError(null);
@@ -229,9 +265,9 @@ export default function Escalas() {
   function handleSave(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
-    if (!churchId || !form.ministryId || (!teamMode && !form.personId) || (teamMode && !form.departmentId) || !form.scheduledDate || !form.startTime || !form.endTime) {
+    if (!churchId || !form.ministryId || (!teamMode && !form.personId) || !form.scheduledDate || !form.startTime || !form.endTime) {
       const message = teamMode
-        ? "Selecione ministério, equipe, data e horário para escalar a equipe."
+        ? "Selecione o ministério, data e horário para escalar o grupo."
         : "Selecione ministério, pessoa, data e horário para salvar a Escala.";
       setFormError(message);
       toast.error(message);
@@ -252,7 +288,7 @@ export default function Escalas() {
       createTeamMutation.mutate({
         churchId,
         ministryId: Number(form.ministryId),
-        departmentId: Number(form.departmentId),
+        departmentId: form.departmentId ? Number(form.departmentId) : null,
         eventId: form.eventId ? Number(form.eventId) : null,
         scheduledDate: form.scheduledDate,
         startTime: form.startTime,
@@ -286,10 +322,10 @@ export default function Escalas() {
             <DialogTrigger asChild>
               <Button onClick={() => openCreateDialog()} className="bg-navy text-white hover:bg-navy-light gap-2">+ Nova Escala</Button>
             </DialogTrigger>
-            <Button type="button" variant="outline" onClick={() => openCreateDialog(true)} className="ml-2 gap-2 border-gold/50 text-navy hover:bg-gold/10">Escalar equipe inteira</Button>
+            <Button type="button" variant="outline" onClick={() => openCreateDialog(true)} className="ml-2 gap-2 border-gold/50 text-navy hover:bg-gold/10">Escalar grupo inteiro</Button>
             <AdaptiveFormDialogContent>
               <div className={adaptiveFormDialogHeaderClassName}>
-                <DialogTitle className="font-display text-navy">{editingSchedule ? "Editar Escala" : teamMode ? "Escalar equipe inteira" : "Criar Escala"}</DialogTitle>
+                <DialogTitle className="font-display text-navy">{editingSchedule ? "Editar Escala" : teamMode ? "Escalar grupo inteiro" : "Criar Escala"}</DialogTitle>
               </div>
               <form onSubmit={handleSave} className="contents">
                 <AdaptiveFormDialogBody className="space-y-4">
@@ -306,7 +342,7 @@ export default function Escalas() {
                     <option value="" disabled={!selectedMinistryCanManage}>Escala geral do Ministério</option>
                     {departmentsForMinistry.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
                   </select>
-                  <p className="mt-1 text-xs text-muted-foreground">{teamMode ? "Obrigatório neste modo: todos os participantes ativos serão escalados." : "Opcional. Ao selecionar, somente participantes ativos do Departamento poderão ser escalados."}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{teamMode ? "Deixe em \"Escala geral\" para escalar todo o Ministério (ex.: Diáconos 2), ou escolha um Departamento para escalar só aquela equipe." : "Opcional. Ao selecionar, somente participantes ativos do Departamento poderão ser escalados."}</p>
                 </div>
                 <div>
                   <Label htmlFor="schedule-event">Evento</Label>
@@ -323,11 +359,17 @@ export default function Escalas() {
                     {eligiblePeople.map((person) => <option key={person.id} value={person.id}>{person.fullName}</option>)}
                   </select>
                 </div>}
-                {teamMode && form.departmentId && <div className="rounded-lg border border-gold/30 bg-gold/5 p-3 text-sm text-navy">A equipe inteira será lançada para o período escolhido. Para outro período no mesmo dia, repita a ação com o novo horário.</div>}
+                {teamMode && form.ministryId && <div className="rounded-lg border border-gold/30 bg-gold/5 p-3 text-sm text-navy">{form.departmentId ? "Todos os participantes do Departamento" : "Todos os participantes do Ministério"} serão escalados no horário escolhido{recentPersonIds.length ? ` (${recentPersonIds.length} pessoa${recentPersonIds.length > 1 ? "s" : ""})` : ""}. Para dividir o dia em turnos (ex.: Diáconos 2 de manhã e Diáconos 1 à tarde), repita a ação trocando o ministério e o horário.</div>}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <Label htmlFor="schedule-date">Data *</Label>
                     <Input id="schedule-date" type="date" value={form.scheduledDate} onChange={(event) => updateForm({ scheduledDate: event.target.value })} className="mt-1" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <p className="text-xs font-medium text-navy">Turno rápido</p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {SHIFT_PRESETS.map((preset) => <Button key={preset.label} type="button" size="sm" variant={form.startTime === preset.startTime && form.endTime === preset.endTime ? "default" : "outline"} onClick={() => updateForm({ startTime: preset.startTime, endTime: preset.endTime })}>{preset.label}</Button>)}
+                    </div>
                   </div>
                   <div>
                     <Label htmlFor="schedule-start-time">Início *</Label>
@@ -343,11 +385,17 @@ export default function Escalas() {
                   </div>
                 </div>
                 {hasScheduleConflict && <div role="alert" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{teamMode ? "Uma ou mais pessoas desta equipe já possuem escala sobreposta nesta data." : "Esta pessoa já aparece em uma escala com horário sobreposto nesta data."} O cadastro está bloqueado; ajuste a data ou o horário antes de salvar.</div>}
+                {hasRecentService && <div role="alert" className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p className="flex items-start gap-2 font-semibold"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Atenção: este grupo já serviu recentemente</p>
+                  {groupServedRecently && recentGroup && <p>{ministriesById.get(Number(form.ministryId)) ?? "O ministério"} esteve na escala em <strong>{brDay(recentGroup.date)}</strong>{recentGroupDays === 0 ? "" : ` (${recentGroupDays} dia${recentGroupDays === 1 ? "" : "s"} antes)`}{recentGroup.slots.filter((slot) => slot !== "-").length ? `, no horário ${recentGroup.slots.filter((slot) => slot !== "-").join(" / ").replace(/-/g, "–")}` : ""}.</p>}
+                  {recentPeople.length > 0 && <p>{recentPeople.length === 1 ? "Esta pessoa já serviu" : `${recentPeople.length} pessoa(s) já serviram`} nos últimos {RECENT_SERVICE_DAYS} dias: {recentPeople.slice(0, 6).map((item) => `${peopleNamesById.get(item.personId) ?? "Pessoa"} (${item.date.slice(8, 10)}/${item.date.slice(5, 7)})`).join(", ")}{recentPeople.length > 6 ? ` e mais ${recentPeople.length - 6}` : ""}.</p>}
+                  <label className="flex cursor-pointer items-start gap-2 text-sm font-medium"><input type="checkbox" checked={acknowledgeRecent} onChange={(event) => setAcknowledgeRecent(event.target.checked)} className="mt-1 h-4 w-4" />Estou ciente e quero escalar mesmo assim</label>
+                </div>}
                 {formError && <div role="alert" aria-live="assertive" className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><div><p className="font-semibold">Não foi possível salvar a Escala.</p><p className="mt-1 break-words">{formError}</p></div></div>}
                 </AdaptiveFormDialogBody>
                 <AdaptiveFormDialogFooter>
                   <Button type="button" variant="outline" onClick={() => setScheduleOpen(false)}>Cancelar</Button>
-                  <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending || createTeamMutation.isPending || updateMutation.isPending || hasScheduleConflict}>{createMutation.isPending || createTeamMutation.isPending || updateMutation.isPending ? "Salvando..." : editingSchedule ? "Salvar Alterações" : teamMode ? "Escalar equipe" : "Criar Escala"}</Button>
+                  <Button type="submit" className="bg-navy text-white" disabled={createMutation.isPending || createTeamMutation.isPending || updateMutation.isPending || hasScheduleConflict || recentServiceBlocked}>{createMutation.isPending || createTeamMutation.isPending || updateMutation.isPending ? "Salvando..." : editingSchedule ? "Salvar Alterações" : teamMode ? "Escalar equipe" : "Criar Escala"}</Button>
                 </AdaptiveFormDialogFooter>
               </form>
             </AdaptiveFormDialogContent>

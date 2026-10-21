@@ -40,7 +40,7 @@ describe("Modal de Escalas em telas pequenas", () => {
     expect(schedulesSource).toContain("onChange={(event) => updateForm({ endTime: event.target.value })}");
     expect(schedulesSource).toContain("createTeamMutation.isPending");
     expect(schedulesSource).toContain("const hasScheduleConflict = formConflict || teamConflict;");
-    expect(schedulesSource).toContain("disabled={createMutation.isPending || createTeamMutation.isPending || updateMutation.isPending || hasScheduleConflict}");
+    expect(schedulesSource).toContain("disabled={createMutation.isPending || createTeamMutation.isPending || updateMutation.isPending || hasScheduleConflict || recentServiceBlocked}");
   });
 
   it("exibe equipes ativas de Ministérios que o usuário pode administrar", () => {

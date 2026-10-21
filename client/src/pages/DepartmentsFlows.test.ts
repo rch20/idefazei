@@ -128,7 +128,7 @@ describe("Fluxo estrutural de Departamentos", () => {
     );
     expect(schedulesSource).toContain(compactSource("departmentsForMinistry"));
     expect(schedulesSource).toContain(compactSource("departmentMembers.data"));
-    expect(schedulesSource).toContain(compactSource("Escalar equipe inteira"));
+    expect(schedulesSource).toContain(compactSource("Escalar grupo inteiro"));
     expect(schedulesSource).toContain(
       compactSource("trpc.events.list.useQuery")
     );

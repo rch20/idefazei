@@ -219,6 +219,7 @@ import {
   ensureConsolidationMinistryStructure,
   getActiveDepartmentRoleKeysByPerson,
   getDepartmentMembers,
+  getRecentServiceBefore,
   getDepartmentCandidates,
   isActiveDepartmentMember,
   isActiveConsolidationMinistryMember,
@@ -5956,6 +5957,26 @@ const schedulesRouter = router({
         hasTimeConflict: Boolean(item.status !== "cancelada" && item.startTime && item.endTime && filtered.some(other => other.status !== "cancelada" && other.id !== item.id && other.personId === item.personId && String(other.scheduledDate) === String(item.scheduledDate) && other.startTime && other.endTime && item.startTime! < other.endTime! && item.endTime! > other.startTime!)),
       }));
     }),
+  recentService: protectedProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        ministryId: z.number().int().positive(),
+        departmentId: z.number().int().positive().nullable().optional(),
+        scheduledDate: scheduleDateInput,
+        personIds: z.array(z.number().int().positive()).max(300).optional(),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getRecentServiceBefore({
+        churchId: input.churchId,
+        ministryId: input.ministryId,
+        departmentId: input.departmentId ?? null,
+        beforeDate: input.scheduledDate,
+        personIds: input.personIds,
+      });
+    }),
   upcomingByMinistry: protectedProcedure
     .input(
       z.object({
@@ -6047,7 +6068,7 @@ const schedulesRouter = router({
       z.object({
       churchId: z.number().int().positive(),
       ministryId: z.number().int().positive(),
-      departmentId: z.number().int().positive(),
+      departmentId: z.number().int().positive().nullable().optional(),
       eventId: z.number().int().positive().nullable().optional(),
       scheduledDate: scheduleDateInput,
       startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário inicial válido."),
@@ -6081,7 +6102,7 @@ const schedulesRouter = router({
         if (message.includes("horário sobreposto")) throw new TRPCError({ code: "CONFLICT", message });
         throw new TRPCError({ code: "BAD_REQUEST", message });
       }
-      const [ministryName, accounts, departmentRows] = await Promise.all([getMinistriesByChurch(input.churchId).then(items => items.find(item => item.id === input.ministryId)?.name ?? "Ministério"), getChurchUsersByChurch(input.churchId), getDepartmentMembers(input.departmentId, input.churchId)]);
+      const [ministryName, accounts, departmentRows] = await Promise.all([getMinistriesByChurch(input.churchId).then(items => items.find(item => item.id === input.ministryId)?.name ?? "Ministério"), getChurchUsersByChurch(input.churchId), (input.departmentId ? getDepartmentMembers(input.departmentId, input.churchId) : getMinistryMembers(input.ministryId, input.churchId))]);
       const personIds = new Set(departmentRows.map(({ person }) => person.id));
       const recipients = accounts.filter(account => account.active && account.personId !== null && personIds.has(account.personId)).map(account => account.id);
       await emitNotificationWithoutBlocking({
@@ -6094,14 +6115,14 @@ const schedulesRouter = router({
         entityId: result.firstId ?? undefined,
         metadata: {
           ministryId: input.ministryId,
-          departmentId: input.departmentId,
+          departmentId: input.departmentId ?? null,
           eventId: input.eventId ?? null,
           scheduledDate: input.scheduledDate,
           startTime: input.startTime,
           endTime: input.endTime,
           role: input.role ?? null,
         },
-        dedupeKey: `escala-equipe:${input.churchId}:${input.departmentId}:${input.scheduledDate}:${input.startTime}:${input.endTime}`,
+        dedupeKey: `escala-equipe:${input.churchId}:${input.ministryId}:${input.departmentId ?? 0}:${input.scheduledDate}:${input.startTime}:${input.endTime}`,
         push: true,
         url: `/app/escalas?ministerio=${input.ministryId}`,
       });
