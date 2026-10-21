@@ -19,6 +19,7 @@ import { uploadOnlineContributionProof, uploadPublicDonationProof } from "../onl
 import { getPublicDonationSettingsByChurch } from "../publicDonations";
 import { getDerivedLogoIconUrls, getOptimizedMediaUrls, getPwaIconUrls, uploadMedia, type MediaPurpose, type MediaResourceType } from "../media";
 import { stripeWebhookHandler } from "../stripe-webhook";
+import { pagarmeWebhookHandler } from "../pagarme-webhook";
 import { verifyToken } from "../auth";
 import { matchesTreasuryAttachmentSignature, safeTreasuryAttachmentName, TREASURY_ATTACHMENT_MIME_TYPES } from "../treasury-files";
 import {
@@ -125,6 +126,7 @@ async function startServer() {
     }
     next();
   });
+  app.post("/api/webhooks/pagarme/:token", express.json({ limit: "1mb" }), pagarmeWebhookHandler);
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);

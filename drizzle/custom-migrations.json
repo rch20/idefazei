@@ -210,6 +210,12 @@
       "file": "drizzle/0105_church_setup_skips.sql",
       "kind": "custom-additive",
       "sha256": "3d35212d980171bfd32f93c4766bb2909c8e99934b67037aaddc9192df17f4af"
+    },
+    {
+      "id": "0106",
+      "file": "drizzle/0106_platform_billing.sql",
+      "kind": "custom-additive",
+      "sha256": "679dc907cb67660cf3f4f3ba966e3fa89df9c005af87b1706fee50ecc1b64c74"
     }
   ]
 }

@@ -2,6 +2,7 @@ import {
   boolean,
   char,
   date,
+  datetime,
   decimal,
   index,
   int,
@@ -75,6 +76,10 @@ export const churches = mysqlTable("churches", {
   stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
   stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),
   stripePlan: mysqlEnum("stripePlan", ["basic", "pro", "enterprise"]),
+  /** Cobrança Pagar.me: fim da vigência paga, plano contratado e assinatura recorrente (se houver). */
+  paidUntil: datetime("paidUntil"),
+  billingPlan: varchar("billingPlan", { length: 16 }),
+  pagarmeSubscriptionId: varchar("pagarmeSubscriptionId", { length: 64 }),
   stripeStatus: varchar("stripeStatus", { length: 50 }), // active, trialing, past_due, canceled
   stripeCurrentPeriodEnd: timestamp("stripeCurrentPeriodEnd"),
   trialEndsAt: timestamp("trialEndsAt"),
@@ -1603,6 +1608,34 @@ export const onboardingProgress = mysqlTable("onboarding_progress", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
+
+/** Cobranças da plataforma (Pagar.me ou lançamento manual do Super Admin). */
+export const platformPayments = mysqlTable(
+  "platform_payments",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    mode: mysqlEnum("mode", ["pontual", "recorrente", "manual"]).notNull(),
+    planKey: varchar("planKey", { length: 16 }).notNull(),
+    cycle: mysqlEnum("cycle", ["mensal", "anual"]).notNull(),
+    amountCents: int("amountCents").notNull(),
+    status: mysqlEnum("status", ["pendente", "pago", "falhou", "cancelado"]).notNull().default("pendente"),
+    pagarmeLinkId: varchar("pagarmeLinkId", { length: 64 }),
+    pagarmeLinkUrl: varchar("pagarmeLinkUrl", { length: 512 }),
+    pagarmeChargeId: varchar("pagarmeChargeId", { length: 64 }),
+    paymentMethod: varchar("paymentMethod", { length: 32 }),
+    paidAt: datetime("paidAt"),
+    periodEnd: datetime("periodEnd"),
+    note: varchar("note", { length: 255 }),
+    createdBy: varchar("createdBy", { length: 160 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("platform_payments_charge_unique").on(table.pagarmeChargeId),
+    index("platform_payments_church_idx").on(table.churchId, table.createdAt),
+  ]
+);
 
 /** Passos do trilho de configuração que a igreja escolheu pular por enquanto. */
 export const churchSetupSkips = mysqlTable(

@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { BillingNotice } from "@/components/BillingNotice";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
 import { getChurchHomePath } from "@/lib/churchHome";
 import { WebPushControl } from "@/components/WebPushControl";
@@ -144,6 +145,7 @@ const navItems: NavItem[] = [
   { icon: Library, label: "Biblioteca", path: "/app/biblioteca", group: "comunicacao" },
   { icon: Building2, label: "Configurações", path: "/app/configuracoes", group: "admin", accessKey: "canManageChurch" },
   { icon: WalletCards, label: "Tesouraria", path: "/app/tesouraria", group: "admin", accessKey: "canAccessTreasury" },
+  { icon: CreditCard, label: "Assinatura", path: "/app/assinatura", group: "admin", accessKey: "canManageChurch" },
   { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin", accessKey: "canManageChurch", underConstruction: true },
   { icon: CreditCard, label: "Faturamento", path: "/app/faturamento", group: "admin", accessKey: "canManageChurch", underConstruction: true },
 ];
@@ -596,7 +598,7 @@ export default function ChurchLayout({ children, title }: ChurchLayoutProps) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <TopBar title={title} />
           <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-4 pb-28 lg:p-6 lg:pb-6">
-            {children}
+            <BillingNotice churchId={user?.churchId ?? 0} canPay={Boolean(accessSummary?.canManageChurch)}>{children}</BillingNotice>
           </main>
         </div>
         <MobileQuickNav menuOpen={sidebarOpen} onMenuClick={() => setSidebarOpen(true)} onNavigate={() => setSidebarOpen(false)} />

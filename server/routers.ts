@@ -4,6 +4,8 @@ import { randomBytes } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { CHURCH_SETUP_STEP_KEYS } from "../shared/churchSetup";
+import { BILLING_PLAN_KEYS, BILLING_PLANS, billingAmountCents, type BillingPlanKey } from "../shared/billing";
+import { getChurchBilling, getPagarmeAdminView, isBillingEnforced, listAllPayments, listChurchPayments, applyPaidCharge, savePagarmeConfig, startChurchCheckout, testPagarmeConnection } from "./billing";
 import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
 import { HERO_PRESET_IDS } from "../shared/publicHero";
@@ -13416,6 +13418,65 @@ const notificationsRouter = router({
     }),
 });
 
+// ─── COBRANÇA DA PLATAFORMA (PAGAR.ME) ────────────────────────────────────────
+const billingRouter = router({
+  /** Estado de vigência para qualquer membro (faixa de aviso e bloqueio por vencimento). */
+  gate: protectedProcedure.input(z.object({ churchId: z.number().int().positive() })).query(async ({ input, ctx }) => {
+    await requireChurchMember(ctx.user.id, input.churchId);
+    const { state } = await getChurchBilling(input.churchId);
+    return { ...state, enforce: await isBillingEnforced() };
+  }),
+  /** Tela Assinatura da igreja: estado, plano, histórico e se o pagamento on-line está disponível. */
+  overview: protectedProcedure.input(z.object({ churchId: z.number().int().positive() })).query(async ({ input, ctx }) => {
+    await requirePastor(ctx.user.id, input.churchId);
+    const { church, state } = await getChurchBilling(input.churchId);
+    const admin = await getPagarmeAdminView();
+    const payments = await listChurchPayments(input.churchId);
+    return {
+      state,
+      plan: church.billingPlan ?? null,
+      recurring: Boolean(church.pagarmeSubscriptionId),
+      checkoutAvailable: admin.configured,
+      payments: payments.map(item => ({ id: item.id, mode: item.mode, planKey: item.planKey, cycle: item.cycle, amountCents: item.amountCents, status: item.status, paidAt: item.paidAt, createdAt: item.createdAt, periodEnd: item.periodEnd })),
+    };
+  }),
+  startCheckout: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), plan: z.enum(BILLING_PLAN_KEYS), cycle: z.enum(["mensal", "anual"]), mode: z.enum(["pontual", "recorrente"]) }))
+    .mutation(async ({ input, ctx }) => {
+      await requirePastor(ctx.user.id, input.churchId);
+      try {
+        return await startChurchCheckout({ ...input, requestedBy: ctx.user.email || ctx.user.name || `usuario-${ctx.user.id}` });
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Não foi possível iniciar o pagamento." });
+      }
+    }),
+  admin: router({
+    config: adminProcedure.query(() => getPagarmeAdminView()),
+    saveConfig: adminProcedure
+      .input(z.object({ baseUrl: z.string().min(8).max(200), secretKey: z.string().max(200).optional(), publicKey: z.string().max(120).optional(), enforce: z.boolean(), regenerateWebhookToken: z.boolean().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          await savePagarmeConfig(input, ctx.user.email || ctx.user.name || "super-admin");
+        } catch (error) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Não foi possível salvar." });
+        }
+        return getPagarmeAdminView();
+      }),
+    testConnection: adminProcedure.mutation(() => testPagarmeConnection()),
+    payments: adminProcedure.query(async () => {
+      const rows = await listAllPayments(100);
+      return rows.map(({ payment, churchName, churchSlug }) => ({ ...payment, churchName, churchSlug }));
+    }),
+    /** Lançamento manual: pagamento feito fora do sistema (transferência, dinheiro) ou cortesia. */
+    grant: adminProcedure
+      .input(z.object({ churchId: z.number().int().positive(), plan: z.enum(BILLING_PLAN_KEYS), cycle: z.enum(["mensal", "anual"]), note: z.string().max(200).optional() }))
+      .mutation(async ({ input, ctx }) => {
+        const result = await applyPaidCharge({ churchId: input.churchId, plan: input.plan as BillingPlanKey, cycle: input.cycle, mode: "manual", amountCents: billingAmountCents(input.plan, input.cycle), chargeId: null, note: input.note ?? "Lançamento manual", createdBy: ctx.user.email || ctx.user.name || "super-admin" });
+        return { paidUntil: result.applied ? result.paidUntil : null, planName: BILLING_PLANS[input.plan].name };
+      }),
+  }),
+});
+
 // ─── STRIPE ROUTER ────────────────────────────────────────────────────────────
 const stripeRouter = router({
   // Retorna o status da assinatura da igreja
@@ -13851,6 +13912,7 @@ export const appRouter = router({
   notifications: notificationsRouter,
   securityAudit: securityAuditRouter,
   stripe: stripeRouter,
+  billing: billingRouter,
   platform: router({
     // Contatos exibidos na página de venda, no Fale conosco e no rodapé (públicos por natureza).
     publicContact: publicProcedure.query(() => getPlatformContact()),

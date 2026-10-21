@@ -71,6 +71,7 @@ const Aconselhamento = lazy(() => import("./pages/Aconselhamento"));
 const Comunicacao = lazy(() => import("./pages/Comunicacao"));
 const ConfiguracoesCertificados = lazy(() => import("./pages/ConfiguracoesCertificados"));
 const Faturamento = lazy(() => import("./pages/Faturamento"));
+const Assinatura = lazy(() => import("./pages/Assinatura"));
 const CentralCuidado = lazy(() => import("./pages/CentralCuidado"));
 const RadarEspiritual = lazy(() => import("./pages/RadarEspiritual"));
 const Tesouraria = lazy(() => import("./pages/Tesouraria"));
@@ -383,6 +384,12 @@ function Router() {
       <Route path="/app/configuracoes/certificados">
         <AppPage title="Certificados" requiredAccess="canManageChurch" underConstruction>
           <ConfiguracoesCertificados />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/assinatura">
+        <AppPage title="Assinatura" requiredAccess="canManageChurch">
+          <Assinatura />
         </AppPage>
       </Route>
 

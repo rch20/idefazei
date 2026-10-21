@@ -14,6 +14,7 @@ import { readBrowserStorage, removeBrowserStorage } from "@/lib/browserStorage";
 import { toast } from "sonner";
 // Carregado só quando o Super Admin abre Configurações, para não engordar o painel inteiro.
 const PlatformContactSettings = lazy(() => import("@/components/PlatformContactSettings"));
+const PlatformBillingSettings = lazy(() => import("@/components/PlatformBillingSettings"));
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
 
@@ -203,7 +204,7 @@ type Church = {
 };
 
 function AdminDashboard({ onLogout }: { onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<"overview" | "churches" | "plans" | "support" | "diagnostics" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "churches" | "plans" | "payments" | "support" | "diagnostics" | "settings">("overview");
 
   const churchesQuery = trpc.superAdmin.churches.useQuery();
   const pendingRegistrationsQuery = trpc.superAdmin.pendingRegistrations.useQuery();
@@ -274,6 +275,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
             { id: "overview", label: "Visão Geral", icon: LayoutDashboard },
             { id: "churches", label: "Igrejas", icon: Building2 },
             { id: "plans", label: "Planos", icon: CreditCard },
+            { id: "payments", label: "Pagamentos", icon: CreditCard },
             { id: "support", label: "Suporte", icon: MessageSquare },
             { id: "diagnostics", label: "Diagnósticos", icon: Bug },
             { id: "settings", label: "Configurações", icon: Settings },
@@ -484,6 +486,14 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   </div>
                 </CardContent>
               </Card>
+            </div>
+          )}
+
+          {activeTab === "payments" && (
+            <div>
+              <h1 className="font-serif text-2xl font-bold text-white mb-1">Pagamentos</h1>
+              <p className="text-white/40 text-sm mb-8">Pagar.me, cobranças das igrejas e lançamentos manuais</p>
+              <Suspense fallback={<p className="text-sm text-white/50">Carregando…</p>}><PlatformBillingSettings /></Suspense>
             </div>
           )}
 
