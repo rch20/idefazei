@@ -198,6 +198,12 @@
       "file": "drizzle/0103_public_registration_access_mode.sql",
       "kind": "custom-additive",
       "sha256": "900ed9a778779b3c67ed65e0c4c3976acf54a926b136d16253cb94614f4e9982"
+    },
+    {
+      "id": "0104",
+      "file": "drizzle/0104_financial_account_opening_date.sql",
+      "kind": "custom-additive",
+      "sha256": "a90de7073d7b0276361828b19865affcd3967d26429d411cac1e308df81e02c1"
     }
   ]
 }

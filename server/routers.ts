@@ -12873,6 +12873,7 @@ const treasuryRouter = router({
         name: z.string().trim().min(2).max(120),
         type: z.enum(["caixa", "banco", "outro"]),
         openingBalanceCents: z.number().int().min(0).max(MAX_FINANCIAL_CENTS).default(0),
+        openingBalanceDate: financialDateInput.optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {

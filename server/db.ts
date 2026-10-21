@@ -10346,7 +10346,7 @@ export async function getFinancialAccountById(id: number, churchId: number) {
   return rows[0] ?? null;
 }
 
-export async function createFinancialAccount(data: { churchId: number; name: string; type: "caixa" | "banco" | "outro"; openingBalanceCents: number; actorChurchUserId: number }) {
+export async function createFinancialAccount(data: { churchId: number; name: string; type: "caixa" | "banco" | "outro"; openingBalanceCents: number; openingBalanceDate?: string | null; actorChurchUserId: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.transaction(async tx => {
@@ -10355,6 +10355,7 @@ export async function createFinancialAccount(data: { churchId: number; name: str
       name: data.name,
       type: data.type,
       openingBalanceCents: data.openingBalanceCents,
+      openingBalanceDate: data.openingBalanceDate ? financialDate(data.openingBalanceDate) : null,
       active: true,
     });
     const id = Number((result[0] as { insertId?: number })?.insertId ?? 0);
@@ -10607,6 +10608,16 @@ async function getApprovedOnlineContributionSummary(data: { churchId: number; st
   };
 }
 
+/** Dia em que o saldo inicial da conta começa a valer: a data informada ou, se não houver, o dia do cadastro. */
+function financialAccountOpeningDate(account: { openingBalanceDate?: Date | string | null; createdAt: Date | string }) {
+  return formatCivilDateValue(account.openingBalanceDate ?? account.createdAt);
+}
+
+/** Saldo inicial da conta considerado até a data: uma única regra para o painel e a conciliação. */
+function financialAccountOpeningSeed(account: { openingBalanceCents: number; openingBalanceDate?: Date | string | null; createdAt: Date | string }, untilDate: string) {
+  return financialAccountOpeningDate(account) <= untilDate ? account.openingBalanceCents : 0;
+}
+
 export async function getTreasuryOverview(data: { churchId: number; startDate: string; endDate: string; accountId?: number }) {
   const previousPeriodEndDate = previousFinancialDate(data.startDate);
   const [allAccounts, periodRows, openingRows, allRows, approvedOnlineContributionSummary] = await Promise.all([
@@ -10638,12 +10649,12 @@ export async function getTreasuryOverview(data: { churchId: number; startDate: s
   const expensesCents = sumByType("saida", confirmedPeriodRows);
   const openingBalances = accounts.map(account => {
     const movement = confirmedOpeningRows.filter(row => row.transaction.accountId === account.id).reduce((total, row) => total + (row.transaction.type === "entrada" ? row.transaction.amountCents : -row.transaction.amountCents), 0);
-    const openingSeed = formatCivilDateValue(account.createdAt) <= previousPeriodEndDate ? account.openingBalanceCents : 0;
+    const openingSeed = financialAccountOpeningSeed(account, previousPeriodEndDate);
     return { account, balanceCents: openingSeed + movement };
   });
   const balances = accounts.map(account => {
     const movement = allRows.filter(row => row.transaction.status === "confirmado" && row.transaction.accountId === account.id).reduce((total, row) => total + (row.transaction.type === "entrada" ? row.transaction.amountCents : -row.transaction.amountCents), 0);
-    const openingSeed = formatCivilDateValue(account.createdAt) <= data.endDate ? account.openingBalanceCents : 0;
+    const openingSeed = financialAccountOpeningSeed(account, data.endDate);
     return { account, balanceCents: openingSeed + movement };
   });
   const categoryTotals = confirmedPeriodRows.reduce<
@@ -10674,6 +10685,11 @@ export async function getTreasuryOverview(data: { churchId: number; startDate: s
     expensesCents,
     ...approvedOnlineContributionSummary,
     resultCents: entriesCents - expensesCents,
+    /** Saldos iniciais de contas que passaram a valer dentro do período; explicam a diferença entre saldo anterior + resultado e saldo atual. */
+    newAccountOpeningCents: accounts.reduce((total, account) => {
+      const openingDate = financialAccountOpeningDate(account);
+      return openingDate > previousPeriodEndDate && openingDate <= data.endDate ? total + account.openingBalanceCents : total;
+    }, 0),
     openingBalanceCents: openingBalances.reduce((total, item) => total + item.balanceCents, 0),
     openingAccountBalances: openingBalances,
     previousPeriodEndDate,
@@ -11000,7 +11016,7 @@ export async function getBookBalanceAt(data: { churchId: number; accountId: numb
     endDate: data.endDate,
   });
   const movement = rows.filter(row => row.transaction.status === "confirmado").reduce((total, row) => total + (row.transaction.type === "entrada" ? row.transaction.amountCents : -row.transaction.amountCents), 0);
-  return account.openingBalanceCents + movement;
+  return financialAccountOpeningSeed(account, data.endDate) + movement;
 }
 
 export async function saveFinancialReconciliation(data: { churchId: number; accountId: number; periodStart: string; periodEnd: string; bankClosingBalanceCents: number; bookBalanceCents: number; differenceCents: number; status: "em_andamento" | "conciliada" | "com_divergencia"; notes?: string; actorChurchUserId: number }) {

@@ -2759,6 +2759,8 @@ export const financialAccounts = mysqlTable(
     name: varchar("name", { length: 120 }).notNull(),
     type: mysqlEnum("type", ["caixa", "banco", "outro"]).notNull(),
     openingBalanceCents: int("openingBalanceCents").default(0).notNull(),
+    /** Dia em que o saldo inicial passa a valer; nulo usa a data de cadastro da conta. */
+    openingBalanceDate: date("openingBalanceDate"),
     active: boolean("active").default(true).notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

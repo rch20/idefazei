@@ -18,3 +18,21 @@ describe("Tesouraria — estorno e datas", () => {
     expect(routers).toContain("formatCivilDateValue(existing.transactionDate)");
   });
 });
+
+describe("Tesouraria — saldo inicial com data", () => {
+  it("a migração 0104 é aditiva e consta no ledger com o hash correto", async () => {
+    const { createHash } = await import("node:crypto");
+    const sql = readFileSync("drizzle/0104_financial_account_opening_date.sql", "utf8");
+    expect(sql).toMatch(/ADD COLUMN `openingBalanceDate` date NULL/);
+    expect(sql).not.toMatch(/IF NOT EXISTS|DROP|DELETE/i);
+    const ledger = JSON.parse(readFileSync("drizzle/custom-migrations.json", "utf8"));
+    const entry = ledger.entries.find((item: { id: string }) => item.id === "0104");
+    expect(entry.sha256).toBe(createHash("sha256").update(sql).digest("hex"));
+  });
+  it("painel e conciliação usam a mesma regra de saldo inicial", () => {
+    expect(db).toContain("function financialAccountOpeningSeed");
+    expect(db).not.toContain("formatCivilDateValue(account.createdAt) <=");
+    expect(db).toContain("return financialAccountOpeningSeed(account, data.endDate) + movement;");
+    expect(db).toContain("newAccountOpeningCents");
+  });
+});

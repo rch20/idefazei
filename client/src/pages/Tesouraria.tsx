@@ -315,6 +315,7 @@ export default function Tesouraria() {
     name: "",
     type: "caixa" as "caixa" | "banco" | "outro",
     openingBalance: "0,00",
+    openingBalanceDate: today(),
   });
   const [reverseReason, setReverseReason] = useState("");
   const [periodAction, setPeriodAction] = useState<PeriodAction>(null);
@@ -589,7 +590,7 @@ export default function Tesouraria() {
   const createAccount = trpc.treasury.createAccount.useMutation({
     onSuccess: async () => {
       await invalidateTreasury();
-      setNewAccount({ name: "", type: "caixa", openingBalance: "0,00" });
+      setNewAccount({ name: "", type: "caixa", openingBalance: "0,00", openingBalanceDate: today() });
       setAccountOpen(false);
       setStructureError(null);
       toast.success("Conta financeira criada.");
@@ -761,6 +762,7 @@ export default function Tesouraria() {
       name: newAccount.name.trim(),
       type: newAccount.type,
       openingBalanceCents,
+      openingBalanceDate: newAccount.openingBalanceDate || undefined,
     });
   };
 
@@ -1122,7 +1124,7 @@ export default function Tesouraria() {
               label="Saldo atual"
               value={formatBrl(overview?.balanceCents ?? 0)}
               tone="gold"
-              helper={`Resultado ${formatBrl(overview?.resultCents ?? 0)} · Até ${formatDatePtBr(endDate)}`}
+              helper={`Resultado ${formatBrl(overview?.resultCents ?? 0)}${overview?.newAccountOpeningCents ? ` · Saldos iniciais de contas novas ${formatBrl(overview.newAccountOpeningCents)}` : ""} · Até ${formatDatePtBr(endDate)}`}
             />
           </section>
 
@@ -2361,6 +2363,21 @@ export default function Tesouraria() {
                     })
                   }
                 />
+              </label>
+              <label className="grid gap-1.5">
+                <Label>Saldo inicial vale a partir de</Label>
+                <Input
+                  type="date"
+                  max={today()}
+                  value={newAccount.openingBalanceDate}
+                  onChange={event =>
+                    setNewAccount({
+                      ...newAccount,
+                      openingBalanceDate: event.target.value,
+                    })
+                  }
+                />
+                <span className="text-xs text-muted-foreground">Use o dia do primeiro lançamento da conta, para os saldos de meses anteriores ficarem corretos.</span>
               </label>
               {(structureError || createAccount.error) && (
                 <InlineError
