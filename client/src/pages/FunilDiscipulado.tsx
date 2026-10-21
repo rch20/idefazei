@@ -1,63 +1,134 @@
-import { useChurch } from "@/components/ChurchLayout";
-import { trpc } from "@/lib/trpc";
-import { ChevronLeft, ChevronRight, User } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Link } from "wouter";
 import { toast } from "sonner";
+import { Check, Circle, CircleDot, Search } from "lucide-react";
+import { useChurch } from "@/components/ChurchLayout";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { AdaptiveFormDialogBody, AdaptiveFormDialogContent, AdaptiveFormDialogFooter, adaptiveFormDialogHeaderClassName } from "@/components/AdaptiveFormDialog";
+import { Input } from "@/components/ui/input";
+import { trpc } from "@/lib/trpc";
 
 const STAGES = [
-  { key: "nova_alma", label: "Nova Alma", color: "#3b82f6", bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-700" },
-  { key: "consolidacao", label: "Consolidação", color: "#f59e0b", bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700" },
-  { key: "fundamentos", label: "Fundamentos", color: "#8b5cf6", bg: "bg-purple-50", border: "border-purple-200", text: "text-purple-700" },
-  { key: "batismo", label: "Batismo", color: "#06b6d4", bg: "bg-cyan-50", border: "border-cyan-200", text: "text-cyan-700" },
-  { key: "encontro_com_deus", label: "Encontro com Deus", color: "#f43f5e", bg: "bg-rose-50", border: "border-rose-200", text: "text-rose-700" },
-  { key: "escola_de_lideres", label: "Escola de Líderes", color: "#f97316", bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-700" },
-  { key: "lideranca", label: "Liderança", color: "#6366f1", bg: "bg-indigo-50", border: "border-indigo-200", text: "text-indigo-700" },
-  { key: "multiplicador", label: "Multiplicador", color: "#10b981", bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700" },
+  { key: "nova_alma", label: "Nova Alma", short: "Nova alma" },
+  { key: "consolidacao", label: "Consolidação", short: "Consolid." },
+  { key: "fundamentos", label: "Fundamentos", short: "Fundam." },
+  { key: "batismo", label: "Batismo", short: "Batismo" },
+  { key: "encontro_com_deus", label: "Encontro com Deus", short: "Encontro" },
+  { key: "escola_de_lideres", label: "Escola de Líderes", short: "Escola" },
+  { key: "lideranca", label: "Liderança", short: "Liderança" },
+  { key: "multiplicador", label: "Multiplicador", short: "Multipl." },
 ] as const;
 
 type StageKey = (typeof STAGES)[number]["key"];
+type StageStatus = "concluida" | "pendente" | "nao_registrada";
+type FilterKey = "todas" | "sem_batismo" | "sem_encontro" | "encontro_sem_batismo" | "sem_fundamentos" | "sem_registro";
+
+const FILTERS: Array<{ key: FilterKey; label: string }> = [
+  { key: "todas", label: "Todas" },
+  { key: "sem_batismo", label: "Ainda não batizadas" },
+  { key: "sem_encontro", label: "Sem Encontro com Deus" },
+  { key: "encontro_sem_batismo", label: "Encontro sem Batismo" },
+  { key: "sem_fundamentos", label: "Sem Fundamentos" },
+  { key: "sem_registro", label: "Sem nenhuma etapa" },
+];
+
+const PAGE_SIZE = 60;
+
+const STATUS_LABEL: Record<StageStatus, string> = { concluida: "Concluída", pendente: "A fazer", nao_registrada: "Sem registro" };
+
+type CellTarget = { personId: number; personName: string; stage: StageKey; status: StageStatus } | null;
+
+function StatusIcon({ status }: { status: StageStatus }) {
+  if (status === "concluida") return <Check className="h-4 w-4 text-emerald-700" aria-hidden="true" />;
+  if (status === "pendente") return <CircleDot className="h-4 w-4 text-amber-600" aria-hidden="true" />;
+  return <Circle className="h-4 w-4 text-slate-300" aria-hidden="true" />;
+}
+
+const STATUS_CELL: Record<StageStatus, string> = {
+  concluida: "border-emerald-200 bg-emerald-50",
+  pendente: "border-amber-200 bg-amber-50",
+  nao_registrada: "border-slate-200 bg-white",
+};
 
 export default function FunilDiscipulado() {
   const { churchId } = useChurch();
-  const [activeDesktopStage, setActiveDesktopStage] = useState<StageKey>("nova_alma");
+  const [filter, setFilter] = useState<FilterKey>("todas");
+  const [search, setSearch] = useState("");
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const [target, setTarget] = useState<CellTarget>(null);
 
-  const { data: people, isLoading, isError: peopleError, refetch } = trpc.people.list.useQuery({ churchId });
+  const { data: people, isLoading, isError: peopleError, refetch: refetchPeople } = trpc.people.list.useQuery({ churchId });
+  const boardQuery = trpc.people.journeyBoard.useQuery({ churchId });
   const { data: journeyScope } = trpc.people.journeyScope.useQuery({ churchId });
-  const updatePerson = trpc.people.update.useMutation({
-    onSuccess: () => refetch(),
+  const updateStage = trpc.people.updateJourneyStage.useMutation({
+    onSuccess: async () => {
+      setTarget(null);
+      await Promise.all([boardQuery.refetch(), refetchPeople()]);
+      toast.success("Etapa atualizada no prontuário.");
+    },
     onError: (error) => toast.error(error.message || "Não foi possível atualizar a etapa."),
   });
 
-  const grouped = STAGES.map((stage) => ({
-    ...stage,
-    people: (people ?? []).filter((p) => p.discipleshipStage === stage.key),
-  }));
+  const canEditPerson = (personId: number) => Boolean(journeyScope?.canManageAll || journeyScope?.personIds.includes(personId));
+
+  // Estado de cada etapa de cada pessoa, vindo do mesmo registro do Prontuário.
+  const statusByPerson = useMemo(() => {
+    const map = new Map<number, Map<string, StageStatus>>();
+    for (const row of boardQuery.data ?? []) {
+      const byStage = map.get(row.personId) ?? new Map<string, StageStatus>();
+      byStage.set(row.stage, row.status as StageStatus);
+      map.set(row.personId, byStage);
+    }
+    return map;
+  }, [boardQuery.data]);
+
+  const statusOf = (personId: number, stage: StageKey): StageStatus => statusByPerson.get(personId)?.get(stage) ?? "nao_registrada";
+
   const legacyCellPeople = (people ?? []).filter((person) => person.discipleshipStage === "celula");
-  const selectedStage = grouped.find((stage) => stage.key === activeDesktopStage) ?? grouped[0];
-  const canMovePerson = (personId: number) => Boolean(journeyScope?.canManageAll || journeyScope?.personIds.includes(personId));
 
-  function handleMoveForward(personId: number, currentStage: StageKey) {
-    const idx = STAGES.findIndex((s) => s.key === currentStage);
-    if (idx < STAGES.length - 1) {
-      const nextStage = STAGES[idx + 1].key;
-      updatePerson.mutate({ id: personId, churchId, discipleshipStage: nextStage });
-    }
+  const rows = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("pt-BR");
+    return (people ?? []).filter((person) => {
+      if (query && !String(person.fullName ?? "").toLocaleLowerCase("pt-BR").includes(query)) return false;
+      const done = (stage: StageKey) => (statusByPerson.get(person.id)?.get(stage) ?? "nao_registrada") === "concluida";
+      switch (filter) {
+        case "sem_batismo": return !done("batismo");
+        case "sem_encontro": return !done("encontro_com_deus");
+        case "encontro_sem_batismo": return done("encontro_com_deus") && !done("batismo");
+        case "sem_fundamentos": return !done("fundamentos");
+        case "sem_registro": return !STAGES.some((stage) => (statusByPerson.get(person.id)?.get(stage.key) ?? "nao_registrada") !== "nao_registrada");
+        default: return true;
+      }
+    });
+  }, [people, search, filter, statusByPerson]);
+
+  const shown = rows.slice(0, visible);
+  const stageLabel = (key: string) => STAGES.find((stage) => stage.key === key)?.label ?? key;
+  const loading = isLoading || boardQuery.isLoading;
+
+  function act(status: StageStatus) {
+    if (!target) return;
+    updateStage.mutate({ churchId, id: target.personId, stage: target.stage, status });
   }
 
-  function handleMoveBackward(personId: number, currentStage: StageKey) {
-    const idx = STAGES.findIndex((s) => s.key === currentStage);
-    if (idx > 0) {
-      const previousStage = STAGES[idx - 1].key;
-      updatePerson.mutate({ id: personId, churchId, discipleshipStage: previousStage });
-    }
-  }
+  const targetOptions: Array<{ status: StageStatus; label: string; primary?: boolean }> = !target
+    ? []
+    : target.status === "concluida"
+      ? [{ status: "pendente", label: "Reabrir etapa (a fazer)" }]
+      : target.status === "pendente"
+        ? [{ status: "concluida", label: "Concluir etapa", primary: true }, { status: "nao_registrada", label: "Voltar para sem registro" }]
+        : [{ status: "concluida", label: "Concluir etapa", primary: true }, { status: "pendente", label: "Marcar como a fazer" }];
+
+  const targetPersonLacksBaptism = target?.stage === "encontro_com_deus" && statusOf(target.personId, "batismo") !== "concluida";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold font-display text-navy">Acompanhamento da formação</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Veja a etapa de formação de cada Discípulo e avance somente quando o próximo passo fizer sentido. A participação em Célula é acompanhada à parte.
+        <h1 className="text-2xl font-bold font-display text-navy">Painel da formação</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Veja de uma vez em que etapa cada pessoa está. As etapas são independentes: não há ordem obrigatória, e alguém pode fazer o Encontro com Deus antes do Batismo. Toque numa etapa para concluir; o histórico completo fica no Prontuário da pessoa.
         </p>
       </div>
 
@@ -67,186 +138,104 @@ export default function FunilDiscipulado() {
         </div>
       )}
 
-      {/* Pipeline arrow */}
-      <div className="hidden rounded-2xl border border-border bg-card p-2 md:grid md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-8">
-        {grouped.map((stage, index) => {
-          const isActive = stage.key === activeDesktopStage;
-          return (
-            <button
-              key={stage.key}
-              type="button"
-              onClick={() => setActiveDesktopStage(stage.key)}
-              aria-pressed={isActive}
-              className={`relative flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70 ${isActive ? `${stage.bg} ${stage.border} border shadow-sm` : "hover:bg-cream-dark"}`}
-            >
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white" style={{ backgroundColor: stage.color }}>{index + 1}</span>
-              <span className={`min-w-0 flex-1 truncate text-xs font-semibold ${isActive ? stage.text : "text-navy"}`}>{stage.label}</span>
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${stage.bg} ${stage.text}`}>{stage.people.length}</span>
-            </button>
-          );
-        })}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrar pessoas por etapa">
+          {FILTERS.map((item) => (
+            <Button key={item.key} type="button" size="sm" variant={filter === item.key ? "default" : "outline"} className={filter === item.key ? "bg-navy text-white" : "border-navy/20 text-navy"} aria-pressed={filter === item.key} onClick={() => { setFilter(item.key); setVisible(PAGE_SIZE); }}>{item.label}</Button>
+          ))}
+        </div>
+        <div className="relative w-full lg:w-72">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input aria-label="Buscar pessoa" placeholder="Buscar por nome" value={search} onChange={(event) => { setSearch(event.target.value); setVisible(PAGE_SIZE); }} className="pl-9" />
+        </div>
       </div>
 
-      <p className="text-xs text-muted-foreground md:hidden">Acompanhe cada etapa em sequência. Toque em uma Pessoa para visualizar seus dados e avance somente quando o próximo passo estiver concluído.</p>
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1"><Check className="h-3.5 w-3.5 text-emerald-700" aria-hidden="true" />Concluída</span>
+        <span className="inline-flex items-center gap-1"><CircleDot className="h-3.5 w-3.5 text-amber-600" aria-hidden="true" />A fazer</span>
+        <span className="inline-flex items-center gap-1"><Circle className="h-3.5 w-3.5 text-slate-300" aria-hidden="true" />Sem registro</span>
+        <span>{rows.length} {rows.length === 1 ? "pessoa" : "pessoas"}</span>
+      </p>
 
-      {/* Kanban Board */}
-      {peopleError ? (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-900" role="alert">
-          <p className="font-semibold">Não foi possível carregar o acompanhamento.</p>
-          <p className="mt-1 text-rose-800">A lista de Pessoas não foi alterada. Tente novamente.</p>
-          <button type="button" className="mt-3 rounded-md border border-rose-300 bg-white px-3 py-2 text-sm font-semibold" onClick={() => refetch()}>Tentar novamente</button>
-        </div>
-      ) : isLoading ? (
-        <div className="grid grid-cols-1 gap-3 md:hidden">
-          {STAGES.map((s) => (
-            <div key={s.key} className="kanban-column min-h-0 border-l-2 border-muted pl-3">
-              <div className="h-6 w-24 bg-muted rounded animate-pulse mb-3" />
-              {[1, 2].map((i) => (
-                <div key={i} className="h-16 bg-muted rounded-lg animate-pulse" />
-              ))}
-            </div>
-          ))}
-        </div>
+      {loading ? (
+        <div className="space-y-2" aria-label="Carregando painel">{[1, 2, 3, 4].map((item) => <div key={item} className="h-14 animate-pulse rounded-xl bg-muted" />)}</div>
+      ) : peopleError || boardQuery.isError ? (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">Não foi possível carregar o painel. <Button type="button" size="sm" variant="outline" className="ml-2" onClick={() => { void refetchPeople(); void boardQuery.refetch(); }}>Tentar novamente</Button></div>
+      ) : rows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-sm text-muted-foreground">Nenhuma pessoa neste filtro.</div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:hidden">
-          {grouped.map((stage) => (
-            <section
-              key={stage.key}
-              className="kanban-column min-h-0 w-full border-l-2 pl-3"
-              style={{ borderColor: stage.color }}
-              aria-labelledby={`stage-${stage.key}`}
-            >
-              {/* Column header */}
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-2.5 h-2.5 rounded-full"
-                    style={{ background: stage.color }}
-                  />
-                  <span id={`stage-${stage.key}`} className="text-xs font-semibold text-navy">{stage.label}</span>
-                </div>
-                <span
-                  className={`text-xs font-bold px-1.5 py-0.5 rounded-full ${stage.bg} ${stage.text}`}
-                >
-                  {stage.people.length}
-                </span>
-              </div>
-
-              {/* Cards */}
-              <div className="space-y-2 min-h-[80px]">
-                {stage.people.length === 0 ? (
-                  <div className="h-16 border-2 border-dashed border-muted rounded-lg flex items-center justify-center">
-                    <span className="text-xs text-muted-foreground">Vazio</span>
-                  </div>
-                ) : (
-                  stage.people.map((person) => (
-                    <div key={person.id} className="kanban-card group">
-                      <div className="flex items-start gap-2">
-                        <div className="w-7 h-7 rounded-full bg-cream-dark flex items-center justify-center text-xs font-bold text-navy flex-shrink-0">
-                          {person.photoUrl ? (
-                            <img
-                              src={person.photoUrl}
-                              alt={person.fullName}
-                              className="w-7 h-7 rounded-full object-cover"
-                            />
-                          ) : (
-                            person.fullName.charAt(0)
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-semibold text-navy truncate">
-                            {person.fullName}
-                          </p>
-                          {person.phone && (
-                            <p className="text-[10px] text-muted-foreground truncate">
-                              {person.phone}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      {canMovePerson(person.id) ? (
-                      <div className="mt-2 flex gap-2">
-                        {stage.key !== "nova_alma" && (
-                          <button type="button" disabled={updatePerson.isPending} onClick={() => handleMoveBackward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy disabled:pointer-events-none disabled:opacity-50" aria-label={`Retornar ${person.fullName} para o momento anterior`}>
-                            <ChevronLeft className="h-3 w-3" /> Retornar
+        <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+          <table className="w-full min-w-[820px] text-sm">
+            <caption className="sr-only">Etapas da formação de cada pessoa</caption>
+            <thead>
+              <tr className="border-b border-border bg-muted/40 text-left text-xs text-muted-foreground">
+                <th scope="col" className="sticky left-0 z-10 bg-muted px-3 py-2 font-semibold">Pessoa</th>
+                {STAGES.map((stage) => <th key={stage.key} scope="col" className="px-1 py-2 text-center font-semibold" title={stage.label}>{stage.short}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((person) => {
+                const editable = canEditPerson(person.id);
+                return (
+                  <tr key={person.id} className="border-b border-border/60 last:border-0">
+                    <th scope="row" className="sticky left-0 z-10 bg-card px-3 py-2 text-left font-medium">
+                      <Link href={`/app/pessoas?personId=${person.id}&section=jornada`} className="block max-w-[14rem] truncate text-navy hover:underline">{person.fullName}</Link>
+                      <Badge variant="outline" className="mt-1 border-navy/15 text-[10px] font-normal text-muted-foreground">Etapa principal: {stageLabel(String(person.discipleshipStage ?? "nova_alma"))}</Badge>
+                    </th>
+                    {STAGES.map((stage) => {
+                      const status = statusOf(person.id, stage.key);
+                      return (
+                        <td key={stage.key} className="px-1 py-1.5 text-center">
+                          <button
+                            type="button"
+                            disabled={!editable}
+                            onClick={() => setTarget({ personId: person.id, personName: String(person.fullName ?? ""), stage: stage.key, status })}
+                            aria-label={`${person.fullName}: ${stage.label}, ${STATUS_LABEL[status]}${editable ? ". Tocar para alterar." : ""}`}
+                            className={`mx-auto flex h-9 w-9 items-center justify-center rounded-lg border transition-colors ${STATUS_CELL[status]} ${editable ? "hover:border-navy/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70" : "cursor-default opacity-90"}`}
+                          >
+                            <StatusIcon status={status} />
                           </button>
-                        )}
-                        {stage.key !== "multiplicador" && (
-                          <button type="button" disabled={updatePerson.isPending} onClick={() => handleMoveForward(person.id, stage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground hover:text-navy disabled:pointer-events-none disabled:opacity-50" aria-label={`Avançar ${person.fullName} para o próximo momento`}>
-                            Avançar <ChevronRight className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                      ) : (
-                        <p className="mt-2 border-t border-border pt-2 text-[10px] text-muted-foreground">Acompanhamento sob responsabilidade de outro líder.</p>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-          ))}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {!isLoading && !peopleError && selectedStage && (
-        <section className="hidden rounded-2xl border border-border bg-card p-5 md:block" aria-labelledby={`desktop-stage-${selectedStage.key}`}>
-          <div className="mb-5 flex items-center justify-between border-b border-border pb-4">
-            <div className="flex items-center gap-3">
-              <span className="h-3 w-3 rounded-full" style={{ backgroundColor: selectedStage.color }} />
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Momento selecionado</p>
-                <h2 id={`desktop-stage-${selectedStage.key}`} className="font-display text-xl font-bold text-navy">{selectedStage.label}</h2>
-              </div>
-            </div>
-            <span className={`rounded-full px-3 py-1 text-sm font-bold ${selectedStage.bg} ${selectedStage.text}`}>{selectedStage.people.length} {selectedStage.people.length === 1 ? "pessoa" : "pessoas"}</span>
-          </div>
-
-          {selectedStage.people.length === 0 ? (
-            <div className="flex min-h-40 items-center justify-center rounded-xl border-2 border-dashed border-muted text-sm text-muted-foreground">Nenhuma pessoa neste momento.</div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4">
-              {selectedStage.people.map((person) => (
-                <div key={person.id} className="kanban-card group">
-                  <div className="flex items-start gap-2">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-cream-dark text-xs font-bold text-navy">
-                      {person.photoUrl ? <img src={person.photoUrl} alt={person.fullName} className="h-8 w-8 rounded-full object-cover" /> : person.fullName.charAt(0)}
-                    </div>
-                    <div className="min-w-0 flex-1"><p className="truncate text-xs font-semibold text-navy">{person.fullName}</p>{person.phone && <p className="truncate text-[10px] text-muted-foreground">{person.phone}</p>}</div>
-                  </div>
-                  {canMovePerson(person.id) ? (
-                  <div className="mt-2 flex gap-2 border-t border-border pt-2">
-                    {selectedStage.key !== "nova_alma" && (
-                      <button type="button" disabled={updatePerson.isPending} onClick={() => handleMoveBackward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy disabled:pointer-events-none disabled:opacity-50" aria-label={`Retornar ${person.fullName} para o momento anterior`}>
-                        <ChevronLeft className="h-3 w-3" /> Retornar
-                      </button>
-                    )}
-                    {selectedStage.key !== "multiplicador" && (
-                      <button type="button" disabled={updatePerson.isPending} onClick={() => handleMoveForward(person.id, selectedStage.key)} className="flex flex-1 items-center justify-center gap-1 text-[10px] font-medium text-muted-foreground transition-colors hover:text-navy disabled:pointer-events-none disabled:opacity-50" aria-label={`Avançar ${person.fullName} para o próximo momento`}>
-                        Avançar <ChevronRight className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                  ) : (
-                    <p className="mt-2 border-t border-border pt-2 text-[10px] text-muted-foreground">Acompanhamento sob responsabilidade de outro líder.</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
+      {rows.length > shown.length && (
+        <div className="text-center"><Button type="button" variant="outline" onClick={() => setVisible((current) => current + PAGE_SIZE)}>Mostrar mais ({rows.length - shown.length})</Button></div>
       )}
 
       {!isLoading && legacyCellPeople.length > 0 && (
         <section className="rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4" aria-labelledby="legacy-cell-records">
-          <div className="flex items-start gap-3">
-            <div className="mt-1 h-3 w-3 shrink-0 rounded-full bg-indigo-500" aria-hidden="true" />
-            <div>
-              <h2 id="legacy-cell-records" className="text-sm font-semibold text-navy">Registros antigos de Célula</h2>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{legacyCellPeople.length} registro{legacyCellPeople.length === 1 ? "" : "s"} antigo{legacyCellPeople.length === 1 ? "" : "s"} de Célula foi{legacyCellPeople.length === 1 ? "" : "ram"} preservado{legacyCellPeople.length === 1 ? "" : "s"}. A participação atual deve ser consultada e administrada em Células.</p>
-            </div>
-          </div>
+          <h2 id="legacy-cell-records" className="text-sm font-semibold text-navy">Registros antigos de Célula</h2>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{legacyCellPeople.length} registro{legacyCellPeople.length === 1 ? "" : "s"} antigo{legacyCellPeople.length === 1 ? "" : "s"} de Célula foi{legacyCellPeople.length === 1 ? "" : "ram"} preservado{legacyCellPeople.length === 1 ? "" : "s"}. A participação atual deve ser consultada e administrada em Células.</p>
         </section>
+      )}
+
+      {target && (
+        <Dialog open onOpenChange={(open) => { if (!open && !updateStage.isPending) setTarget(null); }}>
+          <AdaptiveFormDialogContent className="sm:max-w-md">
+            <div className={adaptiveFormDialogHeaderClassName}>
+              <DialogTitle className="font-display text-navy">{stageLabel(target.stage)}</DialogTitle>
+              <DialogDescription className="mt-1 text-sm text-muted-foreground">{target.personName} · hoje: <strong>{STATUS_LABEL[target.status]}</strong>. A alteração fica registrada no Prontuário, com data e responsável.</DialogDescription>
+            </div>
+            <AdaptiveFormDialogBody>
+              {targetPersonLacksBaptism && <p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">Esta pessoa ainda não tem o Batismo registrado. Tudo bem registrar o Encontro com Deus antes dele.</p>}
+              {target.stage === "batismo" && target.status !== "concluida" && <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">Ao concluir o Batismo aqui, a data não é preenchida na ficha. Se quiser a data de batismo, informe-a na aba Dados da pessoa.</p>}
+            </AdaptiveFormDialogBody>
+            <AdaptiveFormDialogFooter>
+              <Button type="button" variant="outline" disabled={updateStage.isPending} onClick={() => setTarget(null)}>Cancelar</Button>
+              {targetOptions.map((option) => (
+                <Button key={option.status} type="button" disabled={updateStage.isPending} variant={option.primary ? "default" : "outline"} className={option.primary ? "bg-navy text-white hover:bg-navy-light" : "border-navy/20 text-navy"} onClick={() => act(option.status)}>{option.label}</Button>
+              ))}
+            </AdaptiveFormDialogFooter>
+          </AdaptiveFormDialogContent>
+        </Dialog>
       )}
     </div>
   );

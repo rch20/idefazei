@@ -286,6 +286,7 @@ import {
   updatePersonContact,
   updatePerson,
   getDiscipleshipStageProgress,
+  getDiscipleshipProgressByChurch,
   getDiscipleshipStageEvents,
   upsertDiscipleshipStageProgress,
   getPastorCandidatesByChurch,
@@ -2488,6 +2489,11 @@ const peopleRouter = router({
           message: "Pessoa não encontrada nesta igreja.",
         });
       return getPrimaryDisciplerHistory(input.personId, input.churchId);
+    }),
+
+  journeyBoard: protectedProcedure.input(z.object({ churchId: z.number().int().positive() })).query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      return getDiscipleshipProgressByChurch(input.churchId);
     }),
 
   journeyScope: protectedProcedure.input(z.object({ churchId: z.number() })).query(async ({ input, ctx }) => {

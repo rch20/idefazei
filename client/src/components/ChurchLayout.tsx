@@ -121,7 +121,7 @@ const navItems: NavItem[] = [
   { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "membros", accessKey: "isExecutive" },
   { icon: Flame, label: "Novas Almas", path: "/app/almas", group: "discipulado" },
   { icon: HeartHandshake, label: "Consolidação", path: "/app/consolidacao", group: "discipulado", accessKey: "canAccessVisits" },
-  { icon: Route, label: "Acompanhamento", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
+  { icon: Route, label: "Painel da formação", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
   { icon: Users, label: "Discípulos", path: "/app/pessoas", group: "membros", accessKey: "canReadPeople" },
   { icon: UsersRound, label: "Famílias", path: "/app/familias", group: "membros", accessKey: "isExecutive" },
   { icon: Globe, label: "Células", path: "/app/celulas", group: "celulas" },

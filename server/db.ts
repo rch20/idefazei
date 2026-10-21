@@ -1993,6 +1993,24 @@ export async function getDiscipleshipStageProgress(churchId: number, personId: n
     .orderBy(discipleshipStageProgress.id);
 }
 
+/** Painel da formação: o andamento de todas as etapas de todas as pessoas da igreja, em uma consulta. */
+export async function getDiscipleshipProgressByChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      personId: discipleshipStageProgress.personId,
+      stage: discipleshipStageProgress.stage,
+      status: discipleshipStageProgress.status,
+      isCurrent: discipleshipStageProgress.isCurrent,
+      source: discipleshipStageProgress.source,
+      completedAt: discipleshipStageProgress.completedAt,
+      updatedAt: discipleshipStageProgress.updatedAt,
+    })
+    .from(discipleshipStageProgress)
+    .where(eq(discipleshipStageProgress.churchId, churchId));
+}
+
 export async function getDiscipleshipStageEvents(churchId: number, personId: number) {
   const db = await getDb();
   if (!db) return [];
@@ -2090,6 +2108,21 @@ export async function upsertDiscipleshipStageProgress(input: { churchId: number;
         .update(people)
         .set({ discipleshipStage: input.stage })
         .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)));
+    } else if (input.status === "concluida" && input.stage !== "celula") {
+      // A etapa principal acompanha a conclusão mais avançada: concluir uma etapa à frente a atualiza; nunca retrocede.
+      const order = ["nova_alma", "consolidacao", "fundamentos", "batismo", "encontro_com_deus", "escola_de_lideres", "lideranca", "multiplicador"];
+      const personRows = await tx
+        .select({ stage: people.discipleshipStage })
+        .from(people)
+        .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)))
+        .limit(1);
+      const currentIndex = order.indexOf(String(personRows[0]?.stage ?? "nova_alma"));
+      if (personRows[0] && order.indexOf(input.stage) > currentIndex) {
+        await tx
+          .update(people)
+          .set({ discipleshipStage: input.stage })
+          .where(and(eq(people.id, input.personId), eq(people.churchId, input.churchId)));
+      }
     }
     return { ...state, eventId };
   });

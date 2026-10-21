@@ -211,7 +211,7 @@ function Router() {
       </Route>
 
       <Route path="/app/funil">
-        <AppPage title="Funil de Discipulado" requiredAccess="isExecutive">
+        <AppPage title="Painel da formação" requiredAccess="isExecutive">
           <FunilDiscipulado />
         </AppPage>
       </Route>

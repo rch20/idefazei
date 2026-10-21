@@ -27,9 +27,11 @@ const funnelSource = readFileSync(resolve(root, "client/src/pages/FunilDiscipula
 const peopleSource = readFileSync(resolve(root, "client/src/pages/Pessoas.tsx"), "utf8");
 
 describe("Responsabilidade única da Jornada", () => {
-  it("mantém Avançar/Retornar no Funil e remove Tornar atual da ficha", () => {
-    expect(funnelSource).toContain("handleMoveForward");
-    expect(funnelSource).toContain("handleMoveBackward");
+  it("o Painel da formação registra etapas independentes pelo mesmo comando do Prontuário e remove Tornar atual da ficha", () => {
+    expect(funnelSource).toContain("trpc.people.updateJourneyStage.useMutation");
+    expect(funnelSource).not.toContain("handleMoveForward");
+    expect(funnelSource).not.toContain("handleMoveBackward");
+    expect(funnelSource).toContain("não há ordem obrigatória");
     expect(peopleSource).toContain("Acompanhe as etapas de formação sem misturar a participação em Célula");
     expect(peopleSource).not.toContain("Tornar atual");
   });
