@@ -1408,21 +1408,14 @@ function StudyManagement({
         onSaved={invalidateTrail}
       />
       <section className="rounded-2xl border border-[#c9a84c]/25 bg-[#fdfaf1] p-4 sm:p-5">
-        <div className="flex items-start gap-3">
-          <div className="rounded-xl bg-[#c9a84c]/20 p-2 text-[#1e3a5f]">
-            <Layers3 className="h-5 w-5" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-semibold text-[#1e3a5f]">
-              1. Escolha a turma e o módulo
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              O módulo apenas organiza a trilha. O que será criado e publicado é
-              o estudo.
-            </p>
-          </div>
-        </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+        <p className="text-sm font-semibold text-[#1e3a5f]">
+          Turma e módulo
+          <span className="ml-2 font-normal text-muted-foreground">
+            O módulo apenas organiza a trilha. O que será criado e publicado é o
+            estudo.
+          </span>
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
           <div className="space-y-2">
             <Label>Turma</Label>
             <Select
@@ -1657,14 +1650,14 @@ function StudyManagement({
               Criar estudo
             </Button>
           </div>
-          <FoundationStudyHandouts
-            theme={createFoundationTheme(primaryColor, secondaryColor)}
-          />
           <details className="rounded-xl border border-slate-200 bg-slate-50/60">
             <summary className="cursor-pointer list-none px-3 py-3 text-sm font-semibold text-[#1e3a5f]">
-              Opções avançadas: preencher por Excel
+              Mais formas de criar: gabaritos e Excel
             </summary>
-            <div className="border-t border-slate-200 p-3">
+            <div className="space-y-3 border-t border-slate-200 p-3">
+              <FoundationStudyHandouts
+                theme={createFoundationTheme(primaryColor, secondaryColor)}
+              />
               <div className="flex flex-col gap-3 rounded-xl border border-[#c9a84c]/20 bg-[#fdfaf1] p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-[#1e3a5f]">
@@ -1696,6 +1689,15 @@ function StudyManagement({
                 publicar.
               </p>
             </div>
+            {(() => {
+              const dated = typedStudies.filter(item => item.weekStart).map(item => String(item.weekStart).slice(0, 10));
+              const outOfOrder = dated.some((value, index) => index > 0 && value < dated[index - 1]);
+              return outOfOrder ? (
+                <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  A ordem da lista não segue as datas das semanas. A liberação para os alunos sempre usa a data da semana; use as setas só para organizar a lista.
+                </p>
+              ) : null;
+            })()}
             {typedStudies.length ? (
               typedStudies.map((study, index) => {
                 const sameModule = typedStudies.filter(
