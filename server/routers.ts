@@ -13064,7 +13064,7 @@ const treasuryRouter = router({
           code: "NOT_FOUND",
           message: "Lançamento não encontrado.",
         });
-      const date = new Date(existing.transactionDate).toISOString().slice(0, 10);
+      const date = formatCivilDateValue(existing.transactionDate);
       if (await isFinancialPeriodClosed(input.churchId, date))
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -13103,7 +13103,7 @@ const treasuryRouter = router({
           code: "NOT_FOUND",
           message: "Lançamento não encontrado.",
         });
-      const date = new Date(existing.transactionDate).toISOString().slice(0, 10);
+      const date = formatCivilDateValue(existing.transactionDate);
       if (await isFinancialPeriodClosed(input.churchId, date))
         throw new TRPCError({
           code: "FORBIDDEN",

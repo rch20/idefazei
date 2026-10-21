@@ -10844,14 +10844,28 @@ export async function reverseFinancialTransaction(data: { id: number; churchId: 
       .limit(1);
     const updated = updatedRows[0];
     if (!updated || updated.status !== "estornado") return null;
+    // Se o lançamento era o pagamento de uma conta a pagar, a conta volta a ficar aberta e pode ser paga de novo.
+    const linkedPayableRows = await tx
+      .select({ id: financialPayables.id })
+      .from(financialPayables)
+      .where(and(eq(financialPayables.churchId, data.churchId), eq(financialPayables.financialTransactionId, data.id), eq(financialPayables.status, "paga")))
+      .limit(1);
+    const linkedPayable = linkedPayableRows[0];
+    if (linkedPayable) {
+      await tx
+        .update(financialPayables)
+        .set({ status: "aberta", financialTransactionId: null, paymentDate: null, paidByChurchUserId: null, paidAt: null, updatedByChurchUserId: data.actorChurchUserId })
+        .where(and(eq(financialPayables.id, linkedPayable.id), eq(financialPayables.churchId, data.churchId), eq(financialPayables.status, "paga")));
+    }
     await tx.insert(financialAuditLogs).values({
       churchId: data.churchId,
       transactionId: data.id,
+      payableId: linkedPayable?.id,
       actorChurchUserId: data.actorChurchUserId,
       action: "estornado",
       beforeData: previous,
       afterData: updated,
-      note: data.reason,
+      note: linkedPayable ? `${data.reason} · A conta a pagar vinculada foi reaberta.` : data.reason,
     });
     return updated;
   });
