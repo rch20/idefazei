@@ -1,0 +1,73 @@
+name: Ide Fazei — backup e teste de restauração do banco
+
+# Backup diário do banco de produção (independente de deploy) e, uma vez por semana, um teste
+# de restauração de verdade: pega o backup mais recente e restaura num banco descartável
+# (idefazei_restore_check) na própria VPS, confere que as tabelas essenciais vieram com dados,
+# e apaga esse banco de teste — nunca grava em "idefazei" (produção).
+#
+# Automático: todo dia às 06:00 UTC (03:00 em São Paulo) faz o backup; aos domingos também
+# testa a restauração do backup do dia. Manual: Actions → Run workflow, escolhendo o que rodar.
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "O que rodar"
+        required: true
+        type: choice
+        default: backup-e-teste
+        options:
+          - backup-e-teste
+          - so-backup
+          - so-testar-restauracao
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ide-fazei-db-backup
+  cancel-in-progress: false
+
+env:
+  REMOTE_TOOL: /usr/local/sbin/idefazei-github-production-deploy
+
+jobs:
+  backup:
+    name: Backup e teste de restauração do banco
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conexão SSH (usuário ghdeploy)
+        env:
+          DEPLOY_SSH_PRIVATE_KEY: ${{ secrets.GHDEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.GHDEPLOY_KNOWN_HOSTS }}
+          DEPLOY_SSH_HOST: ${{ vars.DEPLOY_SSH_HOST }}
+        run: bash .github/scripts/ssh_setup.sh
+
+      - name: Backup do banco
+        if: github.event_name == 'schedule' || inputs.action == 'backup-e-teste' || inputs.action == 'so-backup'
+        run: |
+          set -Eeuo pipefail
+          label="diario-$(date -u +%Y%m%d)"
+          out="$(ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" db-backup "$label")"
+          echo "$out"
+          echo "$out" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Dia da semana (só domingo testa a restauração no agendamento automático)
+        id: day
+        run: echo "dow=$(date -u +%u)" >> "$GITHUB_OUTPUT"
+
+      - name: Teste de restauração do backup mais recente
+        if: inputs.action == 'backup-e-teste' || inputs.action == 'so-testar-restauracao' || (github.event_name == 'schedule' && steps.day.outputs.dow == '7')
+        run: |
+          set -Eeuo pipefail
+          out="$(ssh -F "$DEPLOY_SSH_CONFIG" ide-fazei-deploy sudo -n "$REMOTE_TOOL" db-restore-test)"
+          echo "$out"
+          echo "$out" >> "$GITHUB_STEP_SUMMARY"
+          echo "$out" | grep -q '^DB_RESTORE_TEST_OK=1$' || { echo "::error::Teste de restauração não confirmou DB_RESTORE_TEST_OK=1"; exit 1; }

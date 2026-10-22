@@ -11,6 +11,11 @@
 #   baseline                    envia (tar na saída) os dois runtimes ativos: dist/index.js e dist/foundation-import-runtime.mjs
 #   rollback RELEASE_ID         volta para uma versão que já existe em /opt/ide-fazei/releases
 #   db-backup LABEL             dump só do banco da aplicação (usar antes de mudança de banco)
+#   db-restore-test [FILTRO]    restaura o backup mais recente (ou o mais recente cujo nome contém
+#                               FILTRO) em um banco descartável (idefazei_restore_check), confere
+#                               que as tabelas essenciais vieram com dados, e apaga esse banco de
+#                               teste no final. NUNCA grava em "idefazei" (produção) — só prova que
+#                               o arquivo de backup restaura de verdade.
 #   migrate-plan RELEASE_ID     confere o pacote de migrations e mostra o que seria aplicado (não grava no banco)
 #   migrate-apply RELEASE_ID    exige backup recente; aplica só migrations ADITIVAS, na ordem, e registra no ledger do banco
 #
@@ -306,6 +311,53 @@ do_db_backup() {
   echo "DB_BACKUP_SHA256=$(cut -d' ' -f1 "${out}.sha256")"
 }
 
+# ------------------------------------------------------- teste de restauração do banco
+do_db_restore_test() {
+  local filter="${1:-}" src test_db="idefazei_restore_check" table_count row_churches row_church_users
+  command -v mysql >/dev/null || die MYSQL_MISSING 1
+
+  if [[ -n "$filter" ]]; then
+    [[ "$filter" =~ ^[a-z0-9-]{3,60}$ ]] || die INVALID_LABEL
+    src="$(find "${DB_BACKUP_DIR}" -maxdepth 1 -type f -name "db-${DB_NAME}-*${filter}*.sql.gz" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)"
+  else
+    src="$(find "${DB_BACKUP_DIR}" -maxdepth 1 -type f -name "db-${DB_NAME}-*.sql.gz" -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)"
+  fi
+  [[ -n "${src}" && -f "${src}" ]] || die NO_BACKUP_FOUND 1
+  [[ -f "${src}.sha256" ]] || die NO_CHECKSUM 1
+  ( cd "$(dirname -- "${src}")" && sha256sum -c "$(basename -- "${src}").sha256" >/dev/null ) || die CHECKSUM_MISMATCH 1
+
+  # Restaura num banco descartável, nunca em "idefazei": o dump do mysqldump --databases
+  # inclui "CREATE DATABASE idefazei" e "USE idefazei", então essas duas linhas são
+  # removidas antes de importar — o resto do dump roda contra a conexão já aberta no
+  # banco de teste, sem tocar em produção.
+  mysql -e "DROP DATABASE IF EXISTS \`${test_db}\`; CREATE DATABASE \`${test_db}\` CHARACTER SET utf8mb4;" \
+    || die RESTORE_DB_CREATE_FAILED 1
+
+  if ! gzip -dc -- "${src}" \
+      | grep -vE "^(CREATE DATABASE|USE \`?${DB_NAME}\`?;?)" \
+      | mysql "${test_db}"; then
+    mysql -e "DROP DATABASE IF EXISTS \`${test_db}\`;" 2>/dev/null || true
+    die RESTORE_IMPORT_FAILED 1
+  fi
+
+  table_count="$(mysql -N -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${test_db}';" 2>/dev/null || echo 0)"
+  row_churches="$(mysql -N -e "SELECT COUNT(*) FROM \`${test_db}\`.churches;" 2>/dev/null || echo -1)"
+  row_church_users="$(mysql -N -e "SELECT COUNT(*) FROM \`${test_db}\`.church_users;" 2>/dev/null || echo -1)"
+
+  mysql -e "DROP DATABASE IF EXISTS \`${test_db}\`;" 2>/dev/null || true
+
+  (( table_count > 10 )) || die RESTORE_TOO_FEW_TABLES 1
+  (( row_churches >= 0 )) || die RESTORE_MISSING_TABLE_CHURCHES 1
+  (( row_church_users >= 0 )) || die RESTORE_MISSING_TABLE_CHURCH_USERS 1
+
+  logger -t idefazei-github-production "db-restore-test file=${src} tables=${table_count} churches=${row_churches} church_users=${row_church_users} requested_by=${SUDO_USER:-unknown}"
+  echo "DB_RESTORE_TEST_FILE=${src}"
+  echo "DB_RESTORE_TEST_TABLES=${table_count}"
+  echo "DB_RESTORE_TEST_CHURCHES=${row_churches}"
+  echo "DB_RESTORE_TEST_CHURCH_USERS=${row_church_users}"
+  echo "DB_RESTORE_TEST_OK=1"
+}
+
 case "${MODE}" in
   status)    [[ $# -eq 1 ]] || die USAGE; do_status ;;
   baseline)  [[ $# -eq 1 ]] || die USAGE; do_baseline ;;
@@ -315,6 +367,7 @@ case "${MODE}" in
   apply)     [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_apply "$2" ;;
   rollback)  [[ $# -eq 2 ]] || die USAGE; require_existing_release_id "$2"; do_rollback "$2" ;;
   db-backup) [[ $# -eq 2 ]] || die USAGE; do_db_backup "$2" ;;
+  db-restore-test) [[ $# -eq 1 || $# -eq 2 ]] || die USAGE; do_db_restore_test "${2:-}" ;;
   migrate-plan)  [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_migrate_plan "$2" ;;
   migrate-apply) [[ $# -eq 2 ]] || die USAGE; require_release_id "$2"; do_migrate_apply "$2" ;;
   *) die USAGE ;;
