@@ -119,3 +119,20 @@ describe("segurança 2: limites no banco, e-mail e Super Admin", () => {
     expect(sql).not.toMatch(/\b(DROP|DELETE|TRUNCATE)\b/i);
   });
 });
+
+describe("segurança 3: replay de token entre subdomínios e ordem de checagem", () => {
+  it("requireUser bloqueia mismatch de tenant antes de qualquer rota protegida, não só tenantProcedure", () => {
+    const trpc = read("server/_core/trpc.ts");
+    const requireUserBlock = trpc.slice(trpc.indexOf("const requireUser = t.middleware"), trpc.indexOf("export const protectedProcedure"));
+    expect(requireUserBlock).toContain('ctx.tenantMismatch === true');
+    expect(requireUserBlock).toContain("jwt_host_mismatch");
+  });
+
+  it("escolaFundamentos.learningPath confirma o vínculo com a igreja antes de consultar a turma", () => {
+    const routers = read("server/routers.ts");
+    const start = routers.indexOf("learningPath: tenantProcedure");
+    const block = routers.slice(start, routers.indexOf("studentPath: tenantProcedure", start));
+    expect(block.indexOf("requireChurchMember(ctx.user.id, input.churchId)")).toBeGreaterThan(-1);
+    expect(block.indexOf("requireChurchMember(ctx.user.id, input.churchId)")).toBeLessThan(block.indexOf("getCoursesByChurch(input.churchId)"));
+  });
+});

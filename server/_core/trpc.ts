@@ -17,23 +17,6 @@ const t = initTRPC.context<TrpcContext>().create({
 export const router = t.router;
 export const publicProcedure = t.procedure;
 
-const requireUser = t.middleware(async opts => {
-  const { ctx, next } = opts;
-
-  if (!ctx.user) {
-    throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
-  }
-
-  return next({
-    ctx: {
-      ...ctx,
-      user: ctx.user,
-    },
-  });
-});
-
-export const protectedProcedure = t.procedure.use(requireUser);
-
 const securityAccessMonitor = createSecurityAccessMonitor();
 
 async function recordTenantAccessDenied(
@@ -74,6 +57,45 @@ async function recordTenantAccessDenied(
   });
 }
 
+/**
+ * Bloqueia, em TODA rota autenticada (não só nas que exigem tenant), uma sessão de igreja
+ * usada no subdomínio de outra igreja. O token de uma igreja fica isolado no navegador por
+ * origem, mas se algum dia um token for reaproveitado manualmente (phishing, log, etc.), essa
+ * checagem impede que ele funcione em um subdomínio diferente do seu, mesmo em rotas que não
+ * usam tenantProcedure.
+ */
+const requireUser = t.middleware(async opts => {
+  const { ctx, next, path } = opts;
+
+  if (!ctx.user) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+  }
+
+  if (ctx.user.authSource === "church" && ctx.tenantMismatch === true) {
+    try {
+      await recordTenantAccessDenied(ctx, path, "jwt_host_mismatch");
+    } catch (error) {
+      console.warn(
+        "[tenant-security-audit] Falha ao persistir bloqueio",
+        error instanceof Error ? error.name : "UnknownError"
+      );
+    }
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "O tenant da sessão não corresponde ao tenant da requisição.",
+    });
+  }
+
+  return next({
+    ctx: {
+      ...ctx,
+      user: ctx.user,
+    },
+  });
+});
+
+export const protectedProcedure = t.procedure.use(requireUser);
+
 const requireTenant = t.middleware(async opts => {
   const { ctx, next } = opts;
 
@@ -89,8 +111,10 @@ const requireTenant = t.middleware(async opts => {
   }
 
   // Sessões próprias de igreja devem permanecer vinculadas ao tenant
-  // resolvido pelo contexto. Sessões Manus continuam usando o churchId
-  // explícito validado pelos gates legados da própria feature.
+  // resolvido pelo contexto (o cruzamento de host já foi conferido em
+  // requireUser; aqui também exigimos que o tenant tenha sido resolvido).
+  // Sessões Manus continuam usando o churchId explícito validado pelos
+  // gates legados da própria feature.
   if (
     ctx.user.authSource === "church" &&
     (ctx.tenantMismatch === true ||

@@ -8196,6 +8196,9 @@ const escolaFundamentosRouter = router({
       })
     )
     .query(async ({ input, ctx }) => {
+      // Confere o vínculo com a igreja antes de consultar a turma, para não revelar nem a
+      // existência de um courseId de outra igreja a quem não é membro dela.
+      await requireChurchMember(ctx.user.id, input.churchId);
       const course = (await getCoursesByChurch(input.churchId)).find(item => item.id === input.courseId);
       if (!course)
         throw new TRPCError({
