@@ -66,12 +66,6 @@ describe("entradas que viram CSS, link ou imagem", () => {
   it("não aceita destino de botão //site-externo", () => {
     expect(read("server/routers.ts")).toContain('!value.startsWith("//")');
   });
-
-  it("compara o token do check-in em tempo constante e sem limite de 50 inscrições", () => {
-    const routers = read("server/routers.ts");
-    expect(routers).toContain("timingSafeEqual(Buffer.from(expectedToken), Buffer.from(input.token))");
-    expect(routers).toContain("eq(eventRegistrations.personId, input.personId))).limit(5)");
-  });
 });
 
 describe("servidor", () => {
@@ -89,8 +83,7 @@ describe("segurança 2: limites no banco, e-mail e Super Admin", () => {
     const routers = read("server/routers.ts");
     const index = read("server/_core/index.ts");
     expect(read("server/rateLimit.ts")).toContain("rateLimitHits");
-    expect(routers).not.toContain("churchLoginThrottle");
-    expect(routers).not.toContain("adminLoginThrottle");
+    expect(routers).not.toContain("createLoginThrottle");
     expect(routers).not.toContain("publicRegistrationAttempts");
     expect(index).not.toContain("publicDonationUploadAttempts");
   });

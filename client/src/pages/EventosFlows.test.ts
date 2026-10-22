@@ -291,7 +291,7 @@ describe("Eventos — inscrições e presença", () => {
     expect(db).toContain(compactSource("eq(events.churchId, data.churchId)"));
   });
 
-  it("usa o Formulário Adaptativo nos fluxos longos e mantém o QR Code compacto", () => {
+  it("usa o Formulário Adaptativo nos fluxos longos e não gera QR Code de evento", () => {
     expect(
       page.match(/<AdaptiveFormDialogContent/g)?.length
     ).toBeGreaterThanOrEqual(3);
@@ -301,7 +301,7 @@ describe("Eventos — inscrições e presença", () => {
     expect(page).toContain(compactSource("Gestão —"));
     expect(page).toContain(compactSource("Editar evento"));
     expect(page).toContain(compactSource("Salvar alterações"));
-    expect(page).toContain(compactSource('DialogContent className="max-w-sm"'));
+    expect(page).not.toContain(compactSource("generateQrCode"));
   });
 
   it("oferece WhatsApp contextual por inscrição sem misturar pagamento e presença", () => {

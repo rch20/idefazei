@@ -16,6 +16,22 @@ vi.mock("./auth", () => ({
   isInitialSuperAdminSetupAvailable: authMocks.isInitialSuperAdminSetupAvailable,
 }));
 
+vi.mock("./rateLimit", () => {
+  const hits: Array<{ key: string; at: number }> = [];
+  const id = (r: { bucket: string; key: string }) => `${r.bucket}|${r.key}`;
+  const count = (key: string, windowSec: number) => hits.filter(h => h.key === key && Date.now() - h.at < windowSec * 1000).length;
+  return {
+    requestIp: (req: { headers: Record<string, string> }) => req.headers["cf-connecting-ip"] ?? "unknown",
+    rateLimitWait: async (rules: Array<{ bucket: string; key: string; max: number; windowSec: number }>) => (rules.some(r => count(id(r), r.windowSec) >= r.max) ? 900 : 0),
+    rateLimitRecordAll: async (rules: Array<{ bucket: string; key: string }>) => { for (const r of rules) hits.push({ key: id(r), at: Date.now() }); },
+    rateLimitClear: async () => undefined,
+    enforceRateLimit: async () => undefined,
+    enforcePublicRateLimit: async () => undefined,
+    consumeMailBudget: async () => undefined,
+    rateLimitCount: async () => 0,
+  };
+});
+
 import { appRouter } from "./routers";
 
 const anonymousContext = {
