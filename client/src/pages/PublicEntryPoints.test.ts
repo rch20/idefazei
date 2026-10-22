@@ -52,16 +52,15 @@ describe("entry points públicos", () => {
     }
   });
 
-  it("anuncia o teste grátis real (sem cartão), com o número de dias que o sistema de fato pratica", () => {
+  it("anuncia o teste grátis real (sem cartão), lendo o número de dias de shared/billing.ts em vez de um valor fixo", () => {
     const landing = readFileSync(resolve(pagesRoot, "LandingPage.tsx"), "utf8");
 
-    expect(landing).toContain(`${TRIAL_DAYS} dias grátis`);
+    // A página usa a expressão {TRIAL_DAYS}, não um número fixo: se shared/billing.ts mudar o prazo, a página acompanha.
+    expect(landing).toContain('import { TRIAL_DAYS } from "@shared/billing"');
+    expect(landing).toContain("{TRIAL_DAYS} dias grátis");
     expect(landing).toContain("sem cartão");
-    // Guarda contra um número de dias divergente de shared/billing.ts, caso TRIAL_DAYS mude e a página não acompanhe.
-    for (const wrongDays of [7, 14, 15, 60, 90]) {
-      if (wrongDays === TRIAL_DAYS) continue;
-      expect(landing, `a página não deve anunciar ${wrongDays} dias de teste`).not.toContain(`${wrongDays} dias grátis`);
-    }
+    // Confirma que o valor por trás da expressão é mesmo um teste grátis real, e não zero/negativo.
+    expect(TRIAL_DAYS).toBeGreaterThan(0);
   });
 
   it("leva o botão Ver Demo para a demonstração pública", () => {
