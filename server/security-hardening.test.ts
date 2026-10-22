@@ -48,10 +48,10 @@ describe("limite de tentativas de login das igrejas", () => {
   it("aplica o limite no login da igreja, antes de consultar a senha", () => {
     const routers = read("server/routers.ts");
     const block = routers.slice(routers.indexOf("const churchAuthRouter"), routers.indexOf("requestPasswordReset: publicProcedure"));
-    expect(block).toContain("churchLoginThrottle.retryAfterSeconds");
-    expect(block.indexOf("retryAfterSeconds")).toBeLessThan(block.indexOf("loginChurchUser("));
+    expect(block).toContain("rateLimitWait(loginRules)");
+    expect(block.indexOf("rateLimitWait")).toBeLessThan(block.indexOf("loginChurchUser("));
     expect(block).toContain("TOO_MANY_REQUESTS");
-    expect(block).toContain("churchLoginThrottle.recordFailure");
+    expect(block).toContain("rateLimitRecordAll(loginRules)");
   });
 });
 
@@ -81,5 +81,48 @@ describe("servidor", () => {
     expect(index).toContain('"Referrer-Policy"');
     expect(index).not.toContain("X-Frame-Options");
     expect(index).toContain('express.json({ limit: "15mb" })');
+  });
+});
+
+describe("segurança 2: limites no banco, e-mail e Super Admin", () => {
+  it("guarda os contadores no banco e remove os mapas em memória", () => {
+    const routers = read("server/routers.ts");
+    const index = read("server/_core/index.ts");
+    expect(read("server/rateLimit.ts")).toContain("rateLimitHits");
+    expect(routers).not.toContain("churchLoginThrottle");
+    expect(routers).not.toContain("adminLoginThrottle");
+    expect(routers).not.toContain("publicRegistrationAttempts");
+    expect(index).not.toContain("publicDonationUploadAttempts");
+  });
+
+  it("limita pedidos que disparam e-mail e o formulário de contato", () => {
+    const routers = read("server/routers.ts");
+    for (const bucket of ["church-reset-ip", "church-verify-ip", "admin-reset-ip", "contact-send"]) expect(routers).toContain(bucket);
+    expect(read("server/passwordRecovery.ts")).toContain("consumeMailBudget()");
+    expect(read("server/emailVerification.ts")).toContain("consumeMailBudget()");
+    expect(read("server/adminPasswordRecovery.ts")).toContain("consumeMailBudget()");
+  });
+
+  it("redefinição do Super Admin: resposta neutra, token em hash e uso único", () => {
+    const code = read("server/adminPasswordRecovery.ts");
+    expect(code).toContain("randomBytes(32)");
+    expect(code).toContain("tokenHash");
+    expect(code).toContain("isNull(superAdminPasswordResets.usedAt)");
+    expect(read("server/routers.ts")).toContain("accepted: true");
+  });
+
+  it("não existe mais QR nem check-in de eventos", () => {
+    expect(read("client/src/App.tsx")).not.toContain("CheckinEvento");
+    expect(read("server/routers.ts")).not.toContain("generateQrCode");
+  });
+
+  it("confere o conteúdo real dos arquivos enviados", () => {
+    expect((read("server/_core/index.ts").match(/matchesTreasuryAttachmentSignature\(/g) ?? []).length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("a migração 0107 só cria tabelas", () => {
+    const sql = read("drizzle/0107_rate_limits_and_admin_reset.sql");
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS `rate_limit_hits`/);
+    expect(sql).not.toMatch(/\b(DROP|DELETE|TRUNCATE)\b/i);
   });
 });

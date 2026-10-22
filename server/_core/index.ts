@@ -21,6 +21,7 @@ import { getDerivedLogoIconUrls, getOptimizedMediaUrls, getPwaIconUrls, uploadMe
 import { stripeWebhookHandler } from "../stripe-webhook";
 import { pagarmeWebhookHandler } from "../pagarme-webhook";
 import { verifyToken } from "../auth";
+import { enforceRateLimit, requestIp } from "../rateLimit";
 import { matchesTreasuryAttachmentSignature, safeTreasuryAttachmentName, TREASURY_ATTACHMENT_MIME_TYPES } from "../treasury-files";
 import {
   createFinancialReconciliationAttachment,
@@ -72,24 +73,13 @@ function getTenantSlugFromHost(host: string | undefined) {
   return parts.length >= 3 && !["www", "admin"].includes(parts[0]) ? parts[0] : null;
 }
 
-const publicDonationUploadAttempts = new Map<string, { startedAt: number; count: number }>();
-const PUBLIC_DONATION_UPLOAD_WINDOW_MS = 60 * 60 * 1000;
-const PUBLIC_DONATION_UPLOAD_MAX_ATTEMPTS = 12;
-
-function allowPublicDonationUpload(req: express.Request, churchId: number) {
-  const forwarded = req.headers["x-forwarded-for"];
-  const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  const ip = String(forwardedValue ?? req.ip ?? req.socket.remoteAddress ?? "unknown").split(",")[0].trim().slice(0, 128) || "unknown";
-  const key = `${churchId}:${ip}`;
-  const now = Date.now();
-  const current = publicDonationUploadAttempts.get(key);
-  if (!current || now - current.startedAt >= PUBLIC_DONATION_UPLOAD_WINDOW_MS) {
-    publicDonationUploadAttempts.set(key, { startedAt: now, count: 1 });
+async function allowPublicDonationUpload(req: express.Request, churchId: number) {
+  try {
+    await enforceRateLimit([{ bucket: "public-donation-upload", key: `${churchId}:${requestIp(req)}`, max: 12, windowSec: 3600 }]);
     return true;
+  } catch {
+    return false;
   }
-  if (current.count >= PUBLIC_DONATION_UPLOAD_MAX_ATTEMPTS) return false;
-  current.count += 1;
-  return true;
 }
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -293,6 +283,10 @@ async function startServer() {
         res.status(415).json({ error: "Only PNG, JPEG and WebP images are allowed" });
         return;
       }
+      if (fileBuffer && !matchesTreasuryAttachmentSignature(fileBuffer, mimeType)) {
+        res.status(415).json({ error: "O conteúdo do arquivo não corresponde ao formato informado." });
+        return;
+      }
       if (!fileBuffer) {
         res.status(400).json({ error: "No file received" });
         return;
@@ -377,6 +371,7 @@ async function startServer() {
       if (limitReached) return res.status(413).json({ error: "File too large (max 4MB)" });
       if (invalidMimeType) return res.status(415).json({ error: "Only PNG, JPEG and WebP images are allowed" });
       if (!fileBuffer) return res.status(400).json({ error: "No file received" });
+      if (!matchesTreasuryAttachmentSignature(fileBuffer, mimeType)) return res.status(415).json({ error: "O conteúdo do arquivo não corresponde ao formato informado." });
       try {
         const uploaded = await uploadMedia({
           churchId: churchUser.churchId,
@@ -454,6 +449,7 @@ async function startServer() {
       if (limitReached) return res.status(413).json({ error: "Arquivo muito grande (máximo 32 MB)" });
       if (invalidMimeType) return res.status(415).json({ error: "Formato não permitido. Use PDF, DOC, DOCX, PPT, PPTX, PNG, JPEG, WebP, MP3, WAV ou OGG, conforme o material." });
       if (!fileBuffer) return res.status(400).json({ error: "No file received" });
+      if (TREASURY_ATTACHMENT_MIME_TYPES.has(mimeType) && !matchesTreasuryAttachmentSignature(fileBuffer, mimeType)) return res.status(415).json({ error: "O conteúdo do arquivo não corresponde ao formato informado." });
       const pastorRoles = new Set(["pastor_presidente", "pastor_local"]);
       const adminRoles = new Set(["pastor_presidente", "pastor_local", "secretario"]);
       const imagePurposes = new Set<MediaPurpose>(["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "tenant_public_hero", "certificate_logo", "announcement_image", "event_flyer"]);
@@ -600,7 +596,7 @@ async function startServer() {
     if (!church?.active) return res.status(404).json({ error: "Igreja não encontrada." });
     const settings = await getPublicDonationSettingsByChurch(church.id);
     if (!settings?.publicDonationEnabled) return res.status(403).json({ error: "A doação pública está temporariamente indisponível." });
-    if (!allowPublicDonationUpload(req, church.id)) return res.status(429).json({ error: "Aguarde antes de enviar outro comprovante." });
+    if (!(await allowPublicDonationUpload(req, church.id))) return res.status(429).json({ error: "Aguarde antes de enviar outro comprovante." });
     if (!(req.headers["content-type"] ?? "").includes("multipart/form-data")) {
       return res.status(400).json({ error: "Envie o comprovante como multipart/form-data." });
     }

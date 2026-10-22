@@ -49,7 +49,6 @@ const Configuracoes = lazy(() => import("./pages/Configuracoes"));
 const Biblioteca = lazy(() => import("./pages/Biblioteca"));
 const AreaMembro = lazy(() => import("./pages/AreaMembro"));
 const AppLider = lazy(() => import("./pages/AppLider"));
-const CheckinEvento = lazy(() => import("./pages/CheckinEvento"));
 const EventoInscricaoPublica = lazy(() => import("./pages/EventoInscricaoPublica"));
 const Demo = lazy(() => import("./pages/Demo"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
@@ -150,6 +149,7 @@ function Router() {
       {/* ── Super Admin ── */}
       <Route path="/admin" component={AdminPanel} />
       <Route path="/admin/login" component={AdminPanel} />
+      <Route path="/admin/redefinir-senha" component={AdminPanel} />
 
       {/* ── Login e Portal da Igreja ── */}
       <Route path="/login" component={LoginIgreja} />
@@ -421,7 +421,6 @@ function Router() {
       <Route path="/demo" component={Demo} />
 
       {/* ── Check-in público ── */}
-      <Route path="/checkin" component={CheckinEvento} />
 
       {/* ── Onboarding ── */}
       <Route path="/onboarding" component={Onboarding} />

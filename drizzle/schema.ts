@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   char,
   date,
@@ -1608,6 +1609,36 @@ export const onboardingProgress = mysqlTable("onboarding_progress", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
+
+/** Contadores de tentativas (login, e-mails, cadastros). A chave é sempre um hash: nunca guarda IP nem e-mail em claro. */
+export const rateLimitHits = mysqlTable(
+  "rate_limit_hits",
+  {
+    id: bigint("id", { mode: "number" }).autoincrement().primaryKey(),
+    bucket: varchar("bucket", { length: 48 }).notNull(),
+    keyHash: char("keyHash", { length: 40 }).notNull(),
+    createdAt: timestamp("createdAt", { fsp: 3 }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("rate_limit_hits_lookup_idx").on(table.bucket, table.keyHash, table.createdAt),
+    index("rate_limit_hits_created_idx").on(table.createdAt),
+  ]
+);
+
+/** Links de redefinição de senha do Super Admin (uso único, 1 hora). */
+export const superAdminPasswordResets = mysqlTable(
+  "super_admin_password_resets",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    superAdminId: int("superAdminId").notNull(),
+    tokenHash: varchar("tokenHash", { length: 64 }).notNull().unique(),
+    expiresAt: timestamp("expiresAt").notNull(),
+    usedAt: timestamp("usedAt"),
+    requestIp: varchar("requestIp", { length: 64 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [index("super_admin_password_resets_admin_idx").on(table.superAdminId, table.createdAt)]
+);
 
 /** Cobranças da plataforma (Pagar.me ou lançamento manual do Super Admin). */
 export const platformPayments = mysqlTable(

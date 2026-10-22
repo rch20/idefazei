@@ -216,6 +216,12 @@
       "file": "drizzle/0106_platform_billing.sql",
       "kind": "custom-additive",
       "sha256": "679dc907cb67660cf3f4f3ba966e3fa89df9c005af87b1706fee50ecc1b64c74"
+    },
+    {
+      "id": "0107",
+      "file": "drizzle/0107_rate_limits_and_admin_reset.sql",
+      "kind": "custom-additive",
+      "sha256": "df487142f6784c7c8587f203a95890bb87731f2c19d34d68a965182f39651e0b"
     }
   ]
 }

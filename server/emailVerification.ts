@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import nodemailer from "nodemailer";
+import { consumeMailBudget } from "./rateLimit";
 import { and, eq, gte, isNull } from "drizzle-orm";
 import { churchEmailVerificationTokens, churchUsers } from "../drizzle/schema";
 import { getChurchById, getDb } from "./db";
@@ -67,6 +68,7 @@ async function sendEmailVerification(input: { to: string; churchName: string; co
     if (ENV.isProduction) console.error("[EmailVerification] SMTP não configurado; confirmação não enviada.");
     throw new EmailVerificationDeliveryError();
   }
+  await consumeMailBudget();
   const transporter = nodemailer.createTransport({
     host: config.host,
     port: config.port,

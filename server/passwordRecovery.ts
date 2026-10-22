@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import nodemailer from "nodemailer";
+import { consumeMailBudget } from "./rateLimit";
 import { and, eq, gte, isNull } from "drizzle-orm";
 import { churchPasswordResetTokens, churchUsers } from "../drizzle/schema";
 import { getChurchById, getChurchUserByEmail, getDb } from "./db";
@@ -71,6 +72,7 @@ async function sendPasswordResetEmail(input: { to: string; churchName: string; r
     if (ENV.isProduction) console.error("[PasswordRecovery] SMTP não configurado; e-mail de recuperação não enviado.");
     return false;
   }
+  await consumeMailBudget();
   const transporter = nodemailer.createTransport({
     host: config.host,
     port: config.port,

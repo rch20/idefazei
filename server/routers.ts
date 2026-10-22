@@ -33,7 +33,9 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { ENV } from "./_core/env";
 import { normalizePlatformContactInput } from "../shared/platformContact";
-import { clientIpFromRequest, createLoginThrottle } from "./adminLoginThrottle";
+import { clientIpFromRequest } from "./adminLoginThrottle";
+import { enforcePublicRateLimit, enforceRateLimit, rateLimitClear, rateLimitRecordAll, rateLimitWait, requestIp } from "./rateLimit";
+import { getAdminRecoveryEmail, requestAdminPasswordReset, resetAdminPassword, saveAdminRecoveryEmail } from "./adminPasswordRecovery";
 import { adminProcedure, protectedProcedure, publicProcedure, router, tenantProcedure } from "./_core/trpc";
 import { loginChurchUser, normalizeChurchLoginIdentifier, loginSuperAdmin, createChurchUser, createSuperAdmin, createInitialSuperAdmin, isInitialSuperAdminSetupAvailable } from "./auth";
 import { requestChurchPasswordReset, resetChurchPassword } from "./passwordRecovery";
@@ -502,9 +504,7 @@ import { emitInternalNotification } from "./notifications";
 import { deriveSecurityAuditHoldState, SECURITY_HOLD_EVENT_TYPE } from "./security-audit-holds";
 import { leadershipStudyRouter } from "./leadershipSchoolStudyRouter";
 
-const adminLoginThrottle = createLoginThrottle();
 /** Login das igrejas: 8 erros por origem+conta e 30 por conta em 15 minutos. */
-const churchLoginThrottle = createLoginThrottle({ maxPerOrigin: 8, maxPerAccount: 30 });
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const birthDateInput = z
@@ -4882,111 +4882,6 @@ const eventsRouter = router({
       }),
   }),
 
-  generateQrCode: protectedProcedure.input(z.object({ eventId: z.number(), churchId: z.number() })).mutation(async ({ input, ctx }) => {
-      await requireChurchAdministrator(ctx.user.id, input.churchId);
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-      const eventRows = await db
-        .select()
-        .from(events)
-        .where(and(eq(events.id, input.eventId), eq(events.churchId, input.churchId)))
-        .limit(1);
-    if (!eventRows[0])
-      throw new TRPCError({
-        code: "NOT_FOUND",
-        message: "Evento não encontrado nesta igreja.",
-      });
-      const { nanoid } = await import("nanoid");
-      const token = nanoid(16);
-      const qrCode = `checkin:${input.eventId}:${token}`;
-      await db
-        .update(events)
-        .set({ qrCode })
-        .where(and(eq(events.id, input.eventId), eq(events.churchId, input.churchId)));
-      return { qrCode, token };
-    }),
-  checkin: publicProcedure
-    .input(
-      z.object({
-        token: z.string(),
-        eventId: z.number(),
-        visitorName: z.string().optional(),
-        personId: z.number().optional(),
-      })
-    )
-    .mutation(async ({ input }) => {
-      const db = await getDb();
-      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-      const eventRows = await db.select().from(events).where(eq(events.id, input.eventId)).limit(1);
-      const event = eventRows[0];
-      if (!event)
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Evento não encontrado",
-        });
-      if (!event.active)
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Evento encerrado",
-        });
-      const expectedToken = event.qrCode?.split(":")[2];
-      if (!expectedToken || expectedToken.length !== input.token.length || !timingSafeEqual(Buffer.from(expectedToken), Buffer.from(input.token))) {
-        throw new TRPCError({
-          code: "UNAUTHORIZED",
-          message: "QR Code inválido",
-        });
-      }
-      const { eventRegistrations } = await import("../drizzle/schema");
-      if (input.personId) {
-        const { people } = await import("../drizzle/schema");
-        const personRows = await db
-          .select({ id: people.id })
-          .from(people)
-          .where(and(eq(people.id, input.personId), eq(people.churchId, event.churchId)))
-          .limit(1);
-        if (!personRows[0])
-          throw new TRPCError({
-            code: "FORBIDDEN",
-            message: "Pessoa não pertence à igreja deste evento.",
-          });
-        const existing = await db.select().from(eventRegistrations).where(and(eq(eventRegistrations.eventId, input.eventId), eq(eventRegistrations.personId, input.personId))).limit(5);
-        const alreadyCheckedIn = existing.find((r: any) => r.personId === input.personId && r.checkedIn);
-        if (alreadyCheckedIn)
-          return {
-            success: true,
-            eventName: event.name,
-            checkedIn: alreadyCheckedIn.checkedInAt,
-            alreadyRegistered: true,
-          };
-        const alreadyRegistered = existing.find((r: any) => r.personId === input.personId);
-        if (alreadyRegistered) {
-          await db
-            .update(eventRegistrations)
-            .set({
-              checkedIn: true,
-              checkedInAt: new Date(),
-              presenceStatus: "presente",
-              status: "participou",
-            })
-            .where(eq(eventRegistrations.id, alreadyRegistered.id));
-        } else {
-          await db.insert(eventRegistrations).values({
-            eventId: input.eventId,
-            churchId: event.churchId,
-            personId: input.personId,
-            checkedIn: true,
-            checkedInAt: new Date(),
-            presenceStatus: "presente",
-          });
-        }
-      }
-      return {
-        success: true,
-        eventName: event.name,
-        checkedIn: new Date(),
-        alreadyRegistered: false,
-      };
-    }),
 });
 const familiesRouter = router({
   canManage: protectedProcedure.input(z.object({ churchId: z.number().int().positive() })).query(async ({ ctx, input }) => {
@@ -7114,7 +7009,11 @@ const churchAuthRouter = router({
       const normalizedIdentifier = normalizeChurchLoginIdentifier(identifier);
       const throttleIp = clientIpFromRequest(ctx.req as unknown as Parameters<typeof clientIpFromRequest>[0]);
       const throttleKey = `${ctx.tenantChurchId ?? 0}:${normalizedIdentifier.value ?? identifier.trim().toLowerCase()}`;
-      const waitSeconds = churchLoginThrottle.retryAfterSeconds(throttleIp, throttleKey);
+      const loginRules = [
+        { bucket: "church-login-origin", key: `${throttleIp}|${throttleKey}`, max: 8, windowSec: 900 },
+        { bucket: "church-login-account", key: throttleKey, max: 30, windowSec: 900 },
+      ];
+      const waitSeconds = await rateLimitWait(loginRules);
       if (waitSeconds > 0) {
         throw new TRPCError({
           code: "TOO_MANY_REQUESTS",
@@ -7122,8 +7021,8 @@ const churchAuthRouter = router({
         });
       }
       const result = await loginChurchUser(identifier, input.password, ctx.tenantChurchId);
-      if (result?.kind === "email_verification_required" || (result && "token" in result)) churchLoginThrottle.recordSuccess(throttleIp, throttleKey);
-      else churchLoginThrottle.recordFailure(throttleIp, throttleKey);
+      if (result?.kind === "email_verification_required" || (result && "token" in result)) await rateLimitClear(loginRules[0].bucket, loginRules[0].key);
+      else await rateLimitRecordAll(loginRules);
       if (result?.kind === "email_verification_required") {
         throw new TRPCError({
           code: "UNAUTHORIZED",
@@ -7154,6 +7053,10 @@ const churchAuthRouter = router({
     }),
 
   requestPasswordReset: publicProcedure.input(z.object({ email: z.string().trim().email("Email inválido") })).mutation(async ({ input, ctx }) => {
+      await enforceRateLimit([
+        { bucket: "church-reset-ip", key: requestIp(ctx.req), max: 8, windowSec: 3600 },
+        { bucket: "church-reset-email", key: input.email, max: 4, windowSec: 3600 },
+      ]);
       await requestChurchPasswordReset({
         email: input.email,
         tenantChurchId: ctx.tenantChurchId,
@@ -7166,6 +7069,10 @@ const churchAuthRouter = router({
     }),
 
   resendEmailVerification: publicProcedure.input(z.object({ email: z.string().trim().email("E-mail inválido") })).mutation(async ({ input, ctx }) => {
+      await enforceRateLimit([
+        { bucket: "church-verify-ip", key: requestIp(ctx.req), max: 8, windowSec: 3600 },
+        { bucket: "church-verify-email", key: input.email, max: 4, windowSec: 3600 },
+      ]);
       const account = ctx.tenantChurchId ? await getChurchUserByEmail(input.email) : null;
       const accountBelongsToTenant = Boolean(account && account.churchId === ctx.tenantChurchId);
       if (ENV.emailVerificationEnabled && accountBelongsToTenant && account && account.active && account.emailVerificationRequired && !account.emailVerifiedAt) {
@@ -7432,7 +7339,11 @@ const adminAuthRouter = router({
 
   login: publicProcedure.input(z.object({ email: z.string().email(), password: z.string().min(6) })).mutation(async ({ input, ctx }) => {
       const ip = clientIpFromRequest(ctx.req as unknown as Parameters<typeof clientIpFromRequest>[0]);
-      const waitSeconds = adminLoginThrottle.retryAfterSeconds(ip, input.email);
+      const adminRules = [
+        { bucket: "admin-login-origin", key: `${ip}|${input.email}`, max: 5, windowSec: 900 },
+        { bucket: "admin-login-account", key: input.email, max: 20, windowSec: 900 },
+      ];
+      const waitSeconds = await rateLimitWait(adminRules);
       if (waitSeconds > 0) {
         throw new TRPCError({
           code: "TOO_MANY_REQUESTS",
@@ -7441,14 +7352,32 @@ const adminAuthRouter = router({
       }
       const result = await loginSuperAdmin(input.email, input.password);
     if (!result) {
-      adminLoginThrottle.recordFailure(ip, input.email);
+      await rateLimitRecordAll(adminRules);
       throw new TRPCError({
         code: "UNAUTHORIZED",
         message: "Credenciais inválidas",
       });
     }
-      adminLoginThrottle.recordSuccess(ip, input.email);
+      await rateLimitClear(adminRules[0].bucket, adminRules[0].key);
       return result;
+    }),
+
+  requestPasswordReset: publicProcedure.input(z.object({ email: z.string().trim().email().max(320) })).mutation(async ({ input, ctx }) => {
+    const ip = requestIp(ctx.req);
+    await enforceRateLimit([
+      { bucket: "admin-reset-ip", key: ip, max: 5, windowSec: 3600 },
+      { bucket: "admin-reset-email", key: input.email, max: 5, windowSec: 3600 },
+    ]);
+    await requestAdminPasswordReset({ email: input.email, requestIp: ip });
+    return { accepted: true, message: "Se o e-mail for de um Super Admin, o link foi enviado ao e-mail de recuperação." };
+  }),
+
+  resetPassword: publicProcedure
+    .input(z.object({ token: z.string().min(32).max(128), password: z.string().min(10, "A senha deve ter ao menos 10 caracteres").max(128) }))
+    .mutation(async ({ input, ctx }) => {
+      await enforcePublicRateLimit(ctx, "admin-reset-confirm", 10, 3600);
+      if (!(await resetAdminPassword(input))) throw new TRPCError({ code: "BAD_REQUEST", message: "Este link é inválido, expirou ou já foi utilizado." });
+      return { success: true };
     }),
 
   seed: adminProcedure
@@ -7475,6 +7404,13 @@ const superAdminRouter = router({
   pendingRegistrations: adminProcedure.query(() => getPendingRegistrations()),
 
   contactSettings: adminProcedure.query(() => getPlatformContact()),
+
+  recoveryEmail: adminProcedure.query(async () => ({ email: (await getAdminRecoveryEmail()) ?? "" })),
+
+  saveRecoveryEmail: adminProcedure.input(z.object({ email: z.union([z.literal(""), z.string().trim().email().max(320)]) })).mutation(async ({ input, ctx }) => {
+    await saveAdminRecoveryEmail(input.email, ctx.user?.email ?? "superadmin");
+    return { success: true };
+  }),
 
   updateContactSettings: adminProcedure.input(z.record(z.string(), z.unknown())).mutation(async ({ input, ctx }) => {
     const result = normalizePlatformContactInput(input);
@@ -7552,40 +7488,11 @@ const visitorRouter = router({
 
 // ─── PUBLIC REGISTRATION QR ROUTER ───────────────────────────────────────────
 
-const publicRegistrationAttempts = new Map<string, { startedAt: number; count: number }>();
-const PUBLIC_REGISTRATION_WINDOW_MS = 60 * 60 * 1000;
-const PUBLIC_REGISTRATION_MAX_ATTEMPTS = 5;
-
-function enforcePublicRegistrationRateLimit(
-  ctx: {
-    req: {
-      headers: Record<string, unknown>;
-      socket?: { remoteAddress?: string | null };
-    };
-  },
-  churchId: number
-) {
-  const forwarded = ctx.req.headers["x-forwarded-for"];
-  const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
-  const ip =
-    String(forwardedValue ?? ctx.req.socket?.remoteAddress ?? "unknown")
-      .split(",")[0]
-      .trim()
-      .slice(0, 128) || "unknown";
-  const key = `${churchId}:${ip}`;
-  const now = Date.now();
-  const current = publicRegistrationAttempts.get(key);
-  if (!current || now - current.startedAt >= PUBLIC_REGISTRATION_WINDOW_MS) {
-    publicRegistrationAttempts.set(key, { startedAt: now, count: 1 });
-    return;
-  }
-  if (current.count >= PUBLIC_REGISTRATION_MAX_ATTEMPTS) {
-    throw new TRPCError({
-      code: "TOO_MANY_REQUESTS",
-      message: "Aguarde um pouco antes de enviar outro cadastro.",
-    });
-  }
-  current.count += 1;
+async function enforcePublicRegistrationRateLimit(ctx: { req: unknown }, churchId: number) {
+  await enforceRateLimit(
+    [{ bucket: "public-registration", key: `${churchId}:${requestIp(ctx.req)}`, max: 5, windowSec: 3600 }],
+    "Aguarde um pouco antes de enviar outro cadastro."
+  );
 }
 
 const publicRegistrationRouter = router({
@@ -7642,7 +7549,7 @@ const publicRegistrationRouter = router({
           code: "FORBIDDEN",
           message: "O cadastro público está temporariamente fechado por esta igreja.",
         });
-      enforcePublicRegistrationRateLimit(ctx, church.id);
+      await enforcePublicRegistrationRateLimit(ctx, church.id);
       const result = await createPublicRegistrationLead({
         churchId: church.id,
         name: input.name,
@@ -13943,7 +13850,8 @@ export const appRouter = router({
         message: z.string().min(10),
         })
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
+        await enforcePublicRateLimit(ctx, "contact-send", 5, 3600);
         const { notifyOwner } = await import("./_core/notification");
         await notifyOwner({
           title: `Novo contato: ${input.name}`,

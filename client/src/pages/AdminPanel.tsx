@@ -14,6 +14,7 @@ import { readBrowserStorage, removeBrowserStorage } from "@/lib/browserStorage";
 import { toast } from "sonner";
 // Carregado só quando o Super Admin abre Configurações, para não engordar o painel inteiro.
 const PlatformContactSettings = lazy(() => import("@/components/PlatformContactSettings"));
+const AdminRecovery = lazy(() => import("@/components/AdminRecovery"));
 const PlatformBillingSettings = lazy(() => import("@/components/PlatformBillingSettings"));
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
@@ -65,7 +66,7 @@ function clearAdminToken() {
   }
 }
 
-function AdminLogin({ onLogin }: { onLogin: (token: string) => void }) {
+function AdminLogin({ onLogin, onForgot }: { onLogin: (token: string) => void; onForgot: () => void }) {
   const [showPassword, setShowPassword] = useState(false);
   const { register, handleSubmit, formState: { errors } } = useForm<LoginData>({
     resolver: zodResolver(loginSchema),
@@ -134,6 +135,7 @@ function AdminLogin({ onLogin }: { onLogin: (token: string) => void }) {
               <Button type="submit" className="w-full bg-[#c9a84c] hover:bg-[#b8943e] text-[#0f1923] font-bold py-5" disabled={loginMutation.isPending}>
                 {loginMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...</> : "Acessar Painel"}
               </Button>
+              <button type="button" onClick={onForgot} className="w-full text-center text-xs text-white/40 underline hover:text-white/70">Esqueci minha senha</button>
             </form>
           </CardContent>
         </Card>
@@ -567,6 +569,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               <p className="text-white/40 text-sm mb-8">Contatos e dados públicos do Ide Fazei, usados na página de venda e no Fale conosco.</p>
               <Suspense fallback={<div className="flex items-center text-white/60 py-8"><Loader2 className="h-5 w-5 animate-spin mr-3" /> Carregando...</div>}>
                 <PlatformContactSettings />
+                <AdminRecovery mode="settings" />
               </Suspense>
               <Card className="bg-white/5 border-white/10 mt-6">
                 <CardContent className="pt-6">
@@ -594,7 +597,8 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
 // ─── MAIN EXPORT ──────────────────────────────────────────────────────────────
 
 export default function AdminPanel() {
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+  const [forgot, setForgot] = useState(false);
   // O painel do Super Admin não deve aparecer em buscadores (o servidor também envia X-Robots-Tag).
   useEffect(() => {
     const meta = document.createElement("meta");
@@ -615,13 +619,19 @@ export default function AdminPanel() {
   };
 
   if (!token) {
+    const spinner = <div className="min-h-screen bg-[#0f1923] flex items-center justify-center text-white/60"><Loader2 className="h-6 w-6 animate-spin mr-3" /> Carregando...</div>;
+    if (location.startsWith("/admin/redefinir-senha")) {
+      const resetToken = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("token") ?? "";
+      return <Suspense fallback={spinner}><AdminRecovery mode="reset" token={resetToken} onDone={() => navigate("/admin/login")} /></Suspense>;
+    }
+    if (forgot) return <Suspense fallback={spinner}><AdminRecovery mode="forgot" onDone={() => setForgot(false)} /></Suspense>;
     if (bootstrapStatus.isLoading) {
       return <div className="min-h-screen bg-[#0f1923] flex items-center justify-center text-white/60"><Loader2 className="h-6 w-6 animate-spin mr-3" /> Carregando...</div>;
     }
     if (bootstrapStatus.data?.available) {
       return <InitialAdminSetup onLogin={setToken} />;
     }
-    return <AdminLogin onLogin={setToken} />;
+    return <AdminLogin onLogin={setToken} onForgot={() => setForgot(true)} />;
   }
 
   return <AdminDashboard onLogout={handleLogout} />;
