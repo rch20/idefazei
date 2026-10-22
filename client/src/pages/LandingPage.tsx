@@ -327,20 +327,20 @@ export default function LandingPage() {
               <circle cx="10%" cy="90%" r="260" fill="none" stroke="#7a5c0f" strokeWidth="0.8" />
             </svg>
           </div>
-          <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.15fr_1fr]">
-            <div>
+          <div className="relative mx-auto max-w-6xl">
+            <div className="mx-auto max-w-3xl text-center">
               <p className={`mb-5 text-xs font-semibold uppercase tracking-[0.2em] ${EYEBROW}`}>Plataforma de gestão para igrejas</p>
               <h1 className="font-serif text-4xl font-bold leading-[1.1] text-[#1e3a5f] sm:text-5xl lg:text-6xl">
                 Mais organização para sua igreja.{" "}
                 <span className={EYEBROW}>Mais atenção a cada pessoa.</span>
               </h1>
-              <p className={`mt-6 max-w-xl text-lg leading-relaxed ${BODY}`}>
+              <p className={`mx-auto mt-6 max-w-xl text-lg leading-relaxed ${BODY}`}>
                 O Ide Fazei reúne pessoas, cuidado pastoral, ensino, equipes, eventos e finanças em um só lugar, para você cuidar de quem Deus confiou à sua igreja e apoiar a sua missão.
               </p>
-              <p className={`mt-5 inline-flex items-center gap-2 rounded-full border border-[#c9a84c]/40 bg-[#c9a84c]/10 px-4 py-1.5 text-sm font-semibold ${EYEBROW}`}>
+              <p className={`mt-6 inline-flex items-center gap-2 rounded-full border border-[#c9a84c]/40 bg-[#c9a84c]/10 px-4 py-1.5 text-sm font-semibold ${EYEBROW}`}>
                 <Gift size={16} aria-hidden="true" /> {TRIAL_DAYS} dias grátis para testar, sem cartão de crédito
               </p>
-              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+              <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
                 <Link href="/cadastro-igreja">
                   <Button size="lg" className="group w-full touch-manipulation bg-[#1e3a5f] px-8 text-base font-semibold text-white transition-transform hover:bg-[#162d4a] active:scale-[0.97] sm:w-auto">
                     Cadastrar minha igreja
@@ -353,7 +353,7 @@ export default function LandingPage() {
                   </Button>
                 </Link>
               </div>
-              <ul className={`mt-8 flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:gap-x-6 ${BODY}`}>
+              <ul className={`mx-auto mt-8 flex flex-col items-center gap-2 text-sm sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-6 ${BODY}`}>
                 <li className="flex items-center gap-2"><CheckCircle2 size={16} className={EYEBROW} aria-hidden="true" /> {TRIAL_DAYS} dias grátis, sem cartão</li>
                 <li className="flex items-center gap-2"><CheckCircle2 size={16} className={EYEBROW} aria-hidden="true" /> Cadastro analisado em até 24 horas úteis</li>
                 <li className="flex items-center gap-2"><CheckCircle2 size={16} className={EYEBROW} aria-hidden="true" /> Use no celular e no computador</li>
@@ -361,12 +361,12 @@ export default function LandingPage() {
               </ul>
             </div>
 
-            <nav aria-label="Áreas do sistema" className="grid grid-cols-2 gap-3 sm:gap-4">
+            <nav aria-label="Áreas do sistema" className="mx-auto mt-14 grid max-w-4xl grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
               {AREAS.map(area => (
                 <a
                   key={area.id}
                   href={`#${area.id}`}
-                  className="group touch-manipulation rounded-2xl border border-[#1e3a5f]/10 bg-white/80 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c9a84c]/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f] active:scale-[0.97] sm:p-5"
+                  className="group flex touch-manipulation flex-col items-center rounded-2xl border border-[#1e3a5f]/10 bg-white/80 p-4 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c9a84c]/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f] active:scale-[0.97] sm:p-5"
                 >
                   <area.icon className="mb-3 h-6 w-6 text-[#1e3a5f]" aria-hidden="true" />
                   <span className="block text-sm font-semibold leading-snug text-[#1e3a5f]">{area.title}</span>
