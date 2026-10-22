@@ -2091,6 +2091,24 @@
       "assets/AdminPanel-EEEEEEEE.js",
       "assets/PlatformBillingSettings-FFFFFFFF.js",
       "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/AdminPanel-XXXXXXXX.js",
+      "assets/AdminRecovery-XXXXXXXX.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Configuracoes-XXXXXXXX.js",
+      "assets/qr-code-XXXXXXXX.js",
+      "assets/index-aW7FtnGF.js"
+    ],
+    [
+      "assets/index-aW7FtnGF.js",
+      "assets/Eventos-XXXXXXXX.js",
+      "assets/user-x-XXXXXXXX.js",
+      "assets/index-aW7FtnGF.js"
     ]
   ]
 }
