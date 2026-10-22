@@ -1,6 +1,10 @@
-# Ide Fazei — Lembretes de Escalas na Hostinger VPS
+# Ide Fazei — Lembretes automáticos (Escalas e Visitas) na Hostinger VPS
 
-Este guia implanta os lembretes internos de Escala **sem Heartbeat, agendador, credencial ou serviço de produção do Manus**. A aplicação recebe uma chamada local autenticada, calcula as janelas de **24 horas** e **2 horas**, e grava eventos e entregas no MySQL da própria Ide Fazei. A chave de deduplicação por `escala + etapa` impede novos avisos para a mesma janela quando o timer for repetido.
+> **Status: ativo em produção desde 22/10/2026.** As seções abaixo ficam como referência de como foi montado, com os
+> nomes reais usados na VPS (serviço `idefazei`, arquivo de ambiente `/etc/ide-fazei/runtime`), não os nomes
+> genéricos de um guia anterior.
+
+Este guia implanta os lembretes internos de Escala e de Visita **sem Heartbeat, agendador, credencial ou serviço de produção do Manus**. A aplicação recebe uma chamada local autenticada, calcula as janelas de **24 horas** e **2 horas** (e, para Visitas, também um aviso de atraso 3h depois do horário), e grava eventos e entregas no MySQL da própria Ide Fazei — inclusive como notificação push de verdade no celular (`push: true`), não só um item dentro do app. A chave de deduplicação por `item + etapa` impede novos avisos para a mesma janela quando o timer for repetido.
 
 ## Dependências do fluxo
 
@@ -77,22 +81,25 @@ StandardError=journal
 WantedBy=multi-user.target
 ```
 
-## 4. Job de lembretes
+## 4. Job de lembretes (nomes reais em produção)
+
+O serviço principal da aplicação na VPS se chama **`idefazei`** (não `ide-fazei.service`), e o arquivo de
+ambiente é **`/etc/ide-fazei/runtime`** (não `/etc/ide-fazei/ide-fazei.env`) — ambos já existiam antes deste job,
+criados por outra etapa da implantação. `INTERNAL_JOBS_TOKEN` e `PORT` já estavam configurados nele; só foi
+necessário criar o serviço oneshot e o timer abaixo.
 
 Crie `/etc/systemd/system/ide-fazei-schedule-reminders.service`:
 
 ```ini
 [Unit]
-Description=Ide Fazei - Lembretes internos de Escalas
-After=ide-fazei.service
-Requires=ide-fazei.service
+Description=Ide Fazei - Lembretes automaticos (escalas e visitas)
+After=idefazei.service
+Requires=idefazei.service
 
 [Service]
 Type=oneshot
-User=idefazei
-Group=idefazei
-EnvironmentFile=/etc/ide-fazei/ide-fazei.env
-ExecStart=/usr/bin/sh -c '/usr/bin/curl --fail --silent --show-error --max-time 55 -X POST http://127.0.0.1:3000/api/scheduled/schedule-reminders -H "x-internal-jobs-token: $INTERNAL_JOBS_TOKEN"'
+EnvironmentFile=/etc/ide-fazei/runtime
+ExecStart=/bin/sh -c '/usr/bin/curl --fail --silent --show-error --max-time 55 -X POST http://127.0.0.1:${PORT}/api/scheduled/schedule-reminders -H "x-internal-jobs-token: $INTERNAL_JOBS_TOKEN"'
 StandardOutput=journal
 StandardError=journal
 ```
@@ -101,7 +108,7 @@ Crie `/etc/systemd/system/ide-fazei-schedule-reminders.timer`:
 
 ```ini
 [Unit]
-Description=Executa lembretes de Escala da Ide Fazei a cada hora
+Description=Executa os lembretes automaticos (escalas e visitas) da Ide Fazei
 
 [Timer]
 OnCalendar=hourly
@@ -113,11 +120,10 @@ Unit=ide-fazei-schedule-reminders.service
 WantedBy=timers.target
 ```
 
-Ative os serviços:
+Ative o timer (o serviço principal `idefazei` já estava rodando):
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now ide-fazei.service
 sudo systemctl enable --now ide-fazei-schedule-reminders.timer
 ```
 
@@ -132,7 +138,7 @@ sudo systemctl list-timers ide-fazei-schedule-reminders.timer
 sudo journalctl -u ide-fazei-schedule-reminders.service -n 100 --no-pager
 ```
 
-O retorno bem-sucedido contém `remindersCreated` e `deliveries`. Reexecutar o mesmo job na mesma janela não cria novos eventos, pois a aplicação persiste as chaves `lembrete-escala-<id>-24h` e `lembrete-escala-<id>-2h`.
+O retorno bem-sucedido contém `remindersCreated` e `deliveries` (ex.: `{"ok":true,"remindersCreated":0,"deliveries":0,...}` — `0` é normal quando nada está entrando na janela de 24h/2h naquele momento). Reexecutar o mesmo job na mesma janela não cria novos eventos, pois a aplicação persiste as chaves `lembrete-escala-<id>-24h`/`-2h`, `lembrete-visita-<id>-24h`/`-2h` e `visita-nao-realizada-<id>` (essa última, uma única vez por Visita).
 
 ## 6. Limites de acesso e rede
 
