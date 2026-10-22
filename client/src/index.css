@@ -116,6 +116,11 @@
   h1, h2, h3 {
     font-family: "Playfair Display", Georgia, serif;
     color: oklch(22% 0.08 255);
+    /* Tracking negativo no display serifado: quanto maior o texto, mais as letras
+       parecem afastadas, então aproximamos (apple-design §15). Leading e balance
+       deixam títulos grandes com quebra equilibrada em vez de uma viúva solta. */
+    letter-spacing: -0.021em;
+    text-wrap: balance;
   }
 
   h4, h5, h6 {

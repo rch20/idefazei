@@ -208,7 +208,7 @@ export default function LandingPage() {
       </a>
 
       {/* CABEÇALHO */}
-      <header className="sticky top-0 z-50 border-b border-[#1e3a5f]/10 bg-[#f5f0e8]/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
+      <header className="sticky top-0 z-50 border-b border-[#1e3a5f]/10 bg-[#f5f0e8]/95 pt-[env(safe-area-inset-top)] backdrop-blur-xl backdrop-saturate-150 supports-[backdrop-filter]:bg-[#f5f0e8]/70">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <a href="#topo" className="flex items-center gap-2.5" aria-label="Ide Fazei, início da página">
             <img src="/brand/ide-fazei-wordmark.png" alt="Ide Fazei" className="h-7 w-auto object-contain sm:h-8" />
