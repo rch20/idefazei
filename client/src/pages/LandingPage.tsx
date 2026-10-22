@@ -210,14 +210,11 @@ export default function LandingPage() {
       {/* CABEÇALHO */}
       <header className="sticky top-0 z-50 border-b border-[#1e3a5f]/10 bg-[#f5f0e8]/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <a href="#topo" className="flex items-center gap-3" aria-label="Ide Fazei, início da página">
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-[#1e3a5f]" aria-hidden="true">
-              <img src="/manus-storage/ide-fazei-symbol_59bf82d4.png" alt="" className="h-6 w-6 object-contain" />
-            </div>
-            <div className="leading-none">
-              <span className={`block text-lg font-bold tracking-tight ${NAVY}`}>Ide Fazei</span>
-              <span className={`mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.18em] ${EYEBROW}`}>Gestão para igrejas</span>
-            </div>
+          <a href="#topo" className="flex items-center gap-2.5" aria-label="Ide Fazei, início da página">
+            <img src="/brand/ide-fazei-wordmark.png" alt="Ide Fazei" className="h-7 w-auto object-contain sm:h-8" />
+            <span className={`hidden border-l border-[#1e3a5f]/15 pl-2.5 text-[10px] font-semibold uppercase leading-tight tracking-[0.16em] sm:block ${EYEBROW}`}>
+              Gestão<br />para igrejas
+            </span>
           </a>
 
           <nav className="hidden items-center gap-7 md:flex" aria-label="Seções da página">
