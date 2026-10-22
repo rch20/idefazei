@@ -171,7 +171,38 @@ const FAQ = [
 
 const SOCIAL_LABELS = { instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", tiktok: "TikTok" } as const;
 
-const NAV_SECTION_IDS = ["areas", "como-funciona", "planos", "perguntas", "contato"] as const;
+const NAV_SECTION_IDS = ["areas", "telas", "como-funciona", "planos", "perguntas", "contato"] as const;
+
+// Telas reais do produto (barra de status do iOS removida), para a prova visual.
+const SCREENS = [
+  { src: "inicio", label: "Início do membro" },
+  { src: "ministerios", label: "Ministérios e equipes" },
+  { src: "membro", label: "Área do membro" },
+  { src: "fundamentos", label: "Escola de Fundamentos" },
+  { src: "batismo", label: "Turmas de batismo" },
+] as const;
+
+/** Moldura de celular com uma tela real do sistema dentro. */
+function PhoneFrame({ src, alt }: { src: string; alt: string }) {
+  return (
+    <div className="relative mx-auto w-full rounded-[2rem] border border-[#1e3a5f]/15 bg-[#1e3a5f] p-1.5 shadow-[0_22px_50px_-16px_rgba(30,58,95,0.5)]">
+      <div className="overflow-hidden rounded-[1.6rem] bg-white">
+        <picture>
+          <source srcSet={`/brand/screens/${src}.webp`} type="image/webp" />
+          <img
+            src={`/brand/screens/${src}.png`}
+            alt={alt}
+            width={560}
+            height={966}
+            loading="lazy"
+            decoding="async"
+            className="block w-full"
+          />
+        </picture>
+      </div>
+    </div>
+  );
+}
 
 export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -181,6 +212,7 @@ export default function LandingPage() {
   const activeSection = useActiveSection(NAV_SECTION_IDS);
   const areasRevealRef = useRevealOnScroll<HTMLDivElement>();
   const fitRevealRef = useRevealOnScroll<HTMLDivElement>();
+  const screensRevealRef = useRevealOnScroll<HTMLDivElement>();
 
   const planButton = (plan: (typeof PLANS)[number]) => {
     const button = (
@@ -220,6 +252,7 @@ export default function LandingPage() {
           <nav className="hidden items-center gap-7 md:flex" aria-label="Seções da página">
             {[
               ["areas", "#areas", "Recursos"],
+              ["telas", "#telas", "Telas"],
               ["como-funciona", "#como-funciona", "Como funciona"],
               ["planos", "#planos", "Planos"],
               ["perguntas", "#perguntas", "Perguntas"],
@@ -260,6 +293,7 @@ export default function LandingPage() {
           <div id="menu-mobile" className="space-y-1 border-t border-[#1e3a5f]/10 bg-[#f5f0e8] px-4 py-4 md:hidden">
             {[
               ["areas", "#areas", "Recursos"],
+              ["telas", "#telas", "Telas"],
               ["como-funciona", "#como-funciona", "Como funciona"],
               ["planos", "#planos", "Planos"],
               ["perguntas", "#perguntas", "Perguntas"],
@@ -340,6 +374,29 @@ export default function LandingPage() {
                 </a>
               ))}
             </nav>
+          </div>
+        </section>
+
+        {/* VEJA POR DENTRO */}
+        <section id="telas" className="scroll-mt-20 overflow-hidden bg-white/60 px-4 py-20 sm:px-6 md:py-24">
+          <div className="mx-auto max-w-6xl">
+            <div className="mx-auto mb-12 max-w-2xl text-center">
+              <p className={`mb-3 text-xs font-semibold uppercase tracking-[0.2em] ${EYEBROW}`}>Veja por dentro</p>
+              <h2 className="font-serif text-3xl font-bold text-[#1e3a5f] md:text-4xl">O sistema que a sua equipe usa todo dia</h2>
+              <p className={`mt-4 ${BODY}`}>Feito para o celular, simples para quem lidera e para quem é membro. Estas são telas reais do Ide Fazei.</p>
+            </div>
+            <div
+              ref={screensRevealRef}
+              className="-mx-4 flex snap-x snap-mandatory gap-5 overflow-x-auto px-4 pb-4 [scrollbar-width:none] [touch-action:pan-x] sm:gap-7 [&::-webkit-scrollbar]:hidden"
+            >
+              {SCREENS.map(screen => (
+                <figure key={screen.src} className="reveal-on-scroll w-[min(68vw,232px)] shrink-0 snap-center">
+                  <PhoneFrame src={screen.src} alt={`Tela ${screen.label} do Ide Fazei`} />
+                  <figcaption className={`mt-4 text-center text-sm font-medium ${BODY}`}>{screen.label}</figcaption>
+                </figure>
+              ))}
+            </div>
+            <p className={`mt-8 text-center text-xs ${BODY}`}>Arraste para o lado para ver mais telas.</p>
           </div>
         </section>
 
