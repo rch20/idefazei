@@ -30,7 +30,7 @@ describe("email verification", () => {
     expect(getEmailVerificationTokenTtlHours()).toBe(24);
   });
 
-  it("não considera o envio configurado sem SMTP e flag de ativação", () => {
-    expect(isEmailVerificationDeliveryConfigured()).toBe(false);
+  it("não considera o envio configurado sem SMTP e flag de ativação", async () => {
+    expect(await isEmailVerificationDeliveryConfigured()).toBe(false);
   });
 });

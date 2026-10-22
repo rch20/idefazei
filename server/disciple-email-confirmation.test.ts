@@ -75,7 +75,7 @@ describe("register.disciple — confirmação de e-mail", () => {
     vi.mocked(createReceptionSoul).mockResolvedValue(900);
     vi.mocked(createPerson).mockResolvedValue({ id: 501, fullName: "Maria da Silva" } as never);
     vi.mocked(createChurchUser).mockResolvedValue({ id: 601, email: "maria@example.com", name: "Maria da Silva" } as never);
-    vi.mocked(isEmailVerificationDeliveryConfigured).mockReturnValue(true);
+    vi.mocked(isEmailVerificationDeliveryConfigured).mockResolvedValue(true);
     vi.mocked(issueEmailVerification).mockResolvedValue({ sent: true, rateLimited: false });
   });
 
