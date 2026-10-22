@@ -581,6 +581,25 @@ async function emitNotificationWithoutBlocking(data: Parameters<typeof emitInter
   }
 }
 
+/** Contas ativas (churchUserId) de um conjunto de Pessoas, para destinar avisos internos. */
+async function resolveActiveChurchUserIdsForPeople(churchId: number, personIds: Array<number | null | undefined>) {
+  const wanted = new Set(personIds.filter((id): id is number => typeof id === "number" && id > 0));
+  if (wanted.size === 0) return [];
+  const accounts = await getChurchUsersByChurch(churchId);
+  return accounts.filter(account => account.active && account.personId !== null && wanted.has(account.personId)).map(account => account.id);
+}
+
+/** Papéis considerados "liderança" para o comunicado da liderança. */
+const LEADERSHIP_NOTIFICATION_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor", "secretario", "lider"]);
+
+/** Contas ativas de liderança (papel principal ou complementar), para o comunicado da liderança. */
+async function resolveActiveLeadershipChurchUserIds(churchId: number) {
+  const accounts = await getChurchUsersByChurch(churchId);
+  return accounts
+    .filter(account => account.active && (LEADERSHIP_NOTIFICATION_ROLES.has(account.role) || account.complementaryRoles.some(role => LEADERSHIP_NOTIFICATION_ROLES.has(role))))
+    .map(account => account.id);
+}
+
 const PASTOR_ROLES = new Set(["pastor_presidente", "pastor_local"]);
 const PASTOR_OR_SUPERVISOR_ROLES = new Set(["pastor_presidente", "pastor_local", "supervisor"]);
 const CHURCH_ADMIN_ROLES = new Set(["pastor_presidente", "pastor_local", "secretario", "supervisor"]);
@@ -2998,13 +3017,34 @@ const consolidationRouter = router({
     .mutation(async ({ input, ctx }) => {
       await requireConsolidationDepartmentManager(ctx.user.id, input.churchId, "consolidacao");
       if (input.consolidatorId) await requireConsolidatorPerson(input.consolidatorId, input.churchId);
-      return assignConsolidationCase({
+      const assignedReferral = await assignConsolidationCase({
         churchId: input.churchId,
         referralId: input.id,
         toPersonId: input.consolidatorId,
         performedByChurchUserId: ctx.user.id < 0 ? Math.abs(ctx.user.id) : null,
         notes: input.notes || null,
       });
+      if (assignedReferral && input.consolidatorId) {
+        const [recipients, soul] = await Promise.all([
+          resolveActiveChurchUserIdsForPeople(input.churchId, [input.consolidatorId]),
+          getPersonById(assignedReferral.personId, input.churchId),
+        ]);
+        const soulName = soul?.fullName ?? "uma pessoa";
+        await emitNotificationWithoutBlocking({
+          churchId: input.churchId,
+          type: "responsabilidade_atribuida",
+          recipientChurchUserIds: recipients,
+          title: "Você recebeu um caso para acompanhar",
+          body: `${soulName} foi encaminhado(a) para o seu acompanhamento${assignedReferral.reason ? ` · ${assignedReferral.reason}` : ""}. Abra Consolidação para aceitar e dar sequência.`,
+          entityType: "consolidation_referral",
+          entityId: assignedReferral.id,
+          metadata: { personId: assignedReferral.personId, priority: assignedReferral.priority },
+          dedupeKey: `responsabilidade-${assignedReferral.id}-${input.consolidatorId}-${assignedReferral.assignedAt ? assignedReferral.assignedAt.toISOString() : "nova"}`,
+          push: true,
+          url: "/app/consolidacao",
+        });
+      }
+      return assignedReferral;
     }),
 
   assignmentHistory: protectedProcedure.input(z.object({ churchId: z.number(), referralId: z.number() })).query(async ({ input, ctx }) => {
@@ -3286,7 +3326,7 @@ const consolidationRouter = router({
         });
       if (input.visitAssigneePersonId) await requireVisitorPerson(input.visitAssigneePersonId, input.churchId);
       try {
-        return await recordConsolidationFollowUp({
+        const followUpResult = await recordConsolidationFollowUp({
           churchId: input.churchId,
           referralId: input.referralId,
           idempotencyKey: input.idempotencyKey,
@@ -3313,6 +3353,25 @@ const consolidationRouter = router({
               }
             : null,
         });
+        const scheduledVisit = followUpResult.visit;
+        if (scheduledVisit && scheduledVisit.status === "agendada" && scheduledVisit.assignedToPersonId && scheduledVisit.scheduledAt) {
+          const recipients = await resolveActiveChurchUserIdsForPeople(input.churchId, [scheduledVisit.assignedToPersonId]);
+          const scheduledAtIso = scheduledVisit.scheduledAt.toISOString();
+          await emitNotificationWithoutBlocking({
+            churchId: input.churchId,
+            type: "visita_agendada",
+            recipientChurchUserIds: recipients,
+            title: "Visita agendada para você",
+            body: `${scheduledVisit.reason}${scheduledVisit.address ? ` · ${scheduledVisit.address}` : ""} em ${scheduledAtIso.slice(0, 16).replace("T", " ")}. Confira os detalhes em Cuidado.`,
+            entityType: "care_visit",
+            entityId: scheduledVisit.id,
+            metadata: { scheduledAt: scheduledAtIso, referralId: scheduledVisit.referralId },
+            dedupeKey: `visita-agendada-${scheduledVisit.id}-${scheduledAtIso}`,
+            push: true,
+            url: "/app/cuidado",
+          });
+        }
+        return followUpResult;
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         if (message.includes("Duplicate entry") || message.includes("duplicate key"))
@@ -3336,7 +3395,7 @@ const consolidationRouter = router({
     .mutation(async ({ input, ctx }) => {
       await requireConsolidationDepartmentManager(ctx.user.id, input.churchId, "visitas");
       if (input.visitorId) await requireVisitorPerson(input.visitorId, input.churchId);
-      return assignCareVisit({
+      const assignedVisit = await assignCareVisit({
         churchId: input.churchId,
         visitId: input.visitId,
         toPersonId: input.visitorId,
@@ -3344,6 +3403,24 @@ const consolidationRouter = router({
         scheduledAt: input.scheduledAt === undefined ? undefined : input.scheduledAt ? new Date(input.scheduledAt) : null,
         notes: input.notes || null,
       });
+      if (assignedVisit && assignedVisit.status === "agendada" && assignedVisit.assignedToPersonId && assignedVisit.scheduledAt) {
+        const recipients = await resolveActiveChurchUserIdsForPeople(input.churchId, [assignedVisit.assignedToPersonId]);
+        const scheduledAtIso = assignedVisit.scheduledAt.toISOString();
+        await emitNotificationWithoutBlocking({
+          churchId: input.churchId,
+          type: "visita_agendada",
+          recipientChurchUserIds: recipients,
+          title: "Visita agendada para você",
+          body: `${assignedVisit.reason}${assignedVisit.address ? ` · ${assignedVisit.address}` : ""} em ${scheduledAtIso.slice(0, 16).replace("T", " ")}. Confira os detalhes em Cuidado.`,
+          entityType: "care_visit",
+          entityId: assignedVisit.id,
+          metadata: { scheduledAt: scheduledAtIso, referralId: assignedVisit.referralId },
+          dedupeKey: `visita-agendada-${assignedVisit.id}-${scheduledAtIso}`,
+          push: true,
+          url: "/app/cuidado",
+        });
+      }
+      return assignedVisit;
     }),
 
   acceptVisit: protectedProcedure.input(z.object({ churchId: z.number(), visitId: z.number() })).mutation(async ({ input, ctx }) => {
@@ -4773,7 +4850,7 @@ const eventsRouter = router({
         });
       const paymentDueDate = paymentDueDateText ? new Date(`${paymentDueDateText}T12:00:00Z`) : null;
       const registrationToken = input.registrationMode === "none" ? null : randomBytes(32).toString("base64url");
-      return createEvent({
+      const createdEvent = await createEvent({
         ...input,
         startDate,
         endDate,
@@ -4783,6 +4860,25 @@ const eventsRouter = router({
         paymentDueDate,
         paymentInstructions: input.paymentInstructions?.trim() || null,
       } as any);
+      const createdEventRow = createdEvent as { id?: number; name?: string } | undefined;
+      if (createdEventRow?.id) {
+        const dateLabel = input.startDate.split("-").reverse().join("/");
+        const recipients = (await getChurchUsersByChurch(input.churchId)).filter(account => account.active).map(account => account.id);
+        await emitNotificationWithoutBlocking({
+          churchId: input.churchId,
+          type: "evento_igreja",
+          recipientChurchUserIds: recipients,
+          title: "Novo evento da igreja",
+          body: `${createdEventRow.name ?? input.name.trim()} em ${dateLabel}${startTime ? ` às ${startTime}` : ""}${input.location?.trim() ? ` · ${input.location.trim()}` : ""}. Veja mais em Eventos.`,
+          entityType: "event",
+          entityId: createdEventRow.id,
+          metadata: { startDate: input.startDate, startTime: startTime ?? null, type: input.type },
+          dedupeKey: `evento-igreja-${createdEventRow.id}`,
+          push: true,
+          url: "/app/eventos",
+        });
+      }
+      return createdEvent;
     }),
 
   publicRegistration: router({
@@ -5279,10 +5375,26 @@ const ministriesRouter = router({
           personId: input.personId,
         });
       }
-      return assignMinistryRole({
+      const roleAssignment = await assignMinistryRole({
         ...input,
         assignedByChurchUserId: member.id,
       });
+      const roleLabel = getMinistryFunctionCatalogFor(ministry).find(item => item.key === input.roleKey)?.label ?? customDefinition?.name ?? input.roleKey;
+      const roleRecipients = await resolveActiveChurchUserIdsForPeople(input.churchId, [input.personId]);
+      await emitNotificationWithoutBlocking({
+        churchId: input.churchId,
+        type: "funcao_ministerial_atribuida",
+        recipientChurchUserIds: roleRecipients,
+        title: "Nova função em ministério",
+        body: `Você recebeu a função de ${roleLabel} no ${ministry.name}. Veja os detalhes em Ministérios.`,
+        entityType: "ministry_role",
+        entityId: (roleAssignment as { id?: number } | null)?.id ?? undefined,
+        metadata: { ministryId: input.ministryId, roleKey: input.roleKey, personId: input.personId },
+        dedupeKey: `funcao-ministerial:${input.churchId}:${input.ministryId}:${input.personId}:${input.roleKey}`,
+        push: true,
+        url: "/app/ministerios",
+      });
+      return roleAssignment;
     }),
   removeFunction: protectedProcedure.input(z.object({ churchId: z.number(), id: z.number() })).mutation(async ({ input, ctx }) => {
       const assignment = await getMinistryRoleAssignmentById(input.id, input.churchId);
@@ -6737,13 +6849,31 @@ const announcementsRouter = router({
         await requireChurchPublicSitePublisher(ctx.user.id, input.churchId);
       }
       const publicStatus = input.publicVisible ? (publicStartsAt && publicStartsAt > new Date() ? "agendado" : "publicado") : "rascunho";
-    return createAnnouncement({
+    const createdAnnouncement = await createAnnouncement({
       ...input,
       authorId: ctx.user.id,
       publicStartsAt,
       expiresAt,
       publicStatus,
     });
+    const createdAnnouncementRow = createdAnnouncement as { id?: number } | undefined;
+    if (input.type === "comunicado" && createdAnnouncementRow?.id) {
+      const recipients = await resolveActiveLeadershipChurchUserIds(input.churchId);
+      await emitNotificationWithoutBlocking({
+        churchId: input.churchId,
+        type: "comunicado_lideranca",
+        recipientChurchUserIds: recipients,
+        title: "Novo comunicado da liderança",
+        body: `${input.title.trim()}. Abra o Mural para ler o comunicado completo.`,
+        entityType: "announcement",
+        entityId: createdAnnouncementRow.id,
+        metadata: { pinned: input.pinned },
+        dedupeKey: `comunicado-lideranca-${createdAnnouncementRow.id}`,
+        push: true,
+        url: "/app/mural",
+      });
+    }
+    return createdAnnouncement;
     }),
 
   update: protectedProcedure

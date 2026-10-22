@@ -4,6 +4,10 @@ import { NOTIFICATION_EVENT_CATALOG } from "../shared/notificationPreferences";
 
 const schema = readFileSync(new URL("../drizzle/schema.ts", import.meta.url), "utf8");
 const routers = readFileSync(new URL("./routers.ts", import.meta.url), "utf8");
+const scheduleReminders = readFileSync(new URL("./scheduleReminders.ts", import.meta.url), "utf8");
+const scheduledNotifications = readFileSync(new URL("./scheduledNotifications.ts", import.meta.url), "utf8");
+/** Todo código do servidor que pode emitir um aviso interno (procedimentos tRPC + jobs agendados). */
+const emissionSources = `${routers}\n${scheduleReminders}\n${scheduledNotifications}`;
 
 describe("preferências de avisos do sistema", () => {
   it("o catálogo cobre exatamente os tipos aceitos pelo banco", () => {
@@ -11,6 +15,11 @@ describe("preferências de avisos do sistema", () => {
     const block = schema.slice(start, schema.indexOf("]).notNull()", start));
     const dbTypes = Array.from(block.matchAll(/"([a-z_]+)"/g)).map((match) => match[1]).filter((value) => value !== "eventType");
     expect(NOTIFICATION_EVENT_CATALOG.map((item) => item.type).sort()).toEqual([...dbTypes].sort());
+  });
+
+  it("todo tipo do catálogo é realmente emitido em algum lugar do servidor (nenhum interruptor morto)", () => {
+    const semEmissao = NOTIFICATION_EVENT_CATALOG.map((item) => item.type).filter((type) => !emissionSources.includes(`type: "${type}"`));
+    expect(semEmissao, `tipos sem código que os emita: ${semEmissao.join(", ")}`).toEqual([]);
   });
 
   it("não repete tipos nem deixa texto vazio", () => {
