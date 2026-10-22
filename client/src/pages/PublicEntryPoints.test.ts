@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { TRIAL_DAYS } from "@shared/billing";
 
 const pagesRoot = resolve(process.cwd(), "client/src/pages");
 
@@ -46,8 +47,20 @@ describe("entry points públicos", () => {
   it("não promete o que o sistema ainda não oferece", () => {
     const landing = readFileSync(resolve(pagesRoot, "LandingPage.tsx"), "utf8");
 
-    for (const claim of ["14 dias", "sem cartão", "API", "SLA", "Multi-campus", "multi-campus", "White-label", "IA Pastoral", "internacional", "idiomas", "configurável", "personalize os nomes", "Multi-Tenant", "criptografia", "LGPD"]) {
+    for (const claim of ["API", "SLA", "Multi-campus", "multi-campus", "White-label", "IA Pastoral", "internacional", "idiomas", "configurável", "personalize os nomes", "Multi-Tenant", "criptografia", "LGPD"]) {
       expect(landing, `a página não deve prometer: ${claim}`).not.toContain(claim);
+    }
+  });
+
+  it("anuncia o teste grátis real (sem cartão), com o número de dias que o sistema de fato pratica", () => {
+    const landing = readFileSync(resolve(pagesRoot, "LandingPage.tsx"), "utf8");
+
+    expect(landing).toContain(`${TRIAL_DAYS} dias grátis`);
+    expect(landing).toContain("sem cartão");
+    // Guarda contra um número de dias divergente de shared/billing.ts, caso TRIAL_DAYS mude e a página não acompanhe.
+    for (const wrongDays of [7, 14, 15, 60, 90]) {
+      if (wrongDays === TRIAL_DAYS) continue;
+      expect(landing, `a página não deve anunciar ${wrongDays} dias de teste`).not.toContain(`${wrongDays} dias grátis`);
     }
   });
 
