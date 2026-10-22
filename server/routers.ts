@@ -1,6 +1,6 @@
 import { COOKIE_NAME } from "@shared/const";
 import { NOTIFICATION_EVENT_CATALOG, NOTIFICATION_EVENT_TYPES } from "../shared/notificationPreferences";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { CHURCH_SETUP_STEP_KEYS } from "../shared/churchSetup";
@@ -503,6 +503,8 @@ import { deriveSecurityAuditHoldState, SECURITY_HOLD_EVENT_TYPE } from "./securi
 import { leadershipStudyRouter } from "./leadershipSchoolStudyRouter";
 
 const adminLoginThrottle = createLoginThrottle();
+/** Login das igrejas: 8 erros por origem+conta e 30 por conta em 15 minutos. */
+const churchLoginThrottle = createLoginThrottle({ maxPerOrigin: 8, maxPerAccount: 30 });
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const birthDateInput = z
@@ -1679,6 +1681,9 @@ const socialMediaUrlInput = (platform: (typeof SOCIAL_PLATFORM_KEYS)[number]) =>
     .refine(value => isValidSocialMediaUrl(platform, value), `Informe uma URL HTTPS válida para ${platform}.`)
     .optional()
     .or(z.literal(""));
+/** Cores entram em CSS, SVG e URLs de imagem: só aceitamos #RRGGBB. */
+const hexColorInput = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use uma cor no formato #RRGGBB.");
+
 const socialMediaInputSchema = z
   .object({
   instagram: socialMediaUrlInput("instagram"),
@@ -1746,9 +1751,9 @@ const churchRouter = router({
           .string()
           .min(2)
           .regex(/^[a-z0-9-]+$/),
-        logoUrl: z.string().optional(),
-        primaryColor: z.string().optional(),
-        secondaryColor: z.string().optional(),
+        logoUrl: z.string().max(2048).refine(value => value === "" || /^https:\/\//i.test(value) || value.startsWith("/"), "Use um endereço HTTPS para a logo.").optional(),
+        primaryColor: hexColorInput.optional(),
+        secondaryColor: hexColorInput.optional(),
         address: z.string().optional(),
         city: z.string().optional(),
         state: z.string().max(2).optional(),
@@ -1780,9 +1785,9 @@ const churchRouter = router({
       z.object({
         id: z.number(),
         name: z.string().optional(),
-        logoUrl: z.string().optional(),
-        primaryColor: z.string().optional(),
-        secondaryColor: z.string().optional(),
+        logoUrl: z.string().max(2048).refine(value => value === "" || /^https:\/\//i.test(value) || value.startsWith("/"), "Use um endereço HTTPS para a logo.").optional(),
+        primaryColor: hexColorInput.optional(),
+        secondaryColor: hexColorInput.optional(),
         address: z.string().optional(),
         city: z.string().optional(),
         state: z.string().optional(),
@@ -1890,7 +1895,7 @@ const tenantPublicRouter = router({
                     .string()
                     .trim()
                     .max(280)
-                    .refine(value => value.startsWith("/") || /^https:\/\//.test(value), "Informe um destino interno ou uma URL HTTPS.")
+                    .refine(value => (value.startsWith("/") && !value.startsWith("//") && !value.startsWith("/\\")) || /^https:\/\//.test(value), "Informe um destino interno ou uma URL HTTPS.")
                     .optional(),
         heroImageSource: z.enum(["preset", "custom"]).optional(),
         heroImagePresetId: z.enum(HERO_PRESET_IDS).nullable().optional(),
@@ -4925,7 +4930,7 @@ const eventsRouter = router({
           message: "Evento encerrado",
         });
       const expectedToken = event.qrCode?.split(":")[2];
-      if (!expectedToken || expectedToken !== input.token) {
+      if (!expectedToken || expectedToken.length !== input.token.length || !timingSafeEqual(Buffer.from(expectedToken), Buffer.from(input.token))) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "QR Code inválido",
@@ -4944,7 +4949,7 @@ const eventsRouter = router({
             code: "FORBIDDEN",
             message: "Pessoa não pertence à igreja deste evento.",
           });
-        const existing = await db.select().from(eventRegistrations).where(eq(eventRegistrations.eventId, input.eventId)).limit(50);
+        const existing = await db.select().from(eventRegistrations).where(and(eq(eventRegistrations.eventId, input.eventId), eq(eventRegistrations.personId, input.personId))).limit(5);
         const alreadyCheckedIn = existing.find((r: any) => r.personId === input.personId && r.checkedIn);
         if (alreadyCheckedIn)
           return {
@@ -7107,7 +7112,18 @@ const churchAuthRouter = router({
     .mutation(async ({ input, ctx }) => {
       const identifier = input.identifier ?? input.email ?? "";
       const normalizedIdentifier = normalizeChurchLoginIdentifier(identifier);
+      const throttleIp = clientIpFromRequest(ctx.req as unknown as Parameters<typeof clientIpFromRequest>[0]);
+      const throttleKey = `${ctx.tenantChurchId ?? 0}:${normalizedIdentifier.value ?? identifier.trim().toLowerCase()}`;
+      const waitSeconds = churchLoginThrottle.retryAfterSeconds(throttleIp, throttleKey);
+      if (waitSeconds > 0) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: `Muitas tentativas de entrada. Aguarde ${Math.ceil(waitSeconds / 60)} minuto(s) e tente de novo.`,
+        });
+      }
       const result = await loginChurchUser(identifier, input.password, ctx.tenantChurchId);
+      if (result?.kind === "email_verification_required" || (result && "token" in result)) churchLoginThrottle.recordSuccess(throttleIp, throttleKey);
+      else churchLoginThrottle.recordFailure(throttleIp, throttleKey);
       if (result?.kind === "email_verification_required") {
         throw new TRPCError({
           code: "UNAUTHORIZED",

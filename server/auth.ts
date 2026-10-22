@@ -9,19 +9,58 @@ import { ENV } from "./_core/env";
 import { getChurchById, getDb } from "./db";
 import { churchUsers, people, superAdmins, superAdminBootstrap } from "../drizzle/schema";
 import { and, eq, or, sql } from "drizzle-orm";
-import { createHash, timingSafeEqual } from "crypto";
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 
+// Em produção a assinatura dos tokens exige um segredo próprio: sem ele qualquer pessoa conseguiria forjar sessões.
+if (ENV.isProduction && !ENV.cookieSecret) {
+  throw new Error("JWT_SECRET ausente em produção: o servidor não pode iniciar sem o segredo de sessão.");
+}
 const JWT_SECRET = new TextEncoder().encode(ENV.cookieSecret || "fallback-secret-change-me");
 const TOKEN_EXPIRY = "7d";
 
-// Simple hash using SHA-256 (no native bcrypt in Node without native addon)
-// In production, use bcrypt via npm package
+// Senhas: scrypt com sal único por usuário. O formato antigo (SHA-256 com sal fixo) ainda é aceito
+// no login e trocado pelo novo na mesma hora (ver passwordNeedsRehash).
+const SCRYPT_N = 16384;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_KEYLEN = 64;
+const SCRYPT_PREFIX = "scrypt$";
+
+function scryptKey(password: string, salt: Buffer, n: number, r: number, p: number) {
+  return scryptSync(password.normalize("NFKC"), salt, SCRYPT_KEYLEN, { N: n, r, p, maxmem: 128 * n * r * 2 });
+}
+
 function hashPassword(password: string): string {
+  const salt = randomBytes(16);
+  const key = scryptKey(password, salt, SCRYPT_N, SCRYPT_R, SCRYPT_P);
+  return `${SCRYPT_PREFIX}${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString("base64")}$${key.toString("base64")}`;
+}
+
+function legacySha256(password: string): string {
   return createHash("sha256").update(password + "lampas-salt-2025").digest("hex");
 }
 
+function safeEqual(left: Buffer, right: Buffer) {
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 function verifyPassword(password: string, hash: string): boolean {
-  return hashPassword(password) === hash;
+  if (hash.startsWith(SCRYPT_PREFIX)) {
+    const [, n, r, p, salt, key] = hash.split("$");
+    if (!n || !r || !p || !salt || !key) return false;
+    try {
+      const expected = Buffer.from(key, "base64");
+      return safeEqual(scryptKey(password, Buffer.from(salt, "base64"), Number(n), Number(r), Number(p)), expected);
+    } catch {
+      return false;
+    }
+  }
+  return safeEqual(Buffer.from(legacySha256(password)), Buffer.from(hash));
+}
+
+/** Hashes no formato antigo são trocados pelo novo no próximo login bem-sucedido. */
+export function passwordNeedsRehash(hash: string): boolean {
+  return !hash.startsWith(SCRYPT_PREFIX);
 }
 
 export type ChurchTokenPayload = {
@@ -137,7 +176,7 @@ export async function loginChurchUser(identifier: string, password: string, tena
   }
 
   // Update lastLoginAt
-  await db.update(churchUsers).set({ lastLoginAt: new Date() }).where(eq(churchUsers.id, user.id));
+  await db.update(churchUsers).set({ lastLoginAt: new Date(), ...(passwordNeedsRehash(user.passwordHash) ? { passwordHash: hashPassword(password) } : {}) }).where(eq(churchUsers.id, user.id));
 
   const token = await signToken({
     sub: String(user.id),
@@ -195,6 +234,9 @@ export async function loginSuperAdmin(email: string, password: string) {
   if (!admin || !admin.active) return null;
 
   if (!verifyPassword(password, admin.passwordHash)) return null;
+  if (passwordNeedsRehash(admin.passwordHash)) {
+    await db.update(superAdmins).set({ passwordHash: hashPassword(password) }).where(eq(superAdmins.id, admin.id));
+  }
 
   const token = await signToken({ sub: String(admin.id), type: "admin" });
   return { token, admin: { id: admin.id, name: admin.name, email: admin.email } };
@@ -256,4 +298,4 @@ export async function createInitialSuperAdmin(input: { name: string; email: stri
   return { ok: true as const };
 }
 
-export { hashPassword };
+export { hashPassword, verifyPassword };

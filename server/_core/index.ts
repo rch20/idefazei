@@ -118,6 +118,14 @@ async function startServer() {
   // ⚠️ Stripe webhook MUST be registered BEFORE express.json() to preserve raw body
   app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhookHandler);
 
+  // Cabeçalhos de segurança básicos para todas as respostas.
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(self), microphone=(), geolocation=(self)");
+    next();
+  });
+
   // Configure body parser with larger size limit for file uploads
   // O painel do Super Admin não deve aparecer em buscadores.
   app.use((req, res, next) => {
@@ -127,8 +135,8 @@ async function startServer() {
     next();
   });
   app.post("/api/webhooks/pagarme/:token", express.json({ limit: "1mb" }), pagarmeWebhookHandler);
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.json({ limit: "15mb" }));
+  app.use(express.urlencoded({ limit: "15mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
 
