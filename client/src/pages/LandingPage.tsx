@@ -4,10 +4,13 @@ import { Button } from "@/components/ui/button";
 import {
   ArrowRight, CalendarDays, CheckCircle2, ChevronDown, GraduationCap, HeartHandshake, Mail,
   Menu, MessageCircle, Phone, Send, ShieldCheck, Smartphone, UserPlus, Users, UsersRound,
-  WalletCards, X, ClipboardList, MapPin,
+  WalletCards, X, ClipboardList, MapPin, Gift,
 } from "lucide-react";
 import { usePlatformContact } from "@/hooks/usePlatformContact";
 import { formatBrazilianPhone, formatCnpj } from "@shared/platformContact";
+import { useActiveSection } from "@/hooks/useActiveSection";
+import { useRevealOnScroll } from "@/hooks/useRevealOnScroll";
+import { TRIAL_DAYS } from "@shared/billing";
 
 /**
  * Página de venda do Ide Fazei.
@@ -109,7 +112,7 @@ const AREAS = [
 ] as const;
 
 const STEPS = [
-  { icon: ClipboardList, title: "Cadastre sua igreja", text: "Informe os dados da igreja e escolha o endereço dela na plataforma. Nossa equipe analisa o cadastro em até 24 horas úteis." },
+  { icon: ClipboardList, title: "Cadastre sua igreja", text: `Informe os dados da igreja e escolha o endereço dela na plataforma. Nossa equipe analisa o cadastro em até 24 horas úteis e você já começa com ${TRIAL_DAYS} dias grátis, sem cartão.` },
   { icon: UserPlus, title: "Cadastre pessoas e convide a equipe", text: "Registre membros e visitantes e dê a cada líder o acesso que combina com a sua função." },
   { icon: Smartphone, title: "Acompanhe no dia a dia", text: "Use no celular ou no computador. Comece pelo que a sua igreja já faz hoje e avance no seu ritmo." },
 ] as const;
@@ -160,22 +163,29 @@ const FAQ = [
   { q: "Os dados da minha igreja ficam separados dos de outras igrejas?", a: "Sim. Cada igreja tem o seu próprio endereço e o seu ambiente, e os dados não se misturam." },
   { q: "Quem pode ver as finanças e os atendimentos pastorais?", a: "Somente quem recebe esse acesso. O sistema tem perfis por função, e áreas como tesouraria e aconselhamento têm acesso restrito." },
   { q: "Funciona no celular?", a: "Sim. Dá para usar no navegador do celular e instalar como aplicativo, sem precisar de loja de aplicativos." },
-  { q: "Quanto custa?", a: "O plano Básico custa R$ 97 por mês e o Pro, R$ 197 por mês. Para redes e ministérios com necessidades próprias, conversamos para entender o que a sua realidade pede." },
+  { q: "Quanto custa?", a: `O plano Básico custa R$ 97 por mês e o Pro, R$ 197 por mês. Todo plano começa com ${TRIAL_DAYS} dias grátis, sem cartão de crédito, para você testar antes de decidir. Para redes e ministérios com necessidades próprias, conversamos para entender o que a sua realidade pede.` },
+  { q: "Preciso de cartão de crédito para começar?", a: `Não. Você cadastra a sua igreja e usa o sistema por ${TRIAL_DAYS} dias sem informar nenhum dado de pagamento. Só depois desse período é que a cobrança passa a valer.` },
+  { q: "O sistema atende igrejas fora do Brasil?", a: "Sim. O Ide Fazei funciona em português e pode ser usado por igrejas de qualquer país de língua portuguesa. Hoje a cobrança dos planos é feita em reais (R$), por cartão ou Pix; para outras moedas e formas de pagamento, fale com a nossa equipe." },
   { q: "Posso ver o sistema antes de cadastrar?", a: "Sim. A demonstração interativa mostra como o sistema funciona, com dados de exemplo. Se preferir, fale com a nossa equipe." },
 ] as const;
 
 const SOCIAL_LABELS = { instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", tiktok: "TikTok" } as const;
+
+const NAV_SECTION_IDS = ["areas", "como-funciona", "planos", "perguntas", "contato"] as const;
 
 export default function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { contact, whatsappLink } = usePlatformContact();
   const socialLinks = (Object.keys(SOCIAL_LABELS) as Array<keyof typeof SOCIAL_LABELS>).filter(key => contact.social[key]);
   const closeMenu = () => setMobileMenuOpen(false);
+  const activeSection = useActiveSection(NAV_SECTION_IDS);
+  const areasRevealRef = useRevealOnScroll<HTMLDivElement>();
+  const fitRevealRef = useRevealOnScroll<HTMLDivElement>();
 
   const planButton = (plan: (typeof PLANS)[number]) => {
     const button = (
       <Button
-        className={`w-full ${
+        className={`w-full touch-manipulation transition-transform active:scale-[0.97] ${
           plan.highlight ? "bg-[#c9a84c] hover:bg-[#b8943e] text-[#1e3a5f] font-bold" : "bg-[#1e3a5f] hover:bg-[#162d4a] text-white"
         }`}
       >
@@ -198,7 +208,7 @@ export default function LandingPage() {
       </a>
 
       {/* CABEÇALHO */}
-      <header className="sticky top-0 z-50 border-b border-[#1e3a5f]/10 bg-[#f5f0e8]/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-50 border-b border-[#1e3a5f]/10 bg-[#f5f0e8]/95 pt-[env(safe-area-inset-top)] backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <a href="#topo" className="flex items-center gap-3" aria-label="Ide Fazei, início da página">
             <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-[#1e3a5f]" aria-hidden="true">
@@ -212,25 +222,34 @@ export default function LandingPage() {
 
           <nav className="hidden items-center gap-7 md:flex" aria-label="Seções da página">
             {[
-              ["#areas", "Recursos"],
-              ["#como-funciona", "Como funciona"],
-              ["#planos", "Planos"],
-              ["#perguntas", "Perguntas"],
-              ["#contato", "Contato"],
-            ].map(([href, label]) => (
-              <a key={href} href={href} className="text-sm font-medium text-[#1e3a5f]/75 transition-colors hover:text-[#1e3a5f]">{label}</a>
+              ["areas", "#areas", "Recursos"],
+              ["como-funciona", "#como-funciona", "Como funciona"],
+              ["planos", "#planos", "Planos"],
+              ["perguntas", "#perguntas", "Perguntas"],
+              ["contato", "#contato", "Contato"],
+            ].map(([id, href, label]) => (
+              <a
+                key={href}
+                href={href}
+                aria-current={activeSection === id ? "true" : undefined}
+                className={`text-sm font-medium underline decoration-[#c9a84c] decoration-2 underline-offset-[22px] transition-colors hover:text-[#1e3a5f] ${
+                  activeSection === id ? "text-[#1e3a5f] decoration-solid" : "text-[#1e3a5f]/75 decoration-transparent"
+                }`}
+              >
+                {label}
+              </a>
             ))}
             <Link href="/demo" className="text-sm font-medium text-[#1e3a5f]/75 transition-colors hover:text-[#1e3a5f]">Demonstração</Link>
           </nav>
 
           <div className="hidden md:block">
             <Link href="/cadastro-igreja">
-              <Button size="sm" className="bg-[#1e3a5f] text-white hover:bg-[#162d4a]">Cadastrar minha igreja</Button>
+              <Button size="sm" className="bg-[#1e3a5f] text-white hover:bg-[#162d4a] active:scale-[0.97]">Cadastrar minha igreja</Button>
             </Link>
           </div>
 
           <button
-            className="rounded-md p-2 text-[#1e3a5f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f] md:hidden"
+            className="touch-manipulation rounded-md p-2 text-[#1e3a5f] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f] active:scale-90 md:hidden"
             onClick={() => setMobileMenuOpen(open => !open)}
             aria-label={mobileMenuOpen ? "Fechar menu" : "Abrir menu"}
             aria-expanded={mobileMenuOpen}
@@ -243,17 +262,26 @@ export default function LandingPage() {
         {mobileMenuOpen && (
           <div id="menu-mobile" className="space-y-1 border-t border-[#1e3a5f]/10 bg-[#f5f0e8] px-4 py-4 md:hidden">
             {[
-              ["#areas", "Recursos"],
-              ["#como-funciona", "Como funciona"],
-              ["#planos", "Planos"],
-              ["#perguntas", "Perguntas"],
-              ["#contato", "Contato"],
-            ].map(([href, label]) => (
-              <a key={href} href={href} onClick={closeMenu} className="block py-2.5 font-medium text-[#1e3a5f]">{label}</a>
+              ["areas", "#areas", "Recursos"],
+              ["como-funciona", "#como-funciona", "Como funciona"],
+              ["planos", "#planos", "Planos"],
+              ["perguntas", "#perguntas", "Perguntas"],
+              ["contato", "#contato", "Contato"],
+            ].map(([id, href, label]) => (
+              <a
+                key={href}
+                href={href}
+                onClick={closeMenu}
+                className={`block touch-manipulation py-2.5 font-medium transition-colors ${
+                  activeSection === id ? "text-[#1e3a5f]" : "text-[#1e3a5f]/80"
+                }`}
+              >
+                {label}
+              </a>
             ))}
             <Link href="/demo" onClick={closeMenu} className="block py-2.5 font-medium text-[#1e3a5f]">Demonstração</Link>
             <Link href="/cadastro-igreja" onClick={closeMenu}>
-              <Button className="mt-2 w-full bg-[#1e3a5f] text-white">Cadastrar minha igreja</Button>
+              <Button className="mt-2 w-full bg-[#1e3a5f] text-white active:scale-[0.97]">Cadastrar minha igreja</Button>
             </Link>
           </div>
         )}
@@ -279,23 +307,27 @@ export default function LandingPage() {
               <p className={`mt-6 max-w-xl text-lg leading-relaxed ${BODY}`}>
                 O Ide Fazei reúne pessoas, cuidado pastoral, ensino, equipes, eventos e finanças em um só lugar, para você cuidar de quem Deus confiou à sua igreja e apoiar a sua missão.
               </p>
-              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+              <p className={`mt-5 inline-flex items-center gap-2 rounded-full border border-[#c9a84c]/40 bg-[#c9a84c]/10 px-4 py-1.5 text-sm font-semibold ${EYEBROW}`}>
+                <Gift size={16} aria-hidden="true" /> {TRIAL_DAYS} dias grátis para testar, sem cartão de crédito
+              </p>
+              <div className="mt-7 flex flex-col gap-3 sm:flex-row">
                 <Link href="/cadastro-igreja">
-                  <Button size="lg" className="group w-full bg-[#1e3a5f] px-8 text-base font-semibold text-white hover:bg-[#162d4a] sm:w-auto">
+                  <Button size="lg" className="group w-full touch-manipulation bg-[#1e3a5f] px-8 text-base font-semibold text-white transition-transform hover:bg-[#162d4a] active:scale-[0.97] sm:w-auto">
                     Cadastrar minha igreja
                     <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                   </Button>
                 </Link>
                 <Link href="/demo">
-                  <Button size="lg" variant="outline" className="w-full border-[#1e3a5f]/30 px-8 text-base text-[#1e3a5f] hover:bg-[#1e3a5f]/5 sm:w-auto">
+                  <Button size="lg" variant="outline" className="w-full touch-manipulation border-[#1e3a5f]/30 px-8 text-base text-[#1e3a5f] transition-transform hover:bg-[#1e3a5f]/5 active:scale-[0.97] sm:w-auto">
                     Ver demonstração
                   </Button>
                 </Link>
               </div>
               <ul className={`mt-8 flex flex-col gap-2 text-sm sm:flex-row sm:flex-wrap sm:gap-x-6 ${BODY}`}>
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} className={EYEBROW} aria-hidden="true" /> {TRIAL_DAYS} dias grátis, sem cartão</li>
                 <li className="flex items-center gap-2"><CheckCircle2 size={16} className={EYEBROW} aria-hidden="true" /> Cadastro analisado em até 24 horas úteis</li>
                 <li className="flex items-center gap-2"><CheckCircle2 size={16} className={EYEBROW} aria-hidden="true" /> Use no celular e no computador</li>
-                <li className="flex items-center gap-2"><CheckCircle2 size={16} className={EYEBROW} aria-hidden="true" /> Atendimento em português</li>
+                <li className="flex items-center gap-2"><CheckCircle2 size={16} className={EYEBROW} aria-hidden="true" /> Atendimento em português, para igrejas em qualquer país</li>
               </ul>
             </div>
 
@@ -304,7 +336,7 @@ export default function LandingPage() {
                 <a
                   key={area.id}
                   href={`#${area.id}`}
-                  className="group rounded-2xl border border-[#1e3a5f]/10 bg-white/80 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c9a84c]/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f] sm:p-5"
+                  className="group touch-manipulation rounded-2xl border border-[#1e3a5f]/10 bg-white/80 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c9a84c]/60 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f] active:scale-[0.97] sm:p-5"
                 >
                   <area.icon className="mb-3 h-6 w-6 text-[#1e3a5f]" aria-hidden="true" />
                   <span className="block text-sm font-semibold leading-snug text-[#1e3a5f]">{area.title}</span>
@@ -323,9 +355,9 @@ export default function LandingPage() {
               <p className={`mt-4 ${BODY}`}>Comece pelo que a sua igreja já faz hoje. Os recursos se complementam, mas você não precisa usar todos.</p>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
+            <div ref={areasRevealRef} className="grid gap-6 md:grid-cols-2">
               {AREAS.map(area => (
-                <article key={area.id} id={area.id} className="scroll-mt-24 rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/60 p-6 sm:p-8">
+                <article key={area.id} id={area.id} className="reveal-on-scroll scroll-mt-24 rounded-2xl border border-[#1e3a5f]/10 bg-[#f5f0e8]/60 p-6 sm:p-8">
                   <div className="mb-4 flex items-center gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#1e3a5f]">
                       <area.icon className="h-5 w-5 text-[#c9a84c]" aria-hidden="true" />
@@ -355,9 +387,9 @@ export default function LandingPage() {
               <h2 className="font-serif text-3xl font-bold text-[#1e3a5f] md:text-4xl">Igrejas diferentes, a mesma necessidade de cuidar bem</h2>
               <p className={`mt-4 ${BODY}`}>Pensado para igrejas de diferentes denominações, tamanhos e formas de organização, com segurança e controle de acesso.</p>
             </div>
-            <div className="grid gap-6 md:grid-cols-3">
+            <div ref={fitRevealRef} className="grid gap-6 md:grid-cols-3">
               {FIT.map(item => (
-                <div key={item.title} className="rounded-2xl border border-[#1e3a5f]/10 bg-white/70 p-6">
+                <div key={item.title} className="reveal-on-scroll rounded-2xl border border-[#1e3a5f]/10 bg-white/70 p-6">
                   <item.icon className="mb-4 h-6 w-6 text-[#1e3a5f]" aria-hidden="true" />
                   <h3 className="mb-2 font-semibold text-[#1e3a5f]">{item.title}</h3>
                   <p className={`text-sm leading-relaxed ${BODY}`}>{item.text}</p>
@@ -388,7 +420,7 @@ export default function LandingPage() {
             </ol>
             <div className="mt-10 text-center">
               <Link href="/demo">
-                <Button size="lg" className="bg-[#c9a84c] px-8 font-bold text-[#1e3a5f] hover:bg-[#b8943e]">
+                <Button size="lg" className="touch-manipulation bg-[#c9a84c] px-8 font-bold text-[#1e3a5f] transition-transform hover:bg-[#b8943e] active:scale-[0.97]">
                   Ver demonstração interativa
                 </Button>
               </Link>
@@ -403,7 +435,10 @@ export default function LandingPage() {
             <div className="mx-auto mb-14 max-w-2xl text-center">
               <p className={`mb-3 text-xs font-semibold uppercase tracking-[0.2em] ${EYEBROW}`}>Planos</p>
               <h2 className="font-serif text-3xl font-bold text-[#1e3a5f] md:text-4xl">Planos simples, para igrejas de diferentes tamanhos</h2>
-              <p className={`mt-4 ${BODY}`}>Valores mensais. Se tiver dúvida sobre qual plano combina com a sua igreja, fale com a nossa equipe.</p>
+              <p className={`mt-4 ${BODY}`}>Valores mensais, cobrados em reais (R$). Se tiver dúvida sobre qual plano combina com a sua igreja, fale com a nossa equipe.</p>
+              <p className={`mt-3 inline-flex items-center gap-2 rounded-full border border-[#c9a84c]/40 bg-[#c9a84c]/10 px-4 py-1.5 text-sm font-semibold ${EYEBROW}`}>
+                <Gift size={16} aria-hidden="true" /> Todo plano começa com {TRIAL_DAYS} dias grátis, sem cartão de crédito
+              </p>
             </div>
             <div className="grid gap-6 md:grid-cols-3 md:gap-8">
               {PLANS.map(plan => (
@@ -462,15 +497,15 @@ export default function LandingPage() {
         <section className="relative overflow-hidden bg-[#1e3a5f] px-4 py-20 sm:px-6 md:py-24">
           <div className="relative mx-auto max-w-3xl text-center">
             <h2 className="font-serif text-3xl font-bold text-white md:text-4xl">Pronto para dar mais atenção a cada pessoa?</h2>
-            <p className="mt-4 text-lg text-white/75">Cadastre a sua igreja e organize o cuidado, o ensino, as equipes e as finanças em um só lugar.</p>
+            <p className="mt-4 text-lg text-white/75">Cadastre a sua igreja e organize o cuidado, o ensino, as equipes e as finanças em um só lugar. {TRIAL_DAYS} dias grátis, sem cartão.</p>
             <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
               <Link href="/cadastro-igreja">
-                <Button size="lg" className="w-full bg-[#c9a84c] px-10 text-base font-bold text-[#1e3a5f] hover:bg-[#b8943e] sm:w-auto">
+                <Button size="lg" className="w-full touch-manipulation bg-[#c9a84c] px-10 text-base font-bold text-[#1e3a5f] transition-transform hover:bg-[#b8943e] active:scale-[0.97] sm:w-auto">
                   Cadastrar minha igreja <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
               <Link href="/contato">
-                <Button size="lg" variant="outline" className="w-full border-white/40 bg-transparent px-10 text-base text-white hover:bg-white/10 hover:text-white sm:w-auto">
+                <Button size="lg" variant="outline" className="w-full touch-manipulation border-white/40 bg-transparent px-10 text-base text-white transition-transform hover:bg-white/10 hover:text-white active:scale-[0.97] sm:w-auto">
                   Falar com a equipe
                 </Button>
               </Link>
@@ -542,7 +577,7 @@ export default function LandingPage() {
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Falar com a equipe pelo WhatsApp"
-          className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-[#1f8f4e] px-4 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-[#177a41] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#1f8f4e]"
+          className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] right-[calc(1.25rem+env(safe-area-inset-right))] z-50 flex touch-manipulation select-none items-center gap-2 rounded-full bg-[#1f8f4e] px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-[#177a41] active:scale-[0.95] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#1f8f4e]"
         >
           <MessageCircle size={20} aria-hidden="true" />
           <span className="hidden sm:inline">Falar no WhatsApp</span>

@@ -2,6 +2,10 @@
 
 Este documento separa o que mudou na **página de venda** (somente apresentação) do que exigiria **mudança no sistema**.
 
+> Atualização: a página de venda passou a usar posicionamento lusófono (português, para igrejas de qualquer país de
+> língua portuguesa, sem assumir que a igreja está no Brasil) e passou a anunciar o teste grátis, que já existe no
+> sistema. Veja a seção 2a.
+
 ## 1. O que a página de venda afirma hoje (e onde isso existe no sistema)
 
 Regra: só aparece na página o que já funciona. Recursos ligados a uma visão específica (células, consolidação,
@@ -16,19 +20,28 @@ Escola de Fundamentos, Encontro com Deus) aparecem como recursos dentro das áre
 | Cultos, eventos e comunicação | eventos com inscrição e QR, página pública, mural, comunicação, notificações | `/app/eventos`, página do tenant, `/app/mural`, `/app/comunicacao`, web push |
 | Finanças e administração | tesouraria, contribuições online, contas a pagar, conciliação, perfis, registro de acessos | `/app/tesouraria`, `/doacao`, auditoria financeira e de segurança |
 
+## 2a. O que passou a ser anunciado (já existe e foi verificado no código)
+
+1. **Teste grátis de 30 dias, sem cartão.** `shared/billing.ts` define `TRIAL_DAYS = 30` e `trialEndsAtFor(createdAt)`,
+   gravado em `church.trialEndsAt`. A cobrança é default **desligada** e o cadastro (`CadastroIgreja.tsx`) não coleta
+   nenhum dado de pagamento. A página agora mostra isso no topo, nos planos, no passo 1 do "como funciona" e na FAQ.
+2. **Posicionamento lusófono.** A página mantém o texto em português, mas deixou de pressupor que a igreja está no
+   Brasil (ex.: "atendimento em português, para igrejas em qualquer país"). Uma pergunta nova na FAQ explica, com
+   honestidade, que a cobrança hoje é em reais (R$), via cartão ou Pix (Pagar.me só atende o Brasil) — para outras
+   moedas, a orientação é falar com a equipe. Isso não é uma simulação de suporte internacional: é a limitação real,
+   dita de forma clara, enquanto o item "moedas diferentes" da seção 3 não é resolvido no produto.
+
 ## 2. Decisões comerciais pendentes (não são código)
 
 A página **deixou de prometer** os itens abaixo porque o sistema não os comprova hoje:
 
-1. **Teste grátis de 14 dias, sem cartão.** Não há `trialEndsAt` sendo gravado nem período de teste no checkout.
-   O fluxo real é: cadastro, análise da equipe em até 24 horas úteis, liberação por e-mail.
-2. **Limites por plano** (200 membros, 10 células). Os valores existem na configuração de cobrança, mas nenhuma regra do servidor os aplica.
-3. **Preço do Enterprise** com três versões: "sob consulta" (página de venda), R$ 497 (`/planos`) e R$ 397 (cobrança).
+1. **Limites por plano** (200 membros, 10 células). Os valores existem na configuração de cobrança, mas nenhuma regra do servidor os aplica.
+2. **Preço do Enterprise** com três versões: "sob consulta" (página de venda), R$ 497 (`/planos`) e R$ 397 (cobrança).
    A página de venda usa "sob consulta".
-4. **Recursos de plano que o sistema não tem:** multi-campus, API de integração, white-label, SLA 99,9%, IA Pastoral,
+3. **Recursos de plano que o sistema não tem:** multi-campus, API de integração, white-label, SLA 99,9%, IA Pastoral,
    migração assistida, suporte 24/7. Aparecem em `/planos` e na configuração de cobrança e devem ser corrigidos ou removidos.
-5. **Certificados e Faturamento** aparecem como "em construção" no menu; não são citados na página.
-6. **Política de privacidade e termos de uso** não existem; a página não cita LGPD, criptografia nem backups.
+4. **Certificados e Faturamento** aparecem como "em construção" no menu; não são citados na página.
+5. **Política de privacidade e termos de uso** não existem; a página não cita LGPD, criptografia nem backups.
 
 ## 3. Adaptações de produto (exigem mudança no sistema)
 
@@ -37,10 +50,12 @@ Para a página poder prometer isto, o sistema precisa mudar primeiro:
 - Nomes configuráveis por igreja (por exemplo, "Células" como "Grupos", "Famílias" ou "Conexões").
 - Ligar e desligar módulos por igreja (hoje o que se pode fazer é não usar).
 - Aplicar os limites de cada plano no servidor, com aviso ao se aproximar do limite.
-- Teste gratuito real (data de término, bloqueio e conversão em assinatura).
+- Bloqueio e conversão em assinatura ao fim do teste grátis (hoje a data existe, mas o que acontece depois ainda
+  depende da cobrança estar ligada e configurada).
 - Multi-campus e visão consolidada para redes.
 - Demonstração interativa com roteiro por área (a atual segue o caminho de células e funil).
-- Idiomas e moedas diferentes (o sistema é em português e em reais).
+- Pagamento em outras moedas e por outros meios (hoje só Pagar.me/BRL/Pix/cartão brasileiro) — é o que limita, de
+  fato, o posicionamento lusófono a "atende em português, cobra em reais".
 
 ## 4. Próximas etapas da página (somente apresentação)
 
