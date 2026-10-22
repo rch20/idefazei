@@ -5,7 +5,7 @@ import { and, eq, gte, isNull } from "drizzle-orm";
 import { churchEmailVerificationTokens, churchUsers } from "../drizzle/schema";
 import { getChurchById, getDb } from "./db";
 import { ENV } from "./_core/env";
-import { getSmtpMailConfig } from "./passwordRecovery";
+import { resolveMailConfig } from "./mailSettings";
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const VERIFICATION_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -58,12 +58,12 @@ export function getEmailVerificationTokenTtlHours() {
   return VERIFICATION_TOKEN_TTL_MS / (60 * 60 * 1000);
 }
 
-export function isEmailVerificationDeliveryConfigured() {
-  return getSmtpMailConfig(ENV.emailVerificationEnabled).enabled;
+export async function isEmailVerificationDeliveryConfigured() {
+  return (await resolveMailConfig("emailVerification")).enabled;
 }
 
 async function sendEmailVerification(input: { to: string; churchName: string; confirmationUrl: string; recipientName: string | null }) {
-  const config = getSmtpMailConfig(ENV.emailVerificationEnabled);
+  const config = await resolveMailConfig("emailVerification");
   if (!config.enabled) {
     if (ENV.isProduction) console.error("[EmailVerification] SMTP não configurado; confirmação não enviada.");
     throw new EmailVerificationDeliveryError();

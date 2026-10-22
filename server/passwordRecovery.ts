@@ -6,6 +6,7 @@ import { churchPasswordResetTokens, churchUsers } from "../drizzle/schema";
 import { getChurchById, getChurchUserByEmail, getDb } from "./db";
 import { hashPassword } from "./auth";
 import { ENV } from "./_core/env";
+import { resolveMailConfig } from "./mailSettings";
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
 const RESET_RATE_WINDOW_MS = 15 * 60 * 1000;
@@ -19,25 +20,12 @@ function getPublicBaseUrl() {
   return ENV.publicAppUrl.replace(/\/$/, "") || "https://idefazei.com.br";
 }
 
-export function getSmtpMailConfig(enabledByFlag: boolean) {
-  const from = ENV.mailFrom.trim().toLowerCase();
-  const user = (ENV.smtpUser || from).trim();
-  const password = ENV.smtpPassword.trim();
-  const host = ENV.smtpHost.trim();
-  const port = Number(ENV.smtpPort || 465);
-  return {
-    from,
-    user,
-    password,
-    host,
-    port: Number.isFinite(port) ? port : 465,
-    secure: ENV.smtpSecure,
-    enabled: enabledByFlag && Boolean(from && host && user && password),
-  };
+export async function getSmtpMailConfig(purpose: "passwordReset" | "emailVerification" = "passwordReset") {
+  return resolveMailConfig(purpose);
 }
 
-export function getPasswordResetMailConfig() {
-  return getSmtpMailConfig(ENV.passwordResetEmailEnabled);
+export async function getPasswordResetMailConfig() {
+  return resolveMailConfig("passwordReset");
 }
 
 export function getTenantResetUrl(slug: string, token: string) {
@@ -67,7 +55,7 @@ function escapeHtml(value: string) {
 }
 
 async function sendPasswordResetEmail(input: { to: string; churchName: string; resetUrl: string; recipientName: string | null }) {
-  const config = getSmtpMailConfig(ENV.passwordResetEmailEnabled);
+  const config = await resolveMailConfig("passwordReset");
   if (!config.enabled) {
     if (ENV.isProduction) console.error("[PasswordRecovery] SMTP não configurado; e-mail de recuperação não enviado.");
     return false;
@@ -92,7 +80,7 @@ async function sendPasswordResetEmail(input: { to: string; churchName: string; r
 
 export async function requestChurchPasswordReset(input: { email: string; tenantChurchId?: number | null; requestIp?: string | null }) {
   const neutralResponse = { accepted: true } as const;
-  const mailConfig = getPasswordResetMailConfig();
+  const mailConfig = await getPasswordResetMailConfig();
   if (!mailConfig.enabled) {
     if (ENV.isProduction) console.error("[PasswordRecovery] Recuperação desativada até o SMTP ser configurado.");
     return neutralResponse;

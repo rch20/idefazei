@@ -5,7 +5,7 @@ import { platformSettings, superAdminPasswordResets, superAdmins } from "../driz
 import { ENV } from "./_core/env";
 import { hashPassword } from "./auth";
 import { getDb } from "./db";
-import { getSmtpMailConfig } from "./passwordRecovery";
+import { resolveMailConfig } from "./mailSettings";
 import { consumeMailBudget, rateLimitCount } from "./rateLimit";
 
 const RECOVERY_SETTING_KEY = "admin_recovery";
@@ -53,7 +53,7 @@ export function buildAdminResetEmail(resetUrl: string) {
 
 /** Resposta sempre neutra: não revela se o e-mail é de um Super Admin. */
 export async function requestAdminPasswordReset(input: { email: string; requestIp?: string | null }) {
-  const mail = getSmtpMailConfig(ENV.passwordResetEmailEnabled);
+  const mail = await resolveMailConfig("passwordReset");
   if (!mail.enabled) {
     console.error("[AdminRecovery] SMTP não configurado; link não enviado.");
     return;

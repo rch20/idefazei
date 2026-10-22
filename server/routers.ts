@@ -36,6 +36,7 @@ import { normalizePlatformContactInput } from "../shared/platformContact";
 import { clientIpFromRequest } from "./adminLoginThrottle";
 import { enforcePublicRateLimit, enforceRateLimit, rateLimitClear, rateLimitRecordAll, rateLimitWait, requestIp } from "./rateLimit";
 import { getAdminRecoveryEmail, requestAdminPasswordReset, resetAdminPassword, saveAdminRecoveryEmail } from "./adminPasswordRecovery";
+import { getMailAdminView, saveMailConfig, sendTestMail } from "./mailSettings";
 import { adminProcedure, protectedProcedure, publicProcedure, router, tenantProcedure } from "./_core/trpc";
 import { loginChurchUser, normalizeChurchLoginIdentifier, loginSuperAdmin, createChurchUser, createSuperAdmin, createInitialSuperAdmin, isInitialSuperAdminSetupAvailable } from "./auth";
 import { requestChurchPasswordReset, resetChurchPassword } from "./passwordRecovery";
@@ -7412,6 +7413,39 @@ const superAdminRouter = router({
     return { success: true };
   }),
 
+  mailConfig: adminProcedure.query(() => getMailAdminView()),
+
+  saveMailConfig: adminProcedure
+    .input(
+      z.object({
+        host: z.string().trim().min(3).max(255),
+        port: z.number().int().positive().max(65535),
+        secure: z.boolean(),
+        user: z.string().trim().min(3).max(320),
+        fromAddress: z.string().trim().email().max(320),
+        password: z.string().max(200).optional(),
+        enablePasswordReset: z.boolean(),
+        enableEmailVerification: z.boolean(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      try {
+        return await saveMailConfig(input, ctx.user?.email ?? "superadmin");
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Não foi possível salvar." });
+      }
+    }),
+
+  testMailConfig: adminProcedure
+    .input(z.object({ to: z.string().trim().email().max(320) }))
+    .mutation(async ({ input }) => {
+      try {
+        return await sendTestMail(input.to);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "Não foi possível enviar o e-mail de teste." });
+      }
+    }),
+
   updateContactSettings: adminProcedure.input(z.record(z.string(), z.unknown())).mutation(async ({ input, ctx }) => {
     const result = normalizePlatformContactInput(input);
     if (!result.ok) {
@@ -7723,7 +7757,7 @@ const registerRouter = router({
           code: "FORBIDDEN",
           message: "O cadastro público está temporariamente fechado por esta igreja.",
         });
-      if (ENV.emailVerificationEnabled && !isEmailVerificationDeliveryConfigured()) {
+      if (ENV.emailVerificationEnabled && !(await isEmailVerificationDeliveryConfigured())) {
         throw new TRPCError({
           code: "SERVICE_UNAVAILABLE",
           message: "A confirmação por e-mail está temporariamente indisponível. Tente novamente mais tarde.",

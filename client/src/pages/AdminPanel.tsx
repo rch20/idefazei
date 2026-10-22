@@ -14,6 +14,7 @@ import { readBrowserStorage, removeBrowserStorage } from "@/lib/browserStorage";
 import { toast } from "sonner";
 // Carregado só quando o Super Admin abre Configurações, para não engordar o painel inteiro.
 const PlatformContactSettings = lazy(() => import("@/components/PlatformContactSettings"));
+const MailSettings = lazy(() => import("@/components/MailSettings"));
 const AdminRecovery = lazy(() => import("@/components/AdminRecovery"));
 const PlatformBillingSettings = lazy(() => import("@/components/PlatformBillingSettings"));
 
@@ -570,6 +571,7 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
               <Suspense fallback={<div className="flex items-center text-white/60 py-8"><Loader2 className="h-5 w-5 animate-spin mr-3" /> Carregando...</div>}>
                 <PlatformContactSettings />
                 <AdminRecovery mode="settings" />
+                <MailSettings />
               </Suspense>
               <Card className="bg-white/5 border-white/10 mt-6">
                 <CardContent className="pt-6">

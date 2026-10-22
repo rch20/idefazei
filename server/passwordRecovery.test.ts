@@ -22,8 +22,8 @@ describe("password recovery", () => {
     expect(content.html).not.toContain("Igreja <teste>");
   });
 
-  it("usa Gmail como default, mas permanece desativado sem senha SMTP", () => {
-    const config = getPasswordResetMailConfig();
+  it("sem configuração salva pelo painel, usa o .env (Gmail por padrão) e permanece desativado sem senha SMTP", async () => {
+    const config = await getPasswordResetMailConfig();
     expect(config.from).toBe("noreply.idefazei@gmail.com");
     expect(config.host).toBe("smtp.gmail.com");
     expect(config.enabled).toBe(false);
