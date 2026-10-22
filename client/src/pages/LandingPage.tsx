@@ -179,7 +179,6 @@ const SCREENS = [
   { src: "ministerios", label: "Ministérios e equipes" },
   { src: "membro", label: "Área do membro" },
   { src: "fundamentos", label: "Escola de Fundamentos" },
-  { src: "batismo", label: "Turmas de batismo" },
 ] as const;
 
 /** Moldura de celular com uma tela real do sistema dentro. */
