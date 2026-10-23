@@ -8,7 +8,51 @@ import { TenantPublicFooter } from "@/components/TenantPublicFooter";
 import { getPublicHeroEyebrow } from "../../../shared/publicPage";
 import { resolveHeroImage } from "../../../shared/publicHero";
 import { formatDatePtBr, formatEventTimeRange, formatMonthShortPtBr, getCivilDateParts } from "@/lib/treasury";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+/**
+ * Reveal ao rolar à prova de branco (cópia local para não criar chunk compartilhado).
+ * O conteúdo é visível por padrão (CSS). Só quando este efeito roda — com o <main>
+ * já montado — ele ativa "tenant-reveal-active" e passa a esconder/revelar.
+ * Fallback: se o observer não disparar em 1.8s, revela tudo. Respeita reduced-motion.
+ */
+function useTenantReveal(active: boolean) {
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const items = Array.from(root.querySelectorAll<HTMLElement>(".tenant-public-reveal"));
+    if (items.length === 0) return;
+    const prefersReduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReduced || typeof IntersectionObserver === "undefined") return; // deixa visível, sem animar
+    root.classList.add("tenant-reveal-active");
+    let fired = false;
+    const observer = new IntersectionObserver(
+      entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          fired = true;
+          const target = entry.target as HTMLElement;
+          const index = items.indexOf(target);
+          window.setTimeout(() => target.classList.add("is-visible"), Math.min(index, 8) * 60);
+          observer.unobserve(target);
+        });
+      },
+      { threshold: 0, rootMargin: "0px 0px 15% 0px" }
+    );
+    items.forEach(item => observer.observe(item));
+    const fallback = window.setTimeout(() => {
+      if (!fired) items.forEach(item => item.classList.add("is-visible"));
+    }, 1800);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(fallback);
+      root.classList.remove("tenant-reveal-active");
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+  return ref;
+}
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type PublicGalleryItem = { url?: string; alt?: string; caption?: string };
@@ -33,6 +77,7 @@ export default function TenantPublicPage() {
   useTenantPwaMeta({ tenantSlug: data?.church.slug, tenantName: data?.church.name, primaryColor: data?.theme?.primaryColor ?? data?.church.primaryColor, pwaIconAssetId: data?.church.pwaIconAssetId, pwaIconVersion: data?.church.pwaIconVersion });
   const [expandedAnnouncementImage, setExpandedAnnouncementImage] = useState<{ title: string; imageUrl: string; imageAlt: string } | null>(null);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<AnnouncementDetails | null>(null);
+  const revealRef = useTenantReveal(!isLoading && Boolean(data));
 
   if (isLoading) {
     return <div className="tenant-public-root tenant-public-loading" aria-live="polite">Carregando a igreja...</div>;
@@ -77,7 +122,7 @@ export default function TenantPublicPage() {
         </div>
       </header>
 
-      <main>
+      <main ref={revealRef}>
         <section className={`tenant-public-hero${heroImage.src ? " has-image" : ""}`}>
           {heroImage.src && <picture className="tenant-public-hero-media" aria-hidden="true">
             {heroImage.mobileSrc && heroImage.mobileSrc !== heroImage.src && <source media="(max-width: 44rem)" srcSet={heroImage.mobileSrc} />}
@@ -105,7 +150,7 @@ export default function TenantPublicPage() {
         </section>
 
         {data.publicDevotional && (
-          <section className="tenant-public-section tenant-public-word-section" aria-labelledby="tenant-public-word-title">
+          <section className="tenant-public-reveal tenant-public-section tenant-public-word-section" aria-labelledby="tenant-public-word-title">
             <div className="tenant-public-container tenant-public-word-card">
               <span className="tenant-public-eyebrow">Palavra de hoje</span>
               <h2 id="tenant-public-word-title">{data.publicDevotional.title}</h2>
@@ -116,7 +161,7 @@ export default function TenantPublicPage() {
         )}
 
         {(about?.body ?? data.church.vision ?? data.church.mission) && (
-          <section id="tenant-public-content" className="tenant-public-section">
+          <section id="tenant-public-content" className="tenant-public-reveal tenant-public-section">
             <div className="tenant-public-container tenant-public-prose">
               <span className="tenant-public-eyebrow">Sobre nós</span>
               <h2>{about?.title ?? "Uma igreja para caminhar junto"}</h2>
@@ -126,7 +171,7 @@ export default function TenantPublicPage() {
         )}
 
         {schedule && (schedule.body || publicServices.length > 0) && (
-          <section className="tenant-public-section tenant-public-schedule-section">
+          <section className="tenant-public-reveal tenant-public-section tenant-public-schedule-section">
             <div className="tenant-public-container">
               <div className="tenant-public-prose tenant-public-events-heading"><span className="tenant-public-eyebrow">Encontros</span><h2>{schedule.title ?? "Horários de culto"}</h2>{schedule.body && <p>{schedule.body}</p>}</div>
               {publicServices.length > 0 && <div className="tenant-public-services-grid">{publicServices.map((service, index) => <article className="tenant-public-service-card" key={`${service.day}-${service.time}-${index}`}><CalendarDays aria-hidden="true" /><div className="min-w-0"><span>{service.day}</span><h3>{service.label || "Encontro"}</h3><p><Clock3 aria-hidden="true" />{service.time}</p>{service.location && <p><MapPin aria-hidden="true" />{service.location}</p>}</div></article>)}</div>}
@@ -135,7 +180,7 @@ export default function TenantPublicPage() {
         )}
 
         {eventsSection && data.upcomingEvents.length > 0 && (
-          <section className="tenant-public-section tenant-public-events-section">
+          <section className="tenant-public-reveal tenant-public-section tenant-public-events-section">
             <div className="tenant-public-container">
               <div className="tenant-public-prose tenant-public-events-heading">
                 <span className="tenant-public-eyebrow">Agenda da igreja</span>
@@ -157,7 +202,7 @@ export default function TenantPublicPage() {
         )}
 
         {data.publicAnnouncements.length > 0 && (
-          <section className="tenant-public-section tenant-public-announcements-section">
+          <section className="tenant-public-reveal tenant-public-section tenant-public-announcements-section">
             <div className="tenant-public-container">
               <div className="tenant-public-prose tenant-public-events-heading">
                 <span className="tenant-public-eyebrow">Mural público</span>
@@ -208,7 +253,7 @@ export default function TenantPublicPage() {
         )}
 
         {ministriesSection && data.publicMinistries.length > 0 && (
-          <section className="tenant-public-section tenant-public-ministries-section">
+          <section className="tenant-public-reveal tenant-public-section tenant-public-ministries-section">
             <div className="tenant-public-container">
               <div className="tenant-public-prose tenant-public-events-heading">
                 <span className="tenant-public-eyebrow">Servindo em comunidade</span>
@@ -228,7 +273,7 @@ export default function TenantPublicPage() {
         )}
 
         {gallerySection && publicGalleryItems.length > 0 && (
-          <section className="tenant-public-section tenant-public-gallery-section">
+          <section className="tenant-public-reveal tenant-public-section tenant-public-gallery-section">
             <div className="tenant-public-container">
               <div className="tenant-public-prose tenant-public-events-heading"><span className="tenant-public-eyebrow">Nossa comunidade</span><h2>{gallerySection.title ?? "Nossa comunidade"}</h2>{gallerySection.subtitle && <p>{gallerySection.subtitle}</p>}</div>
               <div className="tenant-public-gallery-grid">{publicGalleryItems.map((item, index) => <figure key={`${item.url}-${index}`} className="tenant-public-gallery-item"><img src={item.url} alt={item.alt ?? "Imagem da comunidade"} loading="lazy" decoding="async" />{item.caption && <figcaption>{item.caption}</figcaption>}</figure>)}</div>
@@ -236,7 +281,7 @@ export default function TenantPublicPage() {
           </section>
         )}
 
-        <section className="tenant-public-section tenant-public-contact-section">
+        <section className="tenant-public-reveal tenant-public-section tenant-public-contact-section">
           <div className="tenant-public-container">
             <div className="tenant-public-prose tenant-public-events-heading">
               <span className="tenant-public-eyebrow">Contato</span>
