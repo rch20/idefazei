@@ -39,6 +39,11 @@ describe("Linha do inscrito no Batismo", () => {
     expect(source).toContain("disciplerWaLink");
   });
 
+  it("oferece um atalho para a preparação na Escola de Fundamentos", () => {
+    expect(source).toContain("Preparação para o batismo");
+    expect(source).toContain('navigate("/app/escola-fundamentos")');
+  });
+
   it("busca o discipulador e o whatsapp no servidor", () => {
     const db = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
     const start = db.indexOf("export async function getBaptismEnrollments");

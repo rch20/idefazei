@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { getWhatsAppLinkWithMessage } from "@/lib/whatsapp";
-import { Droplets, Users, Award, Plus, Calendar, MapPin, User, Loader2, ChevronRight, MessageCircle } from "lucide-react";
+import { Droplets, Users, Award, Plus, Calendar, MapPin, User, Loader2, ChevronRight, MessageCircle, GraduationCap } from "lucide-react";
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
@@ -244,6 +244,7 @@ function BaptismClassCard({ cls, churchId, people }: {
 
 export default function Batismo() {
   const { churchId } = useChurch();
+  const [, navigate] = useLocation();
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: "", date: "", location: "", pastor: "", notes: "" });
   const utils = trpc.useUtils();
@@ -322,6 +323,23 @@ export default function Batismo() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <button
+        type="button"
+        onClick={() => navigate("/app/escola-fundamentos")}
+        className="group flex w-full items-center gap-4 rounded-2xl border border-[#06b6d4]/25 bg-gradient-to-br from-[#06b6d4]/10 via-background to-background p-4 text-left shadow-sm transition-colors hover:border-[#06b6d4]/50 active:scale-[0.995]"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#06b6d4]/15 text-[#06b6d4]">
+          <GraduationCap className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-[#1e3a5f]">Preparação para o batismo</span>
+          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
+            Monte e acompanhe o estudo de batismo dos candidatos na Escola de Fundamentos, com progresso por aula.
+          </span>
+        </span>
+        <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      </button>
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
