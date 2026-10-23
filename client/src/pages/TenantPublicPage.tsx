@@ -16,7 +16,7 @@ import { useEffect, useRef, useState } from "react";
  * compartilhado entre rotas, que geraria um ciclo estático de imports no bundle.
  * Sem efeito quando o visitante pediu menos movimento (ver .reveal-on-scroll no CSS).
  */
-function useRevealOnScroll<T extends HTMLElement = HTMLElement>() {
+function useRevealOnScroll<T extends HTMLElement = HTMLElement>(deps: ReadonlyArray<unknown> = []) {
   const ref = useRef<T | null>(null);
   useEffect(() => {
     const root = ref.current;
@@ -42,7 +42,8 @@ function useRevealOnScroll<T extends HTMLElement = HTMLElement>() {
     );
     items.forEach(item => observer.observe(item));
     return () => observer.disconnect();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
   return ref;
 }
 
@@ -69,7 +70,7 @@ export default function TenantPublicPage() {
   useTenantPwaMeta({ tenantSlug: data?.church.slug, tenantName: data?.church.name, primaryColor: data?.theme?.primaryColor ?? data?.church.primaryColor, pwaIconAssetId: data?.church.pwaIconAssetId, pwaIconVersion: data?.church.pwaIconVersion });
   const [expandedAnnouncementImage, setExpandedAnnouncementImage] = useState<{ title: string; imageUrl: string; imageAlt: string } | null>(null);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<AnnouncementDetails | null>(null);
-  const revealRef = useRevealOnScroll<HTMLElement>();
+  const revealRef = useRevealOnScroll<HTMLElement>([isLoading, Boolean(data)]);
 
   if (isLoading) {
     return <div className="tenant-public-root tenant-public-loading" aria-live="polite">Carregando a igreja...</div>;
