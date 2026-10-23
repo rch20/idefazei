@@ -602,12 +602,8 @@ export default function LandingPage() {
       {/* RODAPÉ */}
       <footer className="bg-[#14283f] px-4 py-10 text-white/70 sm:px-6">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 md:flex-row">
-          <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-[#c9a84c]" aria-hidden="true">
-              <span className="text-xs font-bold text-[#1e3a5f]">✦</span>
-            </div>
-            <span className="font-semibold text-white">Ide Fazei</span>
-          </div>
+          <img src="/brand/ide-fazei-wordmark-light.png" alt="Ide Fazei" className="h-7 w-auto" />
+
           <div className="text-center text-sm">
             <p>© {new Date().getFullYear()} {contact.legalName || "Ide Fazei"}. Todos os direitos reservados.</p>
             {contact.cnpj && <p className="mt-1 text-xs">CNPJ {formatCnpj(contact.cnpj)}</p>}
