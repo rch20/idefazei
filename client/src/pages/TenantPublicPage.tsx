@@ -38,7 +38,7 @@ function useRevealOnScroll<T extends HTMLElement = HTMLElement>(deps: ReadonlyAr
           observer.unobserve(target);
         });
       },
-      { threshold: 0.15, rootMargin: "0px 0px -40px 0px" }
+      { threshold: 0, rootMargin: "0px 0px 15% 0px" }
     );
     items.forEach(item => observer.observe(item));
     return () => observer.disconnect();
