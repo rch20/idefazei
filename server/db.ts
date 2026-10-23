@@ -431,7 +431,7 @@ export async function markMediaAssetDeleted(id: number, churchId: number) {
 
 // ─── NOTIFICAÇÕES MULTI-CANAL ─────────────────────────────────────────────────
 
-export type NotificationEventType = "cadastro_pendente" | "pessoa_aprovada" | "visita_agendada" | "lembrete_visita" | "visita_nao_realizada" | "responsabilidade_atribuida" | "funcao_ministerial_atribuida" | "evento_igreja" | "comunicado_lideranca" | "encaminhamento_sem_aceite" | "lembrete_escala" | "escala_atribuida" | "escala_alterada" | "escala_cancelada" | "celula_encontro_registrado" | "celula_aviso" | "escala_confirmada";
+export type NotificationEventType = "cadastro_pendente" | "pessoa_aprovada" | "visita_agendada" | "lembrete_visita" | "visita_nao_realizada" | "responsabilidade_atribuida" | "funcao_ministerial_atribuida" | "evento_igreja" | "comunicado_lideranca" | "encaminhamento_sem_aceite" | "lembrete_escala" | "escala_atribuida" | "escala_alterada" | "escala_cancelada" | "celula_encontro_registrado" | "celula_aviso" | "escala_confirmada" | "batismo_preparacao_concluida";
 
 export type NotificationChannel = "sistema" | "whatsapp";
 
@@ -8948,6 +8948,39 @@ export async function getFoundationStudiesForChurch(churchId: number) {
     .from(foundationStudies)
     .where(and(eq(foundationStudies.churchId, churchId), eq(foundationStudies.active, true)))
     .orderBy(foundationStudies.courseId, foundationStudies.position, foundationStudies.id);
+}
+
+export async function getActiveBaptismEnrollmentForPerson(churchId: number, personId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db
+    .select({
+      id: baptismEnrollments.id,
+      baptismClassId: baptismEnrollments.baptismClassId,
+      status: baptismEnrollments.status,
+      preparationCompletedAt: baptismEnrollments.preparationCompletedAt,
+      className: baptismClasses.name,
+    })
+    .from(baptismEnrollments)
+    .innerJoin(baptismClasses, eq(baptismClasses.id, baptismEnrollments.baptismClassId))
+    .where(and(
+      eq(baptismEnrollments.churchId, churchId),
+      eq(baptismEnrollments.personId, personId),
+      eq(baptismClasses.active, true),
+      ne(baptismEnrollments.status, "cancelado"),
+    ))
+    .orderBy(desc(baptismEnrollments.enrolledAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function markBaptismPreparationComplete(churchId: number, enrollmentId: number, personId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(baptismEnrollments)
+    .set({ preparationCompletedAt: new Date() })
+    .where(and(eq(baptismEnrollments.id, enrollmentId), eq(baptismEnrollments.churchId, churchId), eq(baptismEnrollments.personId, personId)));
 }
 
 export async function setChurchBaptismStudy(churchId: number, studyId: number | null) {

@@ -418,6 +418,8 @@ import {
   getFoundationStudiesForChurch,
   setChurchBaptismStudy,
   getChurchBaptismStudyRef,
+  getActiveBaptismEnrollmentForPerson,
+  markBaptismPreparationComplete,
   createBaptismClass,
   enrollInBaptism,
   updateBaptismEnrollment,
@@ -9795,6 +9797,51 @@ const batismoRouter = router({
   availableStudies: protectedProcedure.input(z.object({ churchId: z.number() })).query(async ({ input, ctx }) => {
       await requireChurchAdministrator(ctx.user.id, input.churchId);
       return getFoundationStudiesForChurch(input.churchId);
+    }),
+
+  myPreparation: protectedProcedure.input(z.object({ churchId: z.number() })).query(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) return null;
+      const enrollment = await getActiveBaptismEnrollmentForPerson(input.churchId, actor.personId);
+      if (!enrollment) return null;
+      const ref = await getChurchBaptismStudyRef(input.churchId);
+      if (!ref) return null;
+      const study = await getFoundationStudyById(ref.studyId, input.churchId);
+      if (!study || !study.active) return null;
+      const blocks = await getFoundationStudyBlocks(input.churchId, study.id, true);
+      return {
+        enrollmentId: enrollment.id,
+        className: enrollment.className,
+        completedAt: enrollment.preparationCompletedAt ?? null,
+        study: { id: study.id, title: study.title, summary: study.summary ?? null, content: study.content ?? null },
+        blocks: blocks.map(block => ({ id: block.id, title: block.title, content: block.content, reflectionPrompt: block.reflectionPrompt ?? null, position: block.position })),
+      };
+    }),
+
+  completePreparation: protectedProcedure.input(z.object({ churchId: z.number() })).mutation(async ({ input, ctx }) => {
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) throw new TRPCError({ code: "BAD_REQUEST", message: "Sua conta não está vinculada a uma Pessoa." });
+      const enrollment = await getActiveBaptismEnrollmentForPerson(input.churchId, actor.personId);
+      if (!enrollment) throw new TRPCError({ code: "NOT_FOUND", message: "Você não está inscrito em uma turma de batismo ativa." });
+      const alreadyDone = Boolean(enrollment.preparationCompletedAt);
+      await markBaptismPreparationComplete(input.churchId, enrollment.id, actor.personId);
+      if (!alreadyDone) {
+        const person = await getPersonById(actor.personId, input.churchId);
+        const recipients = await resolveActiveLeadershipChurchUserIds(input.churchId);
+        await emitNotificationWithoutBlocking({
+          churchId: input.churchId,
+          type: "batismo_preparacao_concluida",
+          recipientChurchUserIds: recipients,
+          title: "Preparação de batismo concluída",
+          body: `${person?.fullName ?? "Um candidato"} concluiu o estudo de preparação de batismo${enrollment.className ? ` (${enrollment.className})` : ""}.`,
+          entityType: "baptism_enrollment",
+          entityId: enrollment.id,
+          dedupeKey: `batismo-preparacao:${enrollment.id}`,
+          push: true,
+          url: "/app/batismo",
+        });
+      }
+      return { success: true };
     }),
 
   setStudy: protectedProcedure.input(z.object({ churchId: z.number(), studyId: z.number().int().positive().nullable() })).mutation(async ({ input, ctx }) => {

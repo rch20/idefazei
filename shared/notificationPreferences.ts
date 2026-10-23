@@ -4,6 +4,7 @@ export const NOTIFICATION_EVENT_CATALOG = [
   { type: "pessoa_aprovada", group: "Pessoas", label: "Pessoa aprovada", description: "Um cadastro foi aprovado e a pessoa já pode entrar." },
   { type: "responsabilidade_atribuida", group: "Pessoas", label: "Responsabilidade atribuída", description: "Alguém recebeu uma pessoa para acompanhar." },
   { type: "encaminhamento_sem_aceite", group: "Pessoas", label: "Encaminhamento sem aceite", description: "Um encaminhamento ficou sem resposta de quem deveria aceitar." },
+  { type: "batismo_preparacao_concluida", group: "Pessoas", label: "Preparação de batismo concluída", description: "Um candidato concluiu o estudo de preparação de batismo." },
   { type: "visita_agendada", group: "Visitas", label: "Visita agendada", description: "Uma visita foi marcada para você ou sua equipe." },
   { type: "lembrete_visita", group: "Visitas", label: "Lembrete de visita", description: "Lembrete de uma visita que se aproxima." },
   { type: "visita_nao_realizada", group: "Visitas", label: "Visita não realizada", description: "Uma visita marcada não foi registrada como realizada." },

@@ -1712,6 +1712,8 @@ export const baptismEnrollments = mysqlTable("baptism_enrollments", {
   certificateUrl: text("certificateUrl"),
   enrolledAt: timestamp("enrolledAt").defaultNow().notNull(),
   completedAt: timestamp("completedAt"),
+  /** Quando o candidato concluiu o estudo de preparação de batismo (nulo = pendente). */
+  preparationCompletedAt: timestamp("preparationCompletedAt"),
 });
 
 export type BaptismEnrollment = typeof baptismEnrollments.$inferSelect;
@@ -2498,6 +2500,7 @@ export const notificationEvents = mysqlTable("notification_events", {
     "celula_encontro_registrado",
     "celula_aviso",
     "escala_confirmada",
+    "batismo_preparacao_concluida",
   ]).notNull(),
   entityType: varchar("entityType", { length: 80 }),
   entityId: int("entityId"),
@@ -2559,6 +2562,7 @@ export const churchNotificationPreferences = mysqlTable("church_notification_pre
     "celula_encontro_registrado",
     "celula_aviso",
     "escala_confirmada",
+    "batismo_preparacao_concluida",
   ]).notNull(),
   channel: mysqlEnum("channel", ["sistema", "whatsapp"]).notNull(),
   active: boolean("active").default(true).notNull(),

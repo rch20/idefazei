@@ -234,6 +234,12 @@
       "file": "drizzle/0109_church_baptism_study.sql",
       "kind": "custom-additive",
       "sha256": "bf5132cf7b14fda0e16730998964413bafa9e32bb6168a7367675b6f96b3f433"
+    },
+    {
+      "id": "0110",
+      "file": "drizzle/0110_baptism_preparation_completed.sql",
+      "kind": "custom-additive",
+      "sha256": "ddb0c0f4808bc1f11b9024dedfc3b4135d2a22d1b3af4aac34b79a82a50cd7d3"
     }
   ]
 }
