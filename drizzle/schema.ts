@@ -1016,6 +1016,8 @@ export const foundationStudies = mysqlTable("foundation_studies", {
   content: text("content"),
   position: int("position").notNull().default(0),
   active: boolean("active").notNull().default(true),
+  /** Quando true, o estudo pode ser lido numa página pública, sem login. Padrão: privado. */
+  isPublic: boolean("isPublic").notNull().default(false),
   createdByChurchUserId: int("createdByChurchUserId").notNull(),
   clientRequestId: varchar("clientRequestId", { length: 36 }),
   requestHash: char("requestHash", { length: 64 }),

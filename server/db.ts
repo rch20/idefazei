@@ -7512,7 +7512,7 @@ export async function createFoundationStudyWithBlocks(
   });
 }
 
-export async function updateFoundationStudy(data: { id: number; churchId: number; moduleId?: number | null; weekStart?: string | null; title?: string; summary?: string | null; content?: string | null; position?: number; active?: boolean }) {
+export async function updateFoundationStudy(data: { id: number; churchId: number; moduleId?: number | null; weekStart?: string | null; title?: string; summary?: string | null; content?: string | null; position?: number; active?: boolean; isPublic?: boolean }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const update: Record<string, unknown> = {};
@@ -7523,6 +7523,7 @@ export async function updateFoundationStudy(data: { id: number; churchId: number
   if (data.content !== undefined) update.content = data.content?.trim() || null;
   if (data.position !== undefined) update.position = data.position;
   if (data.active !== undefined) update.active = data.active;
+  if (data.isPublic !== undefined) update.isPublic = data.isPublic;
   if (Object.keys(update).length === 0) return;
   await db
     .update(foundationStudies)

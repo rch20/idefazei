@@ -1859,6 +1859,20 @@ const tenantPublicRouter = router({
     return getPublishedTenantPublicExperienceBySlug(ctx.tenantSlug);
   }),
 
+  study: publicProcedure.input(z.object({ studyId: z.number().int().positive() })).query(async ({ input, ctx }) => {
+    if (!ctx.tenantSlug) return null;
+    const church = await getChurchBySlug(ctx.tenantSlug);
+    if (!church?.active) return null;
+    const study = await getFoundationStudyById(input.studyId, church.id);
+    if (!study || !study.active || !study.isPublic) return null;
+    const blocks = await getFoundationStudyBlocks(church.id, study.id, true);
+    return {
+      church: { name: church.name },
+      study: { id: study.id, title: study.title, summary: study.summary ?? null, content: study.content ?? null },
+      blocks: blocks.map(block => ({ id: block.id, title: block.title, content: block.content, reflectionPrompt: block.reflectionPrompt ?? null, position: block.position })),
+    };
+  }),
+
   adminPreview: protectedProcedure.query(async ({ ctx }) => {
     if (!ctx.user.churchId || ctx.user.authSource !== "church") {
       throw new TRPCError({
@@ -9613,6 +9627,7 @@ const escolaFundamentosRouter = router({
         content: z.string().trim().max(12000).nullable().optional(),
         position: z.number().int().min(0).max(999).optional(),
         active: z.boolean().optional(),
+        isPublic: z.boolean().optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
