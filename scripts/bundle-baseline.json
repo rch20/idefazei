@@ -2122,6 +2122,11 @@
       "assets/select-XXXXXXXX.js",
       "assets/chevron-up-XXXXXXXX.js",
       "assets/index-XXXXXXXX.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/EstudoPublico.js",
+      "assets/index.js"
     ]
   ]
 }
