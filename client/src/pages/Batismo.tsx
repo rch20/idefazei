@@ -88,15 +88,16 @@ function BaptismClassCard({ cls, churchId, people }: {
     setEnrollError(null);
     if (enrollMode === "nova") {
       const fullName = newPerson.fullName.trim();
+      const whatsapp = newPerson.whatsapp.trim();
       if (fullName.length < 2) {
         setEnrollError("Informe o nome completo da pessoa.");
         return;
       }
-      createPersonMutation.mutate({
-        churchId,
-        fullName,
-        whatsapp: newPerson.whatsapp.trim() || undefined,
-      });
+      if (whatsapp.replace(/\D/g, "").length < 10) {
+        setEnrollError("Informe um WhatsApp válido com DDD.");
+        return;
+      }
+      createPersonMutation.mutate({ churchId, fullName, whatsapp });
       return;
     }
     if (!selectedPersonId) return;
@@ -296,15 +297,15 @@ function BaptismClassCard({ cls, churchId, people }: {
                     <Input value={newPerson.fullName} onChange={(e) => { setEnrollError(null); setNewPerson({ ...newPerson, fullName: e.target.value }); }} placeholder="Nome da pessoa" />
                   </div>
                   <div>
-                    <Label>WhatsApp (opcional)</Label>
-                    <Input value={newPerson.whatsapp} onChange={(e) => setNewPerson({ ...newPerson, whatsapp: e.target.value })} placeholder="(11) 99999-9999" inputMode="tel" />
+                    <Label>WhatsApp *</Label>
+                    <Input value={newPerson.whatsapp} onChange={(e) => { setEnrollError(null); setNewPerson({ ...newPerson, whatsapp: e.target.value }); }} placeholder="(11) 99999-9999" inputMode="tel" />
                   </div>
-                  <p className="text-[11px] leading-relaxed text-muted-foreground">A pessoa será cadastrada na igreja (sem login) e inscrita nesta turma. Você pode completar os dados depois em Pessoas.</p>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">A pessoa será cadastrada na igreja (sem login) e inscrita nesta turma. Você pode completar os demais dados depois em Pessoas.</p>
                 </div>
               )}
               <Button
                 className="w-full bg-[#1e3a5f] text-white"
-                disabled={enrollBusy || (enrollMode === "existente" ? !selectedPersonId : newPerson.fullName.trim().length < 2)}
+                disabled={enrollBusy || (enrollMode === "existente" ? !selectedPersonId : newPerson.fullName.trim().length < 2 || newPerson.whatsapp.replace(/\D/g, "").length < 10)}
                 onClick={handleEnrollConfirm}
               >
                 {enrollBusy ? "Inscrevendo..." : enrollMode === "nova" ? "Cadastrar e inscrever" : "Confirmar Inscrição"}
