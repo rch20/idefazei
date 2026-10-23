@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { getWhatsAppLinkWithMessage } from "@/lib/whatsapp";
-import { Droplets, Users, Award, Plus, Calendar, MapPin, User, Loader2, ChevronRight, MessageCircle, GraduationCap } from "lucide-react";
+import { Droplets, Users, Award, Plus, Calendar, MapPin, User, Loader2, ChevronRight, MessageCircle, GraduationCap, CheckCircle2, Clock } from "lucide-react";
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
@@ -161,6 +161,7 @@ function BaptismClassCard({ cls, churchId, people }: {
           <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
             {enrollments.map(({ enrollment, person, discipler }) => {
               const disciplerName = discipler?.fullName ?? null;
+              const prepCompletedAt = enrollment.preparationCompletedAt ? new Date(enrollment.preparationCompletedAt) : null;
               const disciplerContact = discipler?.whatsapp ?? discipler?.phone ?? null;
               const disciplerWaLink = disciplerName && disciplerContact
                 ? getWhatsAppLinkWithMessage(disciplerContact, `Olá, ${firstName(disciplerName)}! Aqui é da equipe de batismo da igreja. Gostaria de falar com você sobre o batismo de ${person.fullName}.`)
@@ -230,6 +231,17 @@ function BaptismClassCard({ cls, churchId, people }: {
                     </Button>
                   )}
                 </div>
+                </div>
+                <div className="mt-1.5">
+                  {prepCompletedAt ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                      <CheckCircle2 className="h-3 w-3" /> Preparação concluída em {prepCompletedAt.toLocaleDateString("pt-BR")}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      <Clock className="h-3 w-3" /> Preparação pendente
+                    </span>
+                  )}
                 </div>
                 {disciplerName && (
                   <div className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -16,7 +16,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   User, Heart, BookOpen, MapPin, Calendar, Bell, Star, Pencil,
-  Phone, Mail, Home, Church, CheckCircle2, Clock, AlertCircle, CircleDollarSign, Copy, FileCheck2, Upload, Loader2
+  Phone, Mail, Home, Church, CheckCircle2, Clock, AlertCircle, CircleDollarSign, Copy, FileCheck2, Upload, Loader2,
+  Droplets, ArrowLeft, Sparkles
 } from "lucide-react";
 import { toast } from "sonner";
 import { DISCIPLESHIP_STAGE_LABELS } from "@/lib/discipleshipState";
@@ -49,6 +50,16 @@ export default function AreaMembro() {
   const utils = trpc.useUtils();
   const hasLinkedPerson = Boolean(churchId && personId);
   const canSubmitOnlineContribution = hasLinkedPerson;
+  const [showPreparation, setShowPreparation] = useState(false);
+  const preparationQuery = trpc.batismo.myPreparation.useQuery({ churchId: churchId! }, { enabled: hasLinkedPerson });
+  const preparation = preparationQuery.data;
+  const completePreparation = trpc.batismo.completePreparation.useMutation({
+    onSuccess: () => {
+      toast.success("Preparação concluída! A liderança foi avisada.");
+      utils.batismo.myPreparation.invalidate();
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível concluir a preparação."),
+  });
 
   const { data: member, isLoading: loadingPeople } = trpc.people.getById.useQuery(
     { churchId: churchId!, id: personId },
@@ -176,6 +187,79 @@ export default function AreaMembro() {
             action: "events" as const,
           }
     : null;
+  if (showPreparation && preparation) {
+    const completed = preparation.completedAt ? new Date(preparation.completedAt) : null;
+    const splitParagraphs = (text: string) => text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+    return (
+      <div className="space-y-5 pb-10">
+        <button
+          type="button"
+          onClick={() => setShowPreparation(false)}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-[#1e3a5f] transition-colors hover:text-[#06b6d4]"
+        >
+          <ArrowLeft className="h-4 w-4" /> Voltar
+        </button>
+
+        <div className="overflow-hidden rounded-3xl border border-[#06b6d4]/20 bg-gradient-to-br from-[#06b6d4] to-[#0891b2] p-6 text-white shadow-sm">
+          <div className="flex items-center gap-2 text-white/80">
+            <Droplets className="h-5 w-5" />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em]">Preparação para o batismo</span>
+          </div>
+          <h1 className="mt-2 font-serif text-2xl font-bold leading-tight">{preparation.study.title}</h1>
+          {preparation.study.summary && <p className="mt-2 max-w-2xl text-sm leading-6 text-white/85">{preparation.study.summary}</p>}
+        </div>
+
+        {preparation.study.content?.trim() && (
+          <section className="rounded-2xl border border-[#06b6d4]/15 bg-[#06b6d4]/5 p-5">
+            {splitParagraphs(preparation.study.content).map((p, i) => (
+              <p key={i} className="whitespace-pre-line leading-7 text-[#1e3a5f]/85 [&:not(:first-child)]:mt-4">{p}</p>
+            ))}
+          </section>
+        )}
+
+        {preparation.blocks.map((block, index) => (
+          <section key={block.id} className="rounded-2xl border border-[#06b6d4]/15 bg-white/70 p-5 shadow-sm backdrop-blur-sm">
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#06b6d4] text-xs font-bold text-white">{index + 1}</span>
+              <h2 className="font-serif text-lg font-bold text-[#1e3a5f]">{block.title}</h2>
+            </div>
+            {splitParagraphs(block.content).map((p, i) => (
+              <p key={i} className="mt-3 whitespace-pre-line leading-7 text-[#1e3a5f]/85">{p}</p>
+            ))}
+            {block.reflectionPrompt?.trim() && (
+              <div className="mt-4 rounded-xl bg-[#c9a84c]/10 p-4">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#c9a84c]">
+                  <Sparkles className="h-3.5 w-3.5" /> Para refletir
+                </p>
+                <p className="mt-1.5 whitespace-pre-line text-sm leading-6 text-[#1e3a5f]/80">{block.reflectionPrompt}</p>
+              </div>
+            )}
+          </section>
+        ))}
+
+        <div className="rounded-2xl border border-[#06b6d4]/20 bg-white/70 p-5 text-center backdrop-blur-sm">
+          {completed ? (
+            <p className="inline-flex items-center gap-2 text-sm font-medium text-emerald-700">
+              <CheckCircle2 className="h-5 w-5" /> Preparação concluída em {completed.toLocaleDateString("pt-BR")}
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-[#1e3a5f]/70">Terminou de ler? Marque a preparação como concluída para avisar a liderança.</p>
+              <Button
+                type="button"
+                className="mt-3 bg-[#06b6d4] text-white hover:bg-[#0891b2]"
+                disabled={completePreparation.isPending}
+                onClick={() => completePreparation.mutate({ churchId: churchId! })}
+              >
+                {completePreparation.isPending ? "Salvando..." : "Concluí a preparação"}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header do membro */}
@@ -224,6 +308,29 @@ export default function AreaMembro() {
           </div>
         )}
       </div>
+
+      {preparation && (
+        <button
+          type="button"
+          onClick={() => setShowPreparation(true)}
+          className="group flex w-full items-center gap-4 rounded-2xl border border-[#06b6d4]/30 bg-gradient-to-br from-[#06b6d4]/15 via-[#06b6d4]/5 to-transparent p-4 text-left shadow-sm backdrop-blur-sm transition-colors hover:border-[#06b6d4]/50 active:scale-[0.995]"
+        >
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#06b6d4]/20 text-[#06b6d4]">
+            <Droplets className="h-6 w-6" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-[#1e3a5f]">Preparação para o batismo</span>
+            <span className="mt-0.5 block text-xs leading-relaxed text-[#1e3a5f]/65">
+              {preparation.completedAt ? "Você concluiu a preparação. Toque para revisar o estudo." : "Faça o estudo de preparação antes do seu batismo."}
+            </span>
+          </span>
+          {preparation.completedAt ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700"><CheckCircle2 className="h-3 w-3" /> Concluída</span>
+          ) : (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#06b6d4]/15 px-2 py-0.5 text-[11px] font-medium text-[#06b6d4]">Pendente</span>
+          )}
+        </button>
+      )}
 
       {memberNextStep && (
         <Card className="border-[#c9a84c]/25 bg-[#c9a84c]/5">
