@@ -134,6 +134,7 @@ import { currentCivilDateAsUtcNoon, formatCivilDateInput, formatCivilDateValue, 
 import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { CHURCH_SETUP_STEP_KEYS, type ChurchSetupStepKey } from "../shared/churchSetup";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
+import { resolveHeroImage } from "../shared/publicHero";
 import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
 import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus, shouldFlagLegacyConsolidationPending, shouldFlagModernFirstContactPending } from "../shared/consolidation";
 import { resolveDirectoryCareState, type DirectoryCareStatus } from "../shared/peopleDirectory";
@@ -963,6 +964,65 @@ export async function getPublishedTenantPublicExperienceBySlug(slug: string) {
     publicCells,
     publicAnnouncements,
     publicDevotional,
+  };
+}
+
+/**
+ * Metadados leves da página pública de uma igreja (nome, descrição, imagem, cor),
+ * para o servidor injetar as tags de compartilhamento/SEO no HTML por subdomínio.
+ * Retorna null quando a igreja não existe ou o site não está publicado — nesse caso
+ * o HTML padrão (genérico do Ide Fazei) é mantido.
+ */
+export async function getTenantPublicMetaBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const churchRows = await db
+    .select({ id: churches.id, name: churches.name, slug: churches.slug, logoUrl: churches.logoUrl, primaryColor: churches.primaryColor, mission: churches.mission, vision: churches.vision })
+    .from(churches)
+    .where(and(eq(churches.slug, slug), eq(churches.active, true)))
+    .limit(1);
+  const church = churchRows[0];
+  if (!church) return null;
+
+  const [siteRows, themeRows] = await Promise.all([
+    db.select({ id: tenantPublicSites.id, status: tenantPublicSites.status, publishedRevisionId: tenantPublicSites.publishedRevisionId }).from(tenantPublicSites).where(eq(tenantPublicSites.churchId, church.id)).limit(1),
+    db.select({ primaryColor: tenantThemes.primaryColor }).from(tenantThemes).where(eq(tenantThemes.churchId, church.id)).limit(1),
+  ]);
+  const site = siteRows[0] ?? null;
+  if (!site || site.status !== "published") return null;
+
+  let heroContent: Record<string, unknown> | null = null;
+  if (site.publishedRevisionId) {
+    const revisionRows = await db
+      .select({ snapshot: tenantPageRevisions.snapshot })
+      .from(tenantPageRevisions)
+      .where(and(eq(tenantPageRevisions.id, site.publishedRevisionId), eq(tenantPageRevisions.churchId, church.id), eq(tenantPageRevisions.siteId, site.id)))
+      .limit(1);
+    const snapshot = revisionRows[0]?.snapshot as { sections?: Array<{ sectionType?: string; content?: unknown; enabled?: boolean }> } | undefined;
+    const hero = snapshot?.sections?.find(section => section.sectionType === "hero" && section.enabled !== false);
+    heroContent = hero?.content && typeof hero.content === "object" ? (hero.content as Record<string, unknown>) : null;
+  }
+  if (!heroContent) {
+    const heroRows = await db
+      .select({ content: tenantPageSections.content })
+      .from(tenantPageSections)
+      .where(and(eq(tenantPageSections.churchId, church.id), eq(tenantPageSections.siteId, site.id), eq(tenantPageSections.sectionType, "hero"), eq(tenantPageSections.enabled, true)))
+      .limit(1);
+    heroContent = heroRows[0]?.content && typeof heroRows[0].content === "object" ? (heroRows[0].content as Record<string, unknown>) : null;
+  }
+
+  const heroImage = resolveHeroImage(heroContent);
+  const heroSubtitle = typeof heroContent?.subtitle === "string" && heroContent.subtitle.trim() ? heroContent.subtitle.trim() : null;
+  const descriptionSource = heroSubtitle || church.mission || church.vision || `Conheça a ${church.name}: cultos, eventos e como participar.`;
+  const description = descriptionSource.replace(/\s+/g, " ").trim().slice(0, 200);
+  const themeColor = (themeRows[0]?.primaryColor || church.primaryColor || "#1e3a5f").trim();
+
+  return {
+    name: church.name,
+    description,
+    heroImageSrc: heroImage.src ?? null,
+    logoUrl: church.logoUrl ?? null,
+    themeColor,
   };
 }
 
