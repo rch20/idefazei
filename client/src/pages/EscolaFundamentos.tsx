@@ -28,7 +28,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useSearch } from "wouter";
 import { formatCivilDate } from "@/lib/civilDate";
 import { FoundationImportDialog } from "./foundation/FoundationImportDialog";
 import { FoundationStudyEditor } from "./foundation/FoundationStudyEditor";
@@ -1275,6 +1276,17 @@ function StudyManagement({
     if (studies[0] && !studies.some(study => String(study.id) === studyId))
       setStudyId(String(studies[0].id));
   }, [studies, studyId]);
+  const search = useSearch();
+  const deepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (deepLinkApplied.current) return;
+    const params = new URLSearchParams(search);
+    const linkCourseId = params.get("courseId");
+    const linkStudyId = params.get("studyId");
+    if (linkCourseId) setCourseId(linkCourseId);
+    if (linkStudyId) setStudyId(linkStudyId);
+    if (linkCourseId || linkStudyId) deepLinkApplied.current = true;
+  }, [search]);
   const selectedStudyId = Number(studyId);
   const { data: linkedMaterials } =
     trpc.escolaFundamentos.listStudyMaterials.useQuery(

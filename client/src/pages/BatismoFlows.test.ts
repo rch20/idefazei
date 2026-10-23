@@ -51,6 +51,22 @@ describe("Linha do inscrito no Batismo", () => {
     expect(source).toContain('navigate("/app/escola-fundamentos")');
   });
 
+  it("permite designar o estudo de batismo e abri-lo direto", () => {
+    expect(source).toContain("trpc.batismo.studyRef.useQuery");
+    expect(source).toContain("trpc.batismo.setStudy.useMutation");
+    expect(source).toContain("/app/escola-fundamentos?courseId=${studyRef.courseId}&studyId=${studyRef.studyId}");
+    const router = readFileSync(resolve(process.cwd(), "server/routers.ts"), "utf8");
+    expect(router).toContain("setStudy: protectedProcedure");
+    expect(router).toContain("getChurchBaptismStudyRef(input.churchId)");
+  });
+
+  it("abre um estudo por URL na tela de Fundamentos", () => {
+    const fund = readFileSync(resolve(process.cwd(), "client/src/pages/EscolaFundamentos.tsx"), "utf8");
+    expect(fund).toContain("useSearch");
+    expect(fund).toContain('params.get("studyId")');
+    expect(fund).toContain('params.get("courseId")');
+  });
+
   it("busca o discipulador e o whatsapp no servidor", () => {
     const db = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
     const start = db.indexOf("export async function getBaptismEnrollments");

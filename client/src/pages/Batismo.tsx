@@ -328,10 +328,12 @@ function BaptismClassCard({ cls, churchId, people }: {
 }
 
 export default function Batismo() {
-  const { churchId } = useChurch();
+  const { churchId, accessSummary } = useChurch();
+  const canManageStudy = Boolean(accessSummary?.canManageChurch);
   const [, navigate] = useLocation();
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({ name: "", date: "", location: "", pastor: "", notes: "" });
+  const [studyPickerId, setStudyPickerId] = useState("");
   const utils = trpc.useUtils();
 
   const { data: classes, isLoading } = trpc.batismo.listClasses.useQuery(
@@ -342,6 +344,21 @@ export default function Batismo() {
     { churchId: churchId! },
     { enabled: !!churchId }
   );
+  const { data: studyRef } = trpc.batismo.studyRef.useQuery(
+    { churchId: churchId! },
+    { enabled: !!churchId }
+  );
+  const { data: availableStudies } = trpc.batismo.availableStudies.useQuery(
+    { churchId: churchId! },
+    { enabled: !!churchId && canManageStudy }
+  );
+  const setStudyMutation = trpc.batismo.setStudy.useMutation({
+    onSuccess: () => {
+      utils.batismo.studyRef.invalidate();
+      setStudyPickerId("");
+    },
+    onError: (error) => toast.error(error.message || "Não foi possível salvar o estudo de batismo."),
+  });
 
   const createMutation = trpc.batismo.createClass.useMutation({
     onSuccess: () => {
@@ -409,22 +426,71 @@ export default function Batismo() {
         </Dialog>
       </div>
 
-      <button
-        type="button"
-        onClick={() => navigate("/app/escola-fundamentos")}
-        className="group flex w-full items-center gap-4 rounded-2xl border border-[#06b6d4]/25 bg-gradient-to-br from-[#06b6d4]/10 via-background to-background p-4 text-left shadow-sm transition-colors hover:border-[#06b6d4]/50 active:scale-[0.995]"
-      >
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#06b6d4]/15 text-[#06b6d4]">
-          <GraduationCap className="h-5 w-5" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-[#1e3a5f]">Preparação para o batismo</span>
-          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">
-            Monte e acompanhe o estudo de batismo dos candidatos na Escola de Fundamentos, com progresso por aula.
+      <section className="rounded-2xl border border-[#06b6d4]/25 bg-gradient-to-br from-[#06b6d4]/10 via-background to-background p-4 shadow-sm">
+        <div className="flex items-start gap-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#06b6d4]/15 text-[#06b6d4]">
+            <GraduationCap className="h-5 w-5" />
           </span>
-        </span>
-        <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-      </button>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[#1e3a5f]">Preparação para o batismo</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              Monte e acompanhe o estudo de batismo dos candidatos na Escola de Fundamentos, com progresso por aula.
+            </p>
+            {studyRef ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/app/escola-fundamentos?courseId=${studyRef.courseId}&studyId=${studyRef.studyId}`)}
+                  className="group inline-flex items-center gap-1.5 rounded-full bg-[#1e3a5f] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#1e3a5f]/90 active:scale-[0.98]"
+                >
+                  Abrir estudo: {studyRef.title}
+                  <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                </button>
+                {canManageStudy && (
+                  <button
+                    type="button"
+                    onClick={() => setStudyMutation.mutate({ churchId, studyId: null })}
+                    disabled={setStudyMutation.isPending}
+                    className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    Remover
+                  </button>
+                )}
+              </div>
+            ) : canManageStudy && (availableStudies?.length ?? 0) > 0 ? (
+              <div className="mt-3 flex flex-wrap items-end gap-2">
+                <div className="min-w-[12rem] flex-1">
+                  <Label className="text-[11px] text-muted-foreground">Escolha o estudo de batismo</Label>
+                  <Select value={studyPickerId} onValueChange={setStudyPickerId}>
+                    <SelectTrigger className="h-9 bg-background"><SelectValue placeholder="Selecione um estudo..." /></SelectTrigger>
+                    <SelectContent>
+                      {(availableStudies ?? []).map((s) => <SelectItem key={s.id} value={String(s.id)}>{s.title}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-9 bg-[#1e3a5f] text-white"
+                  disabled={!studyPickerId || setStudyMutation.isPending}
+                  onClick={() => setStudyMutation.mutate({ churchId, studyId: Number(studyPickerId) })}
+                >
+                  Definir
+                </Button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => navigate("/app/escola-fundamentos")}
+                className="group mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#06b6d4]/40 px-3 py-1.5 text-xs font-semibold text-[#06b6d4] transition-colors hover:bg-[#06b6d4]/10 active:scale-[0.98]"
+              >
+                Abrir Escola de Fundamentos
+                <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
