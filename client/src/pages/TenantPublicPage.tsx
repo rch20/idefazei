@@ -105,7 +105,7 @@ export default function TenantPublicPage() {
         </section>
 
         {data.publicDevotional && (
-          <section className="tenant-public-sectiontenant-public-word-section" aria-labelledby="tenant-public-word-title">
+          <section className="tenant-public-section tenant-public-word-section" aria-labelledby="tenant-public-word-title">
             <div className="tenant-public-container tenant-public-word-card">
               <span className="tenant-public-eyebrow">Palavra de hoje</span>
               <h2 id="tenant-public-word-title">{data.publicDevotional.title}</h2>
@@ -126,7 +126,7 @@ export default function TenantPublicPage() {
         )}
 
         {schedule && (schedule.body || publicServices.length > 0) && (
-          <section className="tenant-public-sectiontenant-public-schedule-section">
+          <section className="tenant-public-section tenant-public-schedule-section">
             <div className="tenant-public-container">
               <div className="tenant-public-prose tenant-public-events-heading"><span className="tenant-public-eyebrow">Encontros</span><h2>{schedule.title ?? "Horários de culto"}</h2>{schedule.body && <p>{schedule.body}</p>}</div>
               {publicServices.length > 0 && <div className="tenant-public-services-grid">{publicServices.map((service, index) => <article className="tenant-public-service-card" key={`${service.day}-${service.time}-${index}`}><CalendarDays aria-hidden="true" /><div className="min-w-0"><span>{service.day}</span><h3>{service.label || "Encontro"}</h3><p><Clock3 aria-hidden="true" />{service.time}</p>{service.location && <p><MapPin aria-hidden="true" />{service.location}</p>}</div></article>)}</div>}
@@ -135,7 +135,7 @@ export default function TenantPublicPage() {
         )}
 
         {eventsSection && data.upcomingEvents.length > 0 && (
-          <section className="tenant-public-sectiontenant-public-events-section">
+          <section className="tenant-public-section tenant-public-events-section">
             <div className="tenant-public-container">
               <div className="tenant-public-prose tenant-public-events-heading">
                 <span className="tenant-public-eyebrow">Agenda da igreja</span>
@@ -157,7 +157,7 @@ export default function TenantPublicPage() {
         )}
 
         {data.publicAnnouncements.length > 0 && (
-          <section className="tenant-public-sectiontenant-public-announcements-section">
+          <section className="tenant-public-section tenant-public-announcements-section">
             <div className="tenant-public-container">
               <div className="tenant-public-prose tenant-public-events-heading">
                 <span className="tenant-public-eyebrow">Mural público</span>
@@ -208,7 +208,7 @@ export default function TenantPublicPage() {
         )}
 
         {ministriesSection && data.publicMinistries.length > 0 && (
-          <section className="tenant-public-sectiontenant-public-ministries-section">
+          <section className="tenant-public-section tenant-public-ministries-section">
             <div className="tenant-public-container">
               <div className="tenant-public-prose tenant-public-events-heading">
                 <span className="tenant-public-eyebrow">Servindo em comunidade</span>
@@ -228,7 +228,7 @@ export default function TenantPublicPage() {
         )}
 
         {gallerySection && publicGalleryItems.length > 0 && (
-          <section className="tenant-public-sectiontenant-public-gallery-section">
+          <section className="tenant-public-section tenant-public-gallery-section">
             <div className="tenant-public-container">
               <div className="tenant-public-prose tenant-public-events-heading"><span className="tenant-public-eyebrow">Nossa comunidade</span><h2>{gallerySection.title ?? "Nossa comunidade"}</h2>{gallerySection.subtitle && <p>{gallerySection.subtitle}</p>}</div>
               <div className="tenant-public-gallery-grid">{publicGalleryItems.map((item, index) => <figure key={`${item.url}-${index}`} className="tenant-public-gallery-item"><img src={item.url} alt={item.alt ?? "Imagem da comunidade"} loading="lazy" decoding="async" />{item.caption && <figcaption>{item.caption}</figcaption>}</figure>)}</div>
@@ -236,13 +236,20 @@ export default function TenantPublicPage() {
           </section>
         )}
 
-        <section className="tenant-public-sectiontenant-public-contact-section">
-          <div className="tenant-public-container tenant-public-contact-grid">
-            {data.church.address && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.church.address)}`} className="tenant-public-contact-card"><MapPin aria-hidden="true" /><span><strong>Onde estamos</strong>{data.church.address}</span></a>}
-            {data.church.whatsapp && <a href={`https://wa.me/${data.church.whatsapp.replace(/\D/g, "")}`} className="tenant-public-contact-card"><MessageCircle aria-hidden="true" /><span><strong>Fale conosco</strong>{contact?.subtitle ?? "Envie uma mensagem"}</span></a>}
-            {donationSettingsQuery.data?.enabled && <a href="/doacao" className="tenant-public-contact-card"><HeartHandshake aria-hidden="true" /><span><strong>Faça sua doação</strong>Contribua com segurança pelo PIX.</span></a>}
-            <a href="/visitante?tipo=pedido_oracao" className="tenant-public-contact-card"><HandHeart aria-hidden="true" /><span><strong>Pedido de oração</strong>Compartilhe seu pedido com nossa equipe.</span></a>
-            <a href="/visite-nos" className="tenant-public-contact-card"><CalendarDays aria-hidden="true" /><span><strong>{contact?.title ?? "Visite-nos"}</strong>{contact?.subtitle ?? "Estamos prontos para receber você."}</span></a>
+        <section className="tenant-public-section tenant-public-contact-section">
+          <div className="tenant-public-container">
+            <div className="tenant-public-prose tenant-public-events-heading">
+              <span className="tenant-public-eyebrow">Contato</span>
+              <h2>{contact?.title ?? "Fale com a gente"}</h2>
+              {contact?.subtitle && <p>{contact.subtitle}</p>}
+            </div>
+            <div className="tenant-public-contact-grid">
+              {data.church.address && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.church.address)}`} className="tenant-public-contact-card"><MapPin aria-hidden="true" /><span><strong>Onde estamos</strong>{data.church.address}</span></a>}
+              {data.church.whatsapp && <a href={`https://wa.me/${data.church.whatsapp.replace(/\D/g, "")}`} className="tenant-public-contact-card"><MessageCircle aria-hidden="true" /><span><strong>Fale conosco</strong>{contact?.subtitle ?? "Envie uma mensagem"}</span></a>}
+              {donationSettingsQuery.data?.enabled && <a href="/doacao" className="tenant-public-contact-card"><HeartHandshake aria-hidden="true" /><span><strong>Faça sua doação</strong>Contribua com segurança pelo PIX.</span></a>}
+              <a href="/visitante?tipo=pedido_oracao" className="tenant-public-contact-card"><HandHeart aria-hidden="true" /><span><strong>Pedido de oração</strong>Compartilhe seu pedido com nossa equipe.</span></a>
+              <a href="/visite-nos" className="tenant-public-contact-card"><CalendarDays aria-hidden="true" /><span><strong>{contact?.title ?? "Visite-nos"}</strong>{contact?.subtitle ?? "Estamos prontos para receber você."}</span></a>
+            </div>
           </div>
         </section>
       </main>
