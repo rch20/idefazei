@@ -196,6 +196,9 @@ export default function VisiteNos() {
     ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(churchDestination)}`
     : null;
   const markers = mapCells.map((cell) => ({ id: cell.id, title: cell.name, latitude: cell.latitude, longitude: cell.longitude }));
+  // Quem clica em "Encontrar uma Célula" quer ver Células primeiro. Só mostramos a
+  // igreja antes quando não há nenhuma Célula pública publicada.
+  const hasCells = cellsWithDistance.length > 0;
 
   function locateVisitor() {
     if (!navigator.geolocation) {
@@ -243,7 +246,8 @@ export default function VisiteNos() {
           </div>
         </section>
 
-        <section className="tenant-public-section">
+        <div className="flex flex-col">
+        <section className="tenant-public-section" style={{ order: hasCells ? 2 : 1 }}>
           <div className="tenant-public-container grid gap-8 lg:grid-cols-[1.25fr_.75fr]">
             <div>
               <span className="tenant-public-eyebrow">Nossos encontros</span>
@@ -271,7 +275,7 @@ export default function VisiteNos() {
           </div>
         </section>
 
-        <section id="tenant-public-cells" className="tenant-public-section bg-white/45">
+        <section id="tenant-public-cells" className="tenant-public-section bg-white/45" style={{ order: hasCells ? 1 : 2 }}>
           <div className="tenant-public-container">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
               <div>
@@ -327,6 +331,7 @@ export default function VisiteNos() {
             )}
           </div>
         </section>
+        </div>
       </main>
 
       <TenantPublicFooter church={data.church} eyebrow={publicHeroEyebrow} />
