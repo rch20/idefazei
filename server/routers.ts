@@ -415,6 +415,9 @@ import {
   // Batismo
   getBaptismClassesByChurch,
   getBaptismEnrollments,
+  getFoundationStudiesForChurch,
+  setChurchBaptismStudy,
+  getChurchBaptismStudyRef,
   createBaptismClass,
   enrollInBaptism,
   updateBaptismEnrollment,
@@ -9782,6 +9785,26 @@ const batismoRouter = router({
   getEnrollments: protectedProcedure.input(z.object({ classId: z.number(), churchId: z.number() })).query(async ({ input, ctx }) => {
       await requireChurchMember(ctx.user.id, input.churchId);
       return getBaptismEnrollments(input.classId, input.churchId);
+    }),
+
+  studyRef: protectedProcedure.input(z.object({ churchId: z.number() })).query(async ({ input, ctx }) => {
+      await requireChurchMember(ctx.user.id, input.churchId);
+      return getChurchBaptismStudyRef(input.churchId);
+    }),
+
+  availableStudies: protectedProcedure.input(z.object({ churchId: z.number() })).query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      return getFoundationStudiesForChurch(input.churchId);
+    }),
+
+  setStudy: protectedProcedure.input(z.object({ churchId: z.number(), studyId: z.number().int().positive().nullable() })).mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      if (input.studyId !== null) {
+        const study = await getFoundationStudyById(input.studyId, input.churchId);
+        if (!study) throw new TRPCError({ code: "NOT_FOUND", message: "Estudo não encontrado nesta igreja." });
+      }
+      await setChurchBaptismStudy(input.churchId, input.studyId);
+      return { success: true };
     }),
   createClass: protectedProcedure
     .input(

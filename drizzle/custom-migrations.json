@@ -228,6 +228,12 @@
       "file": "drizzle/0108_foundation_study_public.sql",
       "kind": "custom-additive",
       "sha256": "658715df496b52c244caccedbb77567b6f098f155d6110cbb5e6f50ae041ff64"
+    },
+    {
+      "id": "0109",
+      "file": "drizzle/0109_church_baptism_study.sql",
+      "kind": "custom-additive",
+      "sha256": "bf5132cf7b14fda0e16730998964413bafa9e32bb6168a7367675b6f96b3f433"
     }
   ]
 }

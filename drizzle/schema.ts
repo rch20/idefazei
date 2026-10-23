@@ -73,6 +73,8 @@ export const churches = mysqlTable("churches", {
   certVerseBatismo: text("certVerseBatismo"),
   certVerseLideres: text("certVerseLideres"),
   certSignatureLabel: varchar("certSignatureLabel", { length: 100 }).default("Pastor(a) Presidente"),
+  /** Estudo de Fundamentos designado como preparação de batismo (atalho interno na aba Batismo). */
+  baptismStudyId: int("baptismStudyId"),
   // Stripe
   stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
   stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),

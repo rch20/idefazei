@@ -8940,6 +8940,38 @@ export async function getBaptismEnrollments(classId: number, churchId: number) {
   .where(and(eq(baptismEnrollments.baptismClassId, classId), eq(baptismEnrollments.churchId, churchId)));
 }
 
+export async function getFoundationStudiesForChurch(churchId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({ id: foundationStudies.id, title: foundationStudies.title, courseId: foundationStudies.courseId })
+    .from(foundationStudies)
+    .where(and(eq(foundationStudies.churchId, churchId), eq(foundationStudies.active, true)))
+    .orderBy(foundationStudies.courseId, foundationStudies.position, foundationStudies.id);
+}
+
+export async function setChurchBaptismStudy(churchId: number, studyId: number | null) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(churches).set({ baptismStudyId: studyId }).where(eq(churches.id, churchId));
+}
+
+export async function getChurchBaptismStudyRef(churchId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const churchRows = await db.select({ baptismStudyId: churches.baptismStudyId }).from(churches).where(eq(churches.id, churchId)).limit(1);
+  const baptismStudyId = churchRows[0]?.baptismStudyId ?? null;
+  if (!baptismStudyId) return null;
+  const studyRows = await db
+    .select({ id: foundationStudies.id, title: foundationStudies.title, courseId: foundationStudies.courseId, active: foundationStudies.active })
+    .from(foundationStudies)
+    .where(and(eq(foundationStudies.id, baptismStudyId), eq(foundationStudies.churchId, churchId)))
+    .limit(1);
+  const study = studyRows[0];
+  if (!study || !study.active) return null;
+  return { studyId: study.id, courseId: study.courseId, title: study.title };
+}
+
 export async function createBaptismClass(data: { churchId: number; name: string; date: string; location?: string; pastor?: string; notes?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
