@@ -160,14 +160,8 @@ export default function Planos() {
       <header className="relative z-10 border-b border-[#1e3a5f]/10 bg-[#f5f0e8]/80 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/">
-            <div className="flex items-center gap-3 cursor-pointer">
-              <div className="w-8 h-8 bg-[#1e3a5f] rounded-lg flex items-center justify-center">
-                <span className="text-[#c9a84c] text-sm font-bold">✦</span>
-              </div>
-              <div>
-                <div className="font-serif font-bold text-[#1e3a5f] text-lg leading-none">Ide Fazei</div>
-                <div className="text-[10px] tracking-[0.2em] text-[#c9a84c] uppercase">Plataforma Ministerial</div>
-              </div>
+            <div className="flex items-center cursor-pointer">
+              <img src="/brand/ide-fazei-wordmark.png" alt="Ide Fazei" className="h-8 w-auto" />
             </div>
           </Link>
           <Link href="/">

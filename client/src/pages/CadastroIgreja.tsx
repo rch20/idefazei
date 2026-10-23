@@ -90,11 +90,8 @@ export default function CadastroIgreja() {
       {/* Header */}
       <header className="bg-[#1e3a5f] text-white py-4 px-6">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-[#c9a84c] rounded flex items-center justify-center">
-              <span className="text-[#1e3a5f] font-bold text-xs">✦</span>
-            </div>
-            <span className="font-bold text-lg">Ide Fazei</span>
+          <a href="/" className="flex items-center">
+            <img src="/brand/ide-fazei-wordmark-light.png" alt="Ide Fazei" className="h-7 w-auto" />
           </a>
           <span className="text-white/60 text-sm">Cadastro de Igreja</span>
         </div>
