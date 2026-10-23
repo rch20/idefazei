@@ -6548,6 +6548,15 @@ export async function createPrayerRequest(data: typeof prayerRequests.$inferInse
   return result[0];
 }
 
+export async function setPrayerRequestAnswered(id: number, churchId: number, answered: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db
+    .update(prayerRequests)
+    .set({ answered })
+    .where(and(eq(prayerRequests.id, id), eq(prayerRequests.churchId, churchId)));
+}
+
 // ─── DASHBOARD STATS ──────────────────────────────────────────────────────────
 
 export async function getDashboardStats(churchId: number) {

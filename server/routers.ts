@@ -73,6 +73,7 @@ import {
   updateMinistry,
   createPerson,
   createPrayerRequest,
+  setPrayerRequestAnswered,
   createSoul,
   findPossiblePeopleByIdentity,
   getAnnouncementsByChurch,
@@ -6939,6 +6940,14 @@ const prayerRouter = router({
       const actor = await requireChurchMember(ctx.user.id, input.churchId);
       if (!actor.personId) return [];
       return getPrayerRequestsByPerson(input.churchId, actor.personId);
+    }),
+
+  setAnswered: protectedProcedure
+    .input(z.object({ churchId: z.number(), id: z.number().int().positive(), answered: z.boolean() }))
+    .mutation(async ({ input, ctx }) => {
+      await requirePrayerManager(ctx.user.id, input.churchId);
+      await setPrayerRequestAnswered(input.id, input.churchId, input.answered);
+      return { success: true };
     }),
 
   createMine: protectedProcedure
