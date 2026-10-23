@@ -4,12 +4,47 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { trpc } from "@/lib/trpc";
 import { ArrowRight, ArrowUpRight, BookOpen, CalendarDays, ChevronDown, Clock3, HandHeart, HeartHandshake, MapPin, Maximize2, MessageCircle, Pin, UsersRound } from "lucide-react";
 import { useTenantPwaMeta } from "@/hooks/useTenantPwaMeta";
-import { useRevealOnScroll } from "@/hooks/useRevealOnScroll";
 import { TenantPublicFooter } from "@/components/TenantPublicFooter";
 import { getPublicHeroEyebrow } from "../../../shared/publicPage";
 import { resolveHeroImage } from "../../../shared/publicHero";
 import { formatDatePtBr, formatEventTimeRange, formatMonthShortPtBr, getCivilDateParts } from "@/lib/treasury";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+/**
+ * Revela em cascata os elementos .reveal-on-scroll dentro do nó retornado.
+ * Cópia local (em vez de importar o hook compartilhado) para não criar um chunk
+ * compartilhado entre rotas, que geraria um ciclo estático de imports no bundle.
+ * Sem efeito quando o visitante pediu menos movimento (ver .reveal-on-scroll no CSS).
+ */
+function useRevealOnScroll<T extends HTMLElement = HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const items = Array.from(root.querySelectorAll<HTMLElement>(".reveal-on-scroll"));
+    if (items.length === 0) return;
+    if (typeof IntersectionObserver === "undefined") {
+      items.forEach(item => item.classList.add("is-visible"));
+      return;
+    }
+    const observer = new IntersectionObserver(
+      entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          const target = entry.target as HTMLElement;
+          const index = items.indexOf(target);
+          const delay = Math.min(index, 8) * 60;
+          window.setTimeout(() => target.classList.add("is-visible"), delay);
+          observer.unobserve(target);
+        });
+      },
+      { threshold: 0.15, rootMargin: "0px 0px -40px 0px" }
+    );
+    items.forEach(item => observer.observe(item));
+    return () => observer.disconnect();
+  }, []);
+  return ref;
+}
 
 type PublicService = { day?: string; time?: string; label?: string; location?: string };
 type PublicGalleryItem = { url?: string; alt?: string; caption?: string };
