@@ -8904,13 +8904,16 @@ export async function getBaptismClassesByChurch(churchId: number) {
 export async function getBaptismEnrollments(classId: number, churchId: number) {
   const db = await getDb();
   if (!db) return [];
+  const discipler = alias(people, "baptism_discipler");
   return db
     .select({
     enrollment: baptismEnrollments,
-    person: { id: people.id, fullName: people.fullName, phone: people.phone },
+    person: { id: people.id, fullName: people.fullName, phone: people.phone, whatsapp: people.whatsapp },
+    discipler: { id: discipler.id, fullName: discipler.fullName, phone: discipler.phone, whatsapp: discipler.whatsapp },
   })
   .from(baptismEnrollments)
   .innerJoin(people, eq(baptismEnrollments.personId, people.id))
+  .leftJoin(discipler, and(eq(discipler.id, people.discipledById), eq(discipler.churchId, churchId)))
   .where(and(eq(baptismEnrollments.baptismClassId, classId), eq(baptismEnrollments.churchId, churchId)));
 }
 

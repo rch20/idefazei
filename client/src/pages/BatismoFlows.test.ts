@@ -27,4 +27,26 @@ describe("Modal de inscrição no Batismo", () => {
   });
 });
 
+describe("Linha do inscrito no Batismo", () => {
+  it("torna o nome clicável para abrir os dados da pessoa", () => {
+    expect(source).toContain("useLocation");
+    expect(source).toContain("navigate(`/app/pessoas?personId=${person.id}&section=resumo`)");
+  });
+
+  it("mostra o discipulador e um botão de WhatsApp para ele", () => {
+    expect(source).toContain("getWhatsAppLinkWithMessage");
+    expect(source).toContain("Discipulador: {disciplerName}");
+    expect(source).toContain("disciplerWaLink");
+  });
+
+  it("busca o discipulador e o whatsapp no servidor", () => {
+    const db = readFileSync(resolve(process.cwd(), "server/db.ts"), "utf8");
+    const start = db.indexOf("export async function getBaptismEnrollments");
+    const slice = db.slice(start, start + 900);
+    expect(slice).toContain("baptism_discipler");
+    expect(slice).toContain("people.discipledById");
+    expect(slice).toContain("whatsapp: people.whatsapp");
+  });
+});
+
 export {};

@@ -10,7 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useState } from "react";
-import { Droplets, Users, Award, Plus, Calendar, MapPin, User, Loader2 } from "lucide-react";
+import { useLocation } from "wouter";
+import { getWhatsAppLinkWithMessage } from "@/lib/whatsapp";
+import { Droplets, Users, Award, Plus, Calendar, MapPin, User, Loader2, ChevronRight, MessageCircle } from "lucide-react";
+
+const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
 const STATUS_COLORS: Record<string, string> = {
   inscrito: "bg-blue-100 text-blue-800",
@@ -36,6 +40,7 @@ function BaptismClassCard({ cls, churchId, people }: {
   const [selectedPersonId, setSelectedPersonId] = useState<string>("");
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [enrollError, setEnrollError] = useState<string | null>(null);
+  const [, navigate] = useLocation();
   const utils = trpc.useUtils();
 
   const { data: enrollments } = trpc.batismo.getEnrollments.useQuery({ classId: cls.id, churchId });
@@ -103,10 +108,25 @@ function BaptismClassCard({ cls, churchId, people }: {
 
         {enrollments && enrollments.length > 0 && (
           <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
-            {enrollments.map(({ enrollment, person }) => (
-              <div key={enrollment.id} className="flex items-center justify-between p-2 rounded bg-muted/30">
-                <span className="text-sm font-medium">{person.fullName}</span>
-                <div className="flex items-center gap-2">
+            {enrollments.map(({ enrollment, person, discipler }) => {
+              const disciplerName = discipler?.fullName ?? null;
+              const disciplerContact = discipler?.whatsapp ?? discipler?.phone ?? null;
+              const disciplerWaLink = disciplerName && disciplerContact
+                ? getWhatsAppLinkWithMessage(disciplerContact, `Olá, ${firstName(disciplerName)}! Aqui é da equipe de batismo da igreja. Gostaria de falar com você sobre o batismo de ${person.fullName}.`)
+                : null;
+              return (
+              <div key={enrollment.id} className="rounded bg-muted/30 p-2">
+                <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/app/pessoas?personId=${person.id}&section=resumo`)}
+                  className="group flex min-w-0 items-center gap-1 text-left text-sm font-medium text-[#1e3a5f] transition-colors hover:text-[#06b6d4] active:scale-[0.99]"
+                  title="Ver dados da pessoa"
+                >
+                  <span className="truncate">{person.fullName}</span>
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </button>
+                <div className="flex items-center gap-2 shrink-0">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[enrollment.status ?? "inscrito"]}`}>
                     {STATUS_LABELS[enrollment.status ?? "inscrito"]}
                   </span>
@@ -159,8 +179,29 @@ function BaptismClassCard({ cls, churchId, people }: {
                     </Button>
                   )}
                 </div>
+                </div>
+                {disciplerName && (
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <User className="h-3 w-3 shrink-0" />
+                    <span className="min-w-0 truncate">Discipulador: {disciplerName}</span>
+                    {disciplerWaLink ? (
+                      <a
+                        href={disciplerWaLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border border-green-600/40 px-2 py-0.5 text-[11px] font-medium text-green-700 transition-colors hover:bg-green-50 active:scale-[0.98]"
+                        title={`Falar com ${firstName(disciplerName)} no WhatsApp`}
+                      >
+                        <MessageCircle className="h-3 w-3" /> WhatsApp
+                      </a>
+                    ) : (
+                      <span className="ml-auto shrink-0 text-[11px] text-muted-foreground/70">sem contato</span>
+                    )}
+                  </div>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 
