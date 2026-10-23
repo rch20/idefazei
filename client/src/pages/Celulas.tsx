@@ -546,7 +546,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={Boolean(selectedCell)} onOpenChange={(nextOpen) => {
+      <Dialog open={Boolean(selectedCell) && !attendanceOpen} onOpenChange={(nextOpen) => {
         if (!nextOpen) {
           setSelectedCell(null);
           setSelectedMember(null);

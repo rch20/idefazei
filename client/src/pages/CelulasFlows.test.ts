@@ -59,8 +59,11 @@ describe("Células — participação e histórico", () => {
 });
 
 describe("Células — registro de encontro e visitantes", () => {
-  it("abre a lista de presença acima da modal da Célula", () => {
-    // A modal da Célula usa z-[200]; a de presença precisa vir à frente.
+  it("não empilha a lista de presença sobre a modal da Célula", () => {
+    // Evita duas modais Radix abertas ao mesmo tempo (a de trás bloqueia cliques
+    // da da frente). A modal da Célula fica oculta enquanto a presença está aberta.
+    expect(pageSource).toContain("open={Boolean(selectedCell) && !attendanceOpen}");
+    // E, por segurança, a de presença também vem à frente via z-index.
     expect(pageSource).toContain('overlayClassName="z-[205]"');
     expect(pageSource).toContain('className="z-[210]');
   });
