@@ -41,13 +41,13 @@ function BaptismClassCard({ cls, churchId, people }: {
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [enrollError, setEnrollError] = useState<string | null>(null);
   const [enrollMode, setEnrollMode] = useState<"existente" | "nova">("existente");
-  const [newPerson, setNewPerson] = useState({ fullName: "", whatsapp: "" });
+  const [newPerson, setNewPerson] = useState({ fullName: "", whatsapp: "", birthDate: "" });
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
 
   function resetEnrollForm() {
     setSelectedPersonId("");
-    setNewPerson({ fullName: "", whatsapp: "" });
+    setNewPerson({ fullName: "", whatsapp: "", birthDate: "" });
     setEnrollMode("existente");
     setEnrollError(null);
   }
@@ -89,6 +89,7 @@ function BaptismClassCard({ cls, churchId, people }: {
     if (enrollMode === "nova") {
       const fullName = newPerson.fullName.trim();
       const whatsapp = newPerson.whatsapp.trim();
+      const birthDate = newPerson.birthDate.trim();
       if (fullName.length < 2) {
         setEnrollError("Informe o nome completo da pessoa.");
         return;
@@ -97,7 +98,11 @@ function BaptismClassCard({ cls, churchId, people }: {
         setEnrollError("Informe um WhatsApp válido com DDD.");
         return;
       }
-      createPersonMutation.mutate({ churchId, fullName, whatsapp });
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+        setEnrollError("Informe a data de nascimento.");
+        return;
+      }
+      createPersonMutation.mutate({ churchId, fullName, whatsapp, birthDate });
       return;
     }
     if (!selectedPersonId) return;
@@ -300,12 +305,16 @@ function BaptismClassCard({ cls, churchId, people }: {
                     <Label>WhatsApp *</Label>
                     <Input value={newPerson.whatsapp} onChange={(e) => { setEnrollError(null); setNewPerson({ ...newPerson, whatsapp: e.target.value }); }} placeholder="(11) 99999-9999" inputMode="tel" />
                   </div>
+                  <div>
+                    <Label>Data de nascimento *</Label>
+                    <Input type="date" value={newPerson.birthDate} onChange={(e) => { setEnrollError(null); setNewPerson({ ...newPerson, birthDate: e.target.value }); }} />
+                  </div>
                   <p className="text-[11px] leading-relaxed text-muted-foreground">A pessoa será cadastrada na igreja (sem login) e inscrita nesta turma. Você pode completar os demais dados depois em Pessoas.</p>
                 </div>
               )}
               <Button
                 className="w-full bg-[#1e3a5f] text-white"
-                disabled={enrollBusy || (enrollMode === "existente" ? !selectedPersonId : newPerson.fullName.trim().length < 2 || newPerson.whatsapp.replace(/\D/g, "").length < 10)}
+                disabled={enrollBusy || (enrollMode === "existente" ? !selectedPersonId : newPerson.fullName.trim().length < 2 || newPerson.whatsapp.replace(/\D/g, "").length < 10 || !/^\d{4}-\d{2}-\d{2}$/.test(newPerson.birthDate))}
                 onClick={handleEnrollConfirm}
               >
                 {enrollBusy ? "Inscrevendo..." : enrollMode === "nova" ? "Cadastrar e inscrever" : "Confirmar Inscrição"}
