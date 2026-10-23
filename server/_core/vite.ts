@@ -63,11 +63,21 @@ export function serveStatic(app: Express) {
   // Never let a missing hashed module fall through to index.html. Browsers can
   // keep an older entrypoint briefly after a release; returning HTML with 200
   // for a .js request turns a recoverable stale chunk into a syntax error.
-  app.use("/assets", express.static(path.join(distPath, "assets")));
+  // Arquivos em /assets têm hash no nome (Vite), então podem ser cacheados para
+  // sempre: conteúdo novo gera nome novo. Isso reduz recargas sem risco de versão velha.
+  app.use("/assets", express.static(path.join(distPath, "assets"), { maxAge: "1y", immutable: true }));
   app.use("/assets", (_req, res) => {
     res.status(404).type("text/plain").send("Asset not found");
   });
-  app.use(express.static(distPath));
+  // O index.html referencia os assets com hash; se o navegador/CDN guardar um
+  // index.html antigo, ele aponta para um /assets/index-HASH.js que já não existe
+  // (erro "resource_load"). Por isso o HTML é sempre revalidado, nunca servido de cache.
+  const noHtmlCache = "no-cache, max-age=0, must-revalidate";
+  app.use(express.static(distPath, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith("index.html")) res.setHeader("Cache-Control", noHtmlCache);
+    },
+  }));
 
   // fall through to index.html if the file doesn't exist. Em subdomínios de tenant
   // com site publicado, injeta título/descrição/OG da própria igreja (compartilhamento + SEO).
@@ -85,6 +95,7 @@ export function serveStatic(app: Express) {
   };
 
   app.use("*", async (req, res) => {
+    res.setHeader("Cache-Control", noHtmlCache);
     if (req.method === "GET") {
       const baseHtml = readIndexHtml();
       if (baseHtml) {
@@ -96,6 +107,6 @@ export function serveStatic(app: Express) {
         }
       }
     }
-    return res.sendFile(indexHtmlPath);
+    return res.sendFile(indexHtmlPath, { cacheControl: false });
   });
 }
