@@ -62,7 +62,13 @@ const sections: LegalSection[] = [
   },
   {
     title: "Segurança",
-    body: <p>Usamos conexão criptografada (HTTPS), senhas armazenadas com criptografia, controle de acesso por função, separação dos dados de cada igreja e cópias de segurança. Nenhum sistema é totalmente imune a incidentes; se ocorrer um que possa causar risco relevante, avisaremos a igreja e as autoridades conforme a lei.</p>,
+    body: (
+      <>
+        <p>Usamos conexão criptografada (HTTPS), senhas armazenadas com criptografia, controle de acesso por função, separação dos dados de cada igreja e cópias de segurança.</p>
+        <p>No uso normal da plataforma, a equipe do Ide Fazei não acessa os dados de membros, visitantes e participantes das igrejas: o painel de administração da plataforma trata apenas do cadastro da igreja (nome e contato de quem a administra) e da cobrança, e não exibe os dados das pessoas cadastradas por ela. O acesso técnico direto à infraestrutura é restrito a pessoal autorizado e usado somente para operar, manter e corrigir o serviço.</p>
+        <p>Nenhum sistema é totalmente imune a incidentes; se ocorrer um que possa causar risco relevante, avisaremos a igreja e as autoridades conforme a lei.</p>
+      </>
+    ),
   },
   {
     title: "Seus direitos",
@@ -91,7 +97,7 @@ export default function Privacidade() {
   return (
     <LegalPage
       title="Política de privacidade"
-      updatedAt="21 de outubro de 2026"
+      updatedAt="23 de outubro de 2026"
       intro="Esta política explica, de forma simples, como o Ide Fazei trata dados pessoais, de acordo com a Lei Geral de Proteção de Dados (Lei 13.709/2018)."
       sections={sections}
     />
