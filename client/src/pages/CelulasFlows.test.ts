@@ -58,4 +58,27 @@ describe("Células — participação e histórico", () => {
   });
 });
 
+describe("Células — registro de encontro e visitantes", () => {
+  it("abre a lista de presença acima da modal da Célula", () => {
+    // A modal da Célula usa z-[200]; a de presença precisa vir à frente.
+    expect(pageSource).toContain('overlayClassName="z-[205]"');
+    expect(pageSource).toContain('className="z-[210]');
+  });
+
+  it("permite informar visitantes novos de forma opcional", () => {
+    expect(pageSource).toContain('id="cell-meeting-visitors"');
+    expect(pageSource).toContain("Visitantes novos (opcional)");
+    expect(pageSource).toContain("visitorsCount:");
+    expect(routerSource).toContain(
+      compactSource("visitorsCount: z.number().int().min(0).max(999).optional()")
+    );
+  });
+
+  it("registra visitantes como presença reusando o schema existente", () => {
+    expect(dbSource).toContain(compactSource('status: "visitante" as const'));
+    expect(dbSource).toContain(compactSource("isNewSoul: true"));
+    expect(dbSource).toContain(compactSource("= 'visitante' THEN 1 ELSE 0 END"));
+  });
+});
+
 // Este contrato não cria ou altera dados reais; valida apenas a superfície versionada.

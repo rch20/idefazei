@@ -4140,6 +4140,7 @@ const cellsRouter = router({
         meetingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida."),
         topic: z.string().trim().max(255).optional(),
         notes: z.string().trim().max(3000).optional(),
+        visitorsCount: z.number().int().min(0).max(999).optional(),
         attendance: z.array(
           z.object({
             personId: z.number().int().positive(),
@@ -4174,6 +4175,7 @@ const cellsRouter = router({
         topic: input.topic || null,
         notes: input.notes || null,
         attendance: input.attendance,
+        visitorsCount: input.visitorsCount ?? 0,
       });
       const [cell, cellMembers, churchAccounts] = await Promise.all([getCellById(input.cellId, input.churchId), getActiveMembersByCell(input.cellId, input.churchId), getChurchUsersByChurch(input.churchId)]);
       const memberPersonIds = new Set(cellMembers.map(member => member.person.id));

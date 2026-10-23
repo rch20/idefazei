@@ -4269,6 +4269,7 @@ export async function getCellMeetingSummaries(cellId: number, churchId: number, 
       total: sql<number>`COUNT(${cellAttendance.id})`,
       present: sql<number>`COALESCE(SUM(CASE WHEN ${cellAttendance.status} = 'presente' THEN 1 ELSE 0 END), 0)`,
       absent: sql<number>`COALESCE(SUM(CASE WHEN ${cellAttendance.status} = 'ausente' THEN 1 ELSE 0 END), 0)`,
+      visitors: sql<number>`COALESCE(SUM(CASE WHEN ${cellAttendance.status} = 'visitante' THEN 1 ELSE 0 END), 0)`,
     })
     .from(cellMeetings)
     .leftJoin(cellAttendance, eq(cellAttendance.meetingId, cellMeetings.id))
@@ -4291,7 +4292,7 @@ export async function getCellMeetingByDate(cellId: number, churchId: number, mee
 }
 
 /** Cria um único encontro e sua lista completa de presença na mesma transação. */
-export async function createCellMeetingWithAttendance(data: { cellId: number; churchId: number; meetingDate: string; topic?: string | null; notes?: string | null; attendance: Array<{ personId: number; status: "presente" | "ausente" }> }) {
+export async function createCellMeetingWithAttendance(data: { cellId: number; churchId: number; meetingDate: string; topic?: string | null; notes?: string | null; attendance: Array<{ personId: number; status: "presente" | "ausente" }>; visitorsCount?: number }) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   const normalizedMeetingDate = new Date(`${data.meetingDate}T12:00:00.000Z`);
@@ -4313,6 +4314,18 @@ export async function createCellMeetingWithAttendance(data: { cellId: number; ch
           meetingId,
           personId: entry.personId,
           status: entry.status,
+        }))
+      );
+    }
+
+    const visitorsCount = Math.max(0, Math.min(999, Math.trunc(data.visitorsCount ?? 0)));
+    if (visitorsCount > 0) {
+      await tx.insert(cellAttendance).values(
+        Array.from({ length: visitorsCount }, () => ({
+          meetingId,
+          personId: null,
+          status: "visitante" as const,
+          isNewSoul: true,
         }))
       );
     }

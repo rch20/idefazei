@@ -118,6 +118,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
   const [meetingDate, setMeetingDate] = useState(getTodayInputValue);
   const [meetingTopic, setMeetingTopic] = useState("");
   const [meetingNotes, setMeetingNotes] = useState("");
+  const [meetingVisitors, setMeetingVisitors] = useState("");
   const [presentByPersonId, setPresentByPersonId] = useState<Record<number, boolean>>({});
   const [memberReferralReason, setMemberReferralReason] = useState("");
   const [publicSettingsOpen, setPublicSettingsOpen] = useState(false);
@@ -339,6 +340,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
     setMeetingDate(getTodayInputValue());
     setMeetingTopic("");
     setMeetingNotes("");
+    setMeetingVisitors("");
     setPresentByPersonId(initialPresence);
     setAttendanceOpen(true);
   }
@@ -356,6 +358,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
       meetingDate,
       topic: meetingTopic.trim() || undefined,
       notes: meetingNotes.trim() || undefined,
+      visitorsCount: Math.max(0, Math.min(999, Math.trunc(Number(meetingVisitors) || 0))) || undefined,
       attendance: membersInSelectedCell.map((item) => ({
         personId: item.person.id,
         status: presentByPersonId[item.person.id] ? "presente" as const : "ausente" as const,
@@ -644,7 +647,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                     {meetingHistory.isLoading ? (
                       <p className="mt-1 text-xs text-muted-foreground">Carregando histórico…</p>
                     ) : latestMeeting ? (
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Último encontro em {formatMeetingDate(latestMeeting.meeting.meetingDate)} · {Number(latestMeeting.present)} presentes e {Number(latestMeeting.absent)} ausentes</p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Último encontro em {formatMeetingDate(latestMeeting.meeting.meetingDate)} · {Number(latestMeeting.present)} presentes e {Number(latestMeeting.absent)} ausentes{Number(latestMeeting.visitors) > 0 ? ` · ${Number(latestMeeting.visitors)} ${Number(latestMeeting.visitors) === 1 ? "visitante" : "visitantes"}` : ""}</p>
                     ) : (
                       <p className="mt-1 text-xs text-muted-foreground">Nenhum encontro registrado ainda.</p>
                     )}
@@ -745,7 +748,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
                   {(meetingHistory.data ?? []).slice(1, 4).map((entry) => (
                     <div key={entry.meeting.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                       <span className="font-medium text-navy">{formatMeetingDate(entry.meeting.meetingDate)}</span>
-                      <span className="text-xs text-muted-foreground">{Number(entry.present)} presentes · {Number(entry.absent)} ausentes</span>
+                      <span className="text-xs text-muted-foreground">{Number(entry.present)} presentes · {Number(entry.absent)} ausentes{Number(entry.visitors) > 0 ? ` · ${Number(entry.visitors)} ${Number(entry.visitors) === 1 ? "visitante" : "visitantes"}` : ""}</span>
                     </div>
                   ))}
                 </div>
@@ -807,7 +810,7 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
       </Dialog>
 
       <Dialog open={attendanceOpen} onOpenChange={setAttendanceOpen}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
+        <DialogContent overlayClassName="z-[205]" className="z-[210] max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display text-navy"><CalendarCheck2 className="h-5 w-5 text-gold" />Registrar encontro</DialogTitle>
           </DialogHeader>
@@ -823,6 +826,11 @@ export default function Celulas({ initialTab = "lista" }: CelulasProps) {
               <div>
                 <Label htmlFor="cell-meeting-topic">Tema (opcional)</Label>
                 <Input id="cell-meeting-topic" value={meetingTopic} onChange={(event) => setMeetingTopic(event.target.value)} placeholder="Ex.: Comunhão e oração" maxLength={255} />
+              </div>
+              <div>
+                <Label htmlFor="cell-meeting-visitors">Visitantes novos (opcional)</Label>
+                <Input id="cell-meeting-visitors" type="number" inputMode="numeric" min={0} max={999} value={meetingVisitors} onChange={(event) => setMeetingVisitors(event.target.value)} placeholder="0" />
+                <p className="mt-1 text-[11px] text-muted-foreground">Quantas pessoas novas visitaram a Célula neste encontro.</p>
               </div>
             </div>
             <div>
