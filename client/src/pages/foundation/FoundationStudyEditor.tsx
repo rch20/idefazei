@@ -716,21 +716,21 @@ export function FoundationStudyEditor({
     },
     onError: failSave,
   });
-  const updatePublicReading = trpc.escolaFundamentos.updateStudy.useMutation({
-    onSuccess: () => {
-      toast.success(isPublicStudy ? "Estudo aberto para leitura pública." : "Leitura pública desativada.");
-    },
-    onError: (error) => {
-      setIsPublicStudy((prev) => !prev);
-      toast.error(error.message || "Não foi possível atualizar a visibilidade.");
-    },
-  });
   const publicStudyUrl = studyId ? `${window.location.origin}/estudo/${studyId}` : "";
   const togglePublicReading = () => {
-    if (!studyId || updatePublicReading.isPending) return;
+    if (!studyId || updateStudy.isPending) return;
     const next = !isPublicStudy;
     setIsPublicStudy(next);
-    updatePublicReading.mutate({ id: studyId, churchId, isPublic: next });
+    updateStudy.mutate(
+      { id: studyId, churchId, isPublic: next },
+      {
+        onSuccess: () => toast.success(next ? "Estudo aberto para leitura pública." : "Leitura pública desativada."),
+        onError: (error) => {
+          setIsPublicStudy((prev) => !prev);
+          toast.error(error?.message || "Não foi possível atualizar a visibilidade.");
+        },
+      },
+    );
   };
   const copyPublicStudyLink = async () => {
     if (!publicStudyUrl) return;
@@ -1032,7 +1032,7 @@ export function FoundationStudyEditor({
                   <button
                     type="button"
                     onClick={togglePublicReading}
-                    disabled={updatePublicReading.isPending}
+                    disabled={updateStudy.isPending}
                     aria-pressed={isPublicStudy}
                     title="Quando ativado, qualquer pessoa com o link pode ler este estudo, sem login."
                     className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${isPublicStudy ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}
