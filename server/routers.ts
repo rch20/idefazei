@@ -1867,7 +1867,7 @@ const tenantPublicRouter = router({
     if (!study || !study.active || !study.isPublic) return null;
     const blocks = await getFoundationStudyBlocks(church.id, study.id, true);
     return {
-      church: { name: church.name },
+      church: { name: church.name, primaryColor: church.primaryColor ?? "#1e3a5f", secondaryColor: church.secondaryColor ?? "#c9a84c" },
       study: { id: study.id, title: study.title, summary: study.summary ?? null, content: study.content ?? null },
       blocks: blocks.map(block => ({ id: block.id, title: block.title, content: block.content, reflectionPrompt: block.reflectionPrompt ?? null, position: block.position })),
     };

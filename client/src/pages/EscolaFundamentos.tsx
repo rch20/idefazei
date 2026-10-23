@@ -139,6 +139,7 @@ type Study = {
   content?: string | null;
   position: number;
   active: boolean;
+  isPublic?: boolean;
 };
 type FoundationModule = {
   id: number;

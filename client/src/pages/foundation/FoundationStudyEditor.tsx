@@ -82,6 +82,7 @@ type FoundationStudy = {
   summary?: string | null;
   content?: string | null;
   active: boolean;
+  isPublic?: boolean;
 };
 
 type StudyQuestionRow = {
@@ -441,6 +442,7 @@ export function FoundationStudyEditor({
     message: string;
   }>({ status: "idle", message: "" });
   const [published, setPublished] = useState(false);
+  const [isPublicStudy, setIsPublicStudy] = useState(false);
   const [questionEditorOpen, setQuestionEditorOpen] = useState(false);
   const [questionSaving, setQuestionSaving] = useState(false);
   const [confirmedQuestions, setConfirmedQuestions] = useState<
@@ -508,6 +510,7 @@ export function FoundationStudyEditor({
     dirtyPartIds.current.clear();
     setSaveFeedback({ status: "idle", message: "" });
     setPublished(nextStudy?.active ?? false);
+    setIsPublicStudy(nextStudy?.isPublic ?? false);
     setCompletedStages(new Set());
   };
 
@@ -529,6 +532,7 @@ export function FoundationStudyEditor({
     setSummary(current.summary ?? "");
     setContent(current.content ?? "");
     setPublished(current.active);
+    setIsPublicStudy(current.isPublic ?? false);
   };
 
   useEffect(() => {
@@ -712,6 +716,31 @@ export function FoundationStudyEditor({
     },
     onError: failSave,
   });
+  const updatePublicReading = trpc.escolaFundamentos.updateStudy.useMutation({
+    onSuccess: () => {
+      toast.success(isPublicStudy ? "Estudo aberto para leitura pública." : "Leitura pública desativada.");
+    },
+    onError: (error) => {
+      setIsPublicStudy((prev) => !prev);
+      toast.error(error.message || "Não foi possível atualizar a visibilidade.");
+    },
+  });
+  const publicStudyUrl = studyId ? `${window.location.origin}/estudo/${studyId}` : "";
+  const togglePublicReading = () => {
+    if (!studyId || updatePublicReading.isPending) return;
+    const next = !isPublicStudy;
+    setIsPublicStudy(next);
+    updatePublicReading.mutate({ id: studyId, churchId, isPublic: next });
+  };
+  const copyPublicStudyLink = async () => {
+    if (!publicStudyUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicStudyUrl);
+      toast.success("Link público copiado.");
+    } catch {
+      toast.error(`Copie o link manualmente: ${publicStudyUrl}`);
+    }
+  };
   const updatePart = trpc.escolaFundamentos.updateQuestionBlock.useMutation({
     onSuccess: updated => {
       const payload = pendingPartSave.current;
@@ -998,6 +1027,30 @@ export function FoundationStudyEditor({
                   {statusLabel}
                 </Badge>
               </DialogDescription>
+              {studyId && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={togglePublicReading}
+                    disabled={updatePublicReading.isPending}
+                    aria-pressed={isPublicStudy}
+                    title="Quando ativado, qualquer pessoa com o link pode ler este estudo, sem login."
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${isPublicStudy ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"}`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${isPublicStudy ? "bg-emerald-500" : "bg-slate-400"}`} />
+                    {isPublicStudy ? "Leitura pública ativada" : "Tornar leitura pública"}
+                  </button>
+                  {isPublicStudy && (
+                    <button
+                      type="button"
+                      onClick={copyPublicStudyLink}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                    >
+                      Copiar link público
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
             <Button
               type="button"
