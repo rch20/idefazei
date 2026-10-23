@@ -418,6 +418,8 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-hero-actions { display: grid; width: min(100%, 24rem); gap: .5rem; margin-inline: auto; }
 .tenant-public-hero-actions > * { width: 100%; }
 .tenant-public-eyebrow { display: inline-block; margin-bottom: 1.25rem; color: var(--tenant-secondary, #c9a84c); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.tenant-public-hero .tenant-public-eyebrow { border: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 55%, transparent); border-radius: 999px; padding: .4rem .9rem; background: color-mix(in srgb, var(--tenant-secondary, #c9a84c) 14%, transparent); }
+@supports (backdrop-filter: blur(2px)) { .tenant-public-hero .tenant-public-eyebrow { backdrop-filter: blur(5px); } }
 .tenant-public-hero h1, .tenant-public-prose h2 { max-width: 15ch; margin: 0; font-family: "Playfair Display", serif; font-size: clamp(2.7rem, 9vw, 6.25rem); line-height: .98; letter-spacing: -0.02em; text-wrap: balance; }
 .tenant-public-hero h1 { margin-inline: auto; color: white; }
 .tenant-public-hero p { max-width: 43rem; margin: 1.5rem auto 2rem; color: rgb(255 255 255 / 82%); font-family: "Cormorant Garamond", serif; font-size: clamp(1.3rem, 4vw, 1.75rem); line-height: 1.45; }
@@ -473,6 +475,11 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-event-meta { display: grid; gap: .35rem; margin-top: .8rem; color: color-mix(in srgb, var(--tenant-primary) 68%, white); font-size: .78rem; }
 .tenant-public-event-meta span { min-width: 0; display: flex; gap: .35rem; align-items: center; overflow-wrap: anywhere; }
 .tenant-public-event-meta svg { flex: 0 0 auto; width: .9rem; height: .9rem; color: var(--tenant-secondary); }
+.tenant-public-event-register { display: inline-flex; align-items: center; gap: .4rem; margin-top: 1rem; border-radius: 999px; padding: .5rem .95rem; background: var(--tenant-primary, #1e3a5f); color: #fff; font-size: .85rem; font-weight: 700; text-decoration: none; transition: transform 160ms cubic-bezier(.23, 1, .32, 1), background-color 160ms ease; }
+.tenant-public-event-register svg { width: 1rem; height: 1rem; }
+.tenant-public-event-register:active { transform: scale(.97); }
+.tenant-public-event-register:focus-visible { outline: 3px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 75%, transparent); outline-offset: 3px; }
+@media (hover: hover) and (pointer: fine) { .tenant-public-event-register:hover { background: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 86%, #000); } }
 .tenant-public-announcements-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 .tenant-public-announcement-card { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid color-mix(in srgb, var(--tenant-secondary) 22%, transparent); border-radius: 1rem; background: #fffdf9; box-shadow: 0 .65rem 1.8rem -0.6rem color-mix(in srgb, var(--tenant-primary, #1e3a5f) 22%, transparent); }
 .tenant-public-announcement-card.is-pinned { border-color: color-mix(in srgb, var(--tenant-secondary) 55%, transparent); }
