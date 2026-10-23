@@ -39,6 +39,13 @@ describe("Linha do inscrito no Batismo", () => {
     expect(source).toContain("disciplerWaLink");
   });
 
+  it("permite cadastrar e inscrever uma pessoa nova (sem login) na turma", () => {
+    expect(source).toContain("trpc.people.create.useMutation");
+    expect(source).toContain("Nova pessoa");
+    expect(source).toContain("Cadastrar e inscrever");
+    expect(source).toContain("handleEnrollConfirm");
+  });
+
   it("oferece um atalho para a preparação na Escola de Fundamentos", () => {
     expect(source).toContain("Preparação para o batismo");
     expect(source).toContain('navigate("/app/escola-fundamentos")');

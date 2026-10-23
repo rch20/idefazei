@@ -40,8 +40,17 @@ function BaptismClassCard({ cls, churchId, people }: {
   const [selectedPersonId, setSelectedPersonId] = useState<string>("");
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [enrollError, setEnrollError] = useState<string | null>(null);
+  const [enrollMode, setEnrollMode] = useState<"existente" | "nova">("existente");
+  const [newPerson, setNewPerson] = useState({ fullName: "", whatsapp: "" });
   const [, navigate] = useLocation();
   const utils = trpc.useUtils();
+
+  function resetEnrollForm() {
+    setSelectedPersonId("");
+    setNewPerson({ fullName: "", whatsapp: "" });
+    setEnrollMode("existente");
+    setEnrollError(null);
+  }
 
   const { data: enrollments } = trpc.batismo.getEnrollments.useQuery({ classId: cls.id, churchId });
 
@@ -49,7 +58,7 @@ function BaptismClassCard({ cls, churchId, people }: {
     onSuccess: () => {
       toast.success("Inscrição realizada!");
       setEnrollOpen(false);
-      setSelectedPersonId("");
+      resetEnrollForm();
       utils.batismo.getEnrollments.invalidate();
     },
     onError: (error) => {
@@ -57,6 +66,42 @@ function BaptismClassCard({ cls, churchId, people }: {
       toast.error(error.message || "Erro ao inscrever");
     },
   });
+
+  const createPersonMutation = trpc.people.create.useMutation({
+    onSuccess: (person) => {
+      utils.people.list.invalidate();
+      if (person?.id) {
+        enrollMutation.mutate({ baptismClassId: cls.id, personId: person.id, churchId });
+      } else {
+        setEnrollError("Pessoa criada, mas não foi possível inscrevê-la. Tente pela lista de pessoas.");
+      }
+    },
+    onError: (error) => {
+      setEnrollError(error.message || "Erro ao cadastrar a pessoa");
+      toast.error(error.message || "Erro ao cadastrar a pessoa");
+    },
+  });
+
+  const enrollBusy = enrollMutation.isPending || createPersonMutation.isPending;
+
+  function handleEnrollConfirm() {
+    setEnrollError(null);
+    if (enrollMode === "nova") {
+      const fullName = newPerson.fullName.trim();
+      if (fullName.length < 2) {
+        setEnrollError("Informe o nome completo da pessoa.");
+        return;
+      }
+      createPersonMutation.mutate({
+        churchId,
+        fullName,
+        whatsapp: newPerson.whatsapp.trim() || undefined,
+      });
+      return;
+    }
+    if (!selectedPersonId) return;
+    enrollMutation.mutate({ baptismClassId: cls.id, personId: Number(selectedPersonId), churchId });
+  }
 
   const updateMutation = trpc.batismo.updateEnrollment.useMutation({
     onSuccess: () => {
@@ -205,7 +250,7 @@ function BaptismClassCard({ cls, churchId, people }: {
           </div>
         )}
 
-        <Dialog open={enrollOpen} onOpenChange={(nextOpen) => { setEnrollOpen(nextOpen); if (nextOpen) setEnrollError(null); }}>
+        <Dialog open={enrollOpen} onOpenChange={(nextOpen) => { setEnrollOpen(nextOpen); if (nextOpen) resetEnrollForm(); }}>
           <DialogTrigger asChild>
             <Button size="sm" className="w-full bg-[#1e3a5f] hover:bg-[#1e3a5f]/90 text-white">
               <Plus className="h-4 w-4 mr-1" /> Inscrever Pessoa
@@ -217,22 +262,52 @@ function BaptismClassCard({ cls, churchId, people }: {
             </DialogHeader>
             <div className="space-y-4 pt-2">
               {enrollError && <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{enrollError}</div>}
-              <Select value={selectedPersonId} onValueChange={(value) => { setEnrollError(null); setSelectedPersonId(value); }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione a pessoa..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {people.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>{p.fullName}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="inline-flex w-full rounded-full border border-border bg-muted/30 p-0.5 text-xs">
+                {([
+                  { key: "existente", label: "Pessoa já cadastrada" },
+                  { key: "nova", label: "Nova pessoa" },
+                ] as { key: "existente" | "nova"; label: string }[]).map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => { setEnrollError(null); setEnrollMode(tab.key); }}
+                    className={`flex-1 rounded-full px-3 py-1.5 font-medium transition-colors active:scale-[0.98] ${enrollMode === tab.key ? "bg-[#1e3a5f] text-white shadow-sm" : "text-muted-foreground hover:text-[#1e3a5f]"}`}
+                    aria-pressed={enrollMode === tab.key}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              {enrollMode === "existente" ? (
+                <Select value={selectedPersonId} onValueChange={(value) => { setEnrollError(null); setSelectedPersonId(value); }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a pessoa..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {people.map((p) => (
+                      <SelectItem key={p.id} value={String(p.id)}>{p.fullName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <Label>Nome completo *</Label>
+                    <Input value={newPerson.fullName} onChange={(e) => { setEnrollError(null); setNewPerson({ ...newPerson, fullName: e.target.value }); }} placeholder="Nome da pessoa" />
+                  </div>
+                  <div>
+                    <Label>WhatsApp (opcional)</Label>
+                    <Input value={newPerson.whatsapp} onChange={(e) => setNewPerson({ ...newPerson, whatsapp: e.target.value })} placeholder="(11) 99999-9999" inputMode="tel" />
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">A pessoa será cadastrada na igreja (sem login) e inscrita nesta turma. Você pode completar os dados depois em Pessoas.</p>
+                </div>
+              )}
               <Button
                 className="w-full bg-[#1e3a5f] text-white"
-                disabled={!selectedPersonId || enrollMutation.isPending}
-                onClick={() => enrollMutation.mutate({ baptismClassId: cls.id, personId: Number(selectedPersonId), churchId })}
+                disabled={enrollBusy || (enrollMode === "existente" ? !selectedPersonId : newPerson.fullName.trim().length < 2)}
+                onClick={handleEnrollConfirm}
               >
-                {enrollMutation.isPending ? "Inscrevendo..." : "Confirmar Inscrição"}
+                {enrollBusy ? "Inscrevendo..." : enrollMode === "nova" ? "Cadastrar e inscrever" : "Confirmar Inscrição"}
               </Button>
             </div>
           </DialogContent>
