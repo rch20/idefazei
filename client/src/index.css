@@ -401,7 +401,9 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-brand { display: inline-flex; min-width: 0; align-items: center; gap: .75rem; color: inherit; font-family: "Playfair Display", serif; font-size: clamp(1.1rem, 4vw, 1.45rem); font-weight: 700; text-decoration: none; }
 .tenant-public-logo { width: 2.5rem; height: 2.5rem; flex: 0 0 auto; border-radius: .65rem; object-fit: contain; }
 .tenant-public-mark { display: grid; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; place-items: center; border-radius: .65rem; background: var(--tenant-primary, #1e3a5f); color: var(--tenant-secondary, #c9a84c); }
-.tenant-public-login { color: inherit; font-size: .875rem; font-weight: 700; text-decoration: none; }
+.tenant-public-login { display: inline-flex; align-items: center; color: inherit; font-size: .875rem; font-weight: 700; text-decoration: none; border: 1px solid color-mix(in srgb, var(--tenant-primary, #1e3a5f) 28%, transparent); border-radius: 999px; padding: .45rem .95rem; transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease; }
+.tenant-public-login:active { transform: scale(.97); }
+@media (hover: hover) and (pointer: fine) { .tenant-public-login:hover { background: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 8%, transparent); border-color: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 45%, transparent); } }
 
 .tenant-public-hero { position: relative; display: grid; min-height: clamp(30rem, 78dvh, 48rem); align-items: center; overflow: clip; background-color: var(--tenant-primary, #1e3a5f); background-image: radial-gradient(130% 92% at 76% 14%, color-mix(in srgb, var(--tenant-primary, #1e3a5f) 74%, white) 0%, var(--tenant-primary, #1e3a5f) 46%, color-mix(in srgb, var(--tenant-primary, #1e3a5f) 72%, black) 100%); background-position: center; background-size: cover; color: white; }
 .tenant-public-hero::after { position: absolute; inset: auto -20% -30% auto; width: min(34rem, 82vw); aspect-ratio: 1; border: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 52%, transparent); border-radius: 999px; content: ""; pointer-events: none; }
@@ -421,8 +423,8 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-hero .tenant-public-eyebrow { border: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 55%, transparent); border-radius: 999px; padding: .4rem .9rem; background: color-mix(in srgb, var(--tenant-secondary, #c9a84c) 14%, transparent); }
 @supports (backdrop-filter: blur(2px)) { .tenant-public-hero .tenant-public-eyebrow { backdrop-filter: blur(5px); } }
 .tenant-public-hero h1, .tenant-public-prose h2 { max-width: 15ch; margin: 0; font-family: "Playfair Display", serif; font-size: clamp(2.7rem, 9vw, 6.25rem); line-height: .98; letter-spacing: -0.02em; text-wrap: balance; }
-.tenant-public-hero h1 { margin-inline: auto; color: white; }
-.tenant-public-hero p { max-width: 43rem; margin: 1.5rem auto 2rem; color: rgb(255 255 255 / 82%); font-family: "Cormorant Garamond", serif; font-size: clamp(1.3rem, 4vw, 1.75rem); line-height: 1.45; }
+.tenant-public-hero h1 { margin-inline: auto; color: white; text-shadow: 0 2px 22px rgba(0, 0, 0, .3); }
+.tenant-public-hero p { max-width: 43rem; margin: 1.5rem auto 2rem; color: rgb(255 255 255 / 86%); font-family: "Cormorant Garamond", serif; font-size: clamp(1.3rem, 4vw, 1.75rem); line-height: 1.45; text-shadow: 0 1px 12px rgba(0, 0, 0, .32); }
 .tenant-public-cta { width: min(100%, 26rem); max-width: 100%; background: var(--tenant-secondary, #c9a84c); color: var(--tenant-primary, #1e3a5f); }
 .tenant-public-cta a { display: inline-flex; width: 100%; align-items: center; justify-content: center; gap: .65rem; white-space: normal; }
 .tenant-public-cell-cta { display: inline-flex; width: min(100%, 26rem); min-height: 2.25rem; align-items: center; justify-content: center; gap: .38rem; margin-top: .6rem; border: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 58%, white); border-radius: .72rem; background: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 18%, transparent); padding: .28rem .7rem; color: white; font-size: .78rem; font-weight: 600; line-height: 1.2; text-align: center; text-decoration: none; backdrop-filter: blur(8px); transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease; }
@@ -454,7 +456,7 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
   .tenant-public-cell-cta { min-height: 2.15rem; padding: .24rem .6rem; font-size: .74rem; }
 }
 .tenant-public-prose { max-width: 52rem; }
-.tenant-public-prose h2 { max-width: 18ch; font-size: clamp(2.15rem, 6vw, 4.25rem); }
+.tenant-public-prose h2 { max-width: 18ch; font-size: clamp(1.85rem, 4.2vw, 3rem); }
 .tenant-public-prose p { max-width: 65ch; margin: 1.5rem 0 0; color: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 68%, white); font-size: clamp(1rem, 2.6vw, 1.15rem); line-height: 1.8; overflow-wrap: anywhere; }
 .tenant-public-contact-section { background: color-mix(in srgb, var(--tenant-secondary, #c9a84c) 11%, #f8f4ed); }
 .tenant-public-contact-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
