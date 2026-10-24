@@ -8983,6 +8983,13 @@ export async function markBaptismPreparationComplete(churchId: number, enrollmen
     .where(and(eq(baptismEnrollments.id, enrollmentId), eq(baptismEnrollments.churchId, churchId), eq(baptismEnrollments.personId, personId)));
 }
 
+/** Matricula a Pessoa no curso de Fundamentos se ainda não houver matrícula ativa (idempotente). */
+export async function ensureFoundationCourseEnrollment(churchId: number, courseId: number, personId: number) {
+  const existing = await resolveFoundationEnrollmentForPerson({ personId, churchId, courseId, context: "current" });
+  if (existing) return;
+  await enrollInCourse({ courseId, personId });
+}
+
 export async function setChurchBaptismStudy(churchId: number, studyId: number | null) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
