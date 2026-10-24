@@ -98,6 +98,7 @@ import {
   getActiveCellRoleKeysByPerson,
   getChurchById,
   getChurchBySlug,
+  getPublicLogoUrlByChurch,
   getChurchMemberByUserId,
   getActiveChurchUserById,
   getChurchMembersByChurch,
@@ -11950,11 +11951,13 @@ const treasuryRouter = router({
         code: "NOT_FOUND",
         message: "Igreja não encontrada ou indisponível.",
       });
+    const logoUrl = await getPublicLogoUrlByChurch(church.id);
     const settings = await getPublicDonationSettingsByChurch(church.id);
-    if (!settings) return { enabled: false, churchName: church.name };
+    if (!settings) return { enabled: false, churchName: church.name, logoUrl };
     return {
       enabled: settings.publicDonationEnabled,
       churchName: church.name,
+      logoUrl,
       pixKeyType: settings.pixKeyType,
       pixKey: settings.pixKey,
       recipientName: settings.recipientName,

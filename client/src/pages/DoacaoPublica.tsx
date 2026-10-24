@@ -110,7 +110,7 @@ export default function DoacaoPublica() {
 
   return (
     <TenantPublicShell brand={brand}>
-      <header className="tenant-public-header"><div className="tenant-public-container tenant-public-header-inner"><Link href="/" className="tenant-public-brand"><span className="tenant-public-mark" aria-hidden="true">✦</span><span>{settings.churchName}</span></Link><Link className="tenant-public-login" href="/">Página inicial</Link></div></header>
+      <header className="tenant-public-header"><div className="tenant-public-container tenant-public-header-inner"><Link href="/" className="tenant-public-brand">{settings.logoUrl ? <img className="tenant-public-logo" src={settings.logoUrl} alt={`Logo ${settings.churchName}`} /> : <span className="tenant-public-mark" aria-hidden="true">✦</span>}<span>{settings.churchName}</span></Link><Link className="tenant-public-login" href="/">Página inicial</Link></div></header>
       <main className="tenant-public-section">
         <div className="tenant-public-container mx-auto max-w-5xl py-8 sm:py-14">
           <div className="mx-auto max-w-2xl text-center"><span className="tenant-public-eyebrow">Um gesto de fé e cuidado</span><h1 className="mt-3 font-display text-4xl leading-tight text-navy sm:text-5xl">Faça sua contribuição</h1><p className="mt-4 text-base leading-7 text-muted-foreground">Envie seu PIX e o comprovante com segurança. A equipe da {settings.churchName} conferirá o envio antes de registrar a entrada.</p></div>

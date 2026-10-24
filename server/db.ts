@@ -710,6 +710,17 @@ export async function getChurchBySlug(slug: string) {
   return result[0] ?? null;
 }
 
+/** Logo pública da igreja: tema personalizado tem prioridade, com fallback na logo institucional. */
+export async function getPublicLogoUrlByChurch(churchId: number): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [themeRows, churchRows] = await Promise.all([
+    db.select({ logoUrl: tenantThemes.logoUrl }).from(tenantThemes).where(eq(tenantThemes.churchId, churchId)).limit(1),
+    db.select({ logoUrl: churches.logoUrl }).from(churches).where(eq(churches.id, churchId)).limit(1),
+  ]);
+  return themeRows[0]?.logoUrl ?? churchRows[0]?.logoUrl ?? null;
+}
+
 export async function getChurchById(id: number) {
   const db = await getDb();
   if (!db) return null;
