@@ -252,6 +252,12 @@
       "file": "drizzle/0112_person_pending_photo.sql",
       "kind": "custom-additive",
       "sha256": "c5aa6ca419aea22d496be2d06f79453cdfeb158ac95e44e57d89a2ac4a522b08"
+    },
+    {
+      "id": "0113",
+      "file": "drizzle/0113_media_asset_person_photo.sql",
+      "kind": "custom-additive",
+      "sha256": "fcce3e66f8d2ddbf4f790616f21198f76075e8c35b556c442508a60bfd2e5767"
     }
   ]
 }
