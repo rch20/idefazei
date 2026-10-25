@@ -1896,6 +1896,54 @@ export async function updatePersonContact(churchId: number, personId: number, da
   return getPersonById(personId, churchId);
 }
 
+/**
+ * Auto-edição da própria ficha pelo membro ("Complete seu perfil").
+ * Atualiza apenas campos não-governados (dados pessoais + declaração de batismo).
+ * NUNCA toca em stage/roles/wonById/baptismDate (batismo oficial) — esses seguem sob a liderança.
+ */
+export async function updateMyPersonProfile(
+  churchId: number,
+  personId: number,
+  data: {
+    birthDate?: string | null;
+    gender?: "masculino" | "feminino" | "outro" | null;
+    maritalStatus?: "solteiro" | "casado" | "divorciado" | "viuvo" | "uniao_estavel" | null;
+    profession?: string | null;
+    education?: string | null;
+    conversionDate?: string | null;
+    previousChurch?: string | null;
+    declaredBaptized?: boolean;
+    declaredBaptismDate?: string | null;
+  },
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  const update: Record<string, unknown> = {};
+  const setNullable = (key: string, value: string | null | undefined) => {
+    if (value === undefined) return;
+    const trimmed = value?.trim() ?? "";
+    update[key] = trimmed ? trimmed : null;
+  };
+  if (data.birthDate !== undefined) update.birthDate = data.birthDate || null;
+  if (data.gender !== undefined) update.gender = data.gender ?? null;
+  if (data.maritalStatus !== undefined) update.maritalStatus = data.maritalStatus ?? null;
+  setNullable("profession", data.profession);
+  setNullable("education", data.education);
+  if (data.conversionDate !== undefined) update.conversionDate = data.conversionDate || null;
+  setNullable("previousChurch", data.previousChurch);
+  if (data.declaredBaptized !== undefined) update.declaredBaptized = data.declaredBaptized;
+  if (data.declaredBaptismDate !== undefined) update.declaredBaptismDate = data.declaredBaptismDate || null;
+
+  if (Object.keys(update).length > 0) {
+    await db
+      .update(people)
+      .set(update)
+      .where(and(eq(people.id, personId), eq(people.churchId, churchId)));
+  }
+  return getPersonById(personId, churchId);
+}
+
 export async function updatePerson(id: number, churchId: number, data: Partial<typeof people.$inferInsert>) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");

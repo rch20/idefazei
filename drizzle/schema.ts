@@ -314,6 +314,9 @@ export const people = mysqlTable("people", {
   conversionDate: date("conversionDate"),
   baptismDate: date("baptismDate"),
   previousChurch: varchar("previousChurch", { length: 255 }),
+  /** Declaração do próprio membro de que já foi batizado (ex.: em outra igreja). Não é o registro oficial; a liderança confirma. */
+  declaredBaptized: boolean("declaredBaptized").notNull().default(false),
+  declaredBaptismDate: date("declaredBaptismDate"),
   pastoralNotes: text("pastoralNotes"),
   // Funil de discipulado
   discipleshipStage: mysqlEnum("discipleshipStage", [

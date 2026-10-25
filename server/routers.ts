@@ -294,6 +294,7 @@ import {
   setCurrentCareAssignment,
   setPrimaryDiscipler,
   updatePersonContact,
+  updateMyPersonProfile,
   updatePerson,
   getDiscipleshipStageProgress,
   getDiscipleshipProgressByChurch,
@@ -2120,6 +2121,63 @@ const peopleRouter = router({
         }
         throw error;
       }
+    }),
+
+  // "Complete seu perfil": o próprio membro edita sua ficha (dados pessoais + declaração de batismo).
+  // NUNCA permite alterar stage/roles/wonById/baptismDate (batismo oficial) — esses seguem sob a liderança.
+  updateMyProfile: tenantProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        birthDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable()
+          .optional(),
+        gender: z.enum(["masculino", "feminino", "outro"]).nullable().optional(),
+        maritalStatus: z
+          .enum(["solteiro", "casado", "divorciado", "viuvo", "uniao_estavel"])
+          .nullable()
+          .optional(),
+        profession: z.string().trim().max(100).nullable().optional(),
+        education: z.string().trim().max(100).nullable().optional(),
+        conversionDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable()
+          .optional(),
+        previousChurch: z.string().trim().max(255).nullable().optional(),
+        declaredBaptized: z.boolean().optional(),
+        declaredBaptismDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullable()
+          .optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.tenantChurchId !== null && ctx.tenantChurchId !== input.churchId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "O tenant da sessão não corresponde à igreja informada.",
+        });
+      }
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Sua conta ainda não está vinculada a uma Pessoa.",
+        });
+      }
+
+      const { churchId, ...data } = input;
+      const person = await updateMyPersonProfile(churchId, actor.personId, data);
+      if (!person)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Sua ficha não foi encontrada nesta igreja.",
+        });
+      return person;
     }),
 
   journey: protectedProcedure

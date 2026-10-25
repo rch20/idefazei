@@ -240,6 +240,12 @@
       "file": "drizzle/0110_baptism_preparation_completed.sql",
       "kind": "custom-additive",
       "sha256": "ddb0c0f4808bc1f11b9024dedfc3b4135d2a22d1b3af4aac34b79a82a50cd7d3"
+    },
+    {
+      "id": "0111",
+      "file": "drizzle/0111_person_declared_baptism.sql",
+      "kind": "custom-additive",
+      "sha256": "50bea965ca7441e5f29daa1a051aa1b346340447e777eac9d661da0738944340"
     }
   ]
 }
