@@ -119,13 +119,13 @@ const navItems: NavItem[] = [
   { icon: Home, label: "Início", path: "/app/inicio", group: "principal" },
   { icon: UserRound, label: "Meu painel", path: "/app/membro", group: "principal" },
   { icon: LayoutDashboard, label: "Visão geral", path: "/app/dashboard", group: "principal", accessKey: "isExecutive" },
-  { icon: Heart, label: "Cuidado", path: "/app/cuidado", group: "cuidado", accessKey: "isPastoralWorker" },
+  { icon: Heart, label: "Painel de cuidado", path: "/app/cuidado", group: "cuidado", accessKey: "isPastoralWorker" },
   { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "cuidado", accessKey: "isExecutive" },
   { icon: HeartHandshake, label: "Consolidação", path: "/app/consolidacao", group: "cuidado", accessKey: "canAccessVisits" },
   { icon: Shield, label: "Aconselhamento", path: "/app/aconselhamento", group: "cuidado", roles: ["pastor_presidente", "pastor_local", "supervisor"] },
   { icon: MessageCircle, label: "Pedidos de Oração", path: "/app/oracao", group: "cuidado" },
   { icon: Route, label: "Painel da formação", path: "/app/funil", group: "discipulado", accessKey: "isExecutive" },
-  { icon: Flame, label: "Novas Almas", path: "/app/almas", group: "discipulado" },
+  { icon: Flame, label: "Ganhar almas", path: "/app/almas", group: "discipulado" },
   { icon: School, label: "Escola de Fundamentos", path: "/app/escola-fundamentos", group: "discipulado" },
   { icon: Droplets, label: "Batismo nas Águas", path: "/app/batismo", group: "discipulado", accessKey: "isExecutive" },
   { icon: Sparkles, label: "Encontro com Deus", path: "/app/encontro-com-deus", group: "discipulado", accessKey: "canManageEncounter", requiresEncounterAccess: true },
@@ -153,18 +153,20 @@ const navItems: NavItem[] = [
 type QuickAccessItem = { icon: typeof Home; label: string; mobileLabel: string; path: string; accessKey?: keyof ChurchAccessSummary };
 
 const quickAccessItems: QuickAccessItem[] = [
+  { icon: UserRound, label: "Meu painel", mobileLabel: "Painel", path: "/app/membro" },
   { icon: MessageCircle, label: "Pedido de oração", mobileLabel: "Oração", path: "/app/oracao" },
-  { icon: Flame, label: "Nova alma", mobileLabel: "Nova alma", path: "/app/almas" },
+  { icon: Flame, label: "Ganhar almas", mobileLabel: "Almas", path: "/app/almas" },
   { icon: CalendarDays, label: "Eventos", mobileLabel: "Eventos", path: "/app/eventos", accessKey: "isExecutive" },
-  { icon: Users, label: "Meu painel", mobileLabel: "Meu painel", path: "/app/membro" },
 ];
 
-// O catálogo desktop permanece completo. No mobile, Início é a âncora permanente;
-// Meu painel continua disponível no menu Mais, sem ocupar um atalho da barra.
+// No mobile, Início é a âncora permanente e "Meu painel" fica logo em seguida
+// (é o destino que o membro mais usa). A barra mostra, no máximo, Início + 3 itens
+// visíveis + "Mais"; o que sobrar continua acessível pelo menu.
+const MOBILE_QUICK_ACCESS_LIMIT = 4; // Início + 3 (o botão "Mais" é somado à parte)
 function getMobileQuickAccessItems(homePath: string): QuickAccessItem[] {
   return [
-    { icon: LayoutDashboard, label: "Início", mobileLabel: "Início", path: homePath },
-    ...quickAccessItems.filter((item) => item.path !== "/app/membro"),
+    { icon: Home, label: "Início", mobileLabel: "Início", path: homePath },
+    ...quickAccessItems,
   ];
 }
 
@@ -207,7 +209,7 @@ const roleLabels: Record<string, string> = {
 function MobileQuickNav({ onMenuClick, onNavigate, menuOpen }: { onMenuClick: () => void; onNavigate: () => void; menuOpen: boolean }) {
   const [location] = useLocation();
   const { accessSummary } = useChurch();
-  const visibleQuickAccess = getVisibleQuickAccess(accessSummary, getMobileQuickAccessItems(getChurchHomePath(accessSummary)));
+  const visibleQuickAccess = getVisibleQuickAccess(accessSummary, getMobileQuickAccessItems(getChurchHomePath(accessSummary))).slice(0, MOBILE_QUICK_ACCESS_LIMIT);
 
   return (
     <nav
@@ -332,20 +334,26 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
             const items = navItems.filter((i) => !i.underConstruction && i.group === group.key && (!i.roles || i.roles.some((role) => effectiveRoles.includes(role))) && (!i.accessKey || Boolean(accessSummary?.[i.accessKey])) && (!i.requiresEncounterAccess || encounterAccessQuery.data === true));
             if (!items.length) return null;
             const isFlat = group.key === "principal";
-            const isExpanded = isFlat || expandedGroups.includes(group.key);
+            // Grupos com um único item não precisam de recolher/expandir — vira rótulo simples.
+            const isSingle = items.length <= 1;
+            const isExpanded = isFlat || isSingle || expandedGroups.includes(group.key);
             const contextualGroupLabel = group.label;
             return (
               <section key={group.key} className="border-b border-white/5 pb-1 last:border-0">
-                {!isFlat && <button
-                  type="button"
-                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-white/45 transition-colors hover:bg-white/5 hover:text-white/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
-                  onClick={() => setExpandedGroups((current) => current.includes(group.key) ? current.filter((key) => key !== group.key) : [...current, group.key])}
-                  aria-expanded={isExpanded}
-                  aria-controls={`sidebar-group-${group.key}`}
-                >
-                  <span>{contextualGroupLabel}</span>
-                  <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} aria-hidden="true" />
-                </button>}
+                {!isFlat && (isSingle ? (
+                  <p className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-white/45">{contextualGroupLabel}</p>
+                ) : (
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-widest text-white/45 transition-colors hover:bg-white/5 hover:text-white/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+                    onClick={() => setExpandedGroups((current) => current.includes(group.key) ? current.filter((key) => key !== group.key) : [...current, group.key])}
+                    aria-expanded={isExpanded}
+                    aria-controls={`sidebar-group-${group.key}`}
+                  >
+                    <span>{contextualGroupLabel}</span>
+                    <ChevronRight className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} aria-hidden="true" />
+                  </button>
+                ))}
                 {isExpanded && (
                   <div id={`sidebar-group-${group.key}`} className="space-y-0.5 pb-1">
                     {items.map((item) => {
@@ -455,12 +463,24 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
               </button>
             </div>
           )}
-          <div className="flex items-center justify-between px-3 py-1">
-            <button type="button" onClick={() => setProfileOpen((open) => !open)} aria-expanded={profileOpen} aria-haspopup="dialog" aria-label={`Abrir conta de ${user?.name ?? "usuário"}`} title="Abrir conta" className="flex h-10 w-10 items-center justify-center rounded-full bg-gold/20 text-sm font-bold text-gold transition-colors hover:bg-gold/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70">
+          <button
+            type="button"
+            onClick={() => setProfileOpen((open) => !open)}
+            aria-expanded={profileOpen}
+            aria-haspopup="dialog"
+            aria-label={`Abrir conta de ${user?.name ?? "usuário"}`}
+            title="Minha conta"
+            className="mx-1 flex w-[calc(100%-0.5rem)] items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/70"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/20 text-sm font-bold text-gold">
               {user?.name?.charAt(0)?.toUpperCase() ?? "U"}
-            </button>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/35">Conta</p>
-          </div>
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-white/90">{user?.name ?? "Minha conta"}</span>
+              <span className="block text-[10px] font-semibold uppercase tracking-widest text-white/35">Conta e sair</span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-white/35" aria-hidden="true" />
+          </button>
         </div>
       </aside>
 
