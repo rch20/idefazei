@@ -27,6 +27,8 @@ type PersonRow = {
   conversionDate?: Date | string | null;
   baptismDate?: Date | string | null;
   previousChurch?: string | null;
+  declaredBaptized?: boolean | null;
+  declaredBaptismDate?: Date | string | null;
   pastoralNotes?: string | null;
 };
 
@@ -125,6 +127,9 @@ export default function PersonDetailsSection({ person, churchId, canEdit, canSee
       ["CEP", person.zipCode || "—"],
       ["Data de conversão", formatDate(person.conversionDate)],
       ["Data de batismo", formatDate(person.baptismDate)],
+      ...(!person.baptismDate && person.declaredBaptized
+        ? ([["Batismo informado pelo membro", `Sim (em outra igreja)${person.declaredBaptismDate ? ` — ${formatDate(person.declaredBaptismDate)}` : ""} · confirme para registrar oficialmente`]] as [string, string][])
+        : []),
       ["Igreja anterior", person.previousChurch || "—"],
     ];
     return (

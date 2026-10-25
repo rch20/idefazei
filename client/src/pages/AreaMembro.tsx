@@ -38,6 +38,18 @@ export default function AreaMembro() {
   const [activeTab, setActiveTab] = useState("perfil");
   const [contactOpen, setContactOpen] = useState(false);
   const [contactForm, setContactForm] = useState({ phone: "", whatsapp: "" });
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    birthDate: "",
+    gender: "" as "" | "masculino" | "feminino" | "outro",
+    maritalStatus: "" as "" | "solteiro" | "casado" | "divorciado" | "viuvo" | "uniao_estavel",
+    profession: "",
+    education: "",
+    conversionDate: "",
+    previousChurch: "",
+    declaredBaptized: false,
+    declaredBaptismDate: "",
+  });
   const [contributionOpen, setContributionOpen] = useState(false);
   const [contributionThankYouOpen, setContributionThankYouOpen] = useState(false);
   const [contributionThankYouMessage, setContributionThankYouMessage] = useState(DEFAULT_ONLINE_CONTRIBUTION_THANK_YOU_MESSAGE);
@@ -87,6 +99,15 @@ export default function AreaMembro() {
     onError: (error) => toast.error(error.message),
   });
 
+  const updateProfile = trpc.people.updateMyProfile.useMutation({
+    onSuccess: () => {
+      if (churchId && personId) void utils.people.getById.invalidate({ churchId, id: personId });
+      setProfileOpen(false);
+      toast.success("Perfil atualizado. Sua ficha ficou mais completa.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
   const submitContribution = trpc.treasury.submitOnlineContribution.useMutation({
     onSuccess: async () => {
       setContributionOpen(false);
@@ -104,6 +125,46 @@ export default function AreaMembro() {
     setContactForm({ phone: member?.phone ?? "", whatsapp: member?.whatsapp ?? "" });
     setContactOpen(true);
   };
+
+  const toDateInput = (value: unknown) => {
+    if (!value) return "";
+    const d = new Date(value as string);
+    return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  };
+
+  const openProfileEditor = () => {
+    setProfileForm({
+      birthDate: toDateInput(member?.birthDate),
+      gender: (member?.gender as typeof profileForm.gender) ?? "",
+      maritalStatus: (member?.maritalStatus as typeof profileForm.maritalStatus) ?? "",
+      profession: member?.profession ?? "",
+      education: member?.education ?? "",
+      conversionDate: toDateInput(member?.conversionDate),
+      previousChurch: member?.previousChurch ?? "",
+      declaredBaptized: Boolean(member?.declaredBaptized),
+      declaredBaptismDate: toDateInput(member?.declaredBaptismDate),
+    });
+    setProfileOpen(true);
+  };
+
+  // Batismo oficial (registrado pela liderança). Se existir, a declaração do membro é só leitura.
+  const hasOfficialBaptism = Boolean(member?.baptismDate);
+
+  // Completude da ficha: campos que o próprio membro pode preencher.
+  const profileFields = member
+    ? [
+        Boolean(member.birthDate),
+        Boolean(member.gender),
+        Boolean(member.maritalStatus),
+        Boolean(member.profession),
+        Boolean(member.conversionDate),
+        hasOfficialBaptism || Boolean(member.declaredBaptized),
+      ]
+    : [];
+  const profileFilled = profileFields.filter(Boolean).length;
+  const profileTotal = profileFields.length || 1;
+  const profileComplete = profileFilled >= profileTotal;
+  const profilePercent = Math.round((profileFilled / profileTotal) * 100);
 
   const openContributionForm = () => {
     setContributionError(null);
@@ -419,7 +480,32 @@ export default function AreaMembro() {
         </TabsList>
 
         {/* Perfil */}
-        <TabsContent value="perfil" className="mt-4">
+        <TabsContent value="perfil" className="mt-4 space-y-4">
+          {member && personId > 0 && !profileComplete && (
+            <Card className="border-[#c9a84c]/40 bg-[#c9a84c]/[0.07]">
+              <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[#1e3a5f] flex items-center gap-2">
+                    <User className="h-4 w-4 text-[#c9a84c]" />
+                    Complete seu perfil
+                  </p>
+                  <p className="mt-1 text-xs text-[#1e3a5f]/60">
+                    Preencha seus dados para deixar sua ficha completa. Leva menos de um minuto.
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-1.5 w-32 overflow-hidden rounded-full bg-[#1e3a5f]/10">
+                      <div className="h-full rounded-full bg-[#c9a84c] transition-all" style={{ width: `${profilePercent}%` }} />
+                    </div>
+                    <span className="text-[11px] font-medium text-[#1e3a5f]/60">{profilePercent}%</span>
+                  </div>
+                </div>
+                <Button type="button" size="sm" className="w-full shrink-0 bg-[#1e3a5f] text-white hover:bg-[#162d4a] sm:w-auto" onClick={openProfileEditor}>
+                  <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                  Completar agora
+                </Button>
+              </CardContent>
+            </Card>
+          )}
           <div className="grid md:grid-cols-2 gap-4">
             <Card className="border-[#1e3a5f]/10">
             <CardHeader className="flex flex-col items-stretch justify-between gap-3 pb-3 sm:flex-row sm:items-center">
@@ -464,11 +550,17 @@ export default function AreaMembro() {
             </Card>
 
             <Card className="border-[#1e3a5f]/10">
-              <CardHeader className="pb-3">
+              <CardHeader className="flex flex-col items-stretch justify-between gap-3 pb-3 sm:flex-row sm:items-center">
                 <CardTitle className="text-[#1e3a5f] font-serif text-base flex items-center gap-2">
                   <Church className="w-4 h-4 text-[#c9a84c]" />
                   Dados Espirituais
                 </CardTitle>
+                {member && personId > 0 && (
+                  <Button type="button" variant="outline" size="sm" className="w-full shrink-0 sm:w-auto" onClick={openProfileEditor}>
+                    <Pencil className="w-3.5 h-3.5 mr-1.5" />
+                    Editar perfil
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="space-y-3">
                 {loadingPeople ? (
@@ -477,7 +569,15 @@ export default function AreaMembro() {
                   <>
                     {[
                       { icon: Star, label: "Etapa principal da Jornada", value: member.discipleshipStage ?? "Nova Alma" },
-                      { icon: CheckCircle2, label: "Batizado", value: member.baptismDate ? `Sim — ${new Date(member.baptismDate).toLocaleDateString("pt-BR")}` : "Não" },
+                      {
+                        icon: CheckCircle2,
+                        label: "Batizado",
+                        value: member.baptismDate
+                          ? `Sim — ${new Date(member.baptismDate).toLocaleDateString("pt-BR")}`
+                          : member.declaredBaptized
+                            ? `Sim (informado por você${member.declaredBaptismDate ? ` — ${new Date(member.declaredBaptismDate).toLocaleDateString("pt-BR")}` : ""}) · a liderança confirma`
+                            : "Não",
+                      },
                       { icon: Heart, label: "Data de Conversão", value: member.conversionDate ? new Date(member.conversionDate).toLocaleDateString("pt-BR") : "—" },
                       { icon: MapPin, label: "Igreja Anterior", value: member.previousChurch ?? "—" },
                     ].map(({ icon: Icon, label, value }) => (
@@ -875,6 +975,127 @@ export default function AreaMembro() {
               <Button type="button" variant="outline" onClick={() => setContactOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={updateContact.isPending}>
                 {updateContact.isPending ? "Salvando..." : "Salvar contato"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-[#1e3a5f]">Complete seu perfil</DialogTitle>
+            <DialogDescription>
+              Preencha seus próprios dados. Cargo e etapa da jornada continuam sob a liderança da igreja.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!churchId || !personId) return;
+              updateProfile.mutate({
+                churchId,
+                birthDate: profileForm.birthDate || null,
+                gender: profileForm.gender || null,
+                maritalStatus: profileForm.maritalStatus || null,
+                profession: profileForm.profession.trim() || null,
+                education: profileForm.education.trim() || null,
+                conversionDate: profileForm.conversionDate || null,
+                previousChurch: profileForm.previousChurch.trim() || null,
+                ...(hasOfficialBaptism
+                  ? {}
+                  : {
+                      declaredBaptized: profileForm.declaredBaptized,
+                      declaredBaptismDate: profileForm.declaredBaptized ? (profileForm.declaredBaptismDate || null) : null,
+                    }),
+              });
+            }}
+            className="space-y-4"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="profile-birth">Data de nascimento</Label>
+                <Input id="profile-birth" type="date" value={profileForm.birthDate} onChange={(e) => setProfileForm((c) => ({ ...c, birthDate: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="profile-gender">Sexo</Label>
+                <Select value={profileForm.gender || undefined} onValueChange={(v) => setProfileForm((c) => ({ ...c, gender: v as typeof c.gender }))}>
+                  <SelectTrigger id="profile-gender"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="masculino">Masculino</SelectItem>
+                    <SelectItem value="feminino">Feminino</SelectItem>
+                    <SelectItem value="outro">Outro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="profile-marital">Estado civil</Label>
+                <Select value={profileForm.maritalStatus || undefined} onValueChange={(v) => setProfileForm((c) => ({ ...c, maritalStatus: v as typeof c.maritalStatus }))}>
+                  <SelectTrigger id="profile-marital"><SelectValue placeholder="Selecione" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="solteiro">Solteiro(a)</SelectItem>
+                    <SelectItem value="casado">Casado(a)</SelectItem>
+                    <SelectItem value="divorciado">Divorciado(a)</SelectItem>
+                    <SelectItem value="viuvo">Viúvo(a)</SelectItem>
+                    <SelectItem value="uniao_estavel">União estável</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="profile-profession">Profissão</Label>
+                <Input id="profile-profession" maxLength={100} value={profileForm.profession} onChange={(e) => setProfileForm((c) => ({ ...c, profession: e.target.value }))} />
+              </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="profile-education">Escolaridade</Label>
+                <Input id="profile-education" maxLength={100} placeholder="Ex.: Ensino médio completo" value={profileForm.education} onChange={(e) => setProfileForm((c) => ({ ...c, education: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="profile-conversion">Data de conversão</Label>
+                <Input id="profile-conversion" type="date" value={profileForm.conversionDate} onChange={(e) => setProfileForm((c) => ({ ...c, conversionDate: e.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="profile-prevchurch">Igreja anterior</Label>
+                <Input id="profile-prevchurch" maxLength={255} placeholder="De onde você veio" value={profileForm.previousChurch} onChange={(e) => setProfileForm((c) => ({ ...c, previousChurch: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-[#1e3a5f]/10 bg-[#1e3a5f]/[0.03] p-3 space-y-3">
+              <p className="text-sm font-semibold text-[#1e3a5f] flex items-center gap-2">
+                <Droplets className="h-4 w-4 text-[#c9a84c]" />
+                Batismo
+              </p>
+              {hasOfficialBaptism ? (
+                <p className="text-xs text-[#1e3a5f]/70">
+                  Seu batismo já está registrado pela igreja em {new Date(member!.baptismDate as string).toLocaleDateString("pt-BR")}.
+                </p>
+              ) : (
+                <>
+                  <label className="flex items-start gap-2 text-sm text-[#1e3a5f]">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-4 w-4 rounded border-[#1e3a5f]/30"
+                      checked={profileForm.declaredBaptized}
+                      onChange={(e) => setProfileForm((c) => ({ ...c, declaredBaptized: e.target.checked }))}
+                    />
+                    <span>Já sou batizado(a) nas águas (ex.: em outra igreja)</span>
+                  </label>
+                  {profileForm.declaredBaptized && (
+                    <div className="space-y-2">
+                      <Label htmlFor="profile-baptism-date">Data do batismo (opcional)</Label>
+                      <Input id="profile-baptism-date" type="date" value={profileForm.declaredBaptismDate} onChange={(e) => setProfileForm((c) => ({ ...c, declaredBaptismDate: e.target.value }))} />
+                    </div>
+                  )}
+                  <p className="text-[11px] text-[#1e3a5f]/50">
+                    Essa é uma informação sua. O registro oficial é confirmado pela liderança.
+                  </p>
+                </>
+              )}
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => setProfileOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={updateProfile.isPending}>
+                {updateProfile.isPending ? "Salvando..." : "Salvar perfil"}
               </Button>
             </DialogFooter>
           </form>
