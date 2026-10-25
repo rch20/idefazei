@@ -1066,7 +1066,7 @@ export default function AreaMembro() {
               </p>
               {hasOfficialBaptism ? (
                 <p className="text-xs text-[#1e3a5f]/70">
-                  Seu batismo já está registrado pela igreja em {new Date(member!.baptismDate as string).toLocaleDateString("pt-BR")}.
+                  Seu batismo já está registrado pela igreja em {new Date(member!.baptismDate as Date).toLocaleDateString("pt-BR")}.
                 </p>
               ) : (
                 <>
