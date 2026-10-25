@@ -3,6 +3,8 @@ import { useChurch } from "@/components/ChurchLayout";
 import { trpc } from "@/lib/trpc";
 import { createIdempotencyKey } from "@/lib/idempotency";
 import { uploadOnlineContributionProof, validateOnlineContributionProof, type OnlineContributionProofUpload } from "@/lib/onlineContributionUpload";
+import { uploadChurchMedia } from "@/lib/mediaUpload";
+import { processProfilePhoto } from "@/lib/profilePhoto";
 import { parseBrlToCents } from "@/lib/treasury";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   User, Heart, BookOpen, MapPin, Calendar, Bell, Star, Pencil,
   Phone, Mail, Home, Church, CheckCircle2, Clock, AlertCircle, CircleDollarSign, Copy, FileCheck2, Upload, Loader2,
-  Droplets
+  Droplets, Camera
 } from "lucide-react";
 import { toast } from "sonner";
 import { DISCIPLESHIP_STAGE_LABELS } from "@/lib/discipleshipState";
@@ -98,6 +100,31 @@ export default function AreaMembro() {
     },
     onError: (error) => toast.error(error.message),
   });
+
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const setMyPhoto = trpc.people.setMyPhoto.useMutation({
+    onSuccess: () => {
+      if (churchId && personId) void utils.people.getById.invalidate({ churchId, id: personId });
+      toast.success("Foto enviada! Ela fica em análise e aparece após a aprovação da liderança.");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const handlePhotoSelect = async (file: File | undefined, resetInput: () => void) => {
+    if (!file || !churchId) return;
+    setUploadingPhoto(true);
+    try {
+      const processed = await processProfilePhoto(file);
+      const uploaded = await uploadChurchMedia(processed, { purpose: "person_photo", resourceType: "image" });
+      if (!uploaded.mediaAssetId) throw new Error("Não foi possível registrar a imagem. Tente novamente.");
+      await setMyPhoto.mutateAsync({ churchId, mediaAssetId: uploaded.mediaAssetId });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar a foto.");
+    } finally {
+      setUploadingPhoto(false);
+      resetInput();
+    }
+  };
 
   const updateProfile = trpc.people.updateMyProfile.useMutation({
     onSuccess: () => {
@@ -525,6 +552,18 @@ export default function AreaMembro() {
                   Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-4 w-full" />)
                 ) : member ? (
                   <>
+                    <div className="flex items-center gap-3 pb-1">
+                      {member.photoUrl ? (
+                        <img src={member.photoUrl} alt="Sua foto de perfil" className="h-14 w-14 shrink-0 rounded-full object-cover" />
+                      ) : (
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#c9a84c]/15 text-lg font-bold text-[#c9a84c]">
+                          {member.fullName?.charAt(0)?.toUpperCase() ?? "?"}
+                        </div>
+                      )}
+                      {member.pendingPhotoUrl && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"><Clock className="h-3 w-3" /> Foto em análise</span>
+                      )}
+                    </div>
                     {[
                       { icon: User, label: "Nome", value: member.fullName },
                       { icon: Mail, label: "E-mail", value: member.email ?? "—" },
@@ -1012,6 +1051,34 @@ export default function AreaMembro() {
             }}
             className="space-y-4"
           >
+            <div className="flex items-center gap-4 rounded-lg border border-[#1e3a5f]/10 bg-[#1e3a5f]/[0.03] p-3">
+              {member?.photoUrl ? (
+                <img src={member.photoUrl} alt="Sua foto de perfil" className="h-16 w-16 shrink-0 rounded-full object-cover" />
+              ) : (
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-[#1e3a5f]/10 text-xl font-bold text-[#1e3a5f]/60">
+                  {member?.fullName?.charAt(0)?.toUpperCase() ?? "?"}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-[#1e3a5f]">Foto de perfil</p>
+                <label className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#1e3a5f]/20 px-2.5 py-1.5 text-xs font-medium text-[#1e3a5f] transition-colors hover:bg-[#1e3a5f]/5">
+                  {uploadingPhoto ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
+                  {uploadingPhoto ? "Enviando..." : member?.photoUrl ? "Trocar foto" : "Enviar foto"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="sr-only"
+                    disabled={uploadingPhoto}
+                    onChange={(e) => { const f = e.target.files?.[0]; void handlePhotoSelect(f, () => { e.target.value = ""; }); }}
+                  />
+                </label>
+                {member?.pendingPhotoUrl ? (
+                  <p className="mt-1.5 flex items-center gap-1 text-[11px] text-amber-700"><Clock className="h-3 w-3" /> Foto em análise — aparece após a aprovação da liderança.</p>
+                ) : (
+                  <p className="mt-1.5 text-[11px] text-[#1e3a5f]/50">Imagem quadrada, até 12 MB. Passa por aprovação da liderança antes de aparecer.</p>
+                )}
+              </div>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="profile-birth">Data de nascimento</Label>
