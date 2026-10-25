@@ -90,6 +90,12 @@ export default function Oracao() {
     }
   }
 
+  function openNewTestemunho() {
+    setForm((current) => ({ ...current, type: "testemunho" }));
+    setFormError(null);
+    setOpen(true);
+  }
+
   const pedidos = (requests ?? []).filter((r) => r.type === "pedido");
   const testemunhos = (requests ?? []).filter((r) => r.type === "testemunho");
   const pedidosAtivos = pedidos.filter((r) => !r.answered);
@@ -103,22 +109,22 @@ export default function Oracao() {
           <h1 className="text-2xl font-bold font-display text-navy">Oração</h1>
             <p className="text-sm text-muted-foreground mt-1">{isPrayerManager ? "Pedidos recebidos e testemunhos da comunidade" : "Faça um pedido e acompanhe seus registros"}</p>
         </div>
-        <Button onClick={() => setOpen(true)} className="bg-navy hover:bg-navy-light text-white gap-2">
+        <Button onClick={() => { setForm((current) => ({ ...current, type: "pedido" })); setFormError(null); setOpen(true); }} className="bg-navy hover:bg-navy-light text-white gap-2">
           <Plus className="w-4 h-4" />
           Novo Pedido
         </Button>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         {[
           { label: "Em oração", value: pedidosAtivos.length, icon: Clock, tint: "text-rose-600", ring: "border-rose-100 bg-rose-50/40" },
           { label: "Atendidos", value: pedidosAtendidos.length, icon: CheckCircle2, tint: "text-emerald-600", ring: "border-emerald-100 bg-emerald-50/40" },
           { label: "Testemunhos", value: testemunhos.length, icon: Sparkles, tint: "text-amber-600", ring: "border-amber-100 bg-amber-50/40" },
         ].map((tile) => (
-          <div key={tile.label} className={`rounded-2xl border ${tile.ring} p-4 shadow-sm`}>
-            <div className="flex items-center gap-2">
-              <tile.icon className={`h-4 w-4 ${tile.tint}`} />
-              <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{tile.label}</span>
+          <div key={tile.label} className={`min-w-0 rounded-2xl border ${tile.ring} p-3 shadow-sm sm:p-4`}>
+            <div className="flex items-center gap-1.5">
+              <tile.icon className={`h-4 w-4 shrink-0 ${tile.tint}`} />
+              <span className="min-w-0 break-words text-[10px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground sm:text-[11px] sm:tracking-wider">{tile.label}</span>
             </div>
             <p className="mt-2 text-2xl font-bold text-navy">{tile.value}</p>
           </div>
@@ -243,20 +249,35 @@ export default function Oracao() {
             Testemunhos ({testemunhos.length})
           </h2>
           {testemunhos.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-10 text-center">
-              <Sparkles className="h-8 w-8 text-amber-200" />
-              <p className="text-sm text-muted-foreground">Nenhum testemunho registrado ainda.</p>
+            <div className="flex flex-col items-center gap-3 py-10 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-100/70">
+                <Sparkles className="h-6 w-6 text-amber-500" />
+              </div>
+              <div>
+                <p className="font-display text-base font-semibold text-navy">Nenhum testemunho ainda</p>
+                <p className="mx-auto mt-1 max-w-xs text-sm text-muted-foreground">Viu Deus agir? Registre aqui e encoraje a igreja a continuar orando e crendo.</p>
+              </div>
+              {!isPrayerManager && (
+                <Button type="button" variant="outline" className="gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50" onClick={openNewTestemunho}>
+                  <Sparkles className="h-4 w-4" />
+                  Compartilhar testemunho
+                </Button>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
               {testemunhos.map((r) => (
-                <div key={r.id} className="p-3 rounded-xl bg-amber-50/50 border border-amber-100">
-                  <p className="text-sm text-foreground">{r.content}</p>
-                  <div className="mt-1.5 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                    <span className="truncate">{r.visitorName ? `— ${r.visitorName}` : ""}</span>
-                    <span className="shrink-0">{formatPrayerDate(r.createdAt)}</span>
-                  </div>
-                </div>
+                <figure key={r.id} className="relative overflow-hidden rounded-xl border border-amber-100 bg-amber-50/50 p-4 pl-5">
+                  <span className="absolute inset-y-0 left-0 w-1 bg-amber-300" aria-hidden="true" />
+                  <blockquote className="text-sm italic leading-relaxed text-foreground">
+                    <Sparkles className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-amber-400" aria-hidden="true" />
+                    {r.content}
+                  </blockquote>
+                  <figcaption className="mt-2 flex items-center justify-between gap-2 text-xs">
+                    <span className="truncate font-semibold text-amber-700/90">{r.visitorName ? r.visitorName : "Testemunho"}</span>
+                    <span className="shrink-0 text-muted-foreground">{formatPrayerDate(r.createdAt)}</span>
+                  </figcaption>
+                </figure>
               ))}
             </div>
           )}
@@ -267,8 +288,10 @@ export default function Oracao() {
         <AdaptiveFormDialogContent>
           <div className={adaptiveFormDialogHeaderClassName}>
             <DialogTitle className="font-display text-navy flex items-center gap-2">
-              <HandHeart className="w-5 h-5 text-rose-500" />
-              {isPrayerManager ? "Registrar Pedido de Oração" : "Meu Pedido de Oração"}
+              {form.type === "testemunho" ? <Sparkles className="w-5 h-5 text-amber-500" /> : <HandHeart className="w-5 h-5 text-rose-500" />}
+              {form.type === "testemunho"
+                ? (isPrayerManager ? "Registrar testemunho" : "Compartilhar testemunho")
+                : (isPrayerManager ? "Registrar Pedido de Oração" : "Meu Pedido de Oração")}
             </DialogTitle>
           </div>
           <form onSubmit={handleSubmit} className="contents">
