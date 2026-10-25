@@ -32,7 +32,7 @@ export default function Oracao() {
   const [form, setForm] = useState({
     visitorName: "",
     visitorPhone: "",
-    type: "pedido" as const,
+    type: "pedido" as "pedido" | "testemunho",
     content: "",
     isPrivate: false,
   });
