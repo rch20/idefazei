@@ -1948,69 +1948,16 @@ export async function updateMyPersonProfile(
 // O membro envia a própria foto, que fica PENDENTE até a liderança aprovar.
 // A foto aprovada vai para people.photoUrl (exibida); a pendente nunca é exibida.
 
-export async function setMyPendingPersonPhoto(churchId: number, personId: number, assetId: number, url: string) {
+// Upload livre (sem moderação): a foto enviada pelo membro já vira a foto oficial.
+// As colunas pending* permanecem no schema mas não são mais usadas no fluxo.
+export async function setMyPersonPhoto(churchId: number, personId: number, url: string) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   await db
     .update(people)
-    .set({ pendingPhotoUrl: url, pendingPhotoAt: new Date(), pendingPhotoAssetId: assetId })
+    .set({ photoUrl: url, pendingPhotoUrl: null, pendingPhotoAt: null, pendingPhotoAssetId: null })
     .where(and(eq(people.id, personId), eq(people.churchId, churchId)));
   return getPersonById(personId, churchId);
-}
-
-export async function approvePersonPhoto(churchId: number, personId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const person = await getPersonById(personId, churchId);
-  if (!person) throw new Error("PERSON_NOT_FOUND");
-  if (!person.pendingPhotoUrl) throw new Error("NO_PENDING_PHOTO");
-  await db
-    .update(people)
-    .set({ photoUrl: person.pendingPhotoUrl, pendingPhotoUrl: null, pendingPhotoAt: null, pendingPhotoAssetId: null })
-    .where(and(eq(people.id, personId), eq(people.churchId, churchId)));
-  return getPersonById(personId, churchId);
-}
-
-export async function rejectPersonPhoto(churchId: number, personId: number) {
-  const db = await getDb();
-  if (!db) throw new Error("DB not available");
-  const person = await getPersonById(personId, churchId);
-  if (!person) throw new Error("PERSON_NOT_FOUND");
-  const assetId = person.pendingPhotoAssetId;
-  await db
-    .update(people)
-    .set({ pendingPhotoUrl: null, pendingPhotoAt: null, pendingPhotoAssetId: null })
-    .where(and(eq(people.id, personId), eq(people.churchId, churchId)));
-  if (assetId) {
-    try { await markMediaAssetDeleted(assetId, churchId); } catch { /* best-effort */ }
-  }
-  return getPersonById(personId, churchId);
-}
-
-export async function listPendingPersonPhotos(churchId: number) {
-  const db = await getDb();
-  if (!db) return [];
-  return db
-    .select({
-      id: people.id,
-      fullName: people.fullName,
-      pendingPhotoUrl: people.pendingPhotoUrl,
-      currentPhotoUrl: people.photoUrl,
-      pendingPhotoAt: people.pendingPhotoAt,
-    })
-    .from(people)
-    .where(and(eq(people.churchId, churchId), eq(people.active, true), isNotNull(people.pendingPhotoUrl)))
-    .orderBy(desc(people.pendingPhotoAt));
-}
-
-export async function countPendingPersonPhotos(churchId: number) {
-  const db = await getDb();
-  if (!db) return 0;
-  const rows = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(people)
-    .where(and(eq(people.churchId, churchId), eq(people.active, true), isNotNull(people.pendingPhotoUrl)));
-  return Number(rows[0]?.count ?? 0);
 }
 
 export async function updatePerson(id: number, churchId: number, data: Partial<typeof people.$inferInsert>) {

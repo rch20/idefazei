@@ -84,21 +84,6 @@ export default function PersonDetailsSection({ person, churchId, canEdit, canSee
     },
     onError: (error) => toast.error(error.message || "Não foi possível salvar os dados."),
   });
-  const approvePhoto = trpc.people.approvePhoto.useMutation({
-    onSuccess: async (result) => {
-      toast.success("Foto aprovada. Já aparece para a pessoa.");
-      await onSaved((result as PersonRow | null) ?? null);
-    },
-    onError: (error) => toast.error(error.message || "Não foi possível aprovar a foto."),
-  });
-  const rejectPhoto = trpc.people.rejectPhoto.useMutation({
-    onSuccess: async (result) => {
-      toast.success("Foto recusada e descartada.");
-      await onSaved((result as PersonRow | null) ?? null);
-    },
-    onError: (error) => toast.error(error.message || "Não foi possível recusar a foto."),
-  });
-  const photoBusy = approvePhoto.isPending || rejectPhoto.isPending;
   const set = (patch: Partial<FormState>) => setForm((current) => ({ ...current, ...patch }));
   const orNull = (value: string) => (value.trim() ? value.trim() : null);
 
@@ -162,37 +147,12 @@ export default function PersonDetailsSection({ person, churchId, canEdit, canSee
           </div>
         </div>
 
-        {canEdit && person.pendingPhotoUrl ? (
-          <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50/60 p-3">
-            <p className="text-xs font-semibold text-amber-900">Foto de perfil aguardando aprovação</p>
-            <p className="mt-0.5 text-[11px] text-amber-800/80">A pessoa enviou uma nova foto. Aprove para exibi-la ou recuse para descartá-la.</p>
-            <div className="mt-3 flex flex-wrap items-center gap-4">
-              <figure className="text-center">
-                <img src={person.pendingPhotoUrl} alt="Foto enviada (pendente)" className="h-20 w-20 rounded-full object-cover ring-2 ring-amber-400" />
-                <figcaption className="mt-1 text-[10px] text-amber-800">Nova (pendente)</figcaption>
-              </figure>
-              {person.photoUrl && (
-                <figure className="text-center opacity-80">
-                  <img src={person.photoUrl} alt="Foto atual" className="h-16 w-16 rounded-full object-cover" />
-                  <figcaption className="mt-1 text-[10px] text-muted-foreground">Atual</figcaption>
-                </figure>
-              )}
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button type="button" size="sm" className="bg-emerald-600 text-white hover:bg-emerald-700" disabled={photoBusy} onClick={() => approvePhoto.mutate({ churchId, personId: person.id })}>
-                  {approvePhoto.isPending ? "Aprovando..." : "Aprovar foto"}
-                </Button>
-                <Button type="button" size="sm" variant="outline" className="border-rose-300 text-rose-700 hover:bg-rose-50" disabled={photoBusy} onClick={() => rejectPhoto.mutate({ churchId, personId: person.id })}>
-                  {rejectPhoto.isPending ? "Recusando..." : "Recusar"}
-                </Button>
-              </div>
-            </div>
-          </div>
-        ) : person.photoUrl ? (
+        {person.photoUrl && (
           <div className="mt-4 flex items-center gap-3">
             <img src={person.photoUrl} alt={`Foto de ${person.fullName}`} className="h-14 w-14 rounded-full object-cover" />
-            <span className="text-xs text-muted-foreground">Foto de perfil aprovada.</span>
+            <span className="text-xs text-muted-foreground">Foto de perfil.</span>
           </div>
-        ) : null}
+        )}
 
         <dl className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2">
           {rows.map(([label, value]) => (

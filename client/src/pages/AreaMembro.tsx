@@ -105,7 +105,7 @@ export default function AreaMembro() {
   const setMyPhoto = trpc.people.setMyPhoto.useMutation({
     onSuccess: () => {
       if (churchId && personId) void utils.people.getById.invalidate({ churchId, id: personId });
-      toast.success("Foto enviada! Ela fica em análise e aparece após a aprovação da liderança.");
+      toast.success("Foto de perfil atualizada!");
     },
     onError: (error) => toast.error(error.message),
   });
@@ -559,9 +559,6 @@ export default function AreaMembro() {
                         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#c9a84c]/15 text-lg font-bold text-[#c9a84c]">
                           {member.fullName?.charAt(0)?.toUpperCase() ?? "?"}
                         </div>
-                      )}
-                      {member.pendingPhotoUrl && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"><Clock className="h-3 w-3" /> Foto em análise</span>
                       )}
                     </div>
                     {[
@@ -1072,11 +1069,7 @@ export default function AreaMembro() {
                     onChange={(e) => { const f = e.target.files?.[0]; void handlePhotoSelect(f, () => { e.target.value = ""; }); }}
                   />
                 </label>
-                {member?.pendingPhotoUrl ? (
-                  <p className="mt-1.5 flex items-center gap-1 text-[11px] text-amber-700"><Clock className="h-3 w-3" /> Foto em análise — aparece após a aprovação da liderança.</p>
-                ) : (
-                  <p className="mt-1.5 text-[11px] text-[#1e3a5f]/50">Imagem quadrada, até 12 MB. Passa por aprovação da liderança antes de aparecer.</p>
-                )}
+                <p className="mt-1.5 text-[11px] text-[#1e3a5f]/50">Imagem quadrada, até 12 MB.</p>
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
