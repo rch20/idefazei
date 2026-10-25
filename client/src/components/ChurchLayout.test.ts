@@ -82,7 +82,7 @@ describe("confirmação de logout no painel", () => {
     expect(source).not.toContain('{ key: "celulas", label: "Equipes" }');
   });
 
-  it("oferece Início, atalhos aprovados e mantém Meu painel no menu completo", () => {
+  it("oferece Início, atalhos aprovados e traz Meu painel para a barra", () => {
     const source = readFileSync(resolve(process.cwd(), "client/src/components/ChurchLayout.tsx"), "utf8");
     expect(source).toContain('{ icon: Home, label: "Início", path: "/app/inicio", group: "principal" }');
     expect(source).toContain("const quickAccessItems: QuickAccessItem[] = [");
@@ -90,10 +90,11 @@ describe("confirmação de logout no painel", () => {
     expect(source).toContain('label: "Início", mobileLabel: "Início", path: homePath');
     expect(source).toContain('getChurchHomePath(accessSummary)');
     expect(source).toContain('label: "Pedido de oração", mobileLabel: "Oração", path: "/app/oracao"');
-    expect(source).toContain('label: "Nova alma", mobileLabel: "Nova alma", path: "/app/almas"');
+    expect(source).toContain('label: "Ganhar almas", mobileLabel: "Almas", path: "/app/almas"');
     expect(source).toContain('label: "Eventos", mobileLabel: "Eventos", path: "/app/eventos", accessKey: "isExecutive"');
-    expect(source).toContain('label: "Meu painel", mobileLabel: "Meu painel", path: "/app/membro"');
-    expect(source).toContain('...quickAccessItems.filter((item) => item.path !== "/app/membro")');
+    expect(source).toContain('label: "Meu painel", mobileLabel: "Painel", path: "/app/membro"');
+    expect(source).toContain('...quickAccessItems,');
+    expect(source).toContain('.slice(0, MOBILE_QUICK_ACCESS_LIMIT)');
     expect(source).toContain('{ icon: UserRound, label: "Meu painel", path: "/app/membro", group: "principal" }');
     expect(source).toContain('aria-label="Acesso rápido"');
     expect(source).toContain('aria-label="Acesso rápido móvel"');
