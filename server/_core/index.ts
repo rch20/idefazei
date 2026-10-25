@@ -433,7 +433,7 @@ async function startServer() {
     const allowedMimeTypes = new Set(["image/png", "image/jpeg", "image/webp", "video/mp4", "video/webm", "video/quicktime", "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "text/plain", "audio/mpeg", "audio/mp4", "audio/wav", "audio/ogg"]);
     const bb = Busboy({ headers: req.headers, limits: { fileSize: 32 * 1024 * 1024, files: 1 } });
     bb.on("field", (name, value) => {
-      if (name === "purpose" && ["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "tenant_public_hero", "certificate_logo", "public_video", "announcement_image", "event_flyer", "cell_study_attachment"].includes(value)) purpose = value as MediaPurpose;
+      if (name === "purpose" && ["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "tenant_public_hero", "certificate_logo", "public_video", "announcement_image", "event_flyer", "cell_study_attachment", "person_photo"].includes(value)) purpose = value as MediaPurpose;
       if (name === "resourceType" && ["image", "video", "raw"].includes(value)) resourceType = value as MediaResourceType;
     });
     bb.on("file", (_field, stream, info) => {
@@ -452,7 +452,7 @@ async function startServer() {
       if (TREASURY_ATTACHMENT_MIME_TYPES.has(mimeType) && !matchesTreasuryAttachmentSignature(fileBuffer, mimeType)) return res.status(415).json({ error: "O conteúdo do arquivo não corresponde ao formato informado." });
       const pastorRoles = new Set(["pastor_presidente", "pastor_local"]);
       const adminRoles = new Set(["pastor_presidente", "pastor_local", "secretario"]);
-      const imagePurposes = new Set<MediaPurpose>(["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "tenant_public_hero", "certificate_logo", "announcement_image", "event_flyer"]);
+      const imagePurposes = new Set<MediaPurpose>(["tenant_logo", "tenant_pwa_icon", "tenant_public_gallery", "tenant_public_hero", "certificate_logo", "announcement_image", "event_flyer", "person_photo"]);
       if (!imagePurposes.has(purpose) && purpose !== "public_video" && purpose !== "cell_study_attachment") return res.status(400).json({ error: "Finalidade de mídia inválida" });
       if (imagePurposes.has(purpose) && resourceType !== "image") return res.status(400).json({ error: "Esta finalidade aceita somente imagens" });
       if (purpose === "public_video" && resourceType !== "video") return res.status(400).json({ error: "Vídeos públicos exigem resourceType=video" });
@@ -464,6 +464,11 @@ async function startServer() {
       if (purpose === "event_flyer") {
         if (!adminRoles.has(churchUser.role)) return res.status(403).json({ error: "Permissão administrativa necessária para enviar o flyer" });
         if (fileBuffer.length > 4 * 1024 * 1024) return res.status(413).json({ error: "O flyer deve ter no máximo 4 MB" });
+      }
+      if (purpose === "person_photo") {
+        // Qualquer membro autenticado pode enviar a PRÓPRIA foto. Fica pendente até a liderança aprovar.
+        if (!churchUser.personId) return res.status(403).json({ error: "Seu usuário precisa estar vinculado a uma Pessoa para enviar foto." });
+        if (fileBuffer.length > 3 * 1024 * 1024) return res.status(413).json({ error: "A foto deve ter no máximo 3 MB" });
       }
       if (purpose === "cell_study_attachment") {
         const canUpload = adminRoles.has(churchUser.role) || await isCellStudyAdministrator(churchUser.churchId, churchUser.id);

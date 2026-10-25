@@ -282,7 +282,12 @@ export const people = mysqlTable("people", {
   id: int("id").autoincrement().primaryKey(),
   churchId: int("churchId").notNull(),
   // Dados pessoais
+  /** Foto de perfil aprovada (visível). A captura é moderada: o membro envia e a liderança aprova. */
   photoUrl: text("photoUrl"),
+  /** Foto enviada pelo membro aguardando aprovação da liderança. Não é exibida até ser aprovada. */
+  pendingPhotoUrl: text("pendingPhotoUrl"),
+  pendingPhotoAt: timestamp("pendingPhotoAt"),
+  pendingPhotoAssetId: int("pendingPhotoAssetId"),
   fullName: varchar("fullName", { length: 255 }).notNull(),
   cpf: varchar("cpf", { length: 14 }),
   rg: varchar("rg", { length: 20 }),

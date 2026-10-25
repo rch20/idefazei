@@ -16,6 +16,7 @@ export type MediaPurpose =
   | "announcement_image"
   | "event_flyer"
   | "cell_study_attachment"
+  | "person_photo"
   | "other";
 
 export interface UploadMediaInput {

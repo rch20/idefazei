@@ -295,6 +295,10 @@ import {
   setPrimaryDiscipler,
   updatePersonContact,
   updateMyPersonProfile,
+  setMyPendingPersonPhoto,
+  approvePersonPhoto,
+  rejectPersonPhoto,
+  listPendingPersonPhotos,
   updatePerson,
   getDiscipleshipStageProgress,
   getDiscipleshipProgressByChurch,
@@ -2178,6 +2182,68 @@ const peopleRouter = router({
           message: "Sua ficha não foi encontrada nesta igreja.",
         });
       return person;
+    }),
+
+  // Foto de perfil (moderada): o membro envia a PRÓPRIA foto (já salva via /api/media/upload,
+  // finalidade person_photo). Aqui só gravamos como PENDENTE a partir do id do asset — o servidor
+  // lê a URL confiável do próprio asset, o cliente nunca envia a URL (evita injeção).
+  setMyPhoto: tenantProcedure
+    .input(z.object({ churchId: z.number().int().positive(), mediaAssetId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      if (ctx.tenantChurchId !== null && ctx.tenantChurchId !== input.churchId) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "O tenant da sessão não corresponde à igreja informada." });
+      }
+      const actor = await requireChurchMember(ctx.user.id, input.churchId);
+      if (!actor.personId) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Sua conta ainda não está vinculada a uma Pessoa." });
+      }
+      const asset = await getActiveMediaAssetById(input.mediaAssetId, input.churchId);
+      if (!asset || asset.purpose !== "person_photo") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida para foto de perfil." });
+      }
+      const url = asset.secureUrl ?? asset.url;
+      if (!url) throw new TRPCError({ code: "BAD_REQUEST", message: "Imagem inválida para foto de perfil." });
+      await setMyPendingPersonPhoto(input.churchId, actor.personId, asset.id, url);
+      return { success: true };
+    }),
+
+  // Fila de moderação (liderança): lista fotos aguardando aprovação.
+  pendingPhotos: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      return listPendingPersonPhotos(input.churchId);
+    }),
+
+  approvePhoto: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), personId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      try {
+        return await approvePersonPhoto(input.churchId, input.personId);
+      } catch (error) {
+        if (error instanceof Error && error.message === "NO_PENDING_PHOTO") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Não há foto pendente para aprovar." });
+        }
+        if (error instanceof Error && error.message === "PERSON_NOT_FOUND") {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada nesta igreja." });
+        }
+        throw error;
+      }
+    }),
+
+  rejectPhoto: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), personId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      await requireChurchAdministrator(ctx.user.id, input.churchId);
+      try {
+        return await rejectPersonPhoto(input.churchId, input.personId);
+      } catch (error) {
+        if (error instanceof Error && error.message === "PERSON_NOT_FOUND") {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Pessoa não encontrada nesta igreja." });
+        }
+        throw error;
+      }
     }),
 
   journey: protectedProcedure
