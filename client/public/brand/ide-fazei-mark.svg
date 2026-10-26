@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Ide Fazei">
-  <rect width="512" height="512" fill="#1e3a5f"/>
-  <path d="M256 92 C300 156 336 208 336 286 C336 354 302 400 256 400 C210 400 176 354 176 286 C176 208 212 156 256 92 Z" fill="#c9a84c"/>
-  <g fill="#1e3a5f">
-    <rect x="244" y="156" width="24" height="206" rx="6"/>
-    <rect x="210" y="248" width="92" height="24" rx="6"/>
-  </g>
-</svg>
