@@ -141,12 +141,23 @@ export async function dailyNotificationsHandler(req: Request, res: Response) {
       if (result.created) staleReferralNotifications += result.deliveries;
     }
 
-    // ── 5. Resposta ───────────────────────────────────────────────────────────
+    // ── 5. Reset diário do ambiente de demonstração (não-fatal) ───────────────
+    let demoReset = false;
+    try {
+      const { seedDemoTenant } = await import("./demoSeed");
+      await seedDemoTenant();
+      demoReset = true;
+    } catch (demoErr) {
+      console.warn("[dailyNotifications] reset da demonstração falhou:", demoErr);
+    }
+
+    // ── 6. Resposta ───────────────────────────────────────────────────────────
     return res.json({
       ok: true,
       birthdays: birthdayPeople.length,
       absent: absentPeople.length,
       staleReferralNotifications,
+      demoReset,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {

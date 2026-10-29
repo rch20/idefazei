@@ -232,6 +232,11 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     onError: (err: { message?: string }) => toast.error(err.message || "Erro ao processar."),
   });
 
+  const seedDemoMutation = trpc.superAdmin.seedDemo.useMutation({
+    onSuccess: () => toast.success("Ambiente de demonstração pronto!"),
+    onError: (err: { message?: string }) => toast.error(err.message || "Falha ao preparar a demonstração."),
+  });
+
   if (adminQueryFailed) {
     return (
       <div className="min-h-screen bg-[#0f1923] flex items-center justify-center p-6">
@@ -385,6 +390,35 @@ function AdminDashboard({ onLogout }: { onLogout: () => void }) {
                   </CardContent>
                 </Card>
               )}
+
+              {/* Ambiente de demonstração */}
+              <Card className="bg-white/5 border-white/10 mt-6">
+                <CardHeader>
+                  <CardTitle className="text-white text-base">Ambiente de demonstração</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-white/50 text-sm mb-4">
+                    Cria (ou atualiza) a igreja fictícia em <span className="text-white/80">demo.idefazei.com.br</span> com todas as funções liberadas, para o possível cliente navegar. Clique para gerar ou zerar os dados.
+                  </p>
+                  <Button
+                    className="bg-[#c9a84c] hover:bg-[#b5932f] text-[#0f1923] font-semibold"
+                    onClick={() => seedDemoMutation.mutate()}
+                    disabled={seedDemoMutation.isPending}
+                  >
+                    {seedDemoMutation.isPending ? "Preparando…" : "Criar / atualizar demonstração"}
+                  </Button>
+                  {seedDemoMutation.data && (
+                    <div className="mt-4 rounded-lg border border-[#c9a84c]/30 bg-[#c9a84c]/10 p-4 text-sm">
+                      <p className="text-white/90 font-medium">Demonstração pronta ✓</p>
+                      <ul className="mt-2 space-y-1 text-white/70">
+                        <li>Endereço: <a className="text-[#c9a84c] underline" href={seedDemoMutation.data.url} target="_blank" rel="noreferrer">{seedDemoMutation.data.url}</a></li>
+                        <li>Login: <span className="text-white/90">{seedDemoMutation.data.login}</span></li>
+                        <li>Senha: <span className="text-white/90">{seedDemoMutation.data.password}</span></li>
+                      </ul>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           )}
 

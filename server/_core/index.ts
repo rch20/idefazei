@@ -12,6 +12,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { dailyNotificationsHandler } from "../scheduledNotifications";
 import { scheduleRemindersHandler } from "../scheduleReminders";
+import { resetDemoTenantHandler } from "../scheduledDemoReset";
 import { securityAuditHoldsExpirationHandler } from "../securityAuditHoldsJob";
 import Busboy from "busboy";
 import { storagePut } from "../storage";
@@ -177,6 +178,7 @@ async function startServer() {
   // Scheduled heartbeat endpoints
   app.post("/api/scheduled/daily-notifications", dailyNotificationsHandler);
   app.post("/api/scheduled/schedule-reminders", scheduleRemindersHandler);
+  app.post("/api/scheduled/reset-demo-tenant", resetDemoTenantHandler);
   app.post(
     "/api/scheduled/security-audit-holds-expiration",
     securityAuditHoldsExpirationHandler

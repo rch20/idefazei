@@ -7644,6 +7644,16 @@ const adminAuthRouter = router({
 const superAdminRouter = router({
   stats: adminProcedure.query(() => getGlobalStats()),
 
+  // Cria/atualiza o ambiente de demonstração (demo.idefazei.com.br) com dados fictícios.
+  seedDemo: adminProcedure.mutation(async () => {
+    const { seedDemoTenant } = await import("./demoSeed");
+    try {
+      return await seedDemoTenant();
+    } catch (error) {
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: error instanceof Error ? error.message : "Falha ao preparar a demonstração." });
+    }
+  }),
+
   churches: adminProcedure.query(() => getAllChurchesAdmin()),
 
   pendingRegistrations: adminProcedure.query(() => getPendingRegistrations()),
