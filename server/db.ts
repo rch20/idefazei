@@ -736,7 +736,7 @@ export async function getUserByOpenId(openId: string) {
  * Enquanto desligado, demo.idefazei.com.br resolve como "sem tenant" e serve o
  * site normal, sem nenhum processamento pesado do tenant demo.
  */
-export const DEMO_TENANT_ENABLED = false;
+export const DEMO_TENANT_ENABLED = true;
 
 export async function getChurchBySlug(slug: string) {
   if (slug === "demo" && !DEMO_TENANT_ENABLED) return null;
