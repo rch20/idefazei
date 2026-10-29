@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { trpc } from "@/lib/trpc";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
 import { toast } from "sonner";
+import { TRIAL_DAYS } from "@shared/billing";
 
 const PLANS = [
   {
@@ -183,7 +184,7 @@ export default function Planos() {
             Escolha o plano ideal<br />para sua igreja
           </h1>
           <p className="font-serif italic text-[#1e3a5f]/60 text-lg max-w-2xl mx-auto">
-            Todos os planos incluem 14 dias de teste gratuito. Sem cartão de crédito.
+            Todos os planos incluem {TRIAL_DAYS} dias de teste gratuito. Sem cartão de crédito.
           </p>
 
           {/* Toggle anual/mensal */}
@@ -288,7 +289,7 @@ export default function Planos() {
           <div className="space-y-4">
             {[
               { q: "Posso mudar de plano a qualquer momento?", a: "Sim. Você pode fazer upgrade ou downgrade do seu plano a qualquer momento. As mudanças são aplicadas imediatamente." },
-              { q: "O período de teste é realmente gratuito?", a: "Sim, 14 dias completamente gratuitos, sem necessidade de cartão de crédito. Você só paga se decidir continuar." },
+              { q: "O período de teste é realmente gratuito?", a: `Sim, ${TRIAL_DAYS} dias completamente gratuitos, sem necessidade de cartão de crédito. Você só paga se decidir continuar.` },
               { q: "Como funciona o suporte?", a: "Todos os planos incluem suporte por email. O plano Pro inclui suporte prioritário com resposta em até 4 horas. O Enterprise inclui suporte 24/7 e gerente dedicado." },
               { q: "Meus dados ficam seguros?", a: "Sim. Cada igreja tem seus dados completamente isolados. Utilizamos criptografia em trânsito e em repouso, com backups automáticos diários." },
               { q: "Posso exportar meus dados?", a: "Sim. Você pode exportar todos os seus dados a qualquer momento em formato CSV ou Excel." },

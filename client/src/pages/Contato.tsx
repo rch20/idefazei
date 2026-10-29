@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { usePlatformContact } from "@/hooks/usePlatformContact";
 import { formatBrazilianPhone } from "@shared/platformContact";
+import { TRIAL_DAYS } from "@shared/billing";
 
 export default function Contato() {
   const { contact, whatsappLink } = usePlatformContact();
@@ -103,7 +104,7 @@ export default function Contato() {
 
             <div className="bg-[#1e3a5f] rounded-2xl p-6 text-white">
               <h3 className="font-serif font-bold text-lg mb-2">Pronto para começar?</h3>
-              <p className="text-white/70 text-sm mb-4">Cadastre sua igreja gratuitamente e experimente por 14 dias sem compromisso.</p>
+              <p className="text-white/70 text-sm mb-4">Cadastre sua igreja gratuitamente e experimente por {TRIAL_DAYS} dias sem compromisso.</p>
               <Link href="/cadastro-igreja">
                 <Button className="bg-[#c9a84c] hover:bg-[#b8943d] text-white w-full">
                   Cadastrar minha igreja

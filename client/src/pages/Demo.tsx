@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { TRIAL_DAYS } from "@shared/billing";
 import {
   Users, Heart, GitBranch, MapPin, Calendar, Bell,
   ChevronRight, ChevronLeft, Play, CheckCircle2,
@@ -441,7 +442,7 @@ export default function Demo() {
           Pronto para transformar sua igreja?
         </h2>
         <p className="text-white/60 font-serif italic mb-8 max-w-md mx-auto">
-          14 dias grátis, sem cartão de crédito. Suporte em português.
+          {TRIAL_DAYS} dias grátis, sem cartão de crédito. Suporte em português.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Link

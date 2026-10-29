@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { ArrowLeft, Users, Heart, BookOpen, MapPin, Calendar, Bell, BarChart3, Shield, Smartphone, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TRIAL_DAYS } from "@shared/billing";
 
 const MODULES = [
   {
@@ -147,7 +148,7 @@ export default function Recursos() {
         {/* CTA */}
         <div className="mt-16 text-center bg-[#1e3a5f] rounded-2xl p-12">
           <h2 className="font-serif text-3xl font-bold text-white mb-4">Pronto para transformar sua gestão ministerial?</h2>
-          <p className="text-white/70 mb-8 max-w-xl mx-auto">Comece gratuitamente por 14 dias. Sem cartão de crédito, sem compromisso.</p>
+          <p className="text-white/70 mb-8 max-w-xl mx-auto">Comece gratuitamente por {TRIAL_DAYS} dias. Sem cartão de crédito, sem compromisso.</p>
           <div className="flex gap-4 justify-center">
             <Link href="/cadastro-igreja">
               <Button className="bg-[#c9a84c] hover:bg-[#b8943d] text-white px-8">
