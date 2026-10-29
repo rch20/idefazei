@@ -856,6 +856,8 @@ async function startServer() {
 
   server.listen(port, host, () => {
     console.log(`Server running on http://localhost:${port}/`);
+    // Garante o ambiente de demonstração (cria só se faltar), sem bloquear o boot.
+    void import("../demoSeed").then((m) => m.ensureDemoSeeded()).catch(() => {});
   });
 }
 
