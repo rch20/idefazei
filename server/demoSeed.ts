@@ -163,21 +163,3 @@ export async function seedDemoTenant() {
 
   return { churchId, slug: DEMO_SLUG, url: `https://${DEMO_SLUG}.idefazei.com.br`, login: "pastor@demo.idefazei.com.br", password: DEMO_PASSWORD };
 }
-
-/**
- * Garante que a igreja demo exista (cria só se ainda não houver). Chamado na
- * inicialização do servidor — assim demo.idefazei.com.br já fica no ar, sem
- * nenhuma ação manual. O reset noturno continua zerando os dados.
- */
-export async function ensureDemoSeeded() {
-  try {
-    const db = await getDb();
-    if (!db) return;
-    const existing = (await db.select({ id: churches.id }).from(churches).where(eq(churches.slug, DEMO_SLUG)).limit(1))[0];
-    if (existing) return;
-    await seedDemoTenant();
-    console.log("[demo] Ambiente de demonstração criado em demo.idefazei.com.br");
-  } catch (error) {
-    console.warn("[demo] ensureDemoSeeded falhou (seguindo normalmente):", error);
-  }
-}
