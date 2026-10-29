@@ -21,6 +21,8 @@ export async function resetDemoTenantHandler(req: Request, res: Response) {
   try {
     const user = await sdk.authenticateRequest(req);
     if (!user.isCron) return res.status(403).json({ error: "cron-only" });
+    const { DEMO_TENANT_ENABLED } = await import("./db");
+    if (!DEMO_TENANT_ENABLED) return res.status(200).json({ ok: true, skipped: "demo-disabled" });
     const { seedDemoTenant } = await import("./demoSeed");
     const result = await seedDemoTenant();
     return res.status(200).json({ ok: true, churchId: result.churchId });

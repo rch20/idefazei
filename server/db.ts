@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, asc, count, desc, eq, getTableColumns, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2";
 import { alias } from "drizzle-orm/mysql-core";
 import {
   announcements,
@@ -165,10 +166,36 @@ import {
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
+/**
+ * Teto de execução por consulta (ms). Todo SELECT que ultrapasse esse tempo é
+ * abortado pelo MySQL (max_execution_time), liberando a conexão em vez de
+ * segurá-la para sempre. É a proteção central contra "efeito dominó": uma
+ * consulta lenta/presa não pode mais esgotar o pool e derrubar o site inteiro.
+ */
+const QUERY_MAX_EXECUTION_MS = 30000;
+
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      // Pool explícito e limitado (antes a string ia direto ao driver, sem
+      // limites nem timeout). waitForConnections fica no padrão para não
+      // alterar o comportamento normal das igrejas sob carga leve.
+      const pool = mysql.createPool({
+        uri: process.env.DATABASE_URL,
+        connectionLimit: 15,
+        maxIdle: 8,
+        idleTimeout: 60000,
+        connectTimeout: 10000,
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 10000,
+      });
+      // Em cada conexão nova, define o teto de execução por consulta.
+      pool.on("connection", (conn) => {
+        conn.query(`SET SESSION max_execution_time = ${QUERY_MAX_EXECUTION_MS}`, (err) => {
+          if (err) console.warn("[Database] max_execution_time setup falhou:", err?.message ?? err);
+        });
+      });
+      _db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -703,7 +730,16 @@ export async function getUserByOpenId(openId: string) {
 
 // ─── CHURCHES (TENANTS) ───────────────────────────────────────────────────────
 
+/**
+ * Ambiente de demonstração (slug "demo"): mantido DESLIGADO até estar blindado,
+ * para que nunca impacte as igrejas reais (compartilham o mesmo servidor).
+ * Enquanto desligado, demo.idefazei.com.br resolve como "sem tenant" e serve o
+ * site normal, sem nenhum processamento pesado do tenant demo.
+ */
+export const DEMO_TENANT_ENABLED = false;
+
 export async function getChurchBySlug(slug: string) {
+  if (slug === "demo" && !DEMO_TENANT_ENABLED) return null;
   const db = await getDb();
   if (!db) return null;
   const result = await db.select().from(churches).where(eq(churches.slug, slug)).limit(1);

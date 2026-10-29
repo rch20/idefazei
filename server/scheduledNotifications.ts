@@ -142,11 +142,16 @@ export async function dailyNotificationsHandler(req: Request, res: Response) {
     }
 
     // ── 5. Reset diário do ambiente de demonstração (não-fatal) ───────────────
+    // Só roda quando a demo está habilitada (DEMO_TENANT_ENABLED). Enquanto
+    // desligada, não há motivo para re-semear/limpar os dados todas as noites.
     let demoReset = false;
     try {
-      const { seedDemoTenant } = await import("./demoSeed");
-      await seedDemoTenant();
-      demoReset = true;
+      const { DEMO_TENANT_ENABLED } = await import("./db");
+      if (DEMO_TENANT_ENABLED) {
+        const { seedDemoTenant } = await import("./demoSeed");
+        await seedDemoTenant();
+        demoReset = true;
+      }
     } catch (demoErr) {
       console.warn("[dailyNotifications] reset da demonstração falhou:", demoErr);
     }
