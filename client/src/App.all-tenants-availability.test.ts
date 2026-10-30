@@ -17,7 +17,6 @@ describe("disponibilidade das áreas temporariamente bloqueadas", () => {
 
   it("mantém bloqueadas as áreas administrativas e libera somente a Escola", () => {
     expect(appSource).toContain('<AppPage title="Certificados" requiredAccess="canManageChurch" underConstruction>');
-    expect(appSource).toContain('<AppPage title="Faturamento" requiredAccess="canManageChurch" underConstruction>');
     expect(appSource).toContain('<AppPage title="Escola de Fundamentos">');
     expect(appSource).not.toContain('<AppPage title="Escola de Fundamentos" underConstruction>');
     expect(layoutSource).toContain('label: "Escola de Fundamentos", path: "/app/escola-fundamentos", group: "discipulado" },');

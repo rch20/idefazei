@@ -19,7 +19,6 @@ import { storagePut } from "../storage";
 import { uploadOnlineContributionProof, uploadPublicDonationProof } from "../onlineContributionProofStorage";
 import { getPublicDonationSettingsByChurch } from "../publicDonations";
 import { getDerivedLogoIconUrls, getOptimizedMediaUrls, getPwaIconUrls, uploadMedia, type MediaPurpose, type MediaResourceType } from "../media";
-import { stripeWebhookHandler } from "../stripe-webhook";
 import { pagarmeWebhookHandler } from "../pagarme-webhook";
 import { verifyToken } from "../auth";
 import { enforceRateLimit, requestIp } from "../rateLimit";
@@ -105,9 +104,6 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
-
-  // ⚠️ Stripe webhook MUST be registered BEFORE express.json() to preserve raw body
-  app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), stripeWebhookHandler);
 
   // Cabeçalhos de segurança básicos para todas as respostas.
   app.use((_req, res, next) => {

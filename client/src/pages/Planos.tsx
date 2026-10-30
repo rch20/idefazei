@@ -3,9 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Check, X, Zap, Crown, Building2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { trpc } from "@/lib/trpc";
 import { useChurchAuth } from "@/hooks/useChurchAuth";
-import { toast } from "sonner";
 import { TRIAL_DAYS } from "@shared/billing";
 
 const PLANS = [
@@ -110,39 +108,16 @@ const PLANS = [
   },
 ];
 
-const PLAN_IDS: Record<string, "basic" | "pro" | "enterprise"> = {
-  basico: "basic",
-  pro: "pro",
-  enterprise: "enterprise",
-};
 
 export default function Planos() {
   const [annual, setAnnual] = useState(false);
   const { user } = useChurchAuth();
   const [, navigate] = useLocation();
 
-  const checkoutMutation = trpc.stripe.createCheckoutSession.useMutation({
-    onSuccess: (data) => {
-      if (data.url) window.open(data.url, "_blank");
-      toast.info("Redirecionando para o checkout Stripe...");
-    },
-    onError: (err) => {
-      toast.error(err.message || "Erro ao iniciar checkout");
-    },
-  });
-
-  function handleSelectPlan(planId: string) {
-    if (!user) {
-      navigate("/cadastro-igreja");
-      return;
-    }
-    const churchId = user.churchId;
-    checkoutMutation.mutate({
-      plan: PLAN_IDS[planId],
-      churchId,
-      origin: window.location.origin,
-      interval: annual ? "year" : "month",
-    });
+  function handleSelectPlan() {
+    // Cobrança consolidada no Pagar.me: o visitante cria a igreja (período
+    // de teste) e, já dentro do painel, assina em /app/assinatura.
+    navigate(user ? "/app/assinatura" : "/cadastro-igreja");
   }
 
   return (
@@ -258,10 +233,9 @@ export default function Planos() {
 
                 <Button
                   className={`w-full ${isPopular ? "bg-[#1e3a5f] hover:bg-[#162d4a] text-white" : "bg-[#1e3a5f]/10 hover:bg-[#1e3a5f]/20 text-[#1e3a5f]"}`}
-                  onClick={() => handleSelectPlan(plan.id)}
-                  disabled={checkoutMutation.isPending}
+                  onClick={() => handleSelectPlan()}
                 >
-                  {checkoutMutation.isPending ? "Aguarde..." : user ? "Assinar agora" : "Começar gratuitamente"}
+                  {user ? "Assinar agora" : "Começar gratuitamente"}
                 </Button>
 
                 <div className="mt-6 space-y-2">

@@ -147,7 +147,6 @@ const navItems: NavItem[] = [
   { icon: WalletCards, label: "Tesouraria", path: "/app/tesouraria", group: "admin", accessKey: "canAccessTreasury" },
   { icon: CreditCard, label: "Assinatura", path: "/app/assinatura", group: "admin", accessKey: "canManageChurch" },
   { icon: Award, label: "Certificados", path: "/app/configuracoes/certificados", group: "admin", accessKey: "canManageChurch", underConstruction: true },
-  { icon: CreditCard, label: "Faturamento", path: "/app/faturamento", group: "admin", accessKey: "canManageChurch", underConstruction: true },
 ];
 
 type QuickAccessItem = { icon: typeof Home; label: string; mobileLabel: string; path: string; accessKey?: keyof ChurchAccessSummary };

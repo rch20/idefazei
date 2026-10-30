@@ -111,7 +111,7 @@ describe("integração Pagar.me", () => {
 
   it("restringe quem configura e quem paga", () => {
     const routers = read("server/routers.ts");
-    const block = routers.slice(routers.indexOf("const billingRouter"), routers.indexOf("// ─── STRIPE ROUTER"));
+    const block = routers.slice(routers.indexOf("const billingRouter"), routers.indexOf("// ─── APP DO LÍDER"));
     expect(block).toContain("config: adminProcedure");
     expect(block).toContain("saveConfig: adminProcedure");
     expect(block).toContain("testConnection: adminProcedure");
