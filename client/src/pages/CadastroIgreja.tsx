@@ -11,10 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, ChevronRight, ChevronLeft, Loader2, Church, User, Globe } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { isReservedChurchSlug, RESERVED_SLUG_MESSAGE } from "@shared/slug";
 
 const step1Schema = z.object({
   churchName: z.string().min(2, "Nome da igreja é obrigatório"),
-  slug: z.string().min(3, "Mínimo 3 caracteres").max(50).regex(/^[a-z0-9-]+$/, "Apenas letras minúsculas, números e hífens"),
+  slug: z.string().min(3, "Mínimo 3 caracteres").max(50).regex(/^[a-z0-9-]+$/, "Apenas letras minúsculas, números e hífens").refine(value => !isReservedChurchSlug(value), RESERVED_SLUG_MESSAGE),
   city: z.string().optional(),
   state: z.string().length(2, "Use a sigla do estado (ex: SP)").optional().or(z.literal("")),
   phone: z.string().optional(),

@@ -1,4 +1,5 @@
 import { COOKIE_NAME } from "@shared/const";
+import { isReservedChurchSlug, RESERVED_SLUG_MESSAGE } from "@shared/slug";
 import { NOTIFICATION_EVENT_CATALOG, NOTIFICATION_EVENT_TYPES } from "../shared/notificationPreferences";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { TRPCError } from "@trpc/server";
@@ -1780,7 +1781,8 @@ const churchRouter = router({
         slug: z
           .string()
           .min(2)
-          .regex(/^[a-z0-9-]+$/),
+          .regex(/^[a-z0-9-]+$/)
+          .refine(value => !isReservedChurchSlug(value), RESERVED_SLUG_MESSAGE),
         logoUrl: z.string().max(2048).refine(value => value === "" || /^https:\/\//i.test(value) || value.startsWith("/"), "Use um endereço HTTPS para a logo.").optional(),
         primaryColor: hexColorInput.optional(),
         secondaryColor: hexColorInput.optional(),
@@ -7925,7 +7927,8 @@ const registerRouter = router({
           .string()
           .min(3)
           .max(50)
-          .regex(/^[a-z0-9-]+$/, "Apenas letras minúsculas, números e hífens"),
+          .regex(/^[a-z0-9-]+$/, "Apenas letras minúsculas, números e hífens")
+          .refine(value => !isReservedChurchSlug(value), RESERVED_SLUG_MESSAGE),
       city: z.string().optional(),
       state: z.string().length(2).optional(),
       phone: z.string().optional(),
