@@ -98,7 +98,7 @@ function RouteLoading() {
 
 // ─── LAYOUT WRAPPER ───────────────────────────────────────────────────────────
 
-type RequiredAccess = keyof Pick<ChurchAccessSummary, "isExecutive" | "isPastoralWorker" | "isCommunicationManager" | "canAccessTreasury" | "isPastor" | "canManageChurch" | "canManageEncounter" | "canManageCells" | "canManageMinistry" | "canAccessMinistry" | "canReadPeople" | "canAccessVisits">;
+type RequiredAccess = keyof Pick<ChurchAccessSummary, "isExecutive" | "isPastoralWorker" | "isCommunicationManager" | "canAccessTreasury" | "isPastor" | "canManageChurch" | "canManageEncounter" | "canManageCells" | "canManageMinistry" | "canAccessMinistry" | "canReadPeople" | "canAccessVisits" | "canMarkServiceAttendance">;
 
 function AccessDenied({ title }: { title?: string }) {
   return (
