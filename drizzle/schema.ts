@@ -86,6 +86,8 @@ export const churches = mysqlTable("churches", {
   stripeStatus: varchar("stripeStatus", { length: 50 }), // active, trialing, past_due, canceled
   stripeCurrentPeriodEnd: timestamp("stripeCurrentPeriodEnd"),
   trialEndsAt: timestamp("trialEndsAt"),
+  // Presença no culto: nº de cultos seguidos sem presença que aciona o alerta no Radar Espiritual.
+  serviceAbsenceAlertThreshold: int("serviceAbsenceAlertThreshold").notNull().default(3),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -3374,3 +3376,51 @@ export const platformSettings = mysqlTable("platform_settings", {
 });
 
 export type PlatformSetting = typeof platformSettings.$inferSelect;
+
+// ─── PRESENÇA NO CULTO ─────────────────────────────────────────────────────────
+// Presença nominal (pessoa por pessoa) numa ocorrência de culto (treasury_services).
+// Ausência é implícita: ausência = não existir linha para (serviceId, personId).
+// O campo `source` já deixa a estrutura pronta para o reconhecimento facial (fase 2).
+export const serviceAttendance = mysqlTable(
+  "service_attendance",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    serviceId: int("serviceId").notNull(), // → treasury_services.id (ocorrência de culto)
+    personId: int("personId").notNull(), // → people.id
+    status: mysqlEnum("status", ["presente", "justificado"]).default("presente").notNull(),
+    source: mysqlEnum("source", ["manual", "facial"]).default("manual").notNull(),
+    markedByChurchUserId: int("markedByChurchUserId").notNull(),
+    markedAt: timestamp("markedAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("service_attendance_unique").on(table.churchId, table.serviceId, table.personId),
+    index("service_attendance_service_idx").on(table.churchId, table.serviceId),
+    index("service_attendance_person_idx").on(table.churchId, table.personId),
+  ]
+);
+
+export type ServiceAttendance = typeof serviceAttendance.$inferSelect;
+
+// Sessão de marcação de um culto: contagem de visitantes e estado (aberta/fechada).
+export const serviceAttendanceSessions = mysqlTable(
+  "service_attendance_sessions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    serviceId: int("serviceId").notNull(),
+    visitorsCount: int("visitorsCount").default(0).notNull(),
+    status: mysqlEnum("status", ["aberta", "fechada"]).default("aberta").notNull(),
+    openedByChurchUserId: int("openedByChurchUserId").notNull(),
+    closedByChurchUserId: int("closedByChurchUserId"),
+    closedAt: timestamp("closedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("service_attendance_sessions_unique").on(table.churchId, table.serviceId),
+  ]
+);
+
+export type ServiceAttendanceSession = typeof serviceAttendanceSessions.$inferSelect;

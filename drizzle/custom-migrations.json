@@ -258,6 +258,12 @@
       "file": "drizzle/0113_media_asset_person_photo.sql",
       "kind": "custom-additive",
       "sha256": "6f68996e3e926438b700c623c722c2b80b4d0557125301f719e0fdd35d4a42fe"
+    },
+    {
+      "id": "0114",
+      "file": "drizzle/0114_service_attendance.sql",
+      "kind": "custom-additive",
+      "sha256": "a780f83c9d711b7a03c676943174d626064452472bff85a68d664eb5e0cd639b"
     }
   ]
 }

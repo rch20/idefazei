@@ -16,6 +16,7 @@ import {
   BookOpen,
   Building2,
   CalendarDays,
+  CalendarCheck2,
   Check,
   ChevronRight,
   ClipboardList,
@@ -79,6 +80,7 @@ export type ChurchAccessSummary = {
   canAccessMinistry: boolean;
   canReadPeople: boolean;
   canManageLibrary: boolean;
+  canMarkServiceAttendance: boolean;
   canAccessTreasury: boolean;
   canIndicateNewSoul: boolean;
   canManageEvents: boolean;
@@ -120,6 +122,7 @@ const navItems: NavItem[] = [
   { icon: UserRound, label: "Meu painel", path: "/app/membro", group: "principal" },
   { icon: LayoutDashboard, label: "Visão geral", path: "/app/dashboard", group: "principal", accessKey: "isExecutive" },
   { icon: Heart, label: "Painel de cuidado", path: "/app/cuidado", group: "cuidado", accessKey: "isPastoralWorker" },
+  { icon: CalendarCheck2, label: "Presença no culto", path: "/app/presenca", group: "cuidado", accessKey: "canMarkServiceAttendance" },
   { icon: Zap, label: "Radar Espiritual", path: "/app/radar", group: "cuidado", accessKey: "isExecutive" },
   { icon: HeartHandshake, label: "Consolidação", path: "/app/consolidacao", group: "cuidado", accessKey: "canAccessVisits" },
   { icon: Shield, label: "Aconselhamento", path: "/app/aconselhamento", group: "cuidado", roles: ["pastor_presidente", "pastor_local", "supervisor"] },

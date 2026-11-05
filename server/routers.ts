@@ -38,6 +38,7 @@ import { clientIpFromRequest } from "./adminLoginThrottle";
 import { enforcePublicRateLimit, enforceRateLimit, rateLimitClear, rateLimitRecordAll, rateLimitWait, requestIp } from "./rateLimit";
 import { getAdminRecoveryEmail, requestAdminPasswordReset, resetAdminPassword, saveAdminRecoveryEmail } from "./adminPasswordRecovery";
 import { getMailAdminView, saveMailConfig, sendTestMail } from "./mailSettings";
+import * as servicePresence from "./servicePresence";
 import { adminProcedure, protectedProcedure, publicProcedure, router, tenantProcedure } from "./_core/trpc";
 import { loginChurchUser, normalizeChurchLoginIdentifier, loginSuperAdmin, createChurchUser, createSuperAdmin, createInitialSuperAdmin, isInitialSuperAdminSetupAvailable } from "./auth";
 import { requestChurchPasswordReset, resetChurchPassword } from "./passwordRecovery";
@@ -1456,6 +1457,8 @@ async function getChurchAccessSummary(userId: number, churchId: number) {
     canAccessMinistry,
     canReadPeople,
     canManageLibrary,
+    // Quem pode marcar presença no culto: liderança/cuidado (sem exigir tesouraria).
+    canMarkServiceAttendance: isExecutive || isPastoralWorker || canManageCells || canManageMinistry || canAccessMinistry,
     canAccessTreasury: roles.some(role => TREASURY_ROLES.has(role)),
     canIndicateNewSoul: Boolean(actor.personId),
     canManageEvents: roles.some(role => CHURCH_ADMIN_ROLES.has(role)),
@@ -14041,6 +14044,100 @@ const foundationImportRouter = router({
     }),
 });
 
+// ─── PRESENÇA NO CULTO ─────────────────────────────────────────────────────────
+// Reaproveita a ocorrência de culto (tesouraria) e registra presença nominal.
+// Acesso de marcação: liderança/cuidado (não exige acesso de tesouraria).
+async function requirePresenceAccess(userId: number, churchId: number) {
+  const actor = await requireChurchMember(userId, churchId);
+  const access = await getChurchAccessSummary(userId, churchId);
+  if (!access.canMarkServiceAttendance) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Você não tem acesso à presença no culto." });
+  }
+  return { actorChurchUserId: actor.id, access };
+}
+
+const presenceServiceDateInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida (use AAAA-MM-DD).");
+
+const servicePresenceRouter = router({
+  services: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requirePresenceAccess(ctx.user.id, input.churchId);
+      return servicePresence.listPresenceServices(input.churchId);
+    }),
+
+  createService: protectedProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        name: z.string().trim().min(2).max(160),
+        serviceDate: presenceServiceDateInput,
+        startTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { actorChurchUserId } = await requirePresenceAccess(ctx.user.id, input.churchId);
+      return servicePresence.createPresenceService(
+        input.churchId,
+        { name: input.name, serviceDate: input.serviceDate, startTime: input.startTime ?? null },
+        actorChurchUserId
+      );
+    }),
+
+  roster: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), serviceId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const { actorChurchUserId } = await requirePresenceAccess(ctx.user.id, input.churchId);
+      const roster = await servicePresence.getPresenceRoster(input.churchId, input.serviceId, actorChurchUserId);
+      if (!roster) throw new TRPCError({ code: "NOT_FOUND", message: "Culto não encontrado." });
+      return roster;
+    }),
+
+  mark: protectedProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        serviceId: z.number().int().positive(),
+        personId: z.number().int().positive(),
+        present: z.boolean(),
+        status: z.enum(["presente", "justificado"]).optional(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const { actorChurchUserId } = await requirePresenceAccess(ctx.user.id, input.churchId);
+      return servicePresence.setPersonPresence(
+        input.churchId,
+        input.serviceId,
+        input.personId,
+        { present: input.present, status: input.status, source: "manual" },
+        actorChurchUserId
+      );
+    }),
+
+  setVisitors: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), serviceId: z.number().int().positive(), count: z.number().int().min(0).max(100000) }))
+    .mutation(async ({ input, ctx }) => {
+      const { actorChurchUserId } = await requirePresenceAccess(ctx.user.id, input.churchId);
+      return servicePresence.setVisitorsCount(input.churchId, input.serviceId, input.count, actorChurchUserId);
+    }),
+
+  setSessionStatus: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), serviceId: z.number().int().positive(), status: z.enum(["aberta", "fechada"]) }))
+    .mutation(async ({ input, ctx }) => {
+      const { actorChurchUserId } = await requirePresenceAccess(ctx.user.id, input.churchId);
+      return servicePresence.setSessionStatus(input.churchId, input.serviceId, input.status, actorChurchUserId);
+    }),
+
+  report: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), serviceId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      await requirePresenceAccess(ctx.user.id, input.churchId);
+      const report = await servicePresence.getServiceReport(input.churchId, input.serviceId);
+      if (!report) throw new TRPCError({ code: "NOT_FOUND", message: "Culto não encontrado." });
+      return report;
+    }),
+});
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -14090,6 +14187,7 @@ export const appRouter = router({
   comunicacao: comunicacaoRouter,
   certificates: certificatesRouter,
   treasury: treasuryRouter,
+  presenca: servicePresenceRouter,
   notifications: notificationsRouter,
   securityAudit: securityAuditRouter,
   billing: billingRouter,

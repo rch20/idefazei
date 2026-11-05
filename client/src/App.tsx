@@ -73,6 +73,7 @@ const ConfiguracoesCertificados = lazy(() => import("./pages/ConfiguracoesCertif
 const Assinatura = lazy(() => import("./pages/Assinatura"));
 const CentralCuidado = lazy(() => import("./pages/CentralCuidado"));
 const RadarEspiritual = lazy(() => import("./pages/RadarEspiritual"));
+const PresencaCulto = lazy(() => import("./pages/PresencaCulto"));
 const Tesouraria = lazy(() => import("./pages/Tesouraria"));
 
 function DevFoundationPreviewRoute() {
@@ -184,6 +185,12 @@ function Router() {
       <Route path="/app/cuidado">
         <AppPage title="Cuidado" requiredAccess="isPastoralWorker">
           <CentralCuidado />
+        </AppPage>
+      </Route>
+
+      <Route path="/app/presenca">
+        <AppPage title="Presença no culto" requiredAccess="canMarkServiceAttendance">
+          <PresencaCulto />
         </AppPage>
       </Route>
 
