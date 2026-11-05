@@ -2127,6 +2127,11 @@
       "assets/index.js",
       "assets/EstudoPublico.js",
       "assets/index.js"
+    ],
+    [
+      "assets/index.js",
+      "assets/PresencaCulto.js",
+      "assets/index.js"
     ]
   ]
 }
