@@ -43,6 +43,16 @@ describe("presença no culto — fiação", () => {
     expect(presence).toContain('source?: "manual" | "facial"');
   });
 
+  it("liga faltas seguidas no culto ao Radar Espiritual", () => {
+    const db = read("server/db.ts");
+    expect(db).toContain('"ausencia_culto"');
+    expect(db).toContain("churches.serviceAbsenceAlertThreshold");
+    expect(db).toContain('addSignal("ausencia_culto"');
+    const routers = read("server/routers.ts");
+    expect(routers).toContain('key: "ausencia_culto"');
+    expect(routers).toContain("serviceAbsenceAlertThreshold: z.number().int().min(1).max(12).optional()");
+  });
+
   it("expõe a aba no app com o acesso certo", () => {
     expect(read("client/src/App.tsx")).toContain('<Route path="/app/presenca">');
     expect(read("client/src/App.tsx")).toContain('requiredAccess="canMarkServiceAttendance"');

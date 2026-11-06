@@ -71,6 +71,7 @@ import {
   financialTransactions,
   onlineContributions,
   publicDonationSubmissions,
+  serviceAttendance,
   treasuryServices,
   treasuryRecurringSchedules,
   treasuryCountSheets,
@@ -2888,7 +2889,7 @@ export async function getCareAttentionByChurch(churchId: number) {
 }
 
 export type SpiritualRadarPriority = "alta" | "media" | "normal";
-export type SpiritualRadarSignalKey = "consolidacao_pendente" | "primeiro_contato_pendente" | "visita_pendente" | "follow_up_vencido" | "sem_responsavel" | "sem_celula" | "sem_discipulador" | "ausencias_recentes" | "pedido_oracao_pendente" | "sem_formacao";
+export type SpiritualRadarSignalKey = "consolidacao_pendente" | "primeiro_contato_pendente" | "visita_pendente" | "follow_up_vencido" | "sem_responsavel" | "sem_celula" | "sem_discipulador" | "ausencias_recentes" | "ausencia_culto" | "pedido_oracao_pendente" | "sem_formacao";
 
 export type SpiritualRadarItem = {
   person: {
@@ -3108,6 +3109,12 @@ export async function getSpiritualRadarByChurch(churchId: number) {
       weight: 24,
       source: "celulas",
     },
+    ausencia_culto: {
+      label: "Ausências no culto",
+      severity: "media",
+      weight: 26,
+      source: "celulas",
+    },
     pedido_oracao_pendente: {
       label: "Pedido de oração pendente",
       severity: "media",
@@ -3130,9 +3137,35 @@ export async function getSpiritualRadarByChurch(churchId: number) {
     sem_celula: "Encaminhar para uma célula",
     sem_discipulador: "Definir discipulador",
     ausencias_recentes: "Verificar a situação com cuidado",
+    ausencia_culto: "Procurar a pessoa com cuidado",
     pedido_oracao_pendente: "Registrar retorno pastoral",
     sem_formacao: "Recomendar formação adequada",
   };
+
+  // ── Faltas no culto (Presença no culto → Radar) ─────────────────────────────
+  // Pessoa ausente nos últimos N cultos COM presença registrada (N configurável
+  // por igreja, padrão 3). Só considera cultos onde a presença foi de fato tirada
+  // (há ao menos uma marcação), para não gerar falso alerta em cultos sem marcação.
+  const absenceThresholdRow = (await db.select({ threshold: churches.serviceAbsenceAlertThreshold }).from(churches).where(eq(churches.id, churchId)).limit(1))[0];
+  const cultoAbsenceThreshold = Math.max(1, absenceThresholdRow?.threshold ?? 3);
+  const recentCultos = await db
+    .select({ serviceId: serviceAttendance.serviceId, serviceDate: treasuryServices.serviceDate })
+    .from(serviceAttendance)
+    .innerJoin(treasuryServices, eq(serviceAttendance.serviceId, treasuryServices.id))
+    .where(and(eq(serviceAttendance.churchId, churchId), ne(treasuryServices.status, "cancelado")))
+    .groupBy(serviceAttendance.serviceId, treasuryServices.serviceDate)
+    .orderBy(desc(treasuryServices.serviceDate))
+    .limit(cultoAbsenceThreshold);
+  const cultoAbsenceActive = recentCultos.length >= cultoAbsenceThreshold;
+  const cultoPresentPersonIds = new Set<number>();
+  if (cultoAbsenceActive) {
+    const recentServiceIds = recentCultos.map((row) => row.serviceId);
+    const presentRows = await db
+      .select({ personId: serviceAttendance.personId })
+      .from(serviceAttendance)
+      .where(and(eq(serviceAttendance.churchId, churchId), inArray(serviceAttendance.serviceId, recentServiceIds)));
+    for (const row of presentRows) cultoPresentPersonIds.add(row.personId);
+  }
 
   const items = persons
     .map((person): SpiritualRadarItem => {
@@ -3193,6 +3226,9 @@ export async function getSpiritualRadarByChurch(churchId: number) {
       const recentAttendance = (attendanceByPerson.get(person.id) ?? []).sort((a, b) => Number(new Date(b.date)) - Number(new Date(a.date)));
       if (recentAttendance.length >= 2 && recentAttendance.slice(0, 2).every(item => item.status === "ausente")) {
         addSignal("ausencias_recentes", "As duas últimas marcações registradas foram ausências.");
+      }
+      if (cultoAbsenceActive && !isPastor && !cultoPresentPersonIds.has(person.id)) {
+        addSignal("ausencia_culto", `Faltou aos últimos ${cultoAbsenceThreshold} cultos seguidos.`);
       }
       const prayerCount = unansweredPrayerByPerson.get(person.id) ?? 0;
       if (prayerCount > 0) addSignal("pedido_oracao_pendente", `${prayerCount} pedido(s) de oração aguardam retorno registrado.`);

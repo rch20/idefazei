@@ -1845,6 +1845,7 @@ const churchRouter = router({
         publicRegistrationAccessMode: z.enum(["manual", "automatico"]).optional(),
         publicRegistrationTitle: z.string().trim().min(3).max(140).optional(),
         publicRegistrationMessage: z.string().trim().min(10).max(500).optional(),
+        serviceAbsenceAlertThreshold: z.number().int().min(1).max(12).optional(),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -7180,6 +7181,11 @@ const radarSignalCatalog = [
     key: "ausencias_recentes",
     label: "Ausências recentes",
     description: "Duas últimas marcações de célula foram ausências.",
+  },
+  {
+    key: "ausencia_culto",
+    label: "Ausências no culto",
+    description: "Faltou aos últimos cultos seguidos (presença do culto).",
   },
   {
     key: "pedido_oracao_pendente",
