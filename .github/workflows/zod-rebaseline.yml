@@ -1,0 +1,69 @@
+name: CI — rebaseline do bundle (zod)
+
+# Uma tacada: regenera o lockfile com o zod novo (do package.json), builda, mede o
+# chunk de schemas e atualiza SOMENTE aquela entrada do baseline do guardiao de bundle
+# (sem afrouxar o limite para o resto), e comita package.json + lockfile + baseline.
+# Rodar ao enviar a branch chore/zod-rebaseline.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "chore/zod-rebaseline"
+
+permissions:
+  contents: write
+
+jobs:
+  rebaseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Regenerar lockfile (zod do package.json)
+        run: pnpm install --no-frozen-lockfile
+      - name: Build
+        run: pnpm build
+      - name: Medir bundle (sem bloquear) e atualizar so a entrada schemas do baseline
+        run: |
+          set -Eeuo pipefail
+          BUNDLE_FAIL_GROWTH_PERCENT=1000000 BUNDLE_WARN_GROWTH_PERCENT=1000000 pnpm bundle:check || true
+          node --input-type=module <<'EOF'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const report = JSON.parse(readFileSync("artifacts/bundle-report.json", "utf8"));
+          const baseline = JSON.parse(readFileSync("scripts/bundle-baseline.json", "utf8"));
+          const files = report.files ?? {};
+          // acha a metrica do chunk logico "schemas.js" no build atual
+          const novo = Object.values(files).find((f) => f.logicalName === "schemas.js");
+          if (!novo) throw new Error("chunk schemas.js nao encontrado no relatorio");
+          let alvoKey = null;
+          for (const [k, v] of Object.entries(baseline.files)) {
+            if (v.logicalName === "schemas.js") { alvoKey = k; break; }
+          }
+          if (!alvoKey) throw new Error("entrada schemas.js nao encontrada no baseline");
+          const antes = { ...baseline.files[alvoKey] };
+          // atualiza so os tamanhos (e a chave/hash, se mudou) da entrada schemas
+          const novaKey = Object.entries(files).find(([, v]) => v.logicalName === "schemas.js")[0];
+          delete baseline.files[alvoKey];
+          baseline.files[novaKey] = { logicalName: "schemas.js", type: "js", bytes: novo.bytes, gzipBytes: novo.gzipBytes };
+          baseline.source = `rebaseline-zod-${new Date().toISOString().slice(0,10)}: schemas ${antes.bytes}->${novo.bytes}B (${antes.gzipBytes}->${novo.gzipBytes}B gzip) por correcao do zod (CVE-2026-45321)`;
+          writeFileSync("scripts/bundle-baseline.json", JSON.stringify(baseline, null, 2) + "\n");
+          console.log(`schemas: ${antes.bytes} -> ${novo.bytes} bytes / ${antes.gzipBytes} -> ${novo.gzipBytes} gzip`);
+          EOF
+      - name: Conferir que o guardiao agora passa
+        run: pnpm bundle:check
+      - name: Commitar
+        run: |
+          if git diff --quiet package.json pnpm-lock.yaml scripts/bundle-baseline.json; then
+            echo "Nada mudou."; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json pnpm-lock.yaml scripts/bundle-baseline.json
+          git commit -m "deps(seg): zod 4.6.7 (corrige CVE-2026-45321) + rebaseline cirurgico do chunk schemas [skip ci]"
+          git push origin HEAD:chore/zod-rebaseline
