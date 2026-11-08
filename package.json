@@ -137,6 +137,9 @@
   "pnpm": {
     "patchedDependencies": {
       "exceljs@4.4.0": "patches/exceljs@4.4.0.patch"
+    },
+    "overrides": {
+      "proxy-addr@<2.0.8": "2.0.8"
     }
   }
 }
