@@ -264,6 +264,12 @@
       "file": "drizzle/0114_service_attendance.sql",
       "kind": "custom-additive",
       "sha256": "a780f83c9d711b7a03c676943174d626064452472bff85a68d664eb5e0cd639b"
+    },
+    {
+      "id": "0115",
+      "file": "drizzle/0115_treasury_two_factor.sql",
+      "kind": "custom-additive",
+      "sha256": "b7ad1ab6c1a10a4996f99733fc247b1f0cfd5d83da4470169337c5b9f0731a11"
     }
   ]
 }

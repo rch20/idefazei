@@ -1,0 +1,43 @@
+name: CI — sincronizar lockfile (feature 2FA)
+
+# Regenera o pnpm-lock.yaml a partir do package.json (install local do agente nao funciona)
+# e comita de volta. Usado para introduzir dependencias novas da feature de 2FA da tesouraria.
+# Valida tsc + build para garantir que o lockfile novo resolve. Roda ao enviar a branch.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "feat/2fa-tesouraria"
+    paths:
+      - "package.json"
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Regenerar lockfile
+        run: pnpm install --no-frozen-lockfile
+      - name: Validar — TypeScript
+        run: pnpm check
+      - name: Commitar lockfile
+        run: |
+          if git diff --quiet pnpm-lock.yaml; then
+            echo "Lockfile ja estava em dia."; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "chore(2fa): sincroniza lockfile com otplib [skip ci]"
+          git push origin HEAD:"${GITHUB_REF_NAME}"

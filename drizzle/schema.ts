@@ -3424,3 +3424,75 @@ export const serviceAttendanceSessions = mysqlTable(
 );
 
 export type ServiceAttendanceSession = typeof serviceAttendanceSessions.$inferSelect;
+
+// 2FA (TOTP) da Tesouraria — segredo cifrado, códigos de recuperação em hash e trilha de auditoria.
+// Tudo escopado por churchId (multi-salão). Ver migration drizzle/0115_treasury_two_factor.sql.
+export const treasuryTwoFactor = mysqlTable(
+  "treasury_two_factor",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    churchUserId: int("churchUserId").notNull(),
+    secretCipher: varchar("secretCipher", { length: 512 }).notNull(),
+    enrolledAt: timestamp("enrolledAt"),
+    lastVerifiedAt: timestamp("lastVerifiedAt"),
+    sessionVerifiedUntil: timestamp("sessionVerifiedUntil"),
+    failedAttempts: int("failedAttempts").default(0).notNull(),
+    lockedUntil: timestamp("lockedUntil"),
+    disabledAt: timestamp("disabledAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("treasury_two_factor_church_user_unique").on(table.churchId, table.churchUserId),
+  ]
+);
+
+export type TreasuryTwoFactor = typeof treasuryTwoFactor.$inferSelect;
+export type InsertTreasuryTwoFactor = typeof treasuryTwoFactor.$inferInsert;
+
+export const treasuryTwoFactorRecovery = mysqlTable(
+  "treasury_two_factor_recovery",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    churchUserId: int("churchUserId").notNull(),
+    codeHash: varchar("codeHash", { length: 128 }).notNull(),
+    usedAt: timestamp("usedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [
+    index("treasury_two_factor_recovery_lookup_idx").on(table.churchId, table.churchUserId, table.codeHash),
+    index("treasury_two_factor_recovery_owner_idx").on(table.churchId, table.churchUserId),
+  ]
+);
+
+export type TreasuryTwoFactorRecovery = typeof treasuryTwoFactorRecovery.$inferSelect;
+
+export const treasuryTwoFactorAudit = mysqlTable(
+  "treasury_two_factor_audit",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    churchId: int("churchId").notNull(),
+    churchUserId: int("churchUserId").notNull(),
+    actorChurchUserId: int("actorChurchUserId"),
+    action: mysqlEnum("action", [
+      "ativado",
+      "verificado",
+      "falha_verificacao",
+      "recuperacao_usada",
+      "codigos_regerados",
+      "resetado",
+      "desativado",
+      "bloqueado",
+    ]).notNull(),
+    detail: varchar("detail", { length: 255 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  (table) => [
+    index("treasury_two_factor_audit_owner_idx").on(table.churchId, table.churchUserId),
+    index("treasury_two_factor_audit_church_created_idx").on(table.churchId, table.createdAt),
+  ]
+);
+
+export type TreasuryTwoFactorAudit = typeof treasuryTwoFactorAudit.$inferSelect;
