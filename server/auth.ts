@@ -85,7 +85,7 @@ export async function signToken(payload: ChurchTokenPayload | AdminTokenPayload)
 
 export async function verifyToken(token: string): Promise<ChurchTokenPayload | AdminTokenPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, JWT_SECRET, { algorithms: ["HS256"] });
     return payload as unknown as ChurchTokenPayload | AdminTokenPayload;
   } catch {
     return null;

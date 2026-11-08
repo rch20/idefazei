@@ -7504,9 +7504,15 @@ export async function enrollInCourse(data: { courseId: number; personId: number 
   } as typeof courseEnrollments.$inferInsert);
 }
 
-export async function updateCourseEnrollment(id: number, data: { status?: string; completedAt?: Date | null }) {
+export async function updateCourseEnrollment(id: number, churchId: number, data: { status?: string; completedAt?: Date | null }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  // Isolamento multi-salão (2026-11): a matrícula só é alterada se pertencer à igreja.
+  // courseEnrollments não tem coluna churchId própria — o vínculo é via curso+pessoa,
+  // então reaproveitamos o read já escopado para garantir a posse aqui dentro (fail-closed),
+  // mesmo que um chamador futuro esqueça de pré-verificar.
+  const owned = await getCourseEnrollmentById(id, churchId);
+  if (!owned) return;
   const update: Record<string, unknown> = {};
   if (data.status !== undefined) update.status = data.status;
   if (data.completedAt !== undefined) update.completedAt = data.completedAt;

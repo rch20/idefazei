@@ -9213,7 +9213,7 @@ const escolaFundamentosRouter = router({
         studyId: input.studyId,
         lastBlockPosition: input.lastBlockPosition,
       });
-      if (enrollment.status === "matriculado") await updateCourseEnrollment(enrollment.id, { status: "em_andamento" });
+      if (enrollment.status === "matriculado") await updateCourseEnrollment(enrollment.id, input.churchId, { status: "em_andamento" });
       // Preparação de batismo: se o estudo concluído é o designado pela igreja e a
       // Pessoa é candidata, registra a conclusão e avisa a liderança (feedback na aba Batismo).
       try {
@@ -9887,7 +9887,7 @@ const escolaFundamentosRouter = router({
         });
       }
       const courseEnrollment = await getCourseEnrollmentById(input.id, input.churchId);
-      await updateCourseEnrollment(input.id, {
+      await updateCourseEnrollment(input.id, input.churchId, {
         status: input.status,
         completedAt: input.completedAt,
       });
