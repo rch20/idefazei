@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "source": "approved-local-build-2026-10-16-foundation-phase-two-stage-reflections",
+  "source": "rebaseline-zod-2026-11-08: schemas 46356->82042B (12476->23700B gzip) por correcao do zod (CVE-2026-45321)",
   "files": {
     "__manus__/debug-collector.js": {
       "logicalName": "debug-collector.js",
@@ -872,12 +872,6 @@
       "bytes": 496,
       "gzipBytes": 326
     },
-    "assets/schemas-CkmBJ8xI.js": {
-      "logicalName": "schemas.js",
-      "type": "js",
-      "bytes": 46356,
-      "gzipBytes": 12476
-    },
     "assets/search-D27CL6vu.js": {
       "logicalName": "search.js",
       "type": "js",
@@ -1057,6 +1051,12 @@
       "type": "js",
       "bytes": 3859,
       "gzipBytes": 1685
+    },
+    "assets/schemas-DQ7SWSjB.js": {
+      "logicalName": "schemas.js",
+      "type": "js",
+      "bytes": 82042,
+      "gzipBytes": 23700
     }
   },
   "cycles": [
