@@ -71,11 +71,57 @@ export type TenantThemeInput = {
   templateKey?: string | null;
 };
 
+// ─── Contraste (WCAG) ────────────────────────────────────────────────────────
+// Deriva cores legíveis a partir das cores de marca, garantindo AA. Mantém o tom
+// (apenas escurece/clareia) para não descaracterizar a identidade escolhida.
+function toRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  const n = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  return [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16)) as [number, number, number];
+}
+function toHex(rgb: number[]): string {
+  return "#" + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+}
+function mix(a: string, b: string, t: number): string {
+  const ra = toRgb(a), rb = toRgb(b);
+  return toHex(ra.map((v, i) => v * t + rb[i] * (1 - t)));
+}
+function luminance(hex: string): number {
+  const f = (v: number) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const [r, g, b] = toRgb(hex);
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+function contrast(a: string, b: string): number {
+  const l1 = luminance(a), l2 = luminance(b);
+  const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1];
+  return (hi + 0.05) / (lo + 0.05);
+}
+/** Rótulo pequeno legível sobre fundo claro: escurece a cor de marca até passar AA (4.5). */
+function readableLabel(color: string, bg: string): string {
+  for (let t = 1; t >= 0.15; t -= 0.05) { const c = mix(color, "#000000", t); if (contrast(c, bg) >= 4.5) return c; }
+  return mix(color, "#000000", 0.15);
+}
+/** Detalhe sobre o hero escuro: clareia a cor de marca até ler sobre a primária (>=3). */
+function readableEyebrow(color: string, primary: string): string {
+  if (contrast(color, primary) >= 3) return color;
+  for (let t = 0.9; t >= 0; t -= 0.1) { const c = mix(color, "#ffffff", t); if (contrast(c, primary) >= 3) return c; }
+  return "#ffffff";
+}
+/** Botão de ação: usa a secundária com o texto que melhor contrasta; se nenhum passa AA,
+ *  escurece o fundo do botão (mantendo o tom) e usa texto branco. */
+function readableCta(secondary: string, primary: string): { bg: string; text: string } {
+  if (contrast(primary, secondary) >= 4.5) return { bg: secondary, text: primary };
+  if (contrast("#ffffff", secondary) >= 4.5) return { bg: secondary, text: "#ffffff" };
+  for (let t = 1; t >= 0.2; t -= 0.05) { const bg = mix(secondary, "#000000", t); if (contrast("#ffffff", bg) >= 4.5) return { bg, text: "#ffffff" }; }
+  return { bg: mix(secondary, "#000000", 0.2), text: "#ffffff" };
+}
+
 /**
  * Monta as variáveis CSS do site público a partir do tema salvo + identidade (templateKey).
  * Igrejas antigas (templateKey "ministerial_base") caem no preset Marinho, que reproduz o
  * visual atual (creme + Playfair/Inter) — sem regressão. Cores salvas sempre têm prioridade
- * sobre as do preset, preservando o ajuste fino da igreja.
+ * sobre as do preset, preservando o ajuste fino da igreja. Rótulo, eyebrow e botão são
+ * derivados para garantir contraste AA em qualquer identidade.
  */
 export function resolveTenantThemeVars(input: TenantThemeInput): Record<string, string> {
   const preset = getIdentityPreset(input.templateKey) ?? IDENTITY_PRESETS[0];
@@ -84,6 +130,7 @@ export function resolveTenantThemeVars(input: TenantThemeInput): Record<string, 
   const secondary = input.secondaryColor || preset.secondaryColor;
   const accent = input.accentColor || preset.accentColor;
   const fonts = resolveFontPair(input.fontPair || preset.fontPair);
+  const cta = extra.onSecondaryColor ? { bg: secondary, text: extra.onSecondaryColor } : readableCta(secondary, primary);
   return {
     "--tenant-primary": primary,
     "--tenant-secondary": secondary,
@@ -92,7 +139,9 @@ export function resolveTenantThemeVars(input: TenantThemeInput): Record<string, 
     "--tenant-surface": preset.surface,
     "--tenant-font-display": fonts.display,
     "--tenant-font-body": fonts.body,
-    "--tenant-on-secondary": extra.onSecondaryColor ?? primary,
-    "--tenant-eyebrow": extra.eyebrowColor ?? secondary,
+    "--tenant-label": readableLabel(secondary, preset.bg),
+    "--tenant-eyebrow": extra.eyebrowColor ?? readableEyebrow(secondary, primary),
+    "--tenant-cta-bg": cta.bg,
+    "--tenant-on-secondary": cta.text,
   };
 }
