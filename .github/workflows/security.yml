@@ -11,6 +11,11 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1"
+  # Roda ao enviar uma branch de segurança (não dispara em produção/deploy).
+  push:
+    branches:
+      - "**/seguranca-*"
+      - "**/security-*"
 
 permissions:
   contents: read
