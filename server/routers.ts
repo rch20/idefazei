@@ -7,6 +7,25 @@ import { z } from "zod";
 import { CHURCH_SETUP_STEP_KEYS } from "../shared/churchSetup";
 import { BILLING_PLAN_KEYS, BILLING_PLANS, billingAmountCents, type BillingPlanKey } from "../shared/billing";
 import { getChurchBilling, getPagarmeAdminView, isBillingEnforced, listAllPayments, listChurchPayments, applyPaidCharge, savePagarmeConfig, startChurchCheckout, testPagarmeConnection } from "./billing";
+import {
+  hasValidTreasurySession,
+  hasFreshTreasuryVerification,
+  getTwoFactorStatus,
+  getTwoFactorRecord,
+  startEnrollment,
+  confirmEnrollment,
+  markSessionVerified,
+  registerFailedAttempt,
+  consumeRecoveryCode,
+  regenerateRecoveryCodes,
+  countUnusedRecoveryCodes,
+  resetTwoFactor,
+  auditTwoFactor,
+  decryptTotpSecret,
+  generateTotpSecret,
+  totpKeyUri,
+  verifyTotp,
+} from "./treasury2fa";
 import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
 import { HERO_PRESET_IDS } from "../shared/publicHero";
@@ -1085,7 +1104,9 @@ async function requireChurchPublicSitePublisher(userId: number, churchId: number
   return member;
 }
 
-async function requireTreasuryAccess(userId: number, churchId: number) {
+// Checa só o PAPEL de tesouraria (sem exigir 2FA). Usado pelas próprias rotas de 2FA
+// (cadastro/verificação) para evitar o impasse "preciso de 2FA para configurar o 2FA".
+async function requireTreasuryRole(userId: number, churchId: number) {
   const actor = await requireChurchMember(userId, churchId);
   const roles = await getEffectiveChurchRoles(userId, churchId, actor);
   if (!roles.some(role => TREASURY_ROLES.has(role))) {
@@ -1101,6 +1122,27 @@ async function requireTreasuryAccess(userId: number, churchId: number) {
     canManageThankYouMessage: roles.some(role => ["pastor_presidente", "pastor_local", "tesoureiro", "supervisor"].includes(role)),
     canClosePeriod: roles.some(role => PASTOR_OR_SUPERVISOR_ROLES.has(role)),
   };
+}
+
+// Acesso pleno à tesouraria: exige o papel E o 2FA conferido na sessão (dinheiro = segundo fator).
+// Toda procedure de dados da tesouraria passa por aqui, então é o ponto único da trava.
+// Lança UNAUTHORIZED/TREASURY_2FA_REQUIRED quando falta o 2FA, para a tela abrir o fluxo de 2FA.
+async function requireTreasuryAccess(userId: number, churchId: number) {
+  const access = await requireTreasuryRole(userId, churchId);
+  const ok = await hasValidTreasurySession(churchId, access.actor.id);
+  if (!ok) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "TREASURY_2FA_REQUIRED" });
+  }
+  return access;
+}
+
+// Exige verificação 2FA "fresca" (há poucos minutos) para operações sensíveis de verdade,
+// mesmo com a sessão já aberta. Chamar logo após requireTreasuryAccess na procedure sensível.
+async function requireFreshTreasuryTwoFactor(churchId: number, churchUserId: number) {
+  const fresh = await hasFreshTreasuryVerification(churchId, churchUserId);
+  if (!fresh) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "TREASURY_2FA_FRESH_REQUIRED" });
+  }
 }
 
 type TreasuryReportSignatureRole = "contador1" | "contador2" | "tesoureiro" | "pastor";
@@ -11857,6 +11899,139 @@ async function presentOnlineContribution(row: Awaited<ReturnType<typeof getOnlin
 }
 
 const treasuryRouter = router({
+  // ─── 2FA (TOTP) da Tesouraria ───────────────────────────────────────────────
+  // Situação atual do 2FA do usuário logado (a tela decide: cadastrar, pedir código, ou liberar).
+  twoFactorStatus: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .query(async ({ input, ctx }) => {
+      const access = await requireTreasuryRole(ctx.user.id, input.churchId);
+      const status = await getTwoFactorStatus(input.churchId, access.actor.id);
+      const remainingRecovery = status.enrolled
+        ? await countUnusedRecoveryCodes(input.churchId, access.actor.id)
+        : 0;
+      return {
+        enrolled: status.enrolled,
+        sessionVerified: status.sessionVerified,
+        lockedUntil: status.lockedUntil ? status.lockedUntil.toISOString() : null,
+        remainingRecovery,
+        canResetOthers: access.roles.some(role => PASTOR_OR_SUPERVISOR_ROLES.has(role)),
+      };
+    }),
+
+  // Inicia o cadastro: gera o segredo e devolve o QR (otpauth) + chave manual. Ainda não ativa.
+  twoFactorBeginEnroll: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryRole(ctx.user.id, input.churchId);
+      const existing = await getTwoFactorRecord(input.churchId, access.actor.id);
+      if (existing?.enrolledAt && !existing.disabledAt) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "O 2FA já está ativo. Para trocar de aparelho, peça um reset a um pastor/supervisor.",
+        });
+      }
+      const secret = generateTotpSecret();
+      await startEnrollment(input.churchId, access.actor.id, secret);
+      const label = access.actor.email ?? `igreja-${input.churchId}`;
+      return { otpauthUri: totpKeyUri(label, secret), manualKey: secret };
+    }),
+
+  // Confirma o cadastro com o primeiro código do app; ativa o 2FA e devolve os códigos de recuperação.
+  twoFactorConfirmEnroll: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), code: z.string().min(6).max(10) }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryRole(ctx.user.id, input.churchId);
+      const rec = await getTwoFactorRecord(input.churchId, access.actor.id);
+      if (!rec) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Nenhum cadastro de 2FA em andamento. Comece de novo." });
+      }
+      const secret = decryptTotpSecret(rec.secretCipher);
+      if (!verifyTotp(input.code, secret)) {
+        await auditTwoFactor(input.churchId, access.actor.id, "falha_verificacao", access.actor.id, "confirmacao-cadastro");
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "Código inválido. Confira o horário do celular e tente de novo." });
+      }
+      const recoveryCodes = await confirmEnrollment(input.churchId, access.actor.id);
+      await auditTwoFactor(input.churchId, access.actor.id, "ativado", access.actor.id);
+      return { recoveryCodes };
+    }),
+
+  // Verifica o 2FA para abrir a sessão (código do app ou um código de recuperação).
+  twoFactorVerify: protectedProcedure
+    .input(
+      z.object({
+        churchId: z.number().int().positive(),
+        code: z.string().min(6).max(10).optional(),
+        recoveryCode: z.string().min(8).max(20).optional(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryRole(ctx.user.id, input.churchId);
+      const rec = await getTwoFactorRecord(input.churchId, access.actor.id);
+      if (!rec || !rec.enrolledAt || rec.disabledAt) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "2FA ainda não configurado para este usuário." });
+      }
+      if (rec.lockedUntil && rec.lockedUntil.getTime() > Date.now()) {
+        throw new TRPCError({ code: "TOO_MANY_REQUESTS", message: "Muitas tentativas. Aguarde alguns minutos e tente de novo." });
+      }
+      let ok = false;
+      let viaRecovery = false;
+      if (input.recoveryCode) {
+        ok = await consumeRecoveryCode(input.churchId, access.actor.id, input.recoveryCode);
+        viaRecovery = ok;
+      } else if (input.code) {
+        const secret = decryptTotpSecret(rec.secretCipher);
+        ok = verifyTotp(input.code, secret);
+      } else {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o código do app ou um código de recuperação." });
+      }
+      if (!ok) {
+        const { locked } = await registerFailedAttempt(input.churchId, access.actor.id);
+        await auditTwoFactor(input.churchId, access.actor.id, locked ? "bloqueado" : "falha_verificacao", access.actor.id);
+        throw new TRPCError({
+          code: locked ? "TOO_MANY_REQUESTS" : "UNAUTHORIZED",
+          message: locked
+            ? "Bloqueado por tentativas demais. Aguarde alguns minutos."
+            : "Código inválido. Tente de novo.",
+        });
+      }
+      await markSessionVerified(input.churchId, access.actor.id);
+      await auditTwoFactor(input.churchId, access.actor.id, viaRecovery ? "recuperacao_usada" : "verificado", access.actor.id);
+      const remainingRecovery = await countUnusedRecoveryCodes(input.churchId, access.actor.id);
+      return { ok: true, viaRecovery, remainingRecovery };
+    }),
+
+  // Gera novos códigos de recuperação (invalida os antigos). Exige verificação recente.
+  twoFactorRegenerateRecovery: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryRole(ctx.user.id, input.churchId);
+      const rec = await getTwoFactorRecord(input.churchId, access.actor.id);
+      if (!rec || !rec.enrolledAt || rec.disabledAt) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "2FA não está ativo." });
+      }
+      await requireFreshTreasuryTwoFactor(input.churchId, access.actor.id);
+      const recoveryCodes = await regenerateRecoveryCodes(input.churchId, access.actor.id);
+      await auditTwoFactor(input.churchId, access.actor.id, "codigos_regerados", access.actor.id);
+      return { recoveryCodes };
+    }),
+
+  // Reset do 2FA de outro usuário (perdeu o celular). Só pastor/supervisor; sempre auditado.
+  twoFactorReset: protectedProcedure
+    .input(z.object({ churchId: z.number().int().positive(), targetChurchUserId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const access = await requireTreasuryRole(ctx.user.id, input.churchId);
+      if (!access.roles.some(role => PASTOR_OR_SUPERVISOR_ROLES.has(role))) {
+        throw new TRPCError({ code: "FORBIDDEN", message: "Só um pastor ou supervisor pode resetar o 2FA de outra pessoa." });
+      }
+      const target = await getActiveChurchUserById(input.targetChurchUserId);
+      if (!target || target.churchId !== input.churchId) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado nesta igreja." });
+      }
+      await resetTwoFactor(input.churchId, input.targetChurchUserId);
+      await auditTwoFactor(input.churchId, input.targetChurchUserId, "resetado", access.actor.id, `reset por churchUser ${access.actor.id}`);
+      return { ok: true };
+    }),
+
   overview: protectedProcedure
     .input(
       z.object({
@@ -12140,6 +12315,7 @@ const treasuryRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      await requireFreshTreasuryTwoFactor(input.churchId, access.actor.id);
       if (!access.canManageStructure)
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -13483,6 +13659,7 @@ const treasuryRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
+      await requireFreshTreasuryTwoFactor(input.churchId, access.actor.id);
       if (!access.canManageStructure)
         throw new TRPCError({
           code: "FORBIDDEN",
