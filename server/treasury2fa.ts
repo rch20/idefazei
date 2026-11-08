@@ -15,12 +15,27 @@ import { authenticator } from "otplib";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { treasuryTwoFactor, treasuryTwoFactorRecovery, treasuryTwoFactorAudit } from "../drizzle/schema";
 import { ENV } from "./_core/env";
-import { getDb } from "./db";
+import { getDb, getChurchBySlug } from "./db";
 
 async function db2fa() {
   const db = await getDb();
   if (!db) throw new Error("Banco indisponível para operação de 2FA da tesouraria.");
   return db;
+}
+
+// O salão demo é vitrine (não mexe com dinheiro real), então fica isento do 2FA para não
+// atrapalhar quem está conhecendo o sistema. Identificado pelo slug "demo"; id cacheado.
+let demoChurchIdCache: number | null | undefined;
+export async function isDemoChurch(churchId: number): Promise<boolean> {
+  if (demoChurchIdCache === undefined) {
+    try {
+      const demo = await getChurchBySlug("demo");
+      demoChurchIdCache = demo?.id ?? null;
+    } catch {
+      demoChurchIdCache = null;
+    }
+  }
+  return demoChurchIdCache != null && demoChurchIdCache === churchId;
 }
 
 export const TWO_FACTOR_ISSUER = "Ide Fazei — Tesouraria";

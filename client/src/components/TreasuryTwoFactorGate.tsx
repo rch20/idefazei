@@ -322,6 +322,7 @@ export default function TreasuryTwoFactorGate({ children }: { children: ReactNod
     );
   }
   const data = statusQuery.data;
+  if (data.exempt) return <>{children}</>; // demo (vitrine) não exige 2FA
   if (!data.enrolled) return <EnrollFlow churchId={churchId} churchName={churchName ?? ""} onDone={refetch} />;
   if (!data.sessionVerified) return <VerifyFlow churchId={churchId} lockedUntil={data.lockedUntil} onDone={refetch} />;
   return <>{children}</>;

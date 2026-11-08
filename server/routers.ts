@@ -8,6 +8,7 @@ import { CHURCH_SETUP_STEP_KEYS } from "../shared/churchSetup";
 import { BILLING_PLAN_KEYS, BILLING_PLANS, billingAmountCents, type BillingPlanKey } from "../shared/billing";
 import { getChurchBilling, getPagarmeAdminView, isBillingEnforced, listAllPayments, listChurchPayments, applyPaidCharge, savePagarmeConfig, startChurchCheckout, testPagarmeConnection } from "./billing";
 import {
+  isDemoChurch,
   hasValidTreasurySession,
   hasFreshTreasuryVerification,
   getTwoFactorStatus,
@@ -1129,6 +1130,7 @@ async function requireTreasuryRole(userId: number, churchId: number) {
 // Lança UNAUTHORIZED/TREASURY_2FA_REQUIRED quando falta o 2FA, para a tela abrir o fluxo de 2FA.
 async function requireTreasuryAccess(userId: number, churchId: number) {
   const access = await requireTreasuryRole(userId, churchId);
+  if (await isDemoChurch(churchId)) return access; // demo é vitrine: isento de 2FA
   const ok = await hasValidTreasurySession(churchId, access.actor.id);
   if (!ok) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "TREASURY_2FA_REQUIRED" });
@@ -11905,11 +11907,16 @@ const treasuryRouter = router({
     .input(z.object({ churchId: z.number().int().positive() }))
     .query(async ({ input, ctx }) => {
       const access = await requireTreasuryRole(ctx.user.id, input.churchId);
+      if (await isDemoChurch(input.churchId)) {
+        // Demo é vitrine: libera direto, sem exigir 2FA.
+        return { exempt: true, enrolled: true, sessionVerified: true, lockedUntil: null, remainingRecovery: 0, canResetOthers: false };
+      }
       const status = await getTwoFactorStatus(input.churchId, access.actor.id);
       const remainingRecovery = status.enrolled
         ? await countUnusedRecoveryCodes(input.churchId, access.actor.id)
         : 0;
       return {
+        exempt: false,
         enrolled: status.enrolled,
         sessionVerified: status.sessionVerified,
         lockedUntil: status.lockedUntil ? status.lockedUntil.toISOString() : null,

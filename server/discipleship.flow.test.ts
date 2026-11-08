@@ -324,6 +324,7 @@ vi.mock("./db", () => ({
 // O 2FA da tesouraria tem camada de banco própria; este teste mocka o banco, então
 // abrimos a trava aqui (o fluxo de 2FA tem testes dedicados). Demais exports são stubs.
 vi.mock("./treasury2fa", () => ({
+  isDemoChurch: vi.fn().mockResolvedValue(false),
   hasValidTreasurySession: vi.fn().mockResolvedValue(true),
   hasFreshTreasuryVerification: vi.fn().mockResolvedValue(true),
   getTwoFactorStatus: vi.fn().mockResolvedValue({ enrolled: true, sessionVerified: true, lockedUntil: null }),
