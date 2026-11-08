@@ -43,7 +43,6 @@ jobs:
           @tanstack/react-query
           express
           mysql2
-          zod
           nodemailer
           nanoid
           drizzle-orm
