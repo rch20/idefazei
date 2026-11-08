@@ -377,9 +377,9 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
   max-width: 100%;
   overflow-x: clip;
   isolation: isolate;
-  background: #f8f4ed;
+  background: var(--tenant-bg, #f8f4ed);
   color: var(--tenant-primary, #1e3a5f);
-  font-family: Inter, sans-serif;
+  font-family: var(--tenant-font-body, Inter, sans-serif);
 }
 
 .tenant-public-root *,
@@ -395,10 +395,10 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-container { width: min(100% - 2rem, 72rem); margin-inline: auto; }
 .tenant-public-loading { display: grid; min-height: 100dvh; place-items: center; padding: 2rem; text-align: center; }
 
-.tenant-public-header { position: sticky; top: 0; z-index: 20; isolation: isolate; border-bottom: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 28%, transparent); background: color-mix(in srgb, #f8f4ed 82%, transparent); backdrop-filter: blur(14px) saturate(140%); }
-@supports not (backdrop-filter: blur(2px)) { .tenant-public-header { background: #f8f4ed; } }
+.tenant-public-header { position: sticky; top: 0; z-index: 20; isolation: isolate; border-bottom: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 28%, transparent); background: color-mix(in srgb, var(--tenant-bg, #f8f4ed) 82%, transparent); backdrop-filter: blur(14px) saturate(140%); }
+@supports not (backdrop-filter: blur(2px)) { .tenant-public-header { background: var(--tenant-bg, #f8f4ed); } }
 .tenant-public-header-inner { display: flex; height: 4.5rem; min-height: 4.5rem; align-items: center; justify-content: space-between; gap: 1rem; }
-.tenant-public-brand { display: inline-flex; min-width: 0; align-items: center; gap: .75rem; color: inherit; font-family: "Playfair Display", serif; font-size: clamp(1.1rem, 4vw, 1.45rem); font-weight: 700; text-decoration: none; }
+.tenant-public-brand { display: inline-flex; min-width: 0; align-items: center; gap: .75rem; color: inherit; font-family: var(--tenant-font-display, "Playfair Display", serif); font-size: clamp(1.1rem, 4vw, 1.45rem); font-weight: 700; text-decoration: none; }
 .tenant-public-logo { width: 2.5rem; height: 2.5rem; flex: 0 0 auto; border-radius: .65rem; object-fit: contain; }
 .tenant-public-mark { display: grid; width: 2.5rem; height: 2.5rem; flex: 0 0 auto; place-items: center; border-radius: .65rem; background: var(--tenant-primary, #1e3a5f); color: var(--tenant-secondary, #c9a84c); }
 .tenant-public-login { display: inline-flex; align-items: center; color: inherit; font-size: .875rem; font-weight: 700; text-decoration: none; border: 1px solid color-mix(in srgb, var(--tenant-primary, #1e3a5f) 28%, transparent); border-radius: 999px; padding: .45rem .95rem; transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease; }
@@ -419,13 +419,13 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-hero-content .tenant-public-eyebrow { margin-inline: auto; }
 .tenant-public-hero-actions { display: grid; width: min(100%, 24rem); gap: .5rem; margin-inline: auto; }
 .tenant-public-hero-actions > * { width: 100%; }
-.tenant-public-eyebrow { display: inline-block; margin-bottom: 1.25rem; color: var(--tenant-secondary, #c9a84c); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
-.tenant-public-hero .tenant-public-eyebrow { border: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 55%, transparent); border-radius: 999px; padding: .4rem .9rem; background: color-mix(in srgb, var(--tenant-secondary, #c9a84c) 14%, transparent); }
+.tenant-public-eyebrow { display: inline-block; margin-bottom: 1.25rem; color: var(--tenant-eyebrow, var(--tenant-secondary, #c9a84c)); font-size: .78rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.tenant-public-hero .tenant-public-eyebrow { border: 1px solid color-mix(in srgb, var(--tenant-eyebrow, var(--tenant-secondary, #c9a84c)) 55%, transparent); border-radius: 999px; padding: .4rem .9rem; background: color-mix(in srgb, var(--tenant-eyebrow, var(--tenant-secondary, #c9a84c)) 14%, transparent); }
 @supports (backdrop-filter: blur(2px)) { .tenant-public-hero .tenant-public-eyebrow { backdrop-filter: blur(5px); } }
-.tenant-public-hero h1, .tenant-public-prose h2 { max-width: 15ch; margin: 0; font-family: "Playfair Display", serif; font-size: clamp(2.7rem, 9vw, 6.25rem); line-height: .98; letter-spacing: -0.02em; text-wrap: balance; }
+.tenant-public-hero h1, .tenant-public-prose h2 { max-width: 15ch; margin: 0; font-family: var(--tenant-font-display, "Playfair Display", serif); font-size: clamp(2.7rem, 9vw, 6.25rem); line-height: .98; letter-spacing: -0.02em; text-wrap: balance; }
 .tenant-public-hero h1 { margin-inline: auto; color: white; text-shadow: 0 2px 22px rgba(0, 0, 0, .3); }
 .tenant-public-hero p { max-width: 43rem; margin: 1.5rem auto 2rem; color: rgb(255 255 255 / 86%); font-family: "Cormorant Garamond", serif; font-size: clamp(1.3rem, 4vw, 1.75rem); line-height: 1.45; text-shadow: 0 1px 12px rgba(0, 0, 0, .32); }
-.tenant-public-cta { width: min(100%, 26rem); max-width: 100%; background: var(--tenant-secondary, #c9a84c); color: var(--tenant-primary, #1e3a5f); }
+.tenant-public-cta { width: min(100%, 26rem); max-width: 100%; background: var(--tenant-secondary, #c9a84c); color: var(--tenant-on-secondary, var(--tenant-primary, #1e3a5f)); }
 .tenant-public-cta a { display: inline-flex; width: 100%; align-items: center; justify-content: center; gap: .65rem; white-space: normal; }
 .tenant-public-cell-cta { display: inline-flex; width: min(100%, 26rem); min-height: 2.25rem; align-items: center; justify-content: center; gap: .38rem; margin-top: .6rem; border: 1px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 58%, white); border-radius: .72rem; background: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 18%, transparent); padding: .28rem .7rem; color: white; font-size: .78rem; font-weight: 600; line-height: 1.2; text-align: center; text-decoration: none; backdrop-filter: blur(8px); transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease; }
 .tenant-public-cell-cta:hover { background: color-mix(in srgb, var(--tenant-secondary, #c9a84c) 22%, transparent); border-color: var(--tenant-secondary, #c9a84c); }
@@ -464,21 +464,21 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-prose { max-width: 52rem; }
 .tenant-public-prose h2 { max-width: 18ch; font-size: clamp(1.85rem, 4.2vw, 3rem); }
 .tenant-public-prose p { max-width: 65ch; margin: 1.5rem 0 0; color: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 68%, white); font-size: clamp(1rem, 2.6vw, 1.15rem); line-height: 1.8; overflow-wrap: anywhere; }
-.tenant-public-contact-section { background: color-mix(in srgb, var(--tenant-secondary, #c9a84c) 11%, #f8f4ed); }
+.tenant-public-contact-section { background: color-mix(in srgb, var(--tenant-secondary, #c9a84c) 11%, var(--tenant-bg, #f8f4ed)); }
 .tenant-public-contact-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 22rem)); justify-content: center; gap: 1rem; }
 .tenant-public-contact-card { display: flex; min-width: 0; gap: .85rem; border: 1px solid color-mix(in srgb, var(--tenant-primary, #1e3a5f) 12%, transparent); border-radius: 1rem; background: rgb(255 255 255 / 72%); padding: 1.15rem; color: inherit; text-decoration: none; overflow-wrap: anywhere; }
 .tenant-public-contact-card svg { width: 1.35rem; height: 1.35rem; flex: 0 0 auto; color: var(--tenant-secondary, #c9a84c); }
 .tenant-public-contact-card span { display: grid; gap: .2rem; font-size: .9rem; }
-.tenant-public-events-section { background: color-mix(in srgb, var(--tenant-primary) 5%, #f8f4ed); }
-.tenant-public-announcements-section { background: color-mix(in srgb, var(--tenant-secondary) 6%, #fffdf9); }
+.tenant-public-events-section { background: color-mix(in srgb, var(--tenant-primary) 5%, var(--tenant-bg, #f8f4ed)); }
+.tenant-public-announcements-section { background: color-mix(in srgb, var(--tenant-secondary) 6%, var(--tenant-surface, #fffdf9)); }
 .tenant-public-events-heading { margin-bottom: 1.5rem; }
 .tenant-public-events-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 22rem)); justify-content: center; gap: 1rem; }
-.tenant-public-event-card { min-width: 0; display: flex; gap: 1rem; align-items: flex-start; border: 1px solid color-mix(in srgb, var(--tenant-primary) 16%, transparent); border-radius: 1rem; background: #fffdf9; padding: 1rem; box-shadow: 0 .65rem 1.8rem -0.6rem color-mix(in srgb, var(--tenant-primary, #1e3a5f) 22%, transparent); }
+.tenant-public-event-card { min-width: 0; display: flex; gap: 1rem; align-items: flex-start; border: 1px solid color-mix(in srgb, var(--tenant-primary) 16%, transparent); border-radius: 1rem; background: var(--tenant-surface, #fffdf9); padding: 1rem; box-shadow: 0 .65rem 1.8rem -0.6rem color-mix(in srgb, var(--tenant-primary, #1e3a5f) 22%, transparent); }
 .tenant-public-event-date { flex: 0 0 3.3rem; display: grid; place-items: center; border-radius: .8rem; background: var(--tenant-primary); color: white; padding: .5rem .25rem; text-transform: uppercase; line-height: 1; }
-.tenant-public-event-date strong { font-family: "Playfair Display", serif; font-size: 1.4rem; }
+.tenant-public-event-date strong { font-family: var(--tenant-font-display, "Playfair Display", serif); font-size: 1.4rem; }
 .tenant-public-event-date span { margin-top: .18rem; font-size: .65rem; font-weight: 700; }
 .tenant-public-event-type { color: var(--tenant-secondary); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.tenant-public-event-card h3 { margin: .35rem 0; color: var(--tenant-primary); font-family: "Playfair Display", serif; font-size: 1.2rem; line-height: 1.15; overflow-wrap: anywhere; }
+.tenant-public-event-card h3 { margin: .35rem 0; color: var(--tenant-primary); font-family: var(--tenant-font-display, "Playfair Display", serif); font-size: 1.2rem; line-height: 1.15; overflow-wrap: anywhere; }
 .tenant-public-event-card p { margin: 0; color: color-mix(in srgb, var(--tenant-primary) 68%, white); font-size: .88rem; overflow-wrap: anywhere; }
 .tenant-public-event-meta { display: grid; gap: .35rem; margin-top: .8rem; color: color-mix(in srgb, var(--tenant-primary) 68%, white); font-size: .78rem; }
 .tenant-public-event-meta span { min-width: 0; display: flex; gap: .35rem; align-items: center; overflow-wrap: anywhere; }
@@ -489,17 +489,17 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-event-register:focus-visible { outline: 3px solid color-mix(in srgb, var(--tenant-secondary, #c9a84c) 75%, transparent); outline-offset: 3px; }
 @media (hover: hover) and (pointer: fine) { .tenant-public-event-register:hover { background: color-mix(in srgb, var(--tenant-primary, #1e3a5f) 86%, #000); } }
 .tenant-public-announcements-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 22rem)); justify-content: center; gap: 1rem; }
-.tenant-public-announcement-card { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid color-mix(in srgb, var(--tenant-secondary) 22%, transparent); border-radius: 1rem; background: #fffdf9; box-shadow: 0 .65rem 1.8rem -0.6rem color-mix(in srgb, var(--tenant-primary, #1e3a5f) 22%, transparent); }
+.tenant-public-announcement-card { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid color-mix(in srgb, var(--tenant-secondary) 22%, transparent); border-radius: 1rem; background: var(--tenant-surface, #fffdf9); box-shadow: 0 .65rem 1.8rem -0.6rem color-mix(in srgb, var(--tenant-primary, #1e3a5f) 22%, transparent); }
 .tenant-public-announcement-card.is-pinned { border-color: color-mix(in srgb, var(--tenant-secondary) 55%, transparent); }
-.tenant-public-announcement-image-trigger { position: relative; display: block; width: 100%; min-width: 0; border: 0; padding: 0; cursor: zoom-in; color: inherit; text-align: left; background: color-mix(in srgb, var(--tenant-primary) 9%, #fffdf9); }
+.tenant-public-announcement-image-trigger { position: relative; display: block; width: 100%; min-width: 0; border: 0; padding: 0; cursor: zoom-in; color: inherit; text-align: left; background: color-mix(in srgb, var(--tenant-primary) 9%, var(--tenant-surface, #fffdf9)); }
 .tenant-public-announcement-image-trigger:focus-visible { outline: 3px solid var(--tenant-secondary); outline-offset: -3px; }
-.tenant-public-announcement-image { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 8; object-fit: cover; background: color-mix(in srgb, var(--tenant-primary) 9%, #fffdf9); transition: filter 160ms ease, transform 160ms ease; }
+.tenant-public-announcement-image { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 8; object-fit: cover; background: color-mix(in srgb, var(--tenant-primary) 9%, var(--tenant-surface, #fffdf9)); transition: filter 160ms ease, transform 160ms ease; }
 .tenant-public-announcement-image-trigger:hover .tenant-public-announcement-image, .tenant-public-announcement-image-trigger:focus-visible .tenant-public-announcement-image { filter: brightness(.88); }
 .tenant-public-announcement-image-hint { position: absolute; right: .7rem; bottom: .7rem; display: inline-flex; align-items: center; gap: .3rem; border: 1px solid rgb(255 255 255 / 65%); border-radius: 999px; padding: .35rem .55rem; color: white; background: rgb(15 34 58 / 78%); font-size: .7rem; font-weight: 800; letter-spacing: .03em; pointer-events: none; }
 .tenant-public-announcement-body { display: grid; min-width: 0; gap: .6rem; padding: 1.05rem; }
 .tenant-public-announcement-meta { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: .6rem; color: var(--tenant-secondary); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .tenant-public-announcement-meta span { min-width: 0; overflow-wrap: anywhere; }
-.tenant-public-announcement-card h3 { margin: 0; overflow-wrap: anywhere; color: var(--tenant-primary); font-family: "Playfair Display", serif; font-size: 1.3rem; line-height: 1.15; }
+.tenant-public-announcement-card h3 { margin: 0; overflow-wrap: anywhere; color: var(--tenant-primary); font-family: var(--tenant-font-display, "Playfair Display", serif); font-size: 1.3rem; line-height: 1.15; }
 .tenant-public-announcement-card p { margin: 0; overflow-wrap: anywhere; color: color-mix(in srgb, var(--tenant-primary) 68%, white); font-size: .92rem; line-height: 1.6; white-space: pre-line; }
 .tenant-public-announcement-summary { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .tenant-public-announcement-details-trigger { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; gap: .35rem; border: 0; border-radius: .6rem; padding: .18rem .15rem; color: var(--tenant-primary); background: transparent; font-size: .8rem; font-weight: 800; line-height: 1.35; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--tenant-secondary) 65%, transparent); text-underline-offset: .2rem; cursor: pointer; }
@@ -508,30 +508,30 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-announcement-action { display: inline-flex; width: fit-content; max-width: 100%; align-items: center; gap: .35rem; border-radius: .7rem; background: var(--tenant-primary); padding: .58rem .75rem; color: white; font-size: .82rem; font-weight: 700; text-decoration: none; }
 .tenant-public-announcement-action:hover { background: color-mix(in srgb, var(--tenant-primary) 82%, black); }
 .tenant-public-image-dialog { grid-template-rows: auto minmax(0, 1fr); width: min(96vw, 70rem); max-width: min(96vw, 70rem); max-height: 92dvh; overflow: hidden; border-color: color-mix(in srgb, var(--tenant-secondary) 42%, transparent); color: white; background: rgb(15 34 58 / 97%); }
-.tenant-public-announcement-dialog { grid-template-rows: auto minmax(0, 1fr); width: min(96vw, 42rem); max-width: min(96vw, 42rem); max-height: 88dvh; overflow: hidden; border-color: color-mix(in srgb, var(--tenant-secondary) 35%, transparent); color: var(--tenant-primary); background: #fffdf9; }
+.tenant-public-announcement-dialog { grid-template-rows: auto minmax(0, 1fr); width: min(96vw, 42rem); max-width: min(96vw, 42rem); max-height: 88dvh; overflow: hidden; border-color: color-mix(in srgb, var(--tenant-secondary) 35%, transparent); color: var(--tenant-primary); background: var(--tenant-surface, #fffdf9); }
 .tenant-public-announcement-dialog-header { padding-right: 2.5rem; }
-.tenant-public-announcement-dialog-header [data-slot="dialog-title"] { color: var(--tenant-primary); font-family: "Playfair Display", Georgia, serif; font-size: clamp(1.35rem, 4vw, 1.85rem); line-height: 1.1; }
+.tenant-public-announcement-dialog-header [data-slot="dialog-title"] { color: var(--tenant-primary); font-family: var(--tenant-font-display, "Playfair Display", Georgia, serif); font-size: clamp(1.35rem, 4vw, 1.85rem); line-height: 1.1; }
 .tenant-public-announcement-dialog-header [data-slot="dialog-description"] { color: color-mix(in srgb, var(--tenant-primary) 62%, white); }
 .tenant-public-announcement-dialog-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem; color: var(--tenant-secondary); font-size: .68rem; font-weight: 800; letter-spacing: .08em; line-height: 1.35; text-transform: uppercase; }
 .tenant-public-announcement-dialog-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid color-mix(in srgb, var(--tenant-secondary) 18%, transparent); padding: 1rem .15rem .2rem 0; }
 .tenant-public-announcement-full-content { margin: 0; overflow-wrap: anywhere; color: color-mix(in srgb, var(--tenant-primary) 72%, white); font-size: 1rem; line-height: 1.75; white-space: pre-line; }
 .tenant-public-image-dialog-header { padding-right: 2.5rem; }
-.tenant-public-image-dialog-header [data-slot="dialog-title"] { color: white; font-family: "Playfair Display", Georgia, serif; }
+.tenant-public-image-dialog-header [data-slot="dialog-title"] { color: white; font-family: var(--tenant-font-display, "Playfair Display", Georgia, serif); }
 .tenant-public-image-dialog-description { color: rgb(255 255 255 / 68%); }
 .tenant-public-image-dialog-viewport { display: grid; min-height: 0; max-height: calc(92dvh - 8rem); place-items: center; overflow: auto; overscroll-behavior: contain; border-radius: .75rem; background: rgb(0 0 0 / 24%); }
 .tenant-public-image-expanded { display: block; width: auto; max-width: 100%; height: auto; max-height: calc(92dvh - 9rem); object-fit: contain; }
-.tenant-public-ministries-section { background: #fffdf9; padding-block: clamp(3.5rem, 7vw, 5.5rem); }
+.tenant-public-ministries-section { background: var(--tenant-surface, #fffdf9); padding-block: clamp(3.5rem, 7vw, 5.5rem); }
 .tenant-public-ministries-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 22rem)); justify-content: center; gap: 1rem; }
-.tenant-public-ministry-card { display: flex; min-width: 0; gap: .9rem; align-items: flex-start; border: 1px solid color-mix(in srgb, var(--tenant-primary) 15%, transparent); border-radius: 1rem; background: color-mix(in srgb, var(--tenant-secondary) 7%, #fffdf9); padding: .9rem; box-shadow: 0 .65rem 1.8rem -0.6rem color-mix(in srgb, var(--tenant-primary, #1e3a5f) 22%, transparent); }
+.tenant-public-ministry-card { display: flex; min-width: 0; gap: .9rem; align-items: flex-start; border: 1px solid color-mix(in srgb, var(--tenant-primary) 15%, transparent); border-radius: 1rem; background: color-mix(in srgb, var(--tenant-secondary) 7%, var(--tenant-surface, #fffdf9)); padding: .9rem; box-shadow: 0 .65rem 1.8rem -0.6rem color-mix(in srgb, var(--tenant-primary, #1e3a5f) 22%, transparent); }
 .tenant-public-ministry-card > svg { flex: 0 0 auto; width: 1.35rem; height: 1.35rem; color: var(--tenant-secondary); }
 .tenant-public-ministry-card span { color: var(--tenant-secondary); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.tenant-public-ministry-card h3 { margin: .3rem 0; overflow-wrap: anywhere; color: var(--tenant-primary); font-family: "Playfair Display", serif; font-size: 1.25rem; line-height: 1.1; }
+.tenant-public-ministry-card h3 { margin: .3rem 0; overflow-wrap: anywhere; color: var(--tenant-primary); font-family: var(--tenant-font-display, "Playfair Display", serif); font-size: 1.25rem; line-height: 1.1; }
 .tenant-public-ministry-card p { margin: 0; overflow-wrap: anywhere; color: color-mix(in srgb, var(--tenant-primary) 68%, white); font-size: .88rem; line-height: 1.6; }
 .tenant-public-services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 22rem)); justify-content: center; gap: 1rem; }
-.tenant-public-service-card { display: flex; min-width: 0; gap: .9rem; border: 1px solid color-mix(in srgb, var(--tenant-primary) 15%, transparent); border-radius: 1rem; background: color-mix(in srgb, var(--tenant-secondary) 7%, #fffdf9); padding: 1rem; box-shadow: 0 .65rem 1.8rem -0.6rem color-mix(in srgb, var(--tenant-primary, #1e3a5f) 22%, transparent); }
+.tenant-public-service-card { display: flex; min-width: 0; gap: .9rem; border: 1px solid color-mix(in srgb, var(--tenant-primary) 15%, transparent); border-radius: 1rem; background: color-mix(in srgb, var(--tenant-secondary) 7%, var(--tenant-surface, #fffdf9)); padding: 1rem; box-shadow: 0 .65rem 1.8rem -0.6rem color-mix(in srgb, var(--tenant-primary, #1e3a5f) 22%, transparent); }
 .tenant-public-service-card > svg { flex: 0 0 auto; width: 1.35rem; height: 1.35rem; color: var(--tenant-secondary); }
 .tenant-public-service-card span { color: var(--tenant-secondary); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.tenant-public-service-card h3 { margin: .3rem 0; overflow-wrap: anywhere; color: var(--tenant-primary); font-family: "Playfair Display", serif; font-size: 1.25rem; line-height: 1.1; }
+.tenant-public-service-card h3 { margin: .3rem 0; overflow-wrap: anywhere; color: var(--tenant-primary); font-family: var(--tenant-font-display, "Playfair Display", serif); font-size: 1.25rem; line-height: 1.1; }
 .tenant-public-service-card p { display: flex; min-width: 0; align-items: center; gap: .35rem; margin: .35rem 0 0; overflow-wrap: anywhere; color: color-mix(in srgb, var(--tenant-primary) 68%, white); font-size: .88rem; line-height: 1.4; }
 .tenant-public-service-card p svg { flex: 0 0 auto; width: .85rem; height: .85rem; color: var(--tenant-secondary); }
 .tenant-public-footer { margin-top: 0; padding-block: 3.5rem 1.25rem; background: var(--tenant-primary, #1e3a5f); color: rgb(255 255 255 / 78%); font-size: .825rem; }
@@ -539,7 +539,7 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-footer-grid--support { grid-template-columns: minmax(0, 1.15fr) repeat(3, minmax(0, .85fr)); }
 .tenant-public-footer-brand, .tenant-public-footer-contact, .tenant-public-footer-social, .tenant-public-footer-support { min-width: 0; }
 .tenant-public-footer-kicker { color: var(--tenant-secondary, #c9a84c); font-size: .68rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
-.tenant-public-footer h2 { margin: 0; color: white; font-family: "Playfair Display", Georgia, serif; font-size: 1.35rem; line-height: 1.1; }
+.tenant-public-footer h2 { margin: 0; color: white; font-family: var(--tenant-font-display, "Playfair Display", Georgia, serif); font-size: 1.35rem; line-height: 1.1; }
 .tenant-public-footer-brand h2 { margin-top: .55rem; font-size: clamp(1.65rem, 4vw, 2.25rem); }
 .tenant-public-footer-brand > p:last-child { max-width: 28ch; margin-top: .8rem; color: rgb(255 255 255 / 66%); line-height: 1.65; }
 .tenant-public-footer-contact h2, .tenant-public-footer-social h2, .tenant-public-footer-support h2 { margin-bottom: .9rem; font-family: inherit; font-size: .72rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
@@ -563,8 +563,8 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 .tenant-public-footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 2.75rem; border-top: 1px solid rgb(255 255 255 / 13%); padding-top: 1rem; color: rgb(255 255 255 / 52%); font-size: .72rem; }
 
 .tenant-public-gallery-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(.75rem, 2vw, 1.25rem); }
-.tenant-public-gallery-item { min-width: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--tenant-secondary) 25%, transparent); border-radius: 1rem; background: color-mix(in srgb, var(--tenant-secondary) 7%, #fffdf9); }
-.tenant-public-gallery-item img { display: block; width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: color-mix(in srgb, var(--tenant-primary) 10%, #fffdf9); }
+.tenant-public-gallery-item { min-width: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--tenant-secondary) 25%, transparent); border-radius: 1rem; background: color-mix(in srgb, var(--tenant-secondary) 7%, var(--tenant-surface, #fffdf9)); }
+.tenant-public-gallery-item img { display: block; width: 100%; max-width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: color-mix(in srgb, var(--tenant-primary) 10%, var(--tenant-surface, #fffdf9)); }
 .tenant-public-gallery-item figcaption { padding: .7rem .8rem; color: color-mix(in srgb, var(--tenant-primary) 80%, #1f2937); font-size: .875rem; line-height: 1.4; overflow-wrap: anywhere; }
 .tenant-public-devotional-layout { display: grid; gap: 2rem; align-items: start; }
 .tenant-public-devotional-reading { min-width: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--tenant-primary, #1e3a5f) 13%, transparent); border-radius: 1.5rem; background: rgb(255 255 255 / 76%); box-shadow: 0 1rem 3rem rgb(30 58 95 / 10%); }
@@ -617,7 +617,7 @@ button:active { transform: scale(0.97); transition: transform 160ms cubic-bezier
 
 /* Prévia do painel: usa apenas variáveis de marca e herda o mesmo limite de viewport do template. */
 .tenant-public-preview { min-width: 0; overflow: clip; color: var(--tenant-primary); background: #fdfaf4; }
-.tenant-public-preview-header { padding: .8rem 1rem; font-size: .75rem; font-weight: 800; color: var(--tenant-primary); background: #fffdf9; }
+.tenant-public-preview-header { padding: .8rem 1rem; font-size: .75rem; font-weight: 800; color: var(--tenant-primary); background: var(--tenant-surface, #fffdf9); }
 .tenant-public-preview-hero { position: relative; min-width: 0; min-height: 15rem; overflow: hidden; padding: 2rem 1.25rem; color: #fff; background-color: var(--tenant-primary); background-position: center; background-size: cover; }
 .tenant-public-preview-hero-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
 .tenant-public-preview-hero-overlay { position: absolute; inset: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--tenant-primary) 94%, black) 0%, color-mix(in srgb, var(--tenant-primary) 72%, transparent) 100%); pointer-events: none; }

@@ -137,6 +137,7 @@ import { normalizeSocialMediaLinks } from "../shared/socialMedia";
 import { CHURCH_SETUP_STEP_KEYS, type ChurchSetupStepKey } from "../shared/churchSetup";
 import { normalizePastoralSupportConfig } from "../shared/pastoralSupport";
 import { resolveHeroImage } from "../shared/publicHero";
+import type { FontPairId } from "../shared/publicPresets";
 import { MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
 import { ACTIVE_CONSOLIDATION_REFERRAL_STATUSES, hasConsolidationResponsible, isActiveConsolidationReferralStatus, shouldFlagLegacyConsolidationPending, shouldFlagModernFirstContactPending } from "../shared/consolidation";
 import { resolveDirectoryCareState, type DirectoryCareStatus } from "../shared/peopleDirectory";
@@ -1100,11 +1101,12 @@ export async function getTenantPublicSiteByChurchId(churchId: number) {
 export type TenantPublicDraftInput = {
   seoTitle?: string | null;
   seoDescription?: string | null;
+  templateKey?: string | null;
   theme: {
     primaryColor: string;
     secondaryColor: string;
     accentColor?: string | null;
-    fontPair?: "sacred_serif";
+    fontPair?: FontPairId;
     logoUrl?: string | null;
     faviconUrl?: string | null;
   };
@@ -1282,6 +1284,7 @@ export async function saveTenantPublicDraftByChurchId(churchId: number, input: T
       .set({
         seoTitle: input.seoTitle ?? null,
         seoDescription: input.seoDescription ?? null,
+        ...(input.templateKey ? { templateKey: input.templateKey } : {}),
       })
       .where(and(eq(tenantPublicSites.id, site.id), eq(tenantPublicSites.churchId, churchId)));
     await tx.update(tenantThemes).set(input.theme).where(eq(tenantThemes.churchId, churchId));

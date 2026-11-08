@@ -107,6 +107,8 @@ export default function TenantPublicPage() {
       primaryColor: data.theme?.primaryColor ?? data.church.primaryColor,
       secondaryColor: data.theme?.secondaryColor ?? data.church.secondaryColor,
       accentColor: data.theme?.accentColor,
+      fontPair: data.theme?.fontPair,
+      templateKey: data.site?.templateKey,
     }}>
       <header className="tenant-public-header">
         <div className="tenant-public-container tenant-public-header-inner">

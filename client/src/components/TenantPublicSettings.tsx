@@ -9,6 +9,7 @@ import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { uploadChurchMedia } from "@/lib/mediaUpload";
 import { HERO_PRESETS, resolveHeroImage, type HeroPresetId } from "../../../shared/publicHero";
+import { IDENTITY_PRESETS, type FontPairId } from "../../../shared/publicPresets";
 
 type SectionType = "hero" | "about" | "schedule" | "events" | "ministries" | "gallery" | "contact";
 type PublicService = { day: string; time: string; label?: string; location?: string };
@@ -66,7 +67,8 @@ function formatPublicDate(value: unknown) {
 export function TenantPublicSettings({ ministries = [] }: { ministries?: Array<{ id: number; name: string; description?: string | null }> }) {
   const utils = trpc.useUtils();
   const preview = trpc.tenantPublic.adminPreview.useQuery();
-  const [theme, setTheme] = useState({ primaryColor: "#1e3a5f", secondaryColor: "#c9a84c", accentColor: "#c9a84c", fontPair: "sacred_serif" as const, logoUrl: null as string | null, faviconUrl: null as string | null });
+  const [theme, setTheme] = useState({ primaryColor: "#1e3a5f", secondaryColor: "#c9a84c", accentColor: "#c9a84c", fontPair: "sacred_serif" as FontPairId, logoUrl: null as string | null, faviconUrl: null as string | null });
+  const [templateKey, setTemplateKey] = useState<string>("ministerial_base");
   const [seo, setSeo] = useState({ title: "", description: "" });
   const [sections, setSections] = useState<EditorSection[]>(defaultSections);
   const [mobilePreview, setMobilePreview] = useState(true);
@@ -76,7 +78,8 @@ export function TenantPublicSettings({ ministries = [] }: { ministries?: Array<{
   useEffect(() => {
     if (!preview.data) return;
     const currentTheme = preview.data.theme;
-    if (currentTheme) setTheme({ primaryColor: currentTheme.primaryColor, secondaryColor: currentTheme.secondaryColor, accentColor: currentTheme.accentColor ?? currentTheme.secondaryColor, fontPair: "sacred_serif", logoUrl: currentTheme.logoUrl, faviconUrl: currentTheme.faviconUrl });
+    if (currentTheme) setTheme({ primaryColor: currentTheme.primaryColor, secondaryColor: currentTheme.secondaryColor, accentColor: currentTheme.accentColor ?? currentTheme.secondaryColor, fontPair: (currentTheme.fontPair as FontPairId) ?? "sacred_serif", logoUrl: currentTheme.logoUrl, faviconUrl: currentTheme.faviconUrl });
+    setTemplateKey(preview.data.site?.templateKey ?? "ministerial_base");
     const saved = preview.data.sections.filter((section) => ["hero", "about", "schedule", "events", "ministries", "gallery", "contact"].includes(section.sectionType)) as unknown as EditorSection[];
     const legacyPublicMinistryIds = ministries.map((ministry) => ministry.id);
     setSections(defaultSections.map((fallback) => {
@@ -100,7 +103,7 @@ export function TenantPublicSettings({ ministries = [] }: { ministries?: Array<{
   });
 
   const normalizedSections = useMemo(() => sections.map((section, index) => ({ ...section, sortOrder: index })), [sections]);
-  const draftPayload = { seoTitle: seo.title || null, seoDescription: seo.description || null, theme, sections: normalizedSections };
+  const draftPayload = { seoTitle: seo.title || null, seoDescription: seo.description || null, templateKey, theme, sections: normalizedSections };
   const save = () => saveDraft.mutate(draftPayload);
   const publishPage = async () => {
     try {
@@ -109,6 +112,10 @@ export function TenantPublicSettings({ ministries = [] }: { ministries?: Array<{
     } catch {
       // As mutações já apresentam a mensagem segura ao administrador.
     }
+  };
+  const applyIdentity = (preset: typeof IDENTITY_PRESETS[number]) => {
+    setTheme((current) => ({ ...current, primaryColor: preset.primaryColor, secondaryColor: preset.secondaryColor, accentColor: preset.accentColor, fontPair: preset.fontPair }));
+    setTemplateKey(preset.id);
   };
   const move = (index: number, direction: -1 | 1) => setSections((items) => {
     const next = [...items]; const target = index + direction;
@@ -182,6 +189,11 @@ export function TenantPublicSettings({ ministries = [] }: { ministries?: Array<{
       <div className="min-w-0 space-y-5">
         <section className="card-sacred p-5 sm:p-6"><div className="mb-5 flex items-start gap-3 border-b border-border pb-4"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/10 text-gold"><Globe2 className="h-5 w-5" /></span><div><h2 className="font-semibold text-navy">Tema da Página Pública</h2><p className="mt-1 text-sm leading-relaxed text-muted-foreground">Estas cores pertencem ao site público. A Identidade Visual geral controla a experiência interna do painel.</p></div></div>
           <div className="grid gap-4 sm:grid-cols-2"><label className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"><span className="text-sm font-semibold text-navy">Cor principal</span><span className="mt-1 block text-xs text-muted-foreground">Cabeçalho e áreas de destaque</span><div className="mt-3 flex items-center gap-3"><span className="h-9 w-9 shrink-0 rounded-lg border border-white shadow-sm" style={{ backgroundColor: theme.primaryColor }} /><Input aria-label="Cor principal da Página Pública" className="min-w-0 font-mono uppercase" value={theme.primaryColor} maxLength={7} onChange={(event) => setTheme({ ...theme, primaryColor: event.target.value })} /></div></label><label className="rounded-xl border border-slate-200 bg-slate-50/60 p-3"><span className="text-sm font-semibold text-navy">Cor de destaque</span><span className="mt-1 block text-xs text-muted-foreground">Botões e chamadas para ação</span><div className="mt-3 flex items-center gap-3"><span className="h-9 w-9 shrink-0 rounded-lg border border-white shadow-sm" style={{ backgroundColor: theme.secondaryColor }} /><Input aria-label="Cor de destaque da Página Pública" className="min-w-0 font-mono uppercase" value={theme.secondaryColor} maxLength={7} onChange={(event) => setTheme({ ...theme, secondaryColor: event.target.value, accentColor: event.target.value })} /></div></label></div>
+          <div className="mt-5">
+            <span className="text-sm font-semibold text-navy">Identidade visual</span>
+            <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">Escolha um estilo pronto (cores + fontes). Dá para ajustar as cores acima depois de escolher.</span>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{IDENTITY_PRESETS.map((preset) => <button type="button" key={preset.id} aria-pressed={templateKey === preset.id} onClick={() => applyIdentity(preset)} className={`flex min-w-0 items-center gap-3 rounded-xl border p-2.5 text-left transition ${templateKey === preset.id ? "border-gold bg-gold/10 ring-2 ring-gold/30" : "border-border bg-background hover:border-gold/60"}`}><span className="flex shrink-0 items-center -space-x-1.5" aria-hidden="true"><span className="h-6 w-6 rounded-full border border-white shadow-sm" style={{ backgroundColor: preset.primaryColor }} /><span className="h-6 w-6 rounded-full border border-white shadow-sm" style={{ backgroundColor: preset.secondaryColor }} /></span><span className="min-w-0"><strong className="block truncate text-sm text-navy">{preset.name}</strong><small className="block truncate text-xs text-muted-foreground">{preset.concept}</small></span></button>)}</div>
+          </div>
           <div className="mt-4 grid gap-4"><label><Label>Título para buscadores</Label><Input className="mt-1" value={seo.title} maxLength={255} onChange={(event) => setSeo({ ...seo, title: event.target.value })} placeholder="Ex.: Cristã Viver — Comunidade de Fé" /></label><label><Label>Descrição pública</Label><Textarea className="mt-1" value={seo.description} maxLength={320} rows={3} onChange={(event) => setSeo({ ...seo, description: event.target.value })} placeholder="Uma breve apresentação da sua igreja." /></label></div>
         </section>
         <section className="card-sacred p-5 sm:p-6"><div className="flex flex-col gap-1 border-b border-border pb-4 sm:flex-row sm:items-end sm:justify-between"><div><h2 className="font-semibold text-navy">Blocos da página</h2><p className="mt-1 text-sm text-muted-foreground">Ative, edite e reordene blocos aprovados. A mudança só fica pública ao publicar.</p></div><span className="w-fit rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{sections.filter((section) => section.enabled).length} de {sections.length} ativos</span></div>

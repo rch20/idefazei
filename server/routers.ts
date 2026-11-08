@@ -10,6 +10,7 @@ import { getChurchBilling, getPagarmeAdminView, isBillingEnforced, listAllPaymen
 import { isValidSocialMediaUrl, normalizePublicWebsiteUrl, normalizeSocialMediaLinks, SOCIAL_PLATFORM_KEYS } from "../shared/socialMedia";
 import { normalizePastoralSupportConfig, normalizePastoralSupportUrl } from "../shared/pastoralSupport";
 import { HERO_PRESET_IDS } from "../shared/publicHero";
+import { FONT_PAIR_IDS } from "../shared/publicPresets";
 import { MINISTRY_ICON_KEYS, DEFAULT_MINISTRY_ICON_KEY } from "../shared/ministryIcons";
 import { MINISTRY_VICE_LEADER_LABEL, MINISTRY_VICE_LEADER_ROLE_KEY } from "../shared/ministryRoles";
 import { getConsolidationResponsiblePersonId, hasConsolidationResponsible } from "../shared/consolidation";
@@ -1904,6 +1905,7 @@ const tenantPublicRouter = router({
       z.object({
     seoTitle: z.string().trim().max(255).nullable().optional(),
     seoDescription: z.string().trim().max(320).nullable().optional(),
+    templateKey: z.string().trim().max(80).optional(),
     theme: z.object({
       primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
       secondaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
@@ -1912,7 +1914,7 @@ const tenantPublicRouter = router({
             .regex(/^#[0-9a-fA-F]{6}$/)
             .nullable()
             .optional(),
-      fontPair: z.literal("sacred_serif").optional(),
+      fontPair: z.enum(FONT_PAIR_IDS).optional(),
           logoUrl: z
             .string()
             .trim()
