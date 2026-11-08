@@ -321,6 +321,28 @@ vi.mock("./db", () => ({
 }));
 
 // Mock do storage.ts — evita chamadas reais ao S3
+// O 2FA da tesouraria tem camada de banco própria; este teste mocka o banco, então
+// abrimos a trava aqui (o fluxo de 2FA tem testes dedicados). Demais exports são stubs.
+vi.mock("./treasury2fa", () => ({
+  hasValidTreasurySession: vi.fn().mockResolvedValue(true),
+  hasFreshTreasuryVerification: vi.fn().mockResolvedValue(true),
+  getTwoFactorStatus: vi.fn().mockResolvedValue({ enrolled: true, sessionVerified: true, lockedUntil: null }),
+  getTwoFactorRecord: vi.fn().mockResolvedValue(null),
+  startEnrollment: vi.fn().mockResolvedValue(undefined),
+  confirmEnrollment: vi.fn().mockResolvedValue([]),
+  markSessionVerified: vi.fn().mockResolvedValue(undefined),
+  registerFailedAttempt: vi.fn().mockResolvedValue({ locked: false }),
+  consumeRecoveryCode: vi.fn().mockResolvedValue(false),
+  regenerateRecoveryCodes: vi.fn().mockResolvedValue([]),
+  countUnusedRecoveryCodes: vi.fn().mockResolvedValue(0),
+  resetTwoFactor: vi.fn().mockResolvedValue(undefined),
+  auditTwoFactor: vi.fn().mockResolvedValue(undefined),
+  decryptTotpSecret: vi.fn().mockReturnValue(""),
+  generateTotpSecret: vi.fn().mockReturnValue("SECRET"),
+  totpKeyUri: vi.fn().mockReturnValue("otpauth://totp/x"),
+  verifyTotp: vi.fn().mockReturnValue(true),
+}));
+
 vi.mock("./storage", () => ({
   storagePut: vi.fn().mockResolvedValue({
     key: "churches/100/certificates/batismo-maria-silva-123.pdf",
