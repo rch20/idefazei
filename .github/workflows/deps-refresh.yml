@@ -1,0 +1,68 @@
+name: CI — atualização de dependências (segurança)
+
+# Atualiza os pacotes com CVE para a última versão DENTRO do major atual (sem pular
+# major, para não introduzir breaking changes), regenera o lockfile, valida (tsc + build)
+# e commita de volta na própria branch. A validação completa (testes + MySQL) roda de novo
+# na promoção para produção (production.yml). Roda ao enviar uma branch deps-* ou sob demanda.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "**/deps-refresh*"
+      - "chore/deps-*"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    name: Atualizar dependências vulneráveis
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Auditoria ANTES (produção, alto/crítico)
+        run: pnpm install --frozen-lockfile && (pnpm audit --prod --audit-level=high || true)
+
+      - name: Atualizar pacotes vulneráveis (dentro do major)
+        run: >
+          pnpm update
+          axios
+          @aws-sdk/client-s3
+          @aws-sdk/s3-request-presigner
+          @trpc/server
+          @trpc/client
+          @trpc/react-query
+          @tanstack/react-query
+          express
+
+      - name: Regenerar lockfile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Auditoria DEPOIS (produção, alto/crítico)
+        run: pnpm audit --prod --audit-level=high || true
+
+      - name: Validar — TypeScript
+        run: pnpm check
+
+      - name: Validar — build
+        run: pnpm build
+
+      - name: Commitar lockfile atualizado
+        run: |
+          if git diff --quiet package.json pnpm-lock.yaml; then
+            echo "Nenhuma mudança de dependência."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json pnpm-lock.yaml
+          git commit -m "deps(seg): atualiza pacotes com CVE dentro do major [skip ci]"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
