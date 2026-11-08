@@ -1,0 +1,68 @@
+name: CI — registrar ciclos de chunk no baseline (2FA)
+
+# A tela de 2FA usa qrcode.react (já usado por Configuracoes), e o Rollup passou a
+# compartilhar esse código entre dois chunks lazy, criando ciclos index<->chunk benignos
+# (mesma classe dos dezenas já aceitos no baseline, ex. index<->Inicio). Este workflow
+# builda, lê os ciclos reais do relatório do guardião e os registra no baseline.cycles.
+# Não mexe nos tamanhos (files) — só nos ciclos.
+
+on:
+  push:
+    branches:
+      - "feat/2fa-tesouraria"
+    paths:
+      - ".github/workflows/bundle-cycles-2fa.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  rebaseline-cycles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: corepack enable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm build
+      - name: Medir e registrar ciclos novos no baseline
+        run: |
+          set -Eeuo pipefail
+          pnpm bundle:check || true   # grava artifacts/bundle-report.json mesmo falhando
+          node --input-type=module <<'EOF'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const report = JSON.parse(readFileSync("artifacts/bundle-report.json", "utf8"));
+          const baseline = JSON.parse(readFileSync("scripts/bundle-baseline.json", "utf8"));
+          const logical = (ref) => String(ref).replace(/-[A-Za-z0-9_]{6,}\.js$/, ".js");
+          const key = (cyc) => cyc.map(logical).join(" -> ");
+          const known = new Set((baseline.cycles ?? []).map(key));
+          let added = 0;
+          for (const cyc of report.cycles ?? []) {
+            if (!known.has(key(cyc))) {
+              baseline.cycles.push(cyc);
+              known.add(key(cyc));
+              added++;
+              console.log("ciclo registrado:", key(cyc));
+            }
+          }
+          baseline.source = `${baseline.source} | +${added} ciclos (gate 2FA / qrcode compartilhado) ${new Date().toISOString().slice(0,10)}`;
+          writeFileSync("scripts/bundle-baseline.json", JSON.stringify(baseline, null, 2) + "\n");
+          console.log("total ciclos novos:", added);
+          EOF
+      - name: Conferir que o guardião passa
+        run: pnpm bundle:check
+      - name: Commitar baseline
+        run: |
+          if git diff --quiet scripts/bundle-baseline.json; then
+            echo "Sem ciclos novos."; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/bundle-baseline.json
+          git commit -m "chore(2fa): registra ciclos index<->chunk benignos no baseline (qrcode compartilhado) [skip ci]"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
