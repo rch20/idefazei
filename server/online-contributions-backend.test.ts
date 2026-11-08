@@ -33,7 +33,7 @@ describe("backend de contribuições on-line", () => {
   });
 
   it("permite mensagem a pastores e tesoureiros, mas preserva a chave PIX exclusiva dos pastores", () => {
-    const access = blockBetween(routerSource, "async function requireTreasuryAccess", "type TreasuryReportSignatureRole").replace(/\s+/g, " ");
+    const access = blockBetween(routerSource, "async function requireTreasuryRole", "async function requireTreasuryAccess").replace(/\s+/g, " ");
     const keyMutation = blockBetween(routerSource, "savePixSettings:", "updatePixThankYouMessage:");
     const messageMutation = blockBetween(routerSource, "updatePixThankYouMessage:", "myOnlineContributions:");
     expect(access).toContain("canManageStructure: roles.some");
