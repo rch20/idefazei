@@ -75,6 +75,7 @@ const CentralCuidado = lazy(() => import("./pages/CentralCuidado"));
 const RadarEspiritual = lazy(() => import("./pages/RadarEspiritual"));
 const PresencaCulto = lazy(() => import("./pages/PresencaCulto"));
 const Tesouraria = lazy(() => import("./pages/Tesouraria"));
+const TreasuryTwoFactorGate = lazy(() => import("./components/TreasuryTwoFactorGate"));
 
 function DevFoundationPreviewRoute() {
   if (!import.meta.env.DEV || !FoundationStudyPreview) return <NotFound />;
@@ -404,7 +405,9 @@ function Router() {
 
       <Route path="/app/tesouraria">
         <AppPage title="Tesouraria" requiredAccess="canAccessTreasury">
-          <Tesouraria />
+          <TreasuryTwoFactorGate>
+            <Tesouraria />
+          </TreasuryTwoFactorGate>
         </AppPage>
       </Route>
 

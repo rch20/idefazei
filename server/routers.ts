@@ -12315,7 +12315,6 @@ const treasuryRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
-      await requireFreshTreasuryTwoFactor(input.churchId, access.actor.id);
       if (!access.canManageStructure)
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -13659,7 +13658,6 @@ const treasuryRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const access = await requireTreasuryAccess(ctx.user.id, input.churchId);
-      await requireFreshTreasuryTwoFactor(input.churchId, access.actor.id);
       if (!access.canManageStructure)
         throw new TRPCError({
           code: "FORBIDDEN",
