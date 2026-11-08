@@ -49,7 +49,9 @@ export function encryptSecret(plain: string): string {
 export function decryptSecret(stored: string): string {
   const [version, iv, tag, body] = stored.split(":");
   if (version !== "v1" || !iv || !tag || !body) throw new Error("Formato de chave inválido.");
-  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(iv, "base64"));
+  // authTagLength fixo em 16 (128 bits): impede aceitar uma tag GCM mais curta que o esperado
+  // (hardening contra forja caso o registro cifrado seja adulterado). Semgrep gcm-no-tag-length.
+  const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(iv, "base64"), { authTagLength: 16 });
   decipher.setAuthTag(Buffer.from(tag, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(body, "base64")), decipher.final()]).toString("utf8");
 }
