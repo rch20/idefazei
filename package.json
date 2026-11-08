@@ -139,7 +139,9 @@
       "exceljs@4.4.0": "patches/exceljs@4.4.0.patch"
     },
     "overrides": {
-      "proxy-addr@<2.0.8": "2.0.8"
+      "proxy-addr@<2.0.8": "2.0.8",
+      "dompurify@<3.4.17": "3.4.17",
+      "drizzle-orm@<0.45.2": "0.45.2"
     }
   }
 }
