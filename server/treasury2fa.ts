@@ -17,6 +17,12 @@ import { treasuryTwoFactor, treasuryTwoFactorRecovery, treasuryTwoFactorAudit } 
 import { ENV } from "./_core/env";
 import { getDb } from "./db";
 
+async function db2fa() {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível para operação de 2FA da tesouraria.");
+  return db;
+}
+
 export const TWO_FACTOR_ISSUER = "Ide Fazei — Tesouraria";
 // Janela em que o 2FA conferido vale sem pedir de novo ("uma vez por sessão"). 12h = um dia de trabalho.
 export const SESSION_WINDOW_MS = 12 * 60 * 60 * 1000;
@@ -105,7 +111,7 @@ function constantTimeEquals(a: string, b: string): boolean {
 
 // ─── Acesso a dados (sempre escopado por churchId) ────────────────────────────
 export async function getTwoFactorRecord(churchId: number, churchUserId: number) {
-  const db = await getDb();
+  const db = await db2fa();
   const rows = await db
     .select()
     .from(treasuryTwoFactor)
@@ -146,7 +152,7 @@ export async function hasFreshTreasuryVerification(churchId: number, churchUserI
 
 // Guarda (ou substitui) um cadastro pendente: segredo cifrado, ainda não confirmado.
 export async function startEnrollment(churchId: number, churchUserId: number, secretPlain: string) {
-  const db = await getDb();
+  const db = await db2fa();
   const secretCipher = encryptTotpSecret(secretPlain);
   await db
     .insert(treasuryTwoFactor)
@@ -166,7 +172,7 @@ export async function startEnrollment(churchId: number, churchUserId: number, se
 
 // Confirma o cadastro (primeiro código válido) e já abre a sessão. Gera os códigos de recuperação.
 export async function confirmEnrollment(churchId: number, churchUserId: number): Promise<string[]> {
-  const db = await getDb();
+  const db = await db2fa();
   const now = new Date();
   await db
     .update(treasuryTwoFactor)
@@ -183,7 +189,7 @@ export async function confirmEnrollment(churchId: number, churchUserId: number):
 }
 
 export async function regenerateRecoveryCodes(churchId: number, churchUserId: number): Promise<string[]> {
-  const db = await getDb();
+  const db = await db2fa();
   await db
     .delete(treasuryTwoFactorRecovery)
     .where(and(eq(treasuryTwoFactorRecovery.churchId, churchId), eq(treasuryTwoFactorRecovery.churchUserId, churchUserId)));
@@ -196,7 +202,7 @@ export async function regenerateRecoveryCodes(churchId: number, churchUserId: nu
 
 // Marca a sessão como verificada; zera tentativas.
 export async function markSessionVerified(churchId: number, churchUserId: number) {
-  const db = await getDb();
+  const db = await db2fa();
   const now = new Date();
   await db
     .update(treasuryTwoFactor)
@@ -211,7 +217,7 @@ export async function markSessionVerified(churchId: number, churchUserId: number
 
 // Registra uma falha; bloqueia por alguns minutos ao passar do limite. Retorna se ficou bloqueado.
 export async function registerFailedAttempt(churchId: number, churchUserId: number): Promise<{ locked: boolean }> {
-  const db = await getDb();
+  const db = await db2fa();
   const rec = await getTwoFactorRecord(churchId, churchUserId);
   const attempts = (rec?.failedAttempts ?? 0) + 1;
   const locked = attempts >= MAX_FAILED_ATTEMPTS;
@@ -227,7 +233,7 @@ export async function registerFailedAttempt(churchId: number, churchUserId: numb
 
 // Consome um código de recuperação (uso único). Retorna true se válido e não usado.
 export async function consumeRecoveryCode(churchId: number, churchUserId: number, code: string): Promise<boolean> {
-  const db = await getDb();
+  const db = await db2fa();
   const hash = hashRecoveryCode(code);
   const rows = await db
     .select()
@@ -254,7 +260,7 @@ export async function consumeRecoveryCode(churchId: number, churchUserId: number
 }
 
 export async function countUnusedRecoveryCodes(churchId: number, churchUserId: number): Promise<number> {
-  const db = await getDb();
+  const db = await db2fa();
   const rows = await db
     .select({ n: sql<number>`count(*)` })
     .from(treasuryTwoFactorRecovery)
@@ -270,7 +276,7 @@ export async function countUnusedRecoveryCodes(churchId: number, churchUserId: n
 
 // Reset (feito por um pastor/admin do salão): remove o 2FA do usuário para ele recadastrar.
 export async function resetTwoFactor(churchId: number, churchUserId: number) {
-  const db = await getDb();
+  const db = await db2fa();
   await db
     .delete(treasuryTwoFactorRecovery)
     .where(and(eq(treasuryTwoFactorRecovery.churchId, churchId), eq(treasuryTwoFactorRecovery.churchUserId, churchUserId)));
@@ -296,7 +302,7 @@ export async function auditTwoFactor(
   actorChurchUserId?: number | null,
   detail?: string | null,
 ) {
-  const db = await getDb();
+  const db = await db2fa();
   await db.insert(treasuryTwoFactorAudit).values({
     churchId,
     churchUserId,

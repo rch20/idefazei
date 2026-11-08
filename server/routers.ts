@@ -11932,7 +11932,7 @@ const treasuryRouter = router({
       }
       const secret = generateTotpSecret();
       await startEnrollment(input.churchId, access.actor.id, secret);
-      const label = access.actor.email ?? `igreja-${input.churchId}`;
+      const label = `igreja-${input.churchId}-acesso-${access.actor.id}`;
       return { otpauthUri: totpKeyUri(label, secret), manualKey: secret };
     }),
 
